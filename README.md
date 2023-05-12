@@ -4,7 +4,7 @@ Project Yellowstone: Old Faithful is the project to make all of Solana's history
 
 ## Overview
 
-The core of the project are history archives in Content Addressable format ([overview](https://web3.storage/docs/how-tos/work-with-car-files/), [specs](https://ipld.io/specs/transport/car/carv1/)). These represent a verifiable, immutable view of the Solana history. The CAR files that this project generates follows a [schema](https://github.com/gagliardetto/radiance-triton/blob/tx_meta/cmd/radiance/car/createcar/ledger.ipldsch) specifically developed for Solana's historical archives. 
+The core of the project is history archives in Content Addressable format ([overview](https://web3.storage/docs/how-tos/work-with-car-files/), [specs](https://ipld.io/specs/transport/car/carv1/)). These represent a verifiable, immutable view of the Solana history. The CAR files that this project generates follows a [schema](https://github.com/gagliardetto/radiance-triton/blob/tx_meta/cmd/radiance/car/createcar/ledger.ipldsch) specifically developed for Solana's historical archives. 
 
 The content addressable nature means that each epoch, block, transaction and shreddingis uniquely identified by a content hash. By knowing this content hash you will be able to retreive a specific object of your interest. Retreivals can be made via IPFS, the Filecoin network, or even by hosting the CAR files yourself on disk, a ceph cluster, S3, you name it.
 
