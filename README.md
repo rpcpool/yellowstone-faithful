@@ -36,6 +36,35 @@ If you have warehouse nodes generating rocksdb archive snapshots, please contact
 
 Using the rocksdb archives, the Radiance tool can be used to generate one CAR file per epoch. This CAR file is then made available via storage providers such as Filecoin and private storage buckets. 
 
+CAR file generation produces a CAR containing a DAG. This DAG is reproducible and follows the structure of Epoch -> Block -> Transaction see [schema](https://github.com/gagliardetto/radiance-triton/blob/tx_meta/cmd/radiance/car/createcar/ledger.ipldsch). The CAR file generation is deterministic, so even if you use different rocksdb source snapshots you should end up with the same CAR output. This allows comparison between different providers.
+
+The data generation flow is illustrated below:
+
+![radiance datagen flow](https://github.com/rpcpool/yellowstone-faithful/assets/5172293/65f6dd75-189b-4253-968a-e81bfe6c130f)
+
+## Data uploaded
+
+We will be regularly updating the CIDs uploaded to Filecoin here so that you can test retrievals and the IPLD schema parsing. If you have questions, comments or concerns please feel free to open issues on this repo.
+
+### Transaction CIDs
+
+These are most useful for testing with. You can download these using lassie (see below) to access the transaction data:
+
+| Signature | Epoch | Block | CID |
+| 39V8tR2Q8Ar3WwMBfVTRPFr7AakLHy5wp7skJNBL7ET6ARoikqc1TaMiuXEtHiNPLQKoeiVr5XnKH8QtjdonN4yM | 0 | 1 | bafyreiafcknvju54cilmqkopps4d3t4n3azjhrweyouxfltbgdo7mbpuoy |
+| 4hPVA21e1KLQsEQkpSHk1UfkBBUfotajpkqESuV4tgqEdtEyDufaczAdZzSLexLhjytczDdSUFgwCTancgUWFzym | 0 | 1 | bafyreig3utb4u6x2agmyugntbxph4uesiodzq5k7typduhppcf62sdgjiu |
+| FAWA66fudpiwdRDDQ4DRxdJsRvawvauwg4vQkm98ZHFpXmW5N7xzRiTRpt8QiZ19s1aVbzKgXW6kEZanwHeDFNS | 0 | 1 | bafyreigd7wopxlspljqkumzyiechhb43dwz6f67n4zbh7gef3kro4dj7qa |
+| 58A6RFEk5AoFqXTtKfqLhLrs7mhJYWGQTZegoCXPZuneM6Spi47SNYk2M6d9MVzHbC9CpBVk5vrq24yyNgeQNK2p | 0 | 1 | bafyreieysdgkid4p3hszup7mwvyji2gzlsrkx5rmuqdz2i2ujs3wyfxdby |
+
+### Block CIDs
+
+### Epoch CIDs
+
+These will be fairly large downloads, so for testing please use the Transaction CIDs above.
+
+| Epoch | CID |
+| 0 | bafyreiagdtlc3xwhbeywzpwmxvwkogcujhlsm6f4cfdgpjpyu77gkubro4 |
+
 ## Querying
 
 Currently, querying can be done from Filecoin using the [lassie utility](https://docs.filecoin.io/basics/how-retrieval-works/basic-retrieval/):
@@ -45,6 +74,10 @@ lassie fetch <cid>
 ```
 
 Once you have downlaoded the CID you can unpack it or use the `dump2` tool available in the [Radiance repo](https://github.com/gagliardetto/radiance-triton/tree/tx_meta/). This tool can help you review the contents returned from Lassie.
+
+```
+lassie fetch -o - <cid> | dump2 -
+```
 
 Other query methods that are on the roadmap:
 
