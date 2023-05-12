@@ -51,6 +51,7 @@ We will be regularly updating the CIDs uploaded to Filecoin here so that you can
 These are most useful for testing with. You can download these using lassie (see below) to access the transaction data:
 
 | Signature | Epoch | Block | CID |
+| ------------- | ------------- | ------------- | ------------- |
 | 39V8tR2Q8Ar3WwMBfVTRPFr7AakLHy5wp7skJNBL7ET6ARoikqc1TaMiuXEtHiNPLQKoeiVr5XnKH8QtjdonN4yM | 0 | 1 | bafyreiafcknvju54cilmqkopps4d3t4n3azjhrweyouxfltbgdo7mbpuoy |
 | 4hPVA21e1KLQsEQkpSHk1UfkBBUfotajpkqESuV4tgqEdtEyDufaczAdZzSLexLhjytczDdSUFgwCTancgUWFzym | 0 | 1 | bafyreig3utb4u6x2agmyugntbxph4uesiodzq5k7typduhppcf62sdgjiu |
 | FAWA66fudpiwdRDDQ4DRxdJsRvawvauwg4vQkm98ZHFpXmW5N7xzRiTRpt8QiZ19s1aVbzKgXW6kEZanwHeDFNS | 0 | 1 | bafyreigd7wopxlspljqkumzyiechhb43dwz6f67n4zbh7gef3kro4dj7qa |
@@ -63,6 +64,7 @@ These are most useful for testing with. You can download these using lassie (see
 These will be fairly large downloads, so for testing please use the Transaction CIDs above.
 
 | Epoch | CID |
+| ------------- | ------------- | 
 | 0 | bafyreiagdtlc3xwhbeywzpwmxvwkogcujhlsm6f4cfdgpjpyu77gkubro4 |
 
 ## Querying
