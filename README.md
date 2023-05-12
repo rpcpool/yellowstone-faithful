@@ -92,4 +92,14 @@ This project is currently managed by [Triton One](https://triton.one/). If you w
 
 ## Acknowledgements
 
-The originator of this project was Richard Patel (@terorie / https://twitter.com/fd_ripatel). This work has been supported greatly by Protocol Labs (special shout out to @anjor for all the guidance in Filecoin land to us Solana locals). The Solana Foundation is funding this effort through a project grant. Solana.fm was one of the initiators of this project. Also thanks to all RPC providers and others who have (and are) providing input to and support for this process. 
+The originator of this project was Richard Patel ([terorie](https://github.com/terorie) / https://twitter.com/fd_ripatel). 
+
+[@immaterial.ink](https://github.com/gagliardetto) ([Twitter](https://twitter.com/immaterial_ink)) is currently the lead dev on this project at Triton One. 
+
+This work has been supported greatly by Protocol Labs (special shout out to [anjor](https://github.com/anjor) for all the guidance in Filecoin land to us Solana locals).
+
+The Solana Foundation is funding this effort through a project grant. 
+
+[Solana.fm](https://solana.fm/) was, alongside Richard and Triton, one of the initiators of this project. 
+
+Also thanks to all RPC providers and others who have (and are) providing input to and support for this process. 
