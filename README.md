@@ -86,6 +86,11 @@ Other query methods that are on the roadmap:
 - A wrapper for Filecoin retrievals that allows parsing of the retrieved schema/data
 - A JSON RPC gateway that takes Solana JSONRPC requests and can respond to them via backends such as Filecoin or S3.
 
+## Trailer: The Next Lassie Movie
+
+![Here Comes Lassie](https://github.com/rpcpool/yellowstone-faithful/assets/5172293/bc409601-d710-4b52-ab0c-f24c462d66df)
+
+
 ## Contact
 
 This project is currently managed by [Triton One](https://triton.one/). If you want more information contact us via [Telegram](https://t.me/+K0ONdq7fE4s0Mjdl). 
