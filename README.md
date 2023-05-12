@@ -1,9 +1,14 @@
 # Project Yellowstone: Old Faithful
 
-Project Yellowstone Old Faithful is the project to make all of Solana's history accessible, content addressable and available via a variety of means. The goal of this project is to completely replace the Bigtable dependency for Solana history access with a self-hostable, decentralized history archive that is usable for infrastructure providers, individual Solana users, explorers, indexers, and anyone else in need for historical access.
+Project Yellowstone: Old Faithful is the project to make all of Solana's history accessible, content addressable and available via a variety of means. The goal of this project is to completely replace the Bigtable dependency for Solana history access with a self-hostable, decentralized history archive that is usable for infrastructure providers, individual Solana users, explorers, indexers, and anyone else in need for historical access.
 
 ## Overview
 
+The core of the project are history archives in Content Addressable format ([overview](https://web3.storage/docs/how-tos/work-with-car-files/), [specs](https://ipld.io/specs/transport/car/carv1/)). These represent a verifiable, immutable view of the Solana history. The CAR files that this project generates follows a [schema](https://github.com/gagliardetto/radiance-triton/blob/tx_meta/cmd/radiance/car/createcar/ledger.ipldsch) specifically developed for Solana's historical archives. 
+
+The content addressable nature means that each epoch, block, transaction and shreddingis uniquely identified by a content hash. By knowing this content hash you will be able to retreive a specific object of your interest. Retreivals can be made via IPFS, the Filecoin network, or even by hosting the CAR files yourself on disk, a ceph cluster, S3, you name it.
+
+Indexes will be needed to map Solana's block numbers, transaction signatures and addresses to their respective CIDs. These indexes will be developed as part of this project. 
 
 ## Archive access
 
@@ -30,8 +35,22 @@ If you have warehouse nodes generating rocksdb archive snapshots, please contact
 
 ## Data preparation
 
+Using the rocksdb archives, the Radiance tool can be used to generate one CAR file per epoch. This CAR file is then made available via storage providers such as Filecoin and private storage buckets. 
 
+## Querying
 
+Currently, querying can be done from Filecoin using the lassie utility:
+
+```
+lassie fetch <cid>
+```
+
+There is also a `dump2` tool available in the [Radiance repo](https://github.com/gagliardetto/radiance-triton/tree/tx_meta/) that can help you dump the contents returned from Lassie.
+
+Other query methods that are on the roadmap:
+
+- A wrapper for Filecoin retrievals that allows parsing of the retrieved schema/data
+- A JSON RPC gateway that takes Solana JSONRPC requests and can respond to them via backends such as Filecoin or S3.
 
 ## Contact
 
