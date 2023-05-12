@@ -101,7 +101,7 @@ The originator of this project was [Richard Patel](https://github.com/terorie) (
 
 [@immaterial.ink](https://github.com/gagliardetto) ([Twitter](https://twitter.com/immaterial_ink)) is currently the lead dev on this project at Triton One. 
 
-This work has been supported greatly by Protocol Labs (special shout out to [anjor](https://github.com/anjor) for all the guidance in Filecoin land to us Solana locals).
+This work has been supported greatly by Protocol Labs (special shout out to [anjor](https://github.com/anjor) ([Twitter](https://twitter.com/__anjor)) for all the guidance in Filecoin land to us Solana locals).
 
 The Solana Foundation is funding this effort through a project grant. 
 
