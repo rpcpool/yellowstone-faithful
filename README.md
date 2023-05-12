@@ -15,8 +15,7 @@ Indexes will be needed to map Solana's block numbers, transaction signatures and
 The archive is currently under development. There will be two main ways to access the archive during its development phase:
 
 1. Via Filecoin: Through collaboration with Protocol Labs and a Filplus allocation we are uploading all historical data to Filecoin. From here, any user can access the full histortical archive verifiably and freely from the Filecoin network. This is helpful as a way to test retreivals and fetch individual transactions.
-2. Bulk transfer: If you want to start testing full epoch archives, we can provide you with access to a storage bucket from where you can pull the epoch archives
-
+2. Bulk transfer: If you want to start testing full epoch archives, we can provide you with access to a storage bucket from where you can pull the epoch archives.
 
 ## Tooling
 
@@ -39,13 +38,13 @@ Using the rocksdb archives, the Radiance tool can be used to generate one CAR fi
 
 ## Querying
 
-Currently, querying can be done from Filecoin using the lassie utility:
+Currently, querying can be done from Filecoin using the [lassie utility](https://docs.filecoin.io/basics/how-retrieval-works/basic-retrieval/):
 
 ```
 lassie fetch <cid>
 ```
 
-There is also a `dump2` tool available in the [Radiance repo](https://github.com/gagliardetto/radiance-triton/tree/tx_meta/) that can help you dump the contents returned from Lassie.
+Once you have downlaoded the CID you can unpack it or use the `dump2` tool available in the [Radiance repo](https://github.com/gagliardetto/radiance-triton/tree/tx_meta/). This tool can help you review the contents returned from Lassie.
 
 Other query methods that are on the roadmap:
 
