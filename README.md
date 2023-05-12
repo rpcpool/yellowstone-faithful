@@ -92,7 +92,7 @@ This project is currently managed by [Triton One](https://triton.one/). If you w
 
 ## Acknowledgements
 
-The originator of this project was Richard Patel ([terorie](https://github.com/terorie) / https://twitter.com/fd_ripatel). 
+The originator of this project was [Richard Patel](https://github.com/terorie) ([Twitter](https://twitter.com/fd_ripatel)). 
 
 [@immaterial.ink](https://github.com/gagliardetto) ([Twitter](https://twitter.com/immaterial_ink)) is currently the lead dev on this project at Triton One. 
 
