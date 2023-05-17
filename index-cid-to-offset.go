@@ -120,7 +120,7 @@ func CreateIndex_cid2offset(ctx context.Context, carPath string, indexDir string
 	if err = c2o.Seal(ctx, targetFile); err != nil {
 		return "", fmt.Errorf("failed to seal index: %w", err)
 	}
-	klog.Infof("Index created")
+	klog.Infof("Index created; %d items indexed", numItemsIndexed)
 	return indexFilePath, nil
 }
 
@@ -208,10 +208,10 @@ func VerifyIndex_cid2offset(ctx context.Context, carPath string, indexFilePath s
 	}
 
 	startedAt := time.Now()
-	numBlocks := 0
+	numItems := 0
 	defer func() {
 		klog.Infof("Finished in %s", time.Since(startedAt))
-		klog.Infof("Read %d nodes", numBlocks)
+		klog.Infof("Read %d nodes", numItems)
 	}()
 
 	totalOffset := uint64(0)
@@ -228,8 +228,8 @@ func VerifyIndex_cid2offset(ctx context.Context, carPath string, indexFilePath s
 			klog.Infof("EOF")
 			break
 		}
-		numBlocks++
-		if numBlocks%100000 == 0 {
+		numItems++
+		if numItems%100000 == 0 {
 			printToStderr(".")
 		}
 		offset, err := findOffsetFromCid(c2o, c)

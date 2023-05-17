@@ -116,7 +116,7 @@ func CreateIndex_sig2cid(ctx context.Context, carPath string, indexDir string) (
 	if err = c2o.Seal(ctx, targetFile); err != nil {
 		return "", fmt.Errorf("failed to seal index: %w", err)
 	}
-	klog.Infof("Index created")
+	klog.Infof("Index created; %d items indexed", numItemsIndexed)
 	return indexFilePath, nil
 }
 
