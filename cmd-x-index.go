@@ -16,6 +16,7 @@ func newCmd_Index() *cli.Command {
 			newCmd_Index_cid2offset(),
 			newCmd_Index_slot2cid(),
 			newCmd_Index_sig2cid(),
+			newCmd_Index_all(),
 		},
 	}
 }
