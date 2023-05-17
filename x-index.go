@@ -177,7 +177,7 @@ func carCountItems(carPath string) (uint64, error) {
 	return count, nil
 }
 
-func CreateCompactIndex_CIDToOffset(ctx context.Context, carPath string, indexDir string) (string, error) {
+func CreateIndex_cid2offset(ctx context.Context, carPath string, indexDir string) (string, error) {
 	carFile, err := os.Open(carPath)
 	if err != nil {
 		return "", fmt.Errorf("failed to open car file: %w", err)
@@ -274,10 +274,10 @@ func printToStderr(msg string) {
 	fmt.Fprint(os.Stderr, msg)
 }
 
-// VerifyIndex verifies that the index file is correct for the given car file.
+// VerifyIndex_cid2offset verifies that the index file is correct for the given car file.
 // It does this by reading the car file and comparing the offsets in the index
 // file to the offsets in the car file.
-func VerifyIndex(ctx context.Context, carPath string, indexFilePath string) error {
+func VerifyIndex_cid2offset(ctx context.Context, carPath string, indexFilePath string) error {
 	// Check if the CAR file exists:
 	exists, err := fileExists(carPath)
 	if err != nil {

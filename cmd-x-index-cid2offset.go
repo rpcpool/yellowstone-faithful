@@ -35,7 +35,7 @@ func newXIndexCid2OffsetCmd() *cli.Command {
 					klog.Infof("Finished in %s", time.Since(startedAt))
 				}()
 				klog.Infof("Creating index for %s", carPath)
-				indexFilepath, err := CreateCompactIndex_CIDToOffset(
+				indexFilepath, err := CreateIndex_cid2offset(
 					context.TODO(),
 					carPath,
 					indexDir,
@@ -50,7 +50,7 @@ func newXIndexCid2OffsetCmd() *cli.Command {
 					defer func() {
 						klog.Infof("Finished in %s", time.Since(startedAt))
 					}()
-					err := VerifyIndex(context.TODO(), carPath, indexFilepath)
+					err := VerifyIndex_cid2offset(context.TODO(), carPath, indexFilepath)
 					if err != nil {
 						return cli.Exit(err, 1)
 					}

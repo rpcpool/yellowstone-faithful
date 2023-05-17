@@ -26,7 +26,7 @@ func newVerifyIndexCid2OffsetCmd() *cli.Command {
 					klog.Infof("Finished in %s", time.Since(startedAt))
 				}()
 				klog.Infof("Verifying index for %s", carPath)
-				err := VerifyIndex(context.TODO(), carPath, indexFilePath)
+				err := VerifyIndex_cid2offset(context.TODO(), carPath, indexFilePath)
 				if err != nil {
 					return err
 				}
