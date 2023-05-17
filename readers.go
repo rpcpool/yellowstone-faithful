@@ -12,7 +12,6 @@ import (
 	cbor "github.com/ipfs/go-ipld-cbor"
 	carv1 "github.com/ipld/go-car"
 	"github.com/ipld/go-car/util"
-	"github.com/rpcpool/yellowstone-faithful/compactindex"
 )
 
 func readHeader(br io.Reader) (*carv1.CarHeader, error) {
@@ -171,16 +170,4 @@ func carCountItems(carPath string) (uint64, error) {
 
 func printToStderr(msg string) {
 	fmt.Fprint(os.Stderr, msg)
-}
-
-func findOffsetFromIndexForCID(db *compactindex.DB, c cid.Cid) (uint64, error) {
-	bucket, err := db.LookupBucket(c.Bytes())
-	if err != nil {
-		return 0, fmt.Errorf("failed to lookup bucket for %s: %w", c, err)
-	}
-	offset, err := bucket.Lookup(c.Bytes())
-	if err != nil {
-		return 0, fmt.Errorf("failed to lookup offset for %s: %w", c, err)
-	}
-	return offset, nil
 }

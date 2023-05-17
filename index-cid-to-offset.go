@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/davecgh/go-spew/spew"
+	"github.com/ipfs/go-cid"
 	carv1 "github.com/ipld/go-car"
 	"github.com/ipld/go-car/util"
 	carv2 "github.com/ipld/go-car/v2"
@@ -22,6 +23,15 @@ import (
 
 // CreateIndex_cid2offset creates an index file that maps CIDs to offsets in the CAR file.
 func CreateIndex_cid2offset(ctx context.Context, carPath string, indexDir string) (string, error) {
+	// Check if the CAR file exists:
+	exists, err := fileExists(carPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to check if CAR file exists: %w", err)
+	}
+	if !exists {
+		return "", fmt.Errorf("CAR file %q does not exist", carPath)
+	}
+
 	carFile, err := os.Open(carPath)
 	if err != nil {
 		return "", fmt.Errorf("failed to open car file: %w", err)
@@ -233,4 +243,16 @@ func VerifyIndex_cid2offset(ctx context.Context, carPath string, indexFilePath s
 		totalOffset += sectionLen
 	}
 	return nil
+}
+
+func findOffsetFromIndexForCID(db *compactindex.DB, c cid.Cid) (uint64, error) {
+	bucket, err := db.LookupBucket(c.Bytes())
+	if err != nil {
+		return 0, fmt.Errorf("failed to lookup bucket for %s: %w", c, err)
+	}
+	offset, err := bucket.Lookup(c.Bytes())
+	if err != nil {
+		return 0, fmt.Errorf("failed to lookup offset for %s: %w", c, err)
+	}
+	return offset, nil
 }

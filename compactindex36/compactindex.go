@@ -239,7 +239,7 @@ type Entry struct {
 
 // intWidth returns the number of bytes minimally required to represent the given integer.
 func intWidth(n uint64) uint8 {
-	return 36
+	return 36 // 36 is the length of the CIDs we use.
 	msb := 64 - bits.LeadingZeros64(n)
 	return uint8((msb + 7) / 8)
 }

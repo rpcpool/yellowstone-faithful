@@ -251,12 +251,20 @@ func (t *SimpleIterator) GetTransaction(ctx context.Context, c cid.Cid) (*ipldbi
 // It stops iterating if the callback returns an error.
 // It works by iterating over all objects in the CAR file and
 // calling the callback for each object that is a Subset.
-func (t *SimpleIterator) FindSubsets(ctx context.Context, callback func(*ipldbindcode.Subset) error) error {
+func (t *SimpleIterator) FindSubsets(ctx context.Context, callback func(cid.Cid, *ipldbindcode.Subset) error) error {
 	dr, err := t.cr.DataReader()
 	if err != nil {
 		return fmt.Errorf("failed to get data reader: %w", err)
 	}
-	rd, err := car.NewCarReader(dr)
+	return FindSubsets(ctx, dr, callback)
+}
+
+func FindSubsets(
+	ctx context.Context,
+	sectionReader carv2.SectionReader,
+	callback func(cid.Cid, *ipldbindcode.Subset) error,
+) error {
+	rd, err := car.NewCarReader(sectionReader)
 	if err != nil {
 		return fmt.Errorf("failed to create car reader: %w", err)
 	}
@@ -274,7 +282,7 @@ func (t *SimpleIterator) FindSubsets(ctx context.Context, callback func(*ipldbin
 				// TODO: log error, or return error?
 				continue
 			}
-			err = callback(decoded)
+			err = callback(block.Cid(), decoded)
 			if err != nil {
 				if err == ErrStopIteration {
 					return nil
@@ -292,12 +300,20 @@ var ErrStopIteration = errors.New("stop iteration")
 // It stops iterating if the callback returns an error.
 // It works by iterating over all objects in the CAR file and
 // calling the callback for each object that is a Block.
-func (t *SimpleIterator) FindBlocks(ctx context.Context, callback func(*ipldbindcode.Block) error) error {
+func (t *SimpleIterator) FindBlocks(ctx context.Context, callback func(cid.Cid, *ipldbindcode.Block) error) error {
 	dr, err := t.cr.DataReader()
 	if err != nil {
 		return fmt.Errorf("failed to get data reader: %w", err)
 	}
-	rd, err := car.NewCarReader(dr)
+	return FindBlocks(ctx, dr, callback)
+}
+
+func FindBlocks(
+	ctx context.Context,
+	sectionReader carv2.SectionReader,
+	callback func(cid.Cid, *ipldbindcode.Block) error,
+) error {
+	rd, err := car.NewCarReader(sectionReader)
 	if err != nil {
 		return fmt.Errorf("failed to create car reader: %w", err)
 	}
@@ -314,7 +330,7 @@ func (t *SimpleIterator) FindBlocks(ctx context.Context, callback func(*ipldbind
 			if err != nil {
 				continue
 			}
-			err = callback(decoded)
+			err = callback(block.Cid(), decoded)
 			if err != nil {
 				if err == ErrStopIteration {
 					return nil
@@ -330,12 +346,20 @@ func (t *SimpleIterator) FindBlocks(ctx context.Context, callback func(*ipldbind
 // It stops iterating if the callback returns an error.
 // It works by iterating over all objects in the CAR file and
 // calling the callback for each object that is an Entry.
-func (t *SimpleIterator) FindEntries(ctx context.Context, callback func(*ipldbindcode.Entry) error) error {
+func (t *SimpleIterator) FindEntries(ctx context.Context, callback func(cid.Cid, *ipldbindcode.Entry) error) error {
 	dr, err := t.cr.DataReader()
 	if err != nil {
 		return fmt.Errorf("failed to get data reader: %w", err)
 	}
-	rd, err := car.NewCarReader(dr)
+	return FindEntries(ctx, dr, callback)
+}
+
+func FindEntries(
+	ctx context.Context,
+	sectionReader carv2.SectionReader,
+	callback func(cid.Cid, *ipldbindcode.Entry) error,
+) error {
+	rd, err := car.NewCarReader(sectionReader)
 	if err != nil {
 		return fmt.Errorf("failed to create car reader: %w", err)
 	}
@@ -352,7 +376,7 @@ func (t *SimpleIterator) FindEntries(ctx context.Context, callback func(*ipldbin
 			if err != nil {
 				continue
 			}
-			err = callback(decoded)
+			err = callback(block.Cid(), decoded)
 			if err != nil {
 				return err
 			}
@@ -365,12 +389,20 @@ func (t *SimpleIterator) FindEntries(ctx context.Context, callback func(*ipldbin
 // It stops iterating if the callback returns an error.
 // It works by iterating over all objects in the CAR file and
 // calling the callback for each object that is a Transaction.
-func (t *SimpleIterator) FindTransactions(ctx context.Context, callback func(*ipldbindcode.Transaction) error) error {
+func (t *SimpleIterator) FindTransactions(ctx context.Context, callback func(cid.Cid, *ipldbindcode.Transaction) error) error {
 	dr, err := t.cr.DataReader()
 	if err != nil {
 		return fmt.Errorf("failed to get data reader: %w", err)
 	}
-	rd, err := car.NewCarReader(dr)
+	return FindTransactions(ctx, dr, callback)
+}
+
+func FindTransactions(
+	ctx context.Context,
+	sectionReader carv2.SectionReader,
+	callback func(cid.Cid, *ipldbindcode.Transaction) error,
+) error {
+	rd, err := car.NewCarReader(sectionReader)
 	if err != nil {
 		return fmt.Errorf("failed to create car reader: %w", err)
 	}
@@ -387,8 +419,39 @@ func (t *SimpleIterator) FindTransactions(ctx context.Context, callback func(*ip
 			if err != nil {
 				continue
 			}
-			err = callback(decoded)
+			err = callback(block.Cid(), decoded)
 			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func FindAny(
+	ctx context.Context,
+	sectionReader carv2.SectionReader,
+	callback func(cid.Cid, any) error,
+) error {
+	rd, err := car.NewCarReader(sectionReader)
+	if err != nil {
+		return fmt.Errorf("failed to create car reader: %w", err)
+	}
+	for {
+		block, err := rd.Next()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		{
+			decoded, err := iplddecoders.DecodeAny(block.RawData())
+			if err != nil {
+				continue
+			}
+			err = callback(block.Cid(), decoded)
+			if err != nil {
+				if err == ErrStopIteration {
+					return nil
+				}
 				return err
 			}
 		}

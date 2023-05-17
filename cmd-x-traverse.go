@@ -8,6 +8,7 @@ import (
 	"github.com/davecgh/go-spew/spew"
 	bin "github.com/gagliardetto/binary"
 	"github.com/gagliardetto/solana-go"
+	"github.com/ipfs/go-cid"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/urfave/cli/v2"
 	"go.firedancer.io/radiance/cmd/radiance/car/createcar/ipld/ipldbindcode"
@@ -123,7 +124,7 @@ func newCmd_XTraverse() *cli.Command {
 
 				if false {
 					klog.Info("Iterating Solana blocks...")
-					err = simpleIter.FindBlocks(context.Background(), func(block *ipldbindcode.Block) error {
+					err = simpleIter.FindBlocks(context.Background(), func(_ cid.Cid, block *ipldbindcode.Block) error {
 						numSolanaBlocks++
 						if numSolanaBlocks%10_000 == 0 {
 							fmt.Print(".")
@@ -137,7 +138,7 @@ func newCmd_XTraverse() *cli.Command {
 					klog.Infof("Finished iterating blocks in %s; found %d solana blocks", took, numSolanaBlocks)
 
 					klog.Info("Iterating Solana Transactions...")
-					err = simpleIter.FindTransactions(context.Background(), func(tx *ipldbindcode.Transaction) error {
+					err = simpleIter.FindTransactions(context.Background(), func(_ cid.Cid, tx *ipldbindcode.Transaction) error {
 						numTransactions++
 						if numTransactions%100_000 == 0 {
 							fmt.Print(".")

@@ -13,7 +13,8 @@ func newCmd_VerifyIndex() *cli.Command {
 		},
 		Flags: []cli.Flag{},
 		Subcommands: []*cli.Command{
-			newCmd_VerifyIndex_Cid2Offset(),
+			newCmd_VerifyIndex_cid2offset(),
+			newCmd_VerifyIndex_slot2cid(),
 		},
 	}
 }

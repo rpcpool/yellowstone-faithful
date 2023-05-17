@@ -13,7 +13,8 @@ func newCmd_Index() *cli.Command {
 		},
 		Flags: []cli.Flag{},
 		Subcommands: []*cli.Command{
-			newCmd_Index_Cid2Offset(),
+			newCmd_Index_cid2offset(),
+			newCmd_Index_slot2cid(),
 		},
 	}
 }

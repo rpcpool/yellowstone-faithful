@@ -8,11 +8,11 @@ import (
 	"k8s.io/klog/v2"
 )
 
-func newCmd_Index_cid2offset() *cli.Command {
+func newCmd_Index_slot2cid() *cli.Command {
 	var verify bool
 	return &cli.Command{
-		Name:        "cid-to-offset",
-		Description: "Given a CAR file containing a Solana epoch, create an index of the file that maps CIDs to offsets in the CAR file.",
+		Name:        "slot-to-cid",
+		Description: "Given a CAR file containing a Solana epoch, create an index of the file that maps slot numbers to CIDs.",
 		ArgsUsage:   "<car-path> <index-dir>",
 		Before: func(c *cli.Context) error {
 			return nil
@@ -34,8 +34,8 @@ func newCmd_Index_cid2offset() *cli.Command {
 				defer func() {
 					klog.Infof("Finished in %s", time.Since(startedAt))
 				}()
-				klog.Infof("Creating CID-to-offset index for %s", carPath)
-				indexFilepath, err := CreateIndex_cid2offset(
+				klog.Infof("Creating Slot-to-CID index for %s", carPath)
+				indexFilepath, err := CreateIndex_slot2cid(
 					context.TODO(),
 					carPath,
 					indexDir,
@@ -50,7 +50,7 @@ func newCmd_Index_cid2offset() *cli.Command {
 					defer func() {
 						klog.Infof("Finished in %s", time.Since(startedAt))
 					}()
-					err := VerifyIndex_cid2offset(context.TODO(), carPath, indexFilepath)
+					err := VerifyIndex_slot2cid(context.TODO(), carPath, indexFilepath)
 					if err != nil {
 						return cli.Exit(err, 1)
 					}

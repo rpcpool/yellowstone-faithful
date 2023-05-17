@@ -8,10 +8,10 @@ import (
 	"k8s.io/klog/v2"
 )
 
-func newCmd_VerifyIndex_cid2offset() *cli.Command {
+func newCmd_VerifyIndex_slot2cid() *cli.Command {
 	return &cli.Command{
-		Name:        "cid-to-offset",
-		Description: "Verify the index of the CAR file that maps CIDs to offsets in the CAR file.",
+		Name:        "slot-to-cid",
+		Description: "Verify the index of the CAR file that maps slot numbers to CIDs.",
 		ArgsUsage:   "<car-path> <index-file-path>",
 		Before: func(c *cli.Context) error {
 			return nil
@@ -25,8 +25,8 @@ func newCmd_VerifyIndex_cid2offset() *cli.Command {
 				defer func() {
 					klog.Infof("Finished in %s", time.Since(startedAt))
 				}()
-				klog.Infof("Verifying CID-to-offset index for %s", carPath)
-				err := VerifyIndex_cid2offset(context.TODO(), carPath, indexFilePath)
+				klog.Infof("Verifying Slot-to-CID index for %s", carPath)
+				err := VerifyIndex_slot2cid(context.TODO(), carPath, indexFilePath)
 				if err != nil {
 					return err
 				}
