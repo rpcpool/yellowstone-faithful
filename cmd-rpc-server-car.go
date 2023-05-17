@@ -11,7 +11,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/davecgh/go-spew/spew"
 	bin "github.com/gagliardetto/binary"
 	"github.com/gagliardetto/solana-go"
 	"github.com/ipld/go-car/util"
@@ -348,9 +347,9 @@ func (s *rpcServer) Handle(ctx context.Context, conn *fakeConn, req *jsonrpc2.Re
 				})
 			return
 		}
-		spew.Dump(decoded)
+		// TODO: get all the transactions from the block
 		// reply with the data
-		err = conn.Reply(ctx, req.ID, data)
+		err = conn.Reply(ctx, req.ID, decoded)
 		if err != nil {
 			klog.Errorf("failed to reply: %v", err)
 		}
@@ -479,7 +478,6 @@ func (s *rpcServer) Handle(ctx context.Context, conn *fakeConn, req *jsonrpc2.Re
 				})
 			return
 		}
-		spew.Dump(decoded)
 
 		var txResponse struct {
 			// TODO: use same format as solana-core
