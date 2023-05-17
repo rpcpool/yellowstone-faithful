@@ -15,6 +15,7 @@ func newCmd_VerifyIndex() *cli.Command {
 		Subcommands: []*cli.Command{
 			newCmd_VerifyIndex_cid2offset(),
 			newCmd_VerifyIndex_slot2cid(),
+			newCmd_VerifyIndex_sig2cid(),
 		},
 	}
 }
