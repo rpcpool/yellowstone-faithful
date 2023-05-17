@@ -108,6 +108,7 @@ func CreateIndex_cid2offset(ctx context.Context, carPath string, indexDir string
 
 	// Use the car file name and root CID to name the index file:
 	indexFilePath := filepath.Join(indexDir, fmt.Sprintf("%s.%s.cid-to-offset.index", filepath.Base(carPath), rootCID.String()))
+	// TODO: check if the index file already exists and if so, return an error (before doing all the work above)
 
 	klog.Infof("Creating index file at %s", indexFilePath)
 	targetFile, err := os.Create(indexFilePath)
