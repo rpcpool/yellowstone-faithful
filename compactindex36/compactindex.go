@@ -78,6 +78,11 @@
 // In this case, a set of keys is first serialized to a flat file.
 package compactindex36
 
+// This is a fork of the original project at https://github.com/firedancer-io/radiance/tree/main/pkg/compactindex
+// The following changes have been made:
+// - The package has been renamed to `compactindex36` to avoid conflicts with the original package
+// - The values it indexes are 36-bit values instead of 8-bit values. This allows to index CIDs (in particular sha256+CBOR CIDs) directly.
+
 import (
 	"encoding/binary"
 	"fmt"
