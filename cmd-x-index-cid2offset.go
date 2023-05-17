@@ -8,7 +8,7 @@ import (
 	"k8s.io/klog/v2"
 )
 
-func newXIndexCid2OffsetCmd() *cli.Command {
+func newCmd_Index_Cid2Offset() *cli.Command {
 	var verify bool
 	return &cli.Command{
 		Name:        "cid-to-offset",

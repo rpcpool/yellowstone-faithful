@@ -4,7 +4,7 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-func newVerifyIndexCmd() *cli.Command {
+func newCmd_VerifyIndex() *cli.Command {
 	return &cli.Command{
 		Name:        "verify-index",
 		Description: "Verify various kinds of index.",
@@ -13,7 +13,7 @@ func newVerifyIndexCmd() *cli.Command {
 		},
 		Flags: []cli.Flag{},
 		Subcommands: []*cli.Command{
-			newVerifyIndexCid2OffsetCmd(),
+			newCmd_VerifyIndex_Cid2Offset(),
 		},
 	}
 }

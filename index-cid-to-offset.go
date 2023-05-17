@@ -20,6 +20,7 @@ import (
 	"k8s.io/klog/v2"
 )
 
+// CreateIndex_cid2offset creates an index file that maps CIDs to offsets in the CAR file.
 func CreateIndex_cid2offset(ctx context.Context, carPath string, indexDir string) (string, error) {
 	carFile, err := os.Open(carPath)
 	if err != nil {

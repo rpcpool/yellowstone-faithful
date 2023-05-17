@@ -4,7 +4,7 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-func newFetchCmd() *cli.Command {
+func newCmd_Fetch() *cli.Command {
 	return &cli.Command{
 		Name:        "fetch",
 		Description: "Fetch Solana data from Filecoin/IPFS",

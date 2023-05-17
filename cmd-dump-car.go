@@ -21,7 +21,7 @@ import (
 	"k8s.io/klog/v2"
 )
 
-func newDumpCarCmd() *cli.Command {
+func newCmd_DumpCar() *cli.Command {
 	var flagPrintFilter string
 	var printID bool
 	var prettyPrintTransactions bool

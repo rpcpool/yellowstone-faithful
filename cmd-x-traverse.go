@@ -15,7 +15,7 @@ import (
 	"k8s.io/klog/v2"
 )
 
-func newXTraverseCmd() *cli.Command {
+func newCmd_XTraverse() *cli.Command {
 	return &cli.Command{
 		Name:        "x-traverse",
 		Description: "Demo of taversing the DAG of a CAR file and printing the contents of each node.",

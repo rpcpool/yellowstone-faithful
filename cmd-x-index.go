@@ -4,7 +4,7 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-func newIndexCmd() *cli.Command {
+func newCmd_Index() *cli.Command {
 	return &cli.Command{
 		Name:        "index",
 		Description: "Create various kinds of indexes for CAR files.",
@@ -13,7 +13,7 @@ func newIndexCmd() *cli.Command {
 		},
 		Flags: []cli.Flag{},
 		Subcommands: []*cli.Command{
-			newXIndexCid2OffsetCmd(),
+			newCmd_Index_Cid2Offset(),
 		},
 	}
 }

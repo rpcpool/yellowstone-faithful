@@ -8,7 +8,7 @@ import (
 	"k8s.io/klog/v2"
 )
 
-func newVerifyIndexCid2OffsetCmd() *cli.Command {
+func newCmd_VerifyIndex_Cid2Offset() *cli.Command {
 	return &cli.Command{
 		Name:        "cid-to-offset",
 		Description: "Verify the index of the CAR file that maps CIDs to offsets in the CAR file.",

@@ -21,11 +21,11 @@ func main() {
 		Flags:  []cli.Flag{},
 		Action: nil,
 		Commands: []*cli.Command{
-			newDumpCarCmd(),
-			newFetchCmd(),
-			newIndexCmd(),
-			newVerifyIndexCmd(),
-			newXTraverseCmd(),
+			newCmd_DumpCar(),
+			newCmd_Fetch(),
+			newCmd_Index(),
+			newCmd_VerifyIndex(),
+			newCmd_XTraverse(),
 		},
 	}
 
