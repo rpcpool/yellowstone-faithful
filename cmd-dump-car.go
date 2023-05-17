@@ -37,7 +37,7 @@ func newCmd_DumpCar() *cli.Command {
 			&cli.StringFlag{
 				Name:        "filter",
 				Aliases:     []string{"f", "print"},
-				Usage:       "print only nodes of these kinds (comma-separated)",
+				Usage:       "print only nodes of these kinds (comma-separated); example: --filter 0,1,2",
 				Destination: &flagPrintFilter,
 			},
 
@@ -61,19 +61,19 @@ func newCmd_DumpCar() *cli.Command {
 		},
 		Action: func(c *cli.Context) error {
 			filter := make(intSlice, 0)
-			// parse slice of ints from flagPrintFilter
-			{
-				if flagPrintFilter != "" {
-					for _, v := range flagPrintFilter {
-						if v == ',' {
-							continue
-						}
-						parsed, err := strconv.ParseInt(string(v), 10, 64)
-						if err != nil {
-							panic(err)
-						}
-						filter = append(filter, int(parsed))
+			if flagPrintFilter != "" {
+				for _, v := range flagPrintFilter {
+					if v == ',' {
+						continue
 					}
+					parsed, err := strconv.ParseInt(string(v), 10, 64)
+					if err != nil {
+						panic(err)
+					}
+					if parsed < 0 || parsed > int64(iplddecoders.KindEpoch) {
+						return fmt.Errorf("invalid filter value: %d", parsed)
+					}
+					filter = append(filter, int(parsed))
 				}
 			}
 
