@@ -104,14 +104,16 @@ func newXTraverseCmd() *cli.Command {
 										fmt.Println("sig=" + transaction.Signatures[0].String())
 										fmt.Println(transaction.String())
 									}
-									{
-										txMeta, err := blockstore.ParseTransactionStatusMeta(tx.Metadata)
+									if len(tx.Metadata) > 0 {
+										uncompressedMeta, err := decodeZstd(tx.Metadata)
 										if err != nil {
 											panic(err)
 										}
-										{
-											spew.Dump(txMeta)
+										status, err := blockstore.ParseTransactionStatusMeta(uncompressedMeta)
+										if err != nil {
+											panic(err)
 										}
+										spew.Dump(status)
 									}
 								}
 							}

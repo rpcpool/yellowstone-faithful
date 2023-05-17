@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/klauspost/compress/zstd"
+
 	"github.com/davecgh/go-spew/spew"
 	bin "github.com/gagliardetto/binary"
 	"github.com/gagliardetto/solana-go"
@@ -165,13 +167,17 @@ func newDumpCarCmd() *cli.Command {
 							}
 							numNodesPrinted++
 						}
-						{
-							txMeta, err := blockstore.ParseTransactionStatusMeta(decoded.Metadata)
+						if len(decoded.Metadata) > 0 {
+							uncompressedMeta, err := decodeZstd(decoded.Metadata)
+							if err != nil {
+								panic(err)
+							}
+							status, err := blockstore.ParseTransactionStatusMeta(uncompressedMeta)
 							if err != nil {
 								panic(err)
 							}
 							if doPrint {
-								spew.Dump(txMeta)
+								spew.Dump(status)
 							}
 						}
 					}
@@ -234,4 +240,10 @@ func (s intSlice) has(v int) bool {
 
 func (s intSlice) empty() bool {
 	return len(s) == 0
+}
+
+var decoder, _ = zstd.NewReader(nil)
+
+func decodeZstd(data []byte) ([]byte, error) {
+	return decoder.DecodeAll(data, nil)
 }
