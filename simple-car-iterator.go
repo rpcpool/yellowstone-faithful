@@ -13,9 +13,9 @@ import (
 	"github.com/ipld/go-car"
 	"github.com/ipld/go-car/util"
 	carv2 "github.com/ipld/go-car/v2"
+	"github.com/rpcpool/yellowstone-faithful/compactindex"
 	"go.firedancer.io/radiance/cmd/radiance/car/createcar/ipld/ipldbindcode"
 	"go.firedancer.io/radiance/cmd/radiance/car/createcar/iplddecoders"
-	"go.firedancer.io/radiance/pkg/compactindex"
 	"k8s.io/klog/v2"
 )
 

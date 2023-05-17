@@ -15,7 +15,6 @@ require (
 	github.com/ipld/go-car v0.6.0
 	github.com/ipld/go-car/v2 v2.10.0
 	github.com/ipld/go-ipld-prime v0.20.0
-	github.com/ipld/go-storethehash v0.3.13
 	github.com/klauspost/compress v1.16.0
 	github.com/stretchr/testify v1.8.2
 	github.com/urfave/cli/v2 v2.25.3
