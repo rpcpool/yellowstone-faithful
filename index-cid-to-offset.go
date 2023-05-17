@@ -81,7 +81,7 @@ func CreateIndex_cid2offset(ctx context.Context, carPath string, indexDir string
 	numItemsIndexed := uint64(0)
 	klog.Infof("Indexing...")
 	for {
-		c, sectionLength, err := rd.Next()
+		c, sectionLength, err := rd.NextInfo()
 		if err != nil {
 			if err == io.EOF {
 				break
@@ -224,7 +224,7 @@ func VerifyIndex_cid2offset(ctx context.Context, carPath string, indexFilePath s
 		totalOffset = uint64(buf.Len())
 	}
 	for {
-		c, sectionLen, err := rd.Next()
+		c, sectionLen, err := rd.NextInfo()
 		if errors.Is(err, io.EOF) {
 			klog.Infof("EOF")
 			break

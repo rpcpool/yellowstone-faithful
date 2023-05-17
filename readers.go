@@ -10,6 +10,7 @@ import (
 
 	"github.com/ipfs/go-cid"
 	cbor "github.com/ipfs/go-ipld-cbor"
+	"github.com/ipfs/go-libipfs/blocks"
 	carv1 "github.com/ipld/go-car"
 	"github.com/ipld/go-car/util"
 )
@@ -54,7 +55,7 @@ func newCarReader(r io.Reader) (*carReader, error) {
 	}, nil
 }
 
-func readNodeInfo(br *bufio.Reader) (cid.Cid, uint64, error) {
+func readNodeInfoWithoutData(br *bufio.Reader) (cid.Cid, uint64, error) {
 	sectionLen, ll, err := readSectionLength(br)
 	if err != nil {
 		return cid.Cid{}, 0, err
@@ -75,6 +76,30 @@ func readNodeInfo(br *bufio.Reader) (cid.Cid, uint64, error) {
 	}
 
 	return c, sectionLen + ll, nil
+}
+
+func readNodeInfoWithData(br *bufio.Reader) (cid.Cid, uint64, []byte, error) {
+	sectionLen, ll, err := readSectionLength(br)
+	if err != nil {
+		return cid.Cid{}, 0, nil, err
+	}
+
+	cidLen, c, err := cid.CidFromReader(br)
+	if err != nil {
+		return cid.Cid{}, 0, nil, err
+	}
+
+	// Seek to the next section by skipping the block.
+	// The section length includes the CID, so subtract it.
+	remainingSectionLen := int64(sectionLen) - int64(cidLen)
+
+	buf := make([]byte, remainingSectionLen)
+	_, err = io.ReadFull(br, buf)
+	if err != nil {
+		return cid.Cid{}, 0, nil, err
+	}
+
+	return c, sectionLen + ll, buf, nil
 }
 
 type byteReaderWithCounter struct {
@@ -111,12 +136,24 @@ func readSectionLength(r *bufio.Reader) (uint64, uint64, error) {
 	return l, br.Offset, nil
 }
 
-func (cr *carReader) Next() (cid.Cid, uint64, error) {
-	c, offset, err := readNodeInfo(cr.br)
+func (cr *carReader) NextInfo() (cid.Cid, uint64, error) {
+	c, sectionLen, err := readNodeInfoWithoutData(cr.br)
 	if err != nil {
 		return c, 0, err
 	}
-	return c, offset, nil
+	return c, sectionLen, nil
+}
+
+func (cr *carReader) NextNode() (cid.Cid, uint64, *blocks.BasicBlock, error) {
+	c, sectionLen, data, err := readNodeInfoWithData(cr.br)
+	if err != nil {
+		return c, 0, nil, err
+	}
+	bl, err := blocks.NewBlockWithCid(data, c)
+	if err != nil {
+		return c, 0, nil, err
+	}
+	return c, sectionLen, bl, nil
 }
 
 func isDirEmpty(dir string) (bool, error) {
@@ -155,7 +192,7 @@ func carCountItems(carPath string) (uint64, error) {
 
 	var count uint64
 	for {
-		_, _, err := rd.Next()
+		_, _, err := rd.NextInfo()
 		if err != nil {
 			if err == io.EOF {
 				break
