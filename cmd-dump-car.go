@@ -35,7 +35,8 @@ func newCmd_DumpCar() *cli.Command {
 		},
 		Flags: []cli.Flag{
 			&cli.StringFlag{
-				Name:        "print",
+				Name:        "filter",
+				Aliases:     []string{"f", "print"},
 				Usage:       "print only nodes of these kinds (comma-separated)",
 				Destination: &flagPrintFilter,
 			},
@@ -141,7 +142,9 @@ func newCmd_DumpCar() *cli.Command {
 					break
 				}
 				kind := iplddecoders.Kind(block.RawData()[1])
-				if printID {
+
+				doPrint := filter.has(int(kind)) || filter.empty()
+				if doPrint {
 					fmt.Printf("\nCID=%s Multicodec=%#x Kind=%s\n", block.Cid(), block.Cid().Type(), kind)
 				}
 
@@ -158,7 +161,6 @@ func newCmd_DumpCar() *cli.Command {
 						} else if len(tx.Signatures) == 0 {
 							panic("no signatures")
 						}
-						doPrint := filter.has(int(iplddecoders.KindTransaction)) || filter.empty()
 						if doPrint {
 							fmt.Println("sig=" + tx.Signatures[0].String())
 							spew.Dump(decoded)
@@ -186,7 +188,7 @@ func newCmd_DumpCar() *cli.Command {
 					if err != nil {
 						panic(err)
 					}
-					if filter.has(int(iplddecoders.KindEntry)) || filter.empty() {
+					if doPrint {
 						spew.Dump(decoded)
 						numNodesPrinted++
 					}
@@ -195,7 +197,7 @@ func newCmd_DumpCar() *cli.Command {
 					if err != nil {
 						panic(err)
 					}
-					if filter.has(int(iplddecoders.KindBlock)) || filter.empty() {
+					if doPrint {
 						spew.Dump(decoded)
 						numNodesPrinted++
 					}
@@ -204,7 +206,7 @@ func newCmd_DumpCar() *cli.Command {
 					if err != nil {
 						panic(err)
 					}
-					if filter.has(int(iplddecoders.KindSubset)) || filter.empty() {
+					if doPrint {
 						spew.Dump(decoded)
 						numNodesPrinted++
 					}
@@ -213,7 +215,7 @@ func newCmd_DumpCar() *cli.Command {
 					if err != nil {
 						panic(err)
 					}
-					if filter.has(int(iplddecoders.KindEpoch)) || filter.empty() {
+					if doPrint {
 						spew.Dump(decoded)
 						numNodesPrinted++
 					}
