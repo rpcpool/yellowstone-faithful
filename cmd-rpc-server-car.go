@@ -9,6 +9,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/davecgh/go-spew/spew"
 	bin "github.com/gagliardetto/binary"
@@ -126,6 +127,10 @@ func newRPCServer(
 
 func newRPC(handler *rpcServer) func(resp http.ResponseWriter, req *http.Request) {
 	return func(resp http.ResponseWriter, req *http.Request) {
+		startedAt := time.Now()
+		defer func() {
+			klog.Infof("request took %s", time.Since(startedAt))
+		}()
 		// read request body
 		body, err := ioutil.ReadAll(req.Body)
 		if err != nil {
