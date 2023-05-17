@@ -26,6 +26,7 @@ func main() {
 			newCmd_Index(),
 			newCmd_VerifyIndex(),
 			newCmd_XTraverse(),
+			newCmd_rpcServerCar(),
 		},
 	}
 

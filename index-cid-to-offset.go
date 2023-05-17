@@ -174,7 +174,7 @@ func VerifyIndex_cid2offset(ctx context.Context, carPath string, indexFilePath s
 	{
 		// find root cid
 		rootCID := rd.header.Roots[0]
-		offset, err := findOffsetFromIndexForCID(c2o, rootCID)
+		offset, err := findOffsetFromCid(c2o, rootCID)
 		if err != nil {
 			return fmt.Errorf("failed to get offset from index: %w", err)
 		}
@@ -232,7 +232,7 @@ func VerifyIndex_cid2offset(ctx context.Context, carPath string, indexFilePath s
 		if numBlocks%100000 == 0 {
 			printToStderr(".")
 		}
-		offset, err := findOffsetFromIndexForCID(c2o, c)
+		offset, err := findOffsetFromCid(c2o, c)
 		if err != nil {
 			return fmt.Errorf("failed to lookup offset for %s: %w", c, err)
 		}
@@ -245,7 +245,7 @@ func VerifyIndex_cid2offset(ctx context.Context, carPath string, indexFilePath s
 	return nil
 }
 
-func findOffsetFromIndexForCID(db *compactindex.DB, c cid.Cid) (uint64, error) {
+func findOffsetFromCid(db *compactindex.DB, c cid.Cid) (uint64, error) {
 	bucket, err := db.LookupBucket(c.Bytes())
 	if err != nil {
 		return 0, fmt.Errorf("failed to lookup bucket for %s: %w", c, err)

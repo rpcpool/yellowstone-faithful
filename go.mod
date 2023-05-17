@@ -16,6 +16,7 @@ require (
 	github.com/ipld/go-car/v2 v2.10.0
 	github.com/ipld/go-ipld-prime v0.20.0
 	github.com/klauspost/compress v1.16.0
+	github.com/sourcegraph/jsonrpc2 v0.2.0
 	github.com/stretchr/testify v1.8.2
 	github.com/urfave/cli/v2 v2.25.3
 	github.com/vbauerster/mpb/v8 v8.2.1

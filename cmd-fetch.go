@@ -13,7 +13,7 @@ func newCmd_Fetch() *cli.Command {
 		},
 		Flags: []cli.Flag{},
 		Action: func(c *cli.Context) error {
-			return nil
+			panic("not implemented")
 		},
 	}
 }

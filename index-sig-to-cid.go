@@ -186,7 +186,7 @@ func VerifyIndex_sig2cid(ctx context.Context, carPath string, indexFilePath stri
 			}
 			sig := tx.Signatures[0]
 
-			got, err := findCidFromSig(c2o, sig)
+			got, err := findCidFromSignature(c2o, sig)
 			if err != nil {
 				return fmt.Errorf("failed to put cid to offset: %w", err)
 			}
@@ -208,7 +208,7 @@ func VerifyIndex_sig2cid(ctx context.Context, carPath string, indexFilePath stri
 	return nil
 }
 
-func findCidFromSig(db *compactindex36.DB, sig solana.Signature) (cid.Cid, error) {
+func findCidFromSignature(db *compactindex36.DB, sig solana.Signature) (cid.Cid, error) {
 	bucket, err := db.LookupBucket(sig[:])
 	if err != nil {
 		return cid.Cid{}, fmt.Errorf("failed to lookup bucket for %s: %w", sig, err)
