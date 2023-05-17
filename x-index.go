@@ -18,8 +18,6 @@ import (
 	carv1 "github.com/ipld/go-car"
 	"github.com/ipld/go-car/util"
 	carv2 "github.com/ipld/go-car/v2"
-	"github.com/ipld/go-storethehash/store"
-	"go.firedancer.io/radiance/cmd/radiance/car/createcar/indexcidtooffset"
 	"go.firedancer.io/radiance/cmd/radiance/car/createcar/iplddecoders"
 	"go.firedancer.io/radiance/pkg/compactindex"
 	"k8s.io/klog/v2"
@@ -255,7 +253,7 @@ func CreateCompactIndex_CIDToOffset(ctx context.Context, carPath string, indexDi
 	rootCID := rd.header.Roots[0]
 
 	// Use the car file name and root CID to name the index file:
-	indexFilePath := filepath.Join(indexDir, fmt.Sprintf("%s.%s.index", filepath.Base(carPath), rootCID.String()))
+	indexFilePath := filepath.Join(indexDir, fmt.Sprintf("%s.%s.cid-to-offset.index", filepath.Base(carPath), rootCID.String()))
 
 	klog.Infof("Creating index file at %s", indexFilePath)
 	targetFile, err := os.Create(indexFilePath)
@@ -274,66 +272,6 @@ func CreateCompactIndex_CIDToOffset(ctx context.Context, carPath string, indexDi
 
 func printToStderr(msg string) {
 	fmt.Fprint(os.Stderr, msg)
-}
-
-func CreateIndexStore(ctx context.Context, carPath string, indexDir string) error {
-	f, err := os.Open(carPath)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
-	rd, err := newCarReader(f)
-	if err != nil {
-		klog.Exitf("Failed to open CAR: %s", err)
-	}
-
-	// Check if the index already exists.
-	// If it does, we can skip indexing.
-	empty, err := isDirEmpty(indexDir)
-	if err != nil {
-		return err
-	}
-	if !empty {
-		klog.Infof("Index already exists, skipping indexing")
-		return nil
-	}
-
-	c2o, err := indexcidtooffset.OpenStore(ctx,
-		filepath.Join(indexDir, "index"),
-		filepath.Join(indexDir, "data"),
-		store.IndexBitSize(31),
-	)
-	if err != nil {
-		return fmt.Errorf("failed to open index store: %w", err)
-	}
-	defer c2o.Close()
-	c2o.Start()
-	totalOffset := uint64(0)
-	{
-		var buf bytes.Buffer
-		if err = carv1.WriteHeader(rd.header, &buf); err != nil {
-			return err
-		}
-		totalOffset = uint64(buf.Len())
-	}
-	for {
-		c, sectionLength, err := rd.Next()
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			return err
-		}
-
-		err = c2o.Put(ctx, c, uint64(totalOffset))
-		if err != nil {
-			return fmt.Errorf("failed to put cid to offset: %w", err)
-		}
-
-		totalOffset += sectionLength
-	}
-	return nil
 }
 
 // VerifyIndex verifies that the index file is correct for the given car file.

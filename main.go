@@ -23,8 +23,8 @@ func main() {
 		Commands: []*cli.Command{
 			newDumpCarCmd(),
 			newFetchCmd(),
-			newXIndexCmd(),
-			newXVerifyIndexCmd(),
+			newIndexCmd(),
+			newVerifyIndexCmd(),
 			newXTraverseCmd(),
 		},
 	}
