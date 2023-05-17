@@ -1,4 +1,4 @@
-module github.com/rpcpool/yellowstone-faithful
+module github.com/rpcpool/yellowstone-old-faithful
 
 go 1.20
 
