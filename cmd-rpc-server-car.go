@@ -13,19 +13,22 @@ import (
 
 	bin "github.com/gagliardetto/binary"
 	"github.com/gagliardetto/solana-go"
+	"github.com/gin-gonic/gin"
+	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-car/util"
 	carv2 "github.com/ipld/go-car/v2"
 	"github.com/rpcpool/yellowstone-faithful/compactindex"
 	"github.com/rpcpool/yellowstone-faithful/compactindex36"
 	"github.com/sourcegraph/jsonrpc2"
 	"github.com/urfave/cli/v2"
+	"go.firedancer.io/radiance/cmd/radiance/car/createcar/ipld/ipldbindcode"
 	"go.firedancer.io/radiance/cmd/radiance/car/createcar/iplddecoders"
 	"go.firedancer.io/radiance/pkg/blockstore"
-	"go.firedancer.io/radiance/third_party/solana_proto/confirmed_block"
 	"k8s.io/klog/v2"
 )
 
 func newCmd_rpcServerCar() *cli.Command {
+	var listenOn string
 	return &cli.Command{
 		Name:        "rpc-server-car",
 		Description: "Start a Solana JSON RPC that exposes getTransaction and getBlock",
@@ -33,7 +36,14 @@ func newCmd_rpcServerCar() *cli.Command {
 		Before: func(c *cli.Context) error {
 			return nil
 		},
-		Flags: []cli.Flag{},
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:        "listen",
+				Usage:       "Listen address",
+				Value:       ":8899",
+				Destination: &listenOn,
+			},
+		},
 		Action: func(c *cli.Context) error {
 			carFilepath := c.Args().Get(0)
 			if carFilepath == "" {
@@ -93,6 +103,7 @@ func newCmd_rpcServerCar() *cli.Command {
 
 			return newRPCServer(
 				c.Context,
+				listenOn,
 				carReader,
 				cidToOffsetIndex,
 				slotToCidIndex,
@@ -104,6 +115,7 @@ func newCmd_rpcServerCar() *cli.Command {
 
 func newRPCServer(
 	ctx context.Context,
+	listenOn string,
 	carReader *carv2.Reader,
 	cidToOffsetIndex *compactindex.DB,
 	slotToCidIndex *compactindex36.DB,
@@ -117,23 +129,29 @@ func newRPCServer(
 		sigToCidIndex:    sigToCidIndex,
 	}
 
-	http.HandleFunc("/", newRPC(handler))
-
-	listenOn := ":8899"
+	r := gin.Default()
+	r.POST("/", newRPC(handler))
 	klog.Infof("Listening on %s", listenOn)
-	return http.ListenAndServe(listenOn, nil)
+	return r.Run(listenOn)
 }
 
-func newRPC(handler *rpcServer) func(resp http.ResponseWriter, req *http.Request) {
-	return func(resp http.ResponseWriter, req *http.Request) {
+func newRPC(handler *rpcServer) func(c *gin.Context) {
+	return func(c *gin.Context) {
 		startedAt := time.Now()
 		defer func() {
 			klog.Infof("request took %s", time.Since(startedAt))
 		}()
 		// read request body
-		body, err := ioutil.ReadAll(req.Body)
+		body, err := ioutil.ReadAll(c.Request.Body)
 		if err != nil {
 			klog.Errorf("failed to read request body: %v", err)
+			// reply with error
+			c.JSON(http.StatusBadRequest, jsonrpc2.Response{
+				Error: &jsonrpc2.Error{
+					Code:    jsonrpc2.CodeParseError,
+					Message: "Parse error",
+				},
+			})
 			return
 		}
 
@@ -141,32 +159,26 @@ func newRPC(handler *rpcServer) func(resp http.ResponseWriter, req *http.Request
 		var rpcRequest jsonrpc2.Request
 		if err := json.Unmarshal(body, &rpcRequest); err != nil {
 			klog.Errorf("failed to unmarshal request: %v", err)
+			c.JSON(http.StatusBadRequest, jsonrpc2.Response{
+				Error: &jsonrpc2.Error{
+					Code:    jsonrpc2.CodeParseError,
+					Message: "Parse error",
+				},
+			})
 			return
 		}
 
 		klog.Infof("request: %s", string(body))
 
-		rf := &fakeConn{resp: resp}
+		rf := &requestContext{ctx: c}
 
 		// handle request
-		handler.Handle(context.Background(), rf, &rpcRequest)
+		handler.Handle(c.Request.Context(), rf, &rpcRequest)
 	}
 }
 
 type responseWriter struct {
 	http.ResponseWriter
-}
-
-func (w *responseWriter) Read(p []byte) (n int, err error) {
-	return 0, nil
-}
-
-func (w *responseWriter) Write(p []byte) (n int, err error) {
-	return w.ResponseWriter.Write(p)
-}
-
-func (w *responseWriter) Close() error {
-	return nil
 }
 
 type logger struct{}
@@ -182,27 +194,22 @@ type rpcServer struct {
 	sigToCidIndex    *compactindex36.DB
 }
 
-type fakeConn struct {
-	resp http.ResponseWriter
+type requestContext struct {
+	ctx *gin.Context
 }
 
 // ReplyWithError(ctx context.Context, id ID, respErr *Error) error {
-func (c *fakeConn) ReplyWithError(ctx context.Context, id jsonrpc2.ID, respErr *jsonrpc2.Error) error {
+func (c *requestContext) ReplyWithError(ctx context.Context, id jsonrpc2.ID, respErr *jsonrpc2.Error) error {
 	resp := &jsonrpc2.Response{
 		ID:    id,
 		Error: respErr,
 	}
-	respBytes, err := json.Marshal(resp)
-	if err != nil {
-		return err
-	}
-	c.resp.Header().Set("Content-Type", "application/json")
-	_, err = c.resp.Write(respBytes)
-	return err
+	c.ctx.JSON(http.StatusOK, resp)
+	return nil
 }
 
 // Reply(ctx context.Context, id ID, result interface{}) error {
-func (c *fakeConn) Reply(ctx context.Context, id jsonrpc2.ID, result interface{}) error {
+func (c *requestContext) Reply(ctx context.Context, id jsonrpc2.ID, result interface{}) error {
 	resRaw, err := json.Marshal(result)
 	if err != nil {
 		return err
@@ -212,24 +219,160 @@ func (c *fakeConn) Reply(ctx context.Context, id jsonrpc2.ID, result interface{}
 		ID:     id,
 		Result: &raw,
 	}
-	respBytes, err := json.Marshal(resp)
-	if err != nil {
-		return err
-	}
-	// set content type
-	c.resp.Header().Set("Content-Type", "application/json")
-	_, err = c.resp.Write(respBytes)
+	c.ctx.JSON(http.StatusOK, resp)
 	return err
 }
 
+func (s *rpcServer) GetNodeByCid(ctx context.Context, wantedCid cid.Cid) ([]byte, error) {
+	offset, err := s.FindOffsetFromCid(ctx, wantedCid)
+	if err != nil {
+		klog.Errorf("failed to find offset for CID %s: %v", wantedCid, err)
+		// not found or error
+		return nil, err
+	}
+	return s.GetNodeByOffset(ctx, wantedCid, offset)
+}
+
+func (s *rpcServer) GetNodeByOffset(ctx context.Context, wantedCid cid.Cid, offset uint64) ([]byte, error) {
+	// seek to offset
+	dr, err := s.carReader.DataReader()
+	if err != nil {
+		klog.Errorf("failed to get data reader: %v", err)
+		return nil, err
+	}
+	dr.Seek(int64(offset), io.SeekStart)
+	br := bufio.NewReader(dr)
+
+	gotCid, data, err := util.ReadNode(br)
+	if err != nil {
+		klog.Errorf("failed to read node: %v", err)
+		return nil, err
+	}
+	// verify that the CID we read matches the one we expected.
+	if !gotCid.Equals(wantedCid) {
+		klog.Errorf("CID mismatch: expected %s, got %s", wantedCid, gotCid)
+		return nil, err
+	}
+	return data, nil
+}
+
+type GetBlockRequest struct {
+	Slot uint64 `json:"slot"`
+	// TODO: add more params
+}
+
+func parseGetBlockRequest(raw *json.RawMessage) (*GetBlockRequest, error) {
+	var params []any
+	if err := json.Unmarshal(*raw, &params); err != nil {
+		klog.Errorf("failed to unmarshal params: %v", err)
+		return nil, err
+	}
+	slotRaw, ok := params[0].(json.Number)
+	if !ok {
+		klog.Errorf("first argument must be a number")
+		return nil, nil
+	}
+
+	slot, err := slotRaw.Int64()
+	if err != nil {
+		klog.Errorf("failed to convert slot to int64: %v", err)
+		return nil, err
+	}
+	return &GetBlockRequest{
+		Slot: uint64(slot),
+	}, nil
+}
+
+func (ser *rpcServer) FindCidFromSlot(ctx context.Context, slot uint64) (cid.Cid, error) {
+	return findCidFromSlot(ser.slotToCidIndex, slot)
+}
+
+func (ser *rpcServer) FindCidFromSignature(ctx context.Context, sig solana.Signature) (cid.Cid, error) {
+	return findCidFromSignature(ser.sigToCidIndex, sig)
+}
+
+func (ser *rpcServer) FindOffsetFromCid(ctx context.Context, cid cid.Cid) (uint64, error) {
+	return findOffsetFromCid(ser.cidToOffsetIndex, cid)
+}
+
+func (ser *rpcServer) GetBlock(ctx context.Context, slot uint64) (*ipldbindcode.Block, error) {
+	// get the slot by slot number
+	wantedCid, err := ser.FindCidFromSlot(ctx, slot)
+	if err != nil {
+		klog.Errorf("failed to find CID for slot %d: %v", slot, err)
+		return nil, err
+	}
+	// get the block by CID
+	data, err := ser.GetNodeByCid(ctx, wantedCid)
+	if err != nil {
+		klog.Errorf("failed to find node by offset: %v", err)
+		return nil, err
+	}
+	// try parsing the data as a Block node.
+	decoded, err := iplddecoders.DecodeBlock(data)
+	if err != nil {
+		klog.Errorf("failed to decode block: %v", err)
+		return nil, err
+	}
+	return decoded, nil
+}
+
+func (ser *rpcServer) GetTransaction(ctx context.Context, sig solana.Signature) (*ipldbindcode.Transaction, error) {
+	// get the CID by signature
+	wantedCid, err := ser.FindCidFromSignature(ctx, sig)
+	if err != nil {
+		klog.Errorf("failed to find CID for signature %s: %v", sig, err)
+		return nil, err
+	}
+	// get the transaction by CID
+	data, err := ser.GetNodeByCid(ctx, wantedCid)
+	if err != nil {
+		klog.Errorf("failed to get node by offset: %v", err)
+		return nil, err
+	}
+	// try parsing the data as a Transaction node.
+	decoded, err := iplddecoders.DecodeTransaction(data)
+	if err != nil {
+		klog.Errorf("failed to decode transaction: %v", err)
+		return nil, err
+	}
+	return decoded, nil
+}
+
+type GetTransactionRequest struct {
+	Signature solana.Signature `json:"signature"`
+	// TODO: add more params
+}
+
+func parseGetTransactionRequest(raw *json.RawMessage) (*GetTransactionRequest, error) {
+	var params []any
+	if err := json.Unmarshal(*raw, &params); err != nil {
+		klog.Errorf("failed to unmarshal params: %v", err)
+		return nil, err
+	}
+	sigRaw, ok := params[0].(string)
+	if !ok {
+		klog.Errorf("first argument must be a string")
+		return nil, nil
+	}
+
+	sig, err := solana.SignatureFromBase58(sigRaw)
+	if err != nil {
+		klog.Errorf("failed to convert signature from base58: %v", err)
+		return nil, err
+	}
+	return &GetTransactionRequest{
+		Signature: sig,
+	}, nil
+}
+
 // jsonrpc2.RequestHandler interface
-func (s *rpcServer) Handle(ctx context.Context, conn *fakeConn, req *jsonrpc2.Request) {
+func (ser *rpcServer) Handle(ctx context.Context, conn *requestContext, req *jsonrpc2.Request) {
 	switch req.Method {
 	case "getBlock":
-		// get first argument
-		var params []any
-		if err := json.Unmarshal(*req.Params, &params); err != nil {
-			klog.Errorf("failed to unmarshal params: %v", err)
+		params, err := parseGetBlockRequest(req.Params)
+		if err != nil {
+			klog.Errorf("failed to parse params: %v", err)
 			conn.ReplyWithError(
 				ctx,
 				req.ID,
@@ -239,125 +382,30 @@ func (s *rpcServer) Handle(ctx context.Context, conn *fakeConn, req *jsonrpc2.Re
 				})
 			return
 		}
+		slot := params.Slot
 
-		slotRaw, ok := params[0].(json.Number)
-		if !ok {
-			klog.Errorf("first argument must be a number")
-			conn.ReplyWithError(
-				ctx,
-				req.ID,
-				&jsonrpc2.Error{
-					Code:    jsonrpc2.CodeInvalidParams,
-					Message: "invalid params",
-				})
-			return
-		}
-
-		slot, err := slotRaw.Int64()
+		block, err := ser.GetBlock(ctx, slot)
 		if err != nil {
-			klog.Errorf("failed to convert slot to int64: %v", err)
-			conn.ReplyWithError(
-				ctx,
-				req.ID,
-				&jsonrpc2.Error{
-					Code:    jsonrpc2.CodeInvalidParams,
-					Message: "invalid params",
-				})
-			return
-		}
-
-		// get CID for slot
-		wantedCid, err := findCidFromSlot(s.slotToCidIndex, uint64(slot))
-		if err != nil {
-			klog.Errorf("failed to find CID for slot %d: %v", slot, err)
-			// not found or error
-			conn.ReplyWithError(
-				ctx,
-				req.ID,
-				&jsonrpc2.Error{
-					Code:    jsonrpc2.CodeInvalidParams,
-					Message: "invalid params",
-				})
-			return
-		}
-		// get offset for CID
-		offset, err := findOffsetFromCid(s.cidToOffsetIndex, wantedCid)
-		if err != nil {
-			klog.Errorf("failed to find offset for CID %s: %v", wantedCid, err)
-			// not found or error
-			conn.ReplyWithError(
-				ctx,
-				req.ID,
-				&jsonrpc2.Error{
-					Code:    jsonrpc2.CodeInvalidParams,
-					Message: "invalid params",
-				})
-			return
-		}
-		// seek to offset
-		dr, err := s.carReader.DataReader()
-		if err != nil {
-			klog.Errorf("failed to get data reader: %v", err)
+			klog.Errorf("failed to get block: %v", err)
 			conn.ReplyWithError(
 				ctx,
 				req.ID,
 				&jsonrpc2.Error{
 					Code:    jsonrpc2.CodeInternalError,
-					Message: "internal error",
-				})
-			return
-		}
-		dr.Seek(int64(offset), io.SeekStart)
-		br := bufio.NewReader(dr)
-
-		gotCid, data, err := util.ReadNode(br)
-		if err != nil {
-			klog.Errorf("failed to read node: %v", err)
-			conn.ReplyWithError(
-				ctx,
-				req.ID,
-				&jsonrpc2.Error{
-					Code:    jsonrpc2.CodeInternalError,
-					Message: "internal error",
-				})
-			return
-		}
-		// verify that the CID we read matches the one we expected.
-		if !gotCid.Equals(wantedCid) {
-			klog.Errorf("CID mismatch: expected %s, got %s", wantedCid, gotCid)
-			conn.ReplyWithError(
-				ctx,
-				req.ID,
-				&jsonrpc2.Error{
-					Code:    jsonrpc2.CodeInternalError,
-					Message: "internal error",
-				})
-			return
-		}
-		// try parsing the data as an Epoch node.
-		decoded, err := iplddecoders.DecodeBlock(data)
-		if err != nil {
-			klog.Errorf("failed to decode block: %v", err)
-			conn.ReplyWithError(
-				ctx,
-				req.ID,
-				&jsonrpc2.Error{
-					Code:    jsonrpc2.CodeInternalError,
-					Message: "internal error",
+					Message: "failed to get block",
 				})
 			return
 		}
 		// TODO: get all the transactions from the block
 		// reply with the data
-		err = conn.Reply(ctx, req.ID, decoded)
+		err = conn.Reply(ctx, req.ID, block)
 		if err != nil {
 			klog.Errorf("failed to reply: %v", err)
 		}
 	case "getTransaction":
-		// get first argument
-		var params []any
-		if err := json.Unmarshal(*req.Params, &params); err != nil {
-			klog.Errorf("failed to unmarshal params: %v", err)
+		params, err := parseGetTransactionRequest(req.Params)
+		if err != nil {
+			klog.Errorf("failed to parse params: %v", err)
 			conn.ReplyWithError(
 				ctx,
 				req.ID,
@@ -368,105 +416,9 @@ func (s *rpcServer) Handle(ctx context.Context, conn *fakeConn, req *jsonrpc2.Re
 			return
 		}
 
-		sig, ok := params[0].(string)
-		if !ok {
-			klog.Errorf("first argument is not a string: %T", params[0])
-			conn.ReplyWithError(
-				ctx,
-				req.ID,
-				&jsonrpc2.Error{
-					Code:    jsonrpc2.CodeInvalidParams,
-					Message: "invalid params",
-				})
-			return
-		}
+		sig := params.Signature
 
-		parsedSig, err := solana.SignatureFromBase58(sig)
-		if err != nil {
-			klog.Errorf("failed to parse signature: %v", err)
-			conn.ReplyWithError(
-				ctx,
-				req.ID,
-				&jsonrpc2.Error{
-					Code:    jsonrpc2.CodeInvalidParams,
-					Message: "invalid params",
-				})
-			return
-		}
-
-		// get CID for signature
-		wantedCid, err := findCidFromSignature(s.sigToCidIndex, parsedSig)
-		if err != nil {
-			klog.Errorf("failed to find CID for signature %s: %v", parsedSig, err)
-			conn.ReplyWithError(
-				ctx,
-				req.ID,
-				&jsonrpc2.Error{
-					Code:    jsonrpc2.CodeInternalError,
-					Message: "internal error",
-				})
-			return
-		}
-
-		// get offset for CID
-		offset, err := findOffsetFromCid(s.cidToOffsetIndex, wantedCid)
-		if err != nil {
-			klog.Errorf("failed to find offset for CID %s: %v", wantedCid, err)
-
-			conn.ReplyWithError(
-				ctx,
-				req.ID,
-				&jsonrpc2.Error{
-					Code:    jsonrpc2.CodeInternalError,
-					Message: "internal error",
-				})
-			return
-		}
-
-		// seek to offset
-		dr, err := s.carReader.DataReader()
-		if err != nil {
-			klog.Errorf("failed to get data reader: %v", err)
-			conn.ReplyWithError(
-				ctx,
-				req.ID,
-				&jsonrpc2.Error{
-					Code:    jsonrpc2.CodeInternalError,
-					Message: "internal error",
-				})
-			return
-		}
-		dr.Seek(int64(offset), io.SeekStart)
-		br := bufio.NewReader(dr)
-
-		gotCid, data, err := util.ReadNode(br)
-		if err != nil {
-			klog.Errorf("failed to read node: %v", err)
-			conn.ReplyWithError(
-				ctx,
-				req.ID,
-				&jsonrpc2.Error{
-					Code:    jsonrpc2.CodeInternalError,
-					Message: "internal error",
-				})
-			return
-		}
-
-		// verify that the CID we read matches the one we expected.
-		if !gotCid.Equals(wantedCid) {
-			klog.Errorf("CID mismatch: expected %s, got %s", wantedCid, gotCid)
-			conn.ReplyWithError(
-				ctx,
-				req.ID,
-				&jsonrpc2.Error{
-					Code:    jsonrpc2.CodeInternalError,
-					Message: "internal error",
-				})
-			return
-		}
-
-		// try parsing the data as a Transaction node.
-		decoded, err := iplddecoders.DecodeTransaction(data)
+		transactionNode, err := ser.GetTransaction(ctx, sig)
 		if err != nil {
 			klog.Errorf("failed to decode Transaction: %v", err)
 			conn.ReplyWithError(
@@ -479,15 +431,38 @@ func (s *rpcServer) Handle(ctx context.Context, conn *fakeConn, req *jsonrpc2.Re
 			return
 		}
 
-		var txResponse struct {
+		var GetTransactionResponse struct {
 			// TODO: use same format as solana-core
-			Transaction []any                                  `json:"transaction"`
-			Meta        *confirmed_block.TransactionStatusMeta `json:"meta"`
+			Blocktime   *int64 `json:"blockTime"`
+			Meta        any    `json:"meta"`
+			Slot        uint64 `json:"slot"`
+			Transaction []any  `json:"transaction"`
+			Version     string `json:"version"`
+		}
+
+		GetTransactionResponse.Slot = uint64(transactionNode.Slot)
+		{
+			block, err := ser.GetBlock(ctx, uint64(transactionNode.Slot))
+			if err != nil {
+				klog.Errorf("failed to decode block: %v", err)
+				conn.ReplyWithError(
+					ctx,
+					req.ID,
+					&jsonrpc2.Error{
+						Code:    jsonrpc2.CodeInternalError,
+						Message: "internal error",
+					})
+				return
+			}
+			blocktime := int64(block.Meta.Blocktime)
+			if blocktime != 0 {
+				GetTransactionResponse.Blocktime = &blocktime
+			}
 		}
 
 		{
 			var tx solana.Transaction
-			if err := bin.UnmarshalBin(&tx, decoded.Data); err != nil {
+			if err := bin.UnmarshalBin(&tx, transactionNode.Data); err != nil {
 				klog.Errorf("failed to unmarshal transaction: %v", err)
 				conn.ReplyWithError(
 					ctx,
@@ -508,6 +483,12 @@ func (s *rpcServer) Handle(ctx context.Context, conn *fakeConn, req *jsonrpc2.Re
 					})
 				return
 			}
+			if tx.Message.IsVersioned() {
+				// TODO: use the actual version
+				GetTransactionResponse.Version = fmt.Sprintf("%d", tx.Message.GetVersion())
+			} else {
+				GetTransactionResponse.Version = "legacy"
+			}
 
 			b64Tx, err := tx.ToBase64()
 			if err != nil {
@@ -522,10 +503,10 @@ func (s *rpcServer) Handle(ctx context.Context, conn *fakeConn, req *jsonrpc2.Re
 				return
 			}
 
-			txResponse.Transaction = []any{b64Tx}
+			GetTransactionResponse.Transaction = []any{b64Tx, "base64"}
 
-			if len(decoded.Metadata) > 0 {
-				uncompressedMeta, err := decodeZstd(decoded.Metadata)
+			if len(transactionNode.Metadata) > 0 {
+				uncompressedMeta, err := decodeZstd(transactionNode.Metadata)
 				if err != nil {
 					klog.Errorf("failed to decompress metadata: %v", err)
 					conn.ReplyWithError(
@@ -537,7 +518,7 @@ func (s *rpcServer) Handle(ctx context.Context, conn *fakeConn, req *jsonrpc2.Re
 						})
 					return
 				}
-				status, err := blockstore.ParseTransactionStatusMeta(uncompressedMeta)
+				status, err := blockstore.ParseAnyTransactionStatusMeta(uncompressedMeta)
 				if err != nil {
 					klog.Errorf("failed to parse metadata: %v", err)
 					conn.ReplyWithError(
@@ -549,12 +530,12 @@ func (s *rpcServer) Handle(ctx context.Context, conn *fakeConn, req *jsonrpc2.Re
 						})
 					return
 				}
-				txResponse.Meta = status
+				GetTransactionResponse.Meta = status
 			}
 		}
 
 		// reply with the data
-		err = conn.Reply(ctx, req.ID, txResponse)
+		err = conn.Reply(ctx, req.ID, GetTransactionResponse)
 		if err != nil {
 			klog.Errorf("failed to reply: %v", err)
 		}

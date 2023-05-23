@@ -205,6 +205,35 @@ func carCountItems(carPath string) (uint64, error) {
 	return count, nil
 }
 
+func carCountItemsByFirstByte(carPath string) (map[byte]uint64, error) {
+	file, err := os.Open(carPath)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	rd, err := newCarReader(file)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open car file: %w", err)
+	}
+
+	counts := make(map[byte]uint64)
+	for {
+		_, _, block, err := rd.NextNode()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return nil, err
+		}
+		// the first data byte is the block type (after the CBOR tag)
+		firstDataByte := block.RawData()[1]
+		counts[firstDataByte]++
+	}
+
+	return counts, nil
+}
+
 func printToStderr(msg string) {
 	fmt.Fprint(os.Stderr, msg)
 }

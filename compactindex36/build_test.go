@@ -171,10 +171,9 @@ func TestBuilder(t *testing.T) {
 	}
 	{
 		// print test values
-		spew.Dump(FormatByteSlice(testCids[0].Bytes()))
-		spew.Dump(FormatByteSlice(testCids[1].Bytes()))
-		spew.Dump(FormatByteSlice(testCids[2].Bytes()))
-		spew.Dump(FormatByteSlice(testCids[3].Bytes()))
+		for _, tc := range testCids {
+			spew.Dump(FormatByteSlice(tc.Bytes()))
+		}
 	}
 
 	// Create index file.
