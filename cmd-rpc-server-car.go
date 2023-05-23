@@ -17,6 +17,7 @@ import (
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-car/util"
 	carv2 "github.com/ipld/go-car/v2"
+	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/rpcpool/yellowstone-faithful/compactindex"
 	"github.com/rpcpool/yellowstone-faithful/compactindex36"
 	"github.com/sourcegraph/jsonrpc2"
@@ -24,6 +25,7 @@ import (
 	"go.firedancer.io/radiance/cmd/radiance/car/createcar/ipld/ipldbindcode"
 	"go.firedancer.io/radiance/cmd/radiance/car/createcar/iplddecoders"
 	"go.firedancer.io/radiance/pkg/blockstore"
+	"go.firedancer.io/radiance/third_party/solana_proto/confirmed_block"
 	"k8s.io/klog/v2"
 )
 
@@ -267,19 +269,14 @@ func parseGetBlockRequest(raw *json.RawMessage) (*GetBlockRequest, error) {
 		klog.Errorf("failed to unmarshal params: %v", err)
 		return nil, err
 	}
-	slotRaw, ok := params[0].(json.Number)
+	slotRaw, ok := params[0].(float64)
 	if !ok {
-		klog.Errorf("first argument must be a number")
+		klog.Errorf("first argument must be a number, got %T", params[0])
 		return nil, nil
 	}
 
-	slot, err := slotRaw.Int64()
-	if err != nil {
-		klog.Errorf("failed to convert slot to int64: %v", err)
-		return nil, err
-	}
 	return &GetBlockRequest{
-		Slot: uint64(slot),
+		Slot: uint64(slotRaw),
 	}, nil
 }
 
@@ -312,6 +309,36 @@ func (ser *rpcServer) GetBlock(ctx context.Context, slot uint64) (*ipldbindcode.
 	decoded, err := iplddecoders.DecodeBlock(data)
 	if err != nil {
 		klog.Errorf("failed to decode block: %v", err)
+		return nil, err
+	}
+	return decoded, nil
+}
+
+func (ser *rpcServer) GetEntryByCid(ctx context.Context, wantedCid cid.Cid) (*ipldbindcode.Entry, error) {
+	data, err := ser.GetNodeByCid(ctx, wantedCid)
+	if err != nil {
+		klog.Errorf("failed to find node by offset: %v", err)
+		return nil, err
+	}
+	// try parsing the data as an Entry node.
+	decoded, err := iplddecoders.DecodeEntry(data)
+	if err != nil {
+		klog.Errorf("failed to decode entry: %v", err)
+		return nil, err
+	}
+	return decoded, nil
+}
+
+func (ser *rpcServer) GetTransactionByCid(ctx context.Context, wantedCid cid.Cid) (*ipldbindcode.Transaction, error) {
+	data, err := ser.GetNodeByCid(ctx, wantedCid)
+	if err != nil {
+		klog.Errorf("failed to find node by offset: %v", err)
+		return nil, err
+	}
+	// try parsing the data as a Transaction node.
+	decoded, err := iplddecoders.DecodeTransaction(data)
+	if err != nil {
+		klog.Errorf("failed to decode transaction: %v", err)
 		return nil, err
 	}
 	return decoded, nil
@@ -396,9 +423,155 @@ func (ser *rpcServer) Handle(ctx context.Context, conn *requestContext, req *jso
 				})
 			return
 		}
+		allTransactionNodes := make([]*ipldbindcode.Transaction, 0)
+		var lastEntryHash solana.Hash
+		{
+			// get entries from the block
+			for entryIndex, entry := range block.Entries {
+				// get the entry by CID
+				entryNode, err := ser.GetEntryByCid(ctx, entry.(cidlink.Link).Cid)
+				if err != nil {
+					klog.Errorf("failed to decode Entry: %v", err)
+					continue
+				}
+
+				if entryIndex == len(block.Entries)-1 {
+					lastEntryHash = solana.HashFromBytes(entryNode.Hash)
+				}
+
+				// get the transactions from the entry
+				for _, tx := range entryNode.Transactions {
+					// get the transaction by CID
+					txNode, err := ser.GetTransactionByCid(ctx, tx.(cidlink.Link).Cid)
+					if err != nil {
+						klog.Errorf("failed to decode Transaction: %v", err)
+						continue
+					}
+					allTransactionNodes = append(allTransactionNodes, txNode)
+				}
+			}
+		}
+		var allTransactions []GetTransactionResponse
+		var rewards []any // TODO: implement rewards as in solana
+		{
+			for _, transactionNode := range allTransactionNodes {
+				var response GetTransactionResponse
+
+				response.Slot = uint64(transactionNode.Slot)
+				{
+					block, err := ser.GetBlock(ctx, uint64(transactionNode.Slot))
+					if err != nil {
+						klog.Errorf("failed to decode block: %v", err)
+						conn.ReplyWithError(
+							ctx,
+							req.ID,
+							&jsonrpc2.Error{
+								Code:    jsonrpc2.CodeInternalError,
+								Message: "internal error",
+							})
+						return
+					}
+					blocktime := int64(block.Meta.Blocktime)
+					if blocktime != 0 {
+						response.Blocktime = &blocktime
+					}
+				}
+
+				{
+					tx, meta, err := parseTransactionAndMetaFromNode(transactionNode)
+					if err != nil {
+						klog.Errorf("failed to decode transaction: %v", err)
+						conn.ReplyWithError(
+							ctx,
+							req.ID,
+							&jsonrpc2.Error{
+								Code:    jsonrpc2.CodeInternalError,
+								Message: "internal error",
+							})
+						return
+					}
+					if tx.Message.IsVersioned() {
+						// TODO: use the actual version
+						response.Version = fmt.Sprintf("%d", tx.Message.GetVersion())
+					} else {
+						response.Version = "legacy"
+					}
+					response.Meta = meta
+					if meta != nil {
+						switch mt := meta.(type) {
+						case *confirmed_block.TransactionStatusMeta:
+							if mt.Rewards != nil {
+								// NOTE: rewards are in the last transaction???
+								rewards = append(rewards, mt.Rewards)
+							}
+						}
+					}
+
+					b64Tx, err := tx.ToBase64()
+					if err != nil {
+						klog.Errorf("failed to encode transaction: %v", err)
+						conn.ReplyWithError(
+							ctx,
+							req.ID,
+							&jsonrpc2.Error{
+								Code:    jsonrpc2.CodeInternalError,
+								Message: "internal error",
+							})
+						return
+					}
+
+					response.Transaction = []any{b64Tx, "base64"}
+				}
+
+				allTransactions = append(allTransactions, response)
+			}
+		}
+		var response GetBlockResponse
+		response.Transactions = allTransactions
+		blocktime := uint64(block.Meta.Blocktime)
+		response.BlockTime = &blocktime
+		response.Blockhash = lastEntryHash.String()
+		response.ParentSlot = uint64(block.Meta.Parent_slot)
+		response.Rewards = rewards                                 // TODO: implement rewards as in solana
+		response.BlockHeight = calcBlockHeight(uint64(block.Slot)) // TODO: implement block height
+		{
+			// get parent slot
+			parentSlot := uint64(block.Meta.Parent_slot)
+			if parentSlot != 0 {
+				parentBlock, err := ser.GetBlock(ctx, parentSlot)
+				if err != nil {
+					klog.Errorf("failed to decode block: %v", err)
+					conn.ReplyWithError(
+						ctx,
+						req.ID,
+						&jsonrpc2.Error{
+							Code:    jsonrpc2.CodeInternalError,
+							Message: "internal error",
+						})
+					return
+				}
+
+				lastEntryCidOfParent := parentBlock.Entries[len(parentBlock.Entries)-1]
+				parentEntryNode, err := ser.GetEntryByCid(ctx, lastEntryCidOfParent.(cidlink.Link).Cid)
+				if err != nil {
+					klog.Errorf("failed to decode Entry: %v", err)
+					conn.ReplyWithError(
+						ctx,
+						req.ID,
+						&jsonrpc2.Error{
+							Code:    jsonrpc2.CodeInternalError,
+							Message: "internal error",
+						})
+					return
+				}
+				parentEntryHash := solana.HashFromBytes(parentEntryNode.Hash)
+				response.PreviousBlockhash = parentEntryHash.String()
+			}
+		}
+
 		// TODO: get all the transactions from the block
 		// reply with the data
-		err = conn.Reply(ctx, req.ID, block)
+		err = conn.Reply(ctx, req.ID, response)
 		if err != nil {
 			klog.Errorf("failed to reply: %v", err)
 		}
@@ -431,16 +604,9 @@ func (ser *rpcServer) Handle(ctx context.Context, conn *requestContext, req *jso
 			return
 		}
 
-		var GetTransactionResponse struct {
-			// TODO: use same format as solana-core
-			Blocktime   *int64 `json:"blockTime"`
-			Meta        any    `json:"meta"`
-			Slot        uint64 `json:"slot"`
-			Transaction []any  `json:"transaction"`
-			Version     string `json:"version"`
-		}
+		var response GetTransactionResponse
 
-		GetTransactionResponse.Slot = uint64(transactionNode.Slot)
+		response.Slot = uint64(transactionNode.Slot)
 		{
 			block, err := ser.GetBlock(ctx, uint64(transactionNode.Slot))
 			if err != nil {
@@ -456,24 +622,14 @@ func (ser *rpcServer) Handle(ctx context.Context, conn *requestContext, req *jso
 			}
 			blocktime := int64(block.Meta.Blocktime)
 			if blocktime != 0 {
-				GetTransactionResponse.Blocktime = &blocktime
+				response.Blocktime = &blocktime
 			}
 		}
 
 		{
-			var tx solana.Transaction
-			if err := bin.UnmarshalBin(&tx, transactionNode.Data); err != nil {
-				klog.Errorf("failed to unmarshal transaction: %v", err)
-				conn.ReplyWithError(
-					ctx,
-					req.ID,
-					&jsonrpc2.Error{
-						Code:    jsonrpc2.CodeInternalError,
-						Message: "internal error",
-					})
-				return
-			} else if len(tx.Signatures) == 0 {
-				klog.Errorf("transaction has no signatures")
+			tx, meta, err := parseTransactionAndMetaFromNode(transactionNode)
+			if err != nil {
+				klog.Errorf("failed to decode transaction: %v", err)
 				conn.ReplyWithError(
 					ctx,
 					req.ID,
@@ -485,10 +641,11 @@ func (ser *rpcServer) Handle(ctx context.Context, conn *requestContext, req *jso
 			}
 			if tx.Message.IsVersioned() {
 				// TODO: use the actual version
-				GetTransactionResponse.Version = fmt.Sprintf("%d", tx.Message.GetVersion())
+				response.Version = fmt.Sprintf("%d", tx.Message.GetVersion())
 			} else {
-				GetTransactionResponse.Version = "legacy"
+				response.Version = "legacy"
 			}
+			response.Meta = meta
 
 			b64Tx, err := tx.ToBase64()
 			if err != nil {
@@ -503,39 +660,11 @@ func (ser *rpcServer) Handle(ctx context.Context, conn *requestContext, req *jso
 				return
 			}
 
-			GetTransactionResponse.Transaction = []any{b64Tx, "base64"}
-
-			if len(transactionNode.Metadata) > 0 {
-				uncompressedMeta, err := decodeZstd(transactionNode.Metadata)
-				if err != nil {
-					klog.Errorf("failed to decompress metadata: %v", err)
-					conn.ReplyWithError(
-						ctx,
-						req.ID,
-						&jsonrpc2.Error{
-							Code:    jsonrpc2.CodeInternalError,
-							Message: "internal error",
-						})
-					return
-				}
-				status, err := blockstore.ParseAnyTransactionStatusMeta(uncompressedMeta)
-				if err != nil {
-					klog.Errorf("failed to parse metadata: %v", err)
-					conn.ReplyWithError(
-						ctx,
-						req.ID,
-						&jsonrpc2.Error{
-							Code:    jsonrpc2.CodeInternalError,
-							Message: "internal error",
-						})
-					return
-				}
-				GetTransactionResponse.Meta = status
-			}
+			response.Transaction = []any{b64Tx, "base64"}
 		}
 
 		// reply with the data
-		err = conn.Reply(ctx, req.ID, GetTransactionResponse)
+		err = conn.Reply(ctx, req.ID, response)
 		if err != nil {
 			klog.Errorf("failed to reply: %v", err)
 		}
@@ -548,4 +677,54 @@ func (ser *rpcServer) Handle(ctx context.Context, conn *requestContext, req *jso
 				Message: "method not found",
 			})
 	}
+}
+
+type GetBlockResponse struct {
+	BlockHeight       uint64                   `json:"blockHeight"`
+	BlockTime         *uint64                  `json:"blockTime"`
+	Blockhash         string                   `json:"blockhash"`
+	ParentSlot        uint64                   `json:"parentSlot"`
+	PreviousBlockhash string                   `json:"previousBlockhash"`
+	Rewards           []any                    `json:"rewards"` // TODO: use same format as solana
+	Transactions      []GetTransactionResponse `json:"transactions"`
+}
+
+type GetTransactionResponse struct {
+	// TODO: use same format as solana
+	Blocktime   *int64 `json:"blockTime"`
+	Meta        any    `json:"meta"`
+	Slot        uint64 `json:"slot"`
+	Transaction []any  `json:"transaction"`
+	Version     string `json:"version"`
+}
+
+func parseTransactionAndMetaFromNode(transactionNode *ipldbindcode.Transaction) (tx solana.Transaction, meta any, _ error) {
+	if err := bin.UnmarshalBin(&tx, transactionNode.Data); err != nil {
+		klog.Errorf("failed to unmarshal transaction: %v", err)
+		return solana.Transaction{}, nil, err
+	} else if len(tx.Signatures) == 0 {
+		klog.Errorf("transaction has no signatures")
+		return solana.Transaction{}, nil, err
+	}
+
+	if len(transactionNode.Metadata) > 0 {
+		uncompressedMeta, err := decodeZstd(transactionNode.Metadata)
+		if err != nil {
+			klog.Errorf("failed to decompress metadata: %v", err)
+			return
+		}
+		status, err := blockstore.ParseAnyTransactionStatusMeta(uncompressedMeta)
+		if err != nil {
+			klog.Errorf("failed to parse metadata: %v", err)
+			return
+		}
+		meta = status
+	}
+	return
+}
+
+func calcBlockHeight(slot uint64) uint64 {
+	// a block contains 43,200 slots
+	// return the remainder of the division
+	return slot % 43200
 }
