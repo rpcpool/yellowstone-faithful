@@ -9,6 +9,8 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"runtime"
+	"sync"
 	"time"
 
 	bin "github.com/gagliardetto/binary"
@@ -26,6 +28,7 @@ import (
 	"go.firedancer.io/radiance/cmd/radiance/car/createcar/iplddecoders"
 	"go.firedancer.io/radiance/pkg/blockstore"
 	"go.firedancer.io/radiance/third_party/solana_proto/confirmed_block"
+	"golang.org/x/sync/errgroup"
 	"k8s.io/klog/v2"
 )
 
@@ -423,34 +426,59 @@ func (ser *rpcServer) Handle(ctx context.Context, conn *requestContext, req *jso
 				})
 			return
 		}
+		blocktime := uint64(block.Meta.Blocktime)
+
 		allTransactionNodes := make([]*ipldbindcode.Transaction, 0)
+		mu := &sync.Mutex{}
 		var lastEntryHash solana.Hash
 		{
+			wg := new(errgroup.Group)
+			wg.SetLimit(runtime.NumCPU())
 			// get entries from the block
 			for entryIndex, entry := range block.Entries {
-				// get the entry by CID
-				entryNode, err := ser.GetEntryByCid(ctx, entry.(cidlink.Link).Cid)
-				if err != nil {
-					klog.Errorf("failed to decode Entry: %v", err)
-					continue
-				}
-
-				if entryIndex == len(block.Entries)-1 {
-					lastEntryHash = solana.HashFromBytes(entryNode.Hash)
-				}
-
-				// get the transactions from the entry
-				for _, tx := range entryNode.Transactions {
-					// get the transaction by CID
-					txNode, err := ser.GetTransactionByCid(ctx, tx.(cidlink.Link).Cid)
+				entryIndex := entryIndex
+				entryCid := entry.(cidlink.Link).Cid
+				wg.Go(func() error {
+					// get the entry by CID
+					entryNode, err := ser.GetEntryByCid(ctx, entryCid)
 					if err != nil {
-						klog.Errorf("failed to decode Transaction: %v", err)
-						continue
+						klog.Errorf("failed to decode Entry: %v", err)
+						return err
 					}
-					allTransactionNodes = append(allTransactionNodes, txNode)
-				}
+
+					if entryIndex == len(block.Entries)-1 {
+						lastEntryHash = solana.HashFromBytes(entryNode.Hash)
+					}
+
+					// get the transactions from the entry
+					for _, tx := range entryNode.Transactions {
+						// get the transaction by CID
+						txNode, err := ser.GetTransactionByCid(ctx, tx.(cidlink.Link).Cid)
+						if err != nil {
+							klog.Errorf("failed to decode Transaction: %v", err)
+							continue
+						}
+						mu.Lock()
+						allTransactionNodes = append(allTransactionNodes, txNode)
+						mu.Unlock()
+					}
+					return nil
+				})
+			}
+			err = wg.Wait()
+			if err != nil {
+				klog.Errorf("failed to get entries: %v", err)
+				conn.ReplyWithError(
+					ctx,
+					req.ID,
+					&jsonrpc2.Error{
+						Code:    jsonrpc2.CodeInternalError,
+						Message: "internal error",
+					})
+				return
 			}
 		}
+
 		var allTransactions []GetTransactionResponse
 		var rewards []any // TODO: implement rewards as in solana
 		{
@@ -458,23 +486,8 @@ func (ser *rpcServer) Handle(ctx context.Context, conn *requestContext, req *jso
 				var response GetTransactionResponse
 
 				response.Slot = uint64(transactionNode.Slot)
-				{
-					block, err := ser.GetBlock(ctx, uint64(transactionNode.Slot))
-					if err != nil {
-						klog.Errorf("failed to decode block: %v", err)
-						conn.ReplyWithError(
-							ctx,
-							req.ID,
-							&jsonrpc2.Error{
-								Code:    jsonrpc2.CodeInternalError,
-								Message: "internal error",
-							})
-						return
-					}
-					blocktime := int64(block.Meta.Blocktime)
-					if blocktime != 0 {
-						response.Blocktime = &blocktime
-					}
+				if blocktime != 0 {
+					response.Blocktime = &blocktime
 				}
 
 				{
@@ -528,7 +541,6 @@ func (ser *rpcServer) Handle(ctx context.Context, conn *requestContext, req *jso
 		}
 		var response GetBlockResponse
 		response.Transactions = allTransactions
-		blocktime := uint64(block.Meta.Blocktime)
 		response.BlockTime = &blocktime
 		response.Blockhash = lastEntryHash.String()
 		response.ParentSlot = uint64(block.Meta.Parent_slot)
@@ -620,7 +632,7 @@ func (ser *rpcServer) Handle(ctx context.Context, conn *requestContext, req *jso
 					})
 				return
 			}
-			blocktime := int64(block.Meta.Blocktime)
+			blocktime := uint64(block.Meta.Blocktime)
 			if blocktime != 0 {
 				response.Blocktime = &blocktime
 			}
@@ -691,11 +703,11 @@ type GetBlockResponse struct {
 
 type GetTransactionResponse struct {
 	// TODO: use same format as solana
-	Blocktime   *int64 `json:"blockTime"`
-	Meta        any    `json:"meta"`
-	Slot        uint64 `json:"slot"`
-	Transaction []any  `json:"transaction"`
-	Version     string `json:"version"`
+	Blocktime   *uint64 `json:"blockTime"`
+	Meta        any     `json:"meta"`
+	Slot        uint64  `json:"slot"`
+	Transaction []any   `json:"transaction"`
+	Version     string  `json:"version"`
 }
 
 func parseTransactionAndMetaFromNode(transactionNode *ipldbindcode.Transaction) (tx solana.Transaction, meta any, _ error) {
