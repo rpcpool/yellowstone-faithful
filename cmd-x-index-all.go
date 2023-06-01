@@ -565,6 +565,7 @@ func verifyAllIndexes(
 	numIndexedBlocks := uint64(0)
 	numIndexedTransactions := uint64(0)
 	klog.Infof("Verifying indexes...")
+	lastCheckpoint := time.Now()
 	for {
 		_cid, sectionLength, block, err := rd.NextNode()
 		if err != nil {
@@ -640,6 +641,17 @@ func verifyAllIndexes(
 
 		if numIndexedOffsets%100_000 == 0 {
 			printToStderr(".")
+		}
+		if numIndexedOffsets%1_000_000 == 0 {
+			printToStderr(
+				"\n" + greenBackground(
+					fmt.Sprintf(" %s (%s) ",
+						humanize.Comma(int64(numIndexedOffsets)),
+						time.Since(lastCheckpoint),
+					),
+				) + "\n",
+			)
+			lastCheckpoint = time.Now()
 		}
 	}
 	printToStderr("\n")
