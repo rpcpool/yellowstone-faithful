@@ -583,6 +583,8 @@ func (ser *rpcServer) Handle(ctx context.Context, conn *requestContext, req *jso
 					}
 					if _, ok := m["rewards"]; ok {
 						rewards = m["rewards"]
+					} else {
+						klog.Errorf("did not find rewards field in rewards")
 					}
 				}
 			}
