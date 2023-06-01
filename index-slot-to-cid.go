@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
+	"github.com/dustin/go-humanize"
 	"github.com/ipfs/go-cid"
 	carv2 "github.com/ipld/go-car/v2"
 	"github.com/rpcpool/yellowstone-faithful/compactindex36"
@@ -15,7 +17,7 @@ import (
 )
 
 // CreateIndex_slot2cid creates an index file that maps slot numbers to CIDs.
-func CreateIndex_slot2cid(ctx context.Context, carPath string, indexDir string) (string, error) {
+func CreateIndex_slot2cid(ctx context.Context, tmpDir string, carPath string, indexDir string) (string, error) {
 	// Check if the CAR file exists:
 	exists, err := fileExists(carPath)
 	if err != nil {
@@ -46,11 +48,16 @@ func CreateIndex_slot2cid(ctx context.Context, carPath string, indexDir string) 
 	if err != nil {
 		return "", fmt.Errorf("failed to count items in car file: %w", err)
 	}
-	klog.Infof("Found %d items in car file", numItems)
+	klog.Infof("Found %s items in car file", humanize.Comma(int64(numItems)))
+
+	tmpDir = filepath.Join(tmpDir, "index-slot-to-cid-"+time.Now().Format("20060102-150405.000000000"))
+	if err = os.MkdirAll(tmpDir, 0o755); err != nil {
+		return "", fmt.Errorf("failed to create tmp dir: %w", err)
+	}
 
 	klog.Infof("Creating builder with %d items", numItems)
 	c2o, err := compactindex36.NewBuilder(
-		"",
+		tmpDir,
 		uint(numItems), // TODO: what if the number of real items is less than this?
 		(0),
 	)

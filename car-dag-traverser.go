@@ -247,6 +247,38 @@ func (t *SimpleIterator) GetTransaction(ctx context.Context, c cid.Cid) (*ipldbi
 	return tx, nil
 }
 
+func (t *SimpleIterator) GetDataFrame(ctx context.Context, c cid.Cid) (*ipldbindcode.DataFrame, error) {
+	node, err := getRawNodeFromCarByCid(
+		newOffsetFinderFunc(t.c2o),
+		t.cr,
+		c,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get DataFrame: %w", err)
+	}
+	df, err := iplddecoders.DecodeDataFrame(node.RawData())
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode DataFrame: %w", err)
+	}
+	return df, nil
+}
+
+func (t *SimpleIterator) GetRewards(ctx context.Context, c cid.Cid) (*ipldbindcode.Rewards, error) {
+	node, err := getRawNodeFromCarByCid(
+		newOffsetFinderFunc(t.c2o),
+		t.cr,
+		c,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get Rewards: %w", err)
+	}
+	r, err := iplddecoders.DecodeRewards(node.RawData())
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode Rewards: %w", err)
+	}
+	return r, nil
+}
+
 // FindSubsets calls the callback for each Subset in the CAR file.
 // It stops iterating if the callback returns an error.
 // It works by iterating over all objects in the CAR file and

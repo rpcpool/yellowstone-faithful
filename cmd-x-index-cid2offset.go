@@ -23,11 +23,17 @@ func newCmd_Index_cid2offset() *cli.Command {
 				Usage:       "verify the index after creating it",
 				Destination: &verify,
 			},
+			&cli.StringFlag{
+				Name:  "tmp-dir",
+				Usage: "temporary directory to use for storing intermediate files",
+				Value: "",
+			},
 		},
 		Subcommands: []*cli.Command{},
 		Action: func(c *cli.Context) error {
 			carPath := c.Args().Get(0)
 			indexDir := c.Args().Get(1)
+			tmpDir := c.String("tmp-dir")
 
 			{
 				startedAt := time.Now()
@@ -37,6 +43,7 @@ func newCmd_Index_cid2offset() *cli.Command {
 				klog.Infof("Creating CID-to-offset index for %s", carPath)
 				indexFilepath, err := CreateIndex_cid2offset(
 					context.TODO(),
+					tmpDir,
 					carPath,
 					indexDir,
 				)

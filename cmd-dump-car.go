@@ -146,6 +146,8 @@ func newCmd_DumpCar() *cli.Command {
 				doPrint := filter.has(int(kind)) || filter.empty()
 				if doPrint {
 					fmt.Printf("\nCID=%s Multicodec=%#x Kind=%s\n", block.Cid(), block.Cid().Type(), kind)
+				} else {
+					continue
 				}
 
 				switch kind {
@@ -155,31 +157,45 @@ func newCmd_DumpCar() *cli.Command {
 						panic(err)
 					}
 					{
-						var tx solana.Transaction
-						if err := bin.UnmarshalBin(&tx, decoded.Data); err != nil {
-							panic(err)
-						} else if len(tx.Signatures) == 0 {
-							panic("no signatures")
-						}
-						if doPrint {
-							fmt.Println("sig=" + tx.Signatures[0].String())
-							spew.Dump(decoded)
-							if prettyPrintTransactions {
-								fmt.Println(tx.String())
-							}
-							numNodesPrinted++
-						}
-						if len(decoded.Metadata) > 0 {
-							uncompressedMeta, err := decodeZstd(decoded.Metadata)
-							if err != nil {
+						if decoded.Data.Total == 1 {
+							completeData := decoded.Data.Data
+							var tx solana.Transaction
+							if err := bin.UnmarshalBin(&tx, completeData); err != nil {
 								panic(err)
-							}
-							status, err := blockstore.ParseTransactionStatusMeta(uncompressedMeta)
-							if err != nil {
-								panic(err)
+							} else if len(tx.Signatures) == 0 {
+								panic("no signatures")
 							}
 							if doPrint {
-								spew.Dump(status)
+								fmt.Println("sig=" + tx.Signatures[0].String())
+								spew.Dump(decoded)
+								if prettyPrintTransactions {
+									fmt.Println(tx.String())
+								}
+								numNodesPrinted++
+							}
+						} else {
+							if doPrint {
+								fmt.Println("transaction data is split into multiple blocks; skipping printing")
+							}
+						}
+						if decoded.Metadata.Total == 1 {
+							completeBuffer := decoded.Metadata.Data
+							if len(completeBuffer) > 0 {
+								uncompressedMeta, err := decompressZstd(completeBuffer)
+								if err != nil {
+									panic(err)
+								}
+								status, err := blockstore.ParseTransactionStatusMeta(uncompressedMeta)
+								if err != nil {
+									panic(err)
+								}
+								if doPrint {
+									spew.Dump(status)
+								}
+							}
+						} else {
+							if doPrint {
+								fmt.Println("transaction metadata is split into multiple blocks; skipping printing")
 							}
 						}
 					}
@@ -219,8 +235,42 @@ func newCmd_DumpCar() *cli.Command {
 						spew.Dump(decoded)
 						numNodesPrinted++
 					}
+				case iplddecoders.KindRewards:
+					decoded, err := iplddecoders.DecodeRewards(block.RawData())
+					if err != nil {
+						panic(err)
+					}
+					if doPrint {
+						spew.Dump(decoded)
+						numNodesPrinted++
+
+						if decoded.Data.Total == 1 {
+							completeBuffer := decoded.Data.Data
+							if len(completeBuffer) > 0 {
+								uncompressedRewards, err := decompressZstd(completeBuffer)
+								if err != nil {
+									panic(err)
+								}
+								// try decoding as protobuf
+								parsed, err := blockstore.ParseRewards(uncompressedRewards)
+								if err != nil {
+									fmt.Println("Rewards are not protobuf: " + err.Error())
+								} else {
+									spew.Dump(parsed)
+								}
+							}
+						} else {
+							fmt.Println("rewards data is split into multiple blocks; skipping printing")
+						}
+					}
+				case iplddecoders.KindDataFrame:
+					decoded, err := iplddecoders.DecodeDataFrame(block.RawData())
+					if err != nil {
+						panic(err)
+					}
+					spew.Dump(decoded)
 				default:
-					panic("unknown kind" + kind.String())
+					panic("unknown kind: " + kind.String())
 				}
 			}
 			klog.Infof("CAR file traversed successfully")
@@ -246,6 +296,6 @@ func (s intSlice) empty() bool {
 
 var decoder, _ = zstd.NewReader(nil)
 
-func decodeZstd(data []byte) ([]byte, error) {
+func decompressZstd(data []byte) ([]byte, error) {
 	return decoder.DecodeAll(data, nil)
 }

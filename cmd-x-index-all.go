@@ -118,6 +118,8 @@ func createAllIndexes(ctx context.Context, carPath string, indexDir string) (*In
 			case *ipldbindcode.Block:
 			case *ipldbindcode.Entry:
 			case *ipldbindcode.Transaction:
+			case *ipldbindcode.Rewards:
+			case *ipldbindcode.DataFrame:
 			default:
 				return fmt.Errorf("unexpected node type: %T", txNode)
 			}

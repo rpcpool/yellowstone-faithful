@@ -1,11 +1,14 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
+	"github.com/dustin/go-humanize"
 	bin "github.com/gagliardetto/binary"
 	"github.com/gagliardetto/solana-go"
 	"github.com/ipfs/go-cid"
@@ -16,7 +19,7 @@ import (
 )
 
 // CreateIndex_sig2cid creates an index file that maps transaction signatures to CIDs.
-func CreateIndex_sig2cid(ctx context.Context, carPath string, indexDir string) (string, error) {
+func CreateIndex_sig2cid(ctx context.Context, tmpDir string, carPath string, indexDir string) (string, error) {
 	// Check if the CAR file exists:
 	exists, err := fileExists(carPath)
 	if err != nil {
@@ -47,11 +50,16 @@ func CreateIndex_sig2cid(ctx context.Context, carPath string, indexDir string) (
 	if err != nil {
 		return "", fmt.Errorf("failed to count items in car file: %w", err)
 	}
-	klog.Infof("Found %d items in car file", numItems)
+	klog.Infof("Found %s items in car file", humanize.Comma(int64(numItems)))
+
+	tmpDir = filepath.Join(tmpDir, "index-sig-to-cid-"+time.Now().Format("20060102-150405.000000000"))
+	if err = os.MkdirAll(tmpDir, 0o755); err != nil {
+		return "", fmt.Errorf("failed to create tmp dir: %w", err)
+	}
 
 	klog.Infof("Creating builder with %d items", numItems)
 	c2o, err := compactindex36.NewBuilder(
-		"",
+		tmpDir,
 		uint(numItems), // TODO: what if the number of real items is less than this?
 		(0),
 	)
@@ -75,7 +83,13 @@ func CreateIndex_sig2cid(ctx context.Context, carPath string, indexDir string) (
 		dr,
 		func(c cid.Cid, txNode *ipldbindcode.Transaction) error {
 			var tx solana.Transaction
-			if err := bin.UnmarshalBin(&tx, txNode.Data); err != nil {
+			txBuffer := new(bytes.Buffer)
+			txBuffer.Write(txNode.Data.Data)
+			if txNode.Data.Total > 1 {
+				// TODO: handle this case
+				return nil
+			}
+			if err := bin.UnmarshalBin(&tx, txBuffer.Bytes()); err != nil {
 				return fmt.Errorf("failed to unmarshal transaction: %w", err)
 			} else if len(tx.Signatures) == 0 {
 				panic("no signatures")
@@ -91,7 +105,7 @@ func CreateIndex_sig2cid(ctx context.Context, carPath string, indexDir string) (
 			}
 
 			numItemsIndexed++
-			if numItemsIndexed%10_000 == 0 {
+			if numItemsIndexed%100_000 == 0 {
 				printToStderr(".")
 			}
 			return nil
@@ -179,7 +193,13 @@ func VerifyIndex_sig2cid(ctx context.Context, carPath string, indexFilePath stri
 		dr,
 		func(c cid.Cid, txNode *ipldbindcode.Transaction) error {
 			var tx solana.Transaction
-			if err := bin.UnmarshalBin(&tx, txNode.Data); err != nil {
+			txBuffer := new(bytes.Buffer)
+			txBuffer.Write(txNode.Data.Data)
+			if txNode.Data.Total > 1 {
+				// TODO: handle this case
+				return nil
+			}
+			if err := bin.UnmarshalBin(&tx, txBuffer.Bytes()); err != nil {
 				return fmt.Errorf("failed to unmarshal transaction: %w", err)
 			} else if len(tx.Signatures) == 0 {
 				panic("no signatures")
@@ -196,7 +216,7 @@ func VerifyIndex_sig2cid(ctx context.Context, carPath string, indexFilePath stri
 			}
 
 			numItems++
-			if numItems%10_000 == 0 {
+			if numItems%100_000 == 0 {
 				printToStderr(".")
 			}
 

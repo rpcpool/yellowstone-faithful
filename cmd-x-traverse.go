@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"time"
@@ -96,25 +97,52 @@ func newCmd_XTraverse() *cli.Command {
 								spew.Dump(tx)
 								{
 									var transaction solana.Transaction
-									if err := bin.UnmarshalBin(&transaction, tx.Data); err != nil {
-										panic(err)
-									} else if len(transaction.Signatures) == 0 {
-										panic("no signatures")
+									{
+										txBuffer := new(bytes.Buffer)
+										txBuffer.Write(tx.Data.Data)
+										if tx.Data.Total > 1 {
+											for _, frameCid := range tx.Data.Next {
+												frame, err := simpleIter.GetDataFrame(context.Background(), frameCid.(cidlink.Link).Cid)
+												if err != nil {
+													return fmt.Errorf("failed to get DataFrame: %w", err)
+												}
+												txBuffer.Write(frame.Data)
+											}
+										}
+										if err := bin.UnmarshalBin(&transaction, txBuffer.Bytes()); err != nil {
+											panic(err)
+										} else if len(transaction.Signatures) == 0 {
+											panic("no signatures")
+										}
 									}
 									{
 										fmt.Println("sig=" + transaction.Signatures[0].String())
 										fmt.Println(transaction.String())
 									}
-									if len(tx.Metadata) > 0 {
-										uncompressedMeta, err := decodeZstd(tx.Metadata)
-										if err != nil {
-											panic(err)
+									{
+										metaBuffer := new(bytes.Buffer)
+										metaBuffer.Write(tx.Metadata.Data)
+										if tx.Metadata.Total > 1 {
+											for _, frameCid := range tx.Metadata.Next {
+												frame, err := simpleIter.GetDataFrame(context.Background(), frameCid.(cidlink.Link).Cid)
+												if err != nil {
+													return fmt.Errorf("failed to get DataFrame for meta: %w", err)
+												}
+												metaBuffer.Write(frame.Data)
+											}
 										}
-										status, err := blockstore.ParseTransactionStatusMeta(uncompressedMeta)
-										if err != nil {
-											panic(err)
+
+										if len(metaBuffer.Bytes()) > 0 {
+											uncompressedMeta, err := decompressZstd(metaBuffer.Bytes())
+											if err != nil {
+												panic(err)
+											}
+											status, err := blockstore.ParseTransactionStatusMeta(uncompressedMeta)
+											if err != nil {
+												panic(err)
+											}
+											spew.Dump(status)
 										}
-										spew.Dump(status)
 									}
 								}
 							}

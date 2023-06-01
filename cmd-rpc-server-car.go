@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -305,7 +306,7 @@ func (ser *rpcServer) GetBlock(ctx context.Context, slot uint64) (*ipldbindcode.
 	// get the block by CID
 	data, err := ser.GetNodeByCid(ctx, wantedCid)
 	if err != nil {
-		klog.Errorf("failed to find node by offset: %v", err)
+		klog.Errorf("failed to find node by cid: %v", err)
 		return nil, err
 	}
 	// try parsing the data as a Block node.
@@ -320,7 +321,7 @@ func (ser *rpcServer) GetBlock(ctx context.Context, slot uint64) (*ipldbindcode.
 func (ser *rpcServer) GetEntryByCid(ctx context.Context, wantedCid cid.Cid) (*ipldbindcode.Entry, error) {
 	data, err := ser.GetNodeByCid(ctx, wantedCid)
 	if err != nil {
-		klog.Errorf("failed to find node by offset: %v", err)
+		klog.Errorf("failed to find node by cid: %v", err)
 		return nil, err
 	}
 	// try parsing the data as an Entry node.
@@ -335,13 +336,43 @@ func (ser *rpcServer) GetEntryByCid(ctx context.Context, wantedCid cid.Cid) (*ip
 func (ser *rpcServer) GetTransactionByCid(ctx context.Context, wantedCid cid.Cid) (*ipldbindcode.Transaction, error) {
 	data, err := ser.GetNodeByCid(ctx, wantedCid)
 	if err != nil {
-		klog.Errorf("failed to find node by offset: %v", err)
+		klog.Errorf("failed to find node by cid: %v", err)
 		return nil, err
 	}
 	// try parsing the data as a Transaction node.
 	decoded, err := iplddecoders.DecodeTransaction(data)
 	if err != nil {
 		klog.Errorf("failed to decode transaction: %v", err)
+		return nil, err
+	}
+	return decoded, nil
+}
+
+func (ser *rpcServer) GetDataFrameByCid(ctx context.Context, wantedCid cid.Cid) (*ipldbindcode.DataFrame, error) {
+	data, err := ser.GetNodeByCid(ctx, wantedCid)
+	if err != nil {
+		klog.Errorf("failed to find node by cid: %v", err)
+		return nil, err
+	}
+	// try parsing the data as a DataFrame node.
+	decoded, err := iplddecoders.DecodeDataFrame(data)
+	if err != nil {
+		klog.Errorf("failed to decode data frame: %v", err)
+		return nil, err
+	}
+	return decoded, nil
+}
+
+func (ser *rpcServer) GetRewardsByCid(ctx context.Context, wantedCid cid.Cid) (*ipldbindcode.Rewards, error) {
+	data, err := ser.GetNodeByCid(ctx, wantedCid)
+	if err != nil {
+		klog.Errorf("failed to find node by cid: %v", err)
+		return nil, err
+	}
+	// try parsing the data as a Rewards node.
+	decoded, err := iplddecoders.DecodeRewards(data)
+	if err != nil {
+		klog.Errorf("failed to decode rewards: %v", err)
 		return nil, err
 	}
 	return decoded, nil
@@ -357,7 +388,7 @@ func (ser *rpcServer) GetTransaction(ctx context.Context, sig solana.Signature) 
 	// get the transaction by CID
 	data, err := ser.GetNodeByCid(ctx, wantedCid)
 	if err != nil {
-		klog.Errorf("failed to get node by offset: %v", err)
+		klog.Errorf("failed to get node by cid: %v", err)
 		return nil, err
 	}
 	// try parsing the data as a Transaction node.
@@ -491,7 +522,7 @@ func (ser *rpcServer) Handle(ctx context.Context, conn *requestContext, req *jso
 				}
 
 				{
-					tx, meta, err := parseTransactionAndMetaFromNode(transactionNode)
+					tx, meta, err := parseTransactionAndMetaFromNode(transactionNode, ser.GetDataFrameByCid)
 					if err != nil {
 						klog.Errorf("failed to decode transaction: %v", err)
 						conn.ReplyWithError(
@@ -639,7 +670,7 @@ func (ser *rpcServer) Handle(ctx context.Context, conn *requestContext, req *jso
 		}
 
 		{
-			tx, meta, err := parseTransactionAndMetaFromNode(transactionNode)
+			tx, meta, err := parseTransactionAndMetaFromNode(transactionNode, ser.GetDataFrameByCid)
 			if err != nil {
 				klog.Errorf("failed to decode transaction: %v", err)
 				conn.ReplyWithError(
@@ -710,27 +741,56 @@ type GetTransactionResponse struct {
 	Version     string  `json:"version"`
 }
 
-func parseTransactionAndMetaFromNode(transactionNode *ipldbindcode.Transaction) (tx solana.Transaction, meta any, _ error) {
-	if err := bin.UnmarshalBin(&tx, transactionNode.Data); err != nil {
-		klog.Errorf("failed to unmarshal transaction: %v", err)
-		return solana.Transaction{}, nil, err
-	} else if len(tx.Signatures) == 0 {
-		klog.Errorf("transaction has no signatures")
-		return solana.Transaction{}, nil, err
+func parseTransactionAndMetaFromNode(
+	transactionNode *ipldbindcode.Transaction,
+	dataFrameGetter func(ctx context.Context, wantedCid cid.Cid) (*ipldbindcode.DataFrame, error),
+) (tx solana.Transaction, meta any, _ error) {
+	{
+		transactionBuffer := new(bytes.Buffer)
+		transactionBuffer.Write(transactionNode.Data.Data)
+		if transactionNode.Data.Total > 1 {
+			for _, cid := range transactionNode.Data.Next {
+				nextDataFrame, err := dataFrameGetter(context.Background(), cid.(cidlink.Link).Cid)
+				if err != nil {
+					return solana.Transaction{}, nil, err
+				}
+				transactionBuffer.Write(nextDataFrame.Data)
+			}
+		}
+		if err := bin.UnmarshalBin(&tx, transactionBuffer.Bytes()); err != nil {
+			klog.Errorf("failed to unmarshal transaction: %v", err)
+			return solana.Transaction{}, nil, err
+		} else if len(tx.Signatures) == 0 {
+			klog.Errorf("transaction has no signatures")
+			return solana.Transaction{}, nil, err
+		}
 	}
 
-	if len(transactionNode.Metadata) > 0 {
-		uncompressedMeta, err := decodeZstd(transactionNode.Metadata)
-		if err != nil {
-			klog.Errorf("failed to decompress metadata: %v", err)
-			return
+	{
+		metaBuffer := new(bytes.Buffer)
+		metaBuffer.Write(transactionNode.Metadata.Data)
+		if transactionNode.Metadata.Total > 1 {
+			for _, cid := range transactionNode.Metadata.Next {
+				nextDataFrame, err := dataFrameGetter(context.Background(), cid.(cidlink.Link).Cid)
+				if err != nil {
+					return solana.Transaction{}, nil, err
+				}
+				metaBuffer.Write(nextDataFrame.Data)
+			}
 		}
-		status, err := blockstore.ParseAnyTransactionStatusMeta(uncompressedMeta)
-		if err != nil {
-			klog.Errorf("failed to parse metadata: %v", err)
-			return
+		if len(metaBuffer.Bytes()) > 0 {
+			uncompressedMeta, err := decompressZstd(metaBuffer.Bytes())
+			if err != nil {
+				klog.Errorf("failed to decompress metadata: %v", err)
+				return
+			}
+			status, err := blockstore.ParseAnyTransactionStatusMeta(uncompressedMeta)
+			if err != nil {
+				klog.Errorf("failed to parse metadata: %v", err)
+				return
+			}
+			meta = status
 		}
-		meta = status
 	}
 	return
 }

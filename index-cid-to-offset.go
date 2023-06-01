@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/davecgh/go-spew/spew"
+	"github.com/dustin/go-humanize"
 	"github.com/ipfs/go-cid"
 	carv1 "github.com/ipld/go-car"
 	"github.com/ipld/go-car/util"
@@ -22,7 +23,7 @@ import (
 )
 
 // CreateIndex_cid2offset creates an index file that maps CIDs to offsets in the CAR file.
-func CreateIndex_cid2offset(ctx context.Context, carPath string, indexDir string) (string, error) {
+func CreateIndex_cid2offset(ctx context.Context, tmpDir string, carPath string, indexDir string) (string, error) {
 	// Check if the CAR file exists:
 	exists, err := fileExists(carPath)
 	if err != nil {
@@ -58,11 +59,16 @@ func CreateIndex_cid2offset(ctx context.Context, carPath string, indexDir string
 	if err != nil {
 		return "", fmt.Errorf("failed to count items in car file: %w", err)
 	}
-	klog.Infof("Found %d items in car file", numItems)
+	klog.Infof("Found %s items in car file", humanize.Comma(int64(numItems)))
+
+	tmpDir = filepath.Join(tmpDir, "index-cid-to-offset-"+time.Now().Format("20060102-150405.000000000"))
+	if err = os.MkdirAll(tmpDir, 0o755); err != nil {
+		return "", fmt.Errorf("failed to create tmp dir: %w", err)
+	}
 
 	klog.Infof("Creating builder with %d items and target file size %d", numItems, targetFileSize)
 	c2o, err := compactindex.NewBuilder(
-		"",
+		tmpDir,
 		uint(numItems),
 		(targetFileSize),
 	)
