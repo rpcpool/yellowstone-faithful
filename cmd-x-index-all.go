@@ -254,7 +254,13 @@ func createAllIndexes(
 			lastCheckpoint = time.Now()
 		}
 	}
-	klog.Infof("Indexed %d offsets, %d blocks, %d transactions", numIndexedOffsets, numIndexedBlocks, numIndexedTransactions)
+	printToStderr("\n")
+	klog.Infof(
+		"Indexed %s offsets, %s blocks, %s transactions",
+		humanize.Comma(int64(numIndexedOffsets)),
+		humanize.Comma(int64(numIndexedBlocks)),
+		humanize.Comma(int64(numIndexedTransactions)),
+	)
 
 	rootCID := rd.header.Roots[0]
 	paths := &IndexPaths{}
@@ -317,7 +323,7 @@ func NewBuilder_CidToOffset(
 ) (*Builder_CidToOffset, error) {
 	tmpDir = filepath.Join(tmpDir, "index-cid-to-offset-"+time.Now().Format("20060102-150405.000000000")+fmt.Sprintf("-%d", rand.Int63()))
 	if err := os.MkdirAll(tmpDir, 0o755); err != nil {
-		return nil, fmt.Errorf("failed to create tmp dir: %w", err)
+		return nil, fmt.Errorf("failed to create cid_to_offset tmp dir: %w", err)
 	}
 	index, err := compactindex.NewBuilder(
 		tmpDir,
@@ -325,7 +331,7 @@ func NewBuilder_CidToOffset(
 		(targetFileSize),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create index: %w", err)
+		return nil, fmt.Errorf("failed to create cid_to_offset index: %w", err)
 	}
 	return &Builder_CidToOffset{
 		tmpDir:   tmpDir,
@@ -344,16 +350,16 @@ func (b *Builder_CidToOffset) Close() error {
 
 func (b *Builder_CidToOffset) Seal(ctx context.Context, carPath string, rootCid cid.Cid) (string, error) {
 	indexFilePath := filepath.Join(b.indexDir, fmt.Sprintf("%s.%s.cid-to-offset.index", filepath.Base(carPath), rootCid.String()))
-	klog.Infof("Creating index file at %s", indexFilePath)
+	klog.Infof("Creating cid_to_offset index file at %s", indexFilePath)
 	targetFile, err := os.Create(indexFilePath)
 	if err != nil {
-		return "", fmt.Errorf("failed to create index file: %w", err)
+		return "", fmt.Errorf("failed to create cid_to_offset index file: %w", err)
 	}
 	defer targetFile.Close()
 
-	klog.Infof("Sealing index...")
+	klog.Infof("Sealing cid_to_offset index...")
 	if err = b.index.Seal(ctx, targetFile); err != nil {
-		return "", fmt.Errorf("failed to seal index: %w", err)
+		return "", fmt.Errorf("failed to seal cid_to_offset index: %w", err)
 	}
 	return indexFilePath, nil
 }
@@ -373,7 +379,7 @@ func NewBuilder_SignatureToCid(
 ) (*Builder_SignatureToCid, error) {
 	tmpDir = filepath.Join(tmpDir, "index-sig-to-cid-"+time.Now().Format("20060102-150405.000000000")+fmt.Sprintf("-%d", rand.Int63()))
 	if err := os.MkdirAll(tmpDir, 0o755); err != nil {
-		return nil, fmt.Errorf("failed to create tmp dir: %w", err)
+		return nil, fmt.Errorf("failed to create sig_to_cid tmp dir: %w", err)
 	}
 	index, err := compactindex36.NewBuilder(
 		tmpDir,
@@ -381,7 +387,7 @@ func NewBuilder_SignatureToCid(
 		(targetFileSize),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create index: %w", err)
+		return nil, fmt.Errorf("failed to create sig_to_cid index: %w", err)
 	}
 	return &Builder_SignatureToCid{
 		tmpDir:   tmpDir,
@@ -402,16 +408,16 @@ func (b *Builder_SignatureToCid) Close() error {
 
 func (b *Builder_SignatureToCid) Seal(ctx context.Context, carPath string, rootCid cid.Cid) (string, error) {
 	indexFilePath := filepath.Join(b.indexDir, fmt.Sprintf("%s.%s.sig-to-cid.index", filepath.Base(carPath), rootCid.String()))
-	klog.Infof("Creating index file at %s", indexFilePath)
+	klog.Infof("Creating sig_to_cid index file at %s", indexFilePath)
 	targetFile, err := os.Create(indexFilePath)
 	if err != nil {
-		return "", fmt.Errorf("failed to create index file: %w", err)
+		return "", fmt.Errorf("failed to create sig_to_cid index file: %w", err)
 	}
 	defer targetFile.Close()
 
-	klog.Infof("Sealing index...")
+	klog.Infof("Sealing sig_to_cid index...")
 	if err = b.index.Seal(ctx, targetFile); err != nil {
-		return "", fmt.Errorf("failed to seal index: %w", err)
+		return "", fmt.Errorf("failed to seal sig_to_cid index: %w", err)
 	}
 	return indexFilePath, nil
 }
@@ -431,7 +437,7 @@ func NewBuilder_SlotToCid(
 ) (*Builder_SlotToCid, error) {
 	tmpDir = filepath.Join(tmpDir, "index-slot-to-cid-"+time.Now().Format("20060102-150405.000000000")+fmt.Sprintf("-%d", rand.Int63()))
 	if err := os.MkdirAll(tmpDir, 0o755); err != nil {
-		return nil, fmt.Errorf("failed to create tmp dir: %w", err)
+		return nil, fmt.Errorf("failed to create slot_to_cid tmp dir: %w", err)
 	}
 	index, err := compactindex36.NewBuilder(
 		tmpDir,
@@ -439,7 +445,7 @@ func NewBuilder_SlotToCid(
 		(targetFileSize),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create index: %w", err)
+		return nil, fmt.Errorf("failed to create slot_to_cid index: %w", err)
 	}
 	return &Builder_SlotToCid{
 		tmpDir:   tmpDir,
@@ -460,16 +466,16 @@ func (b *Builder_SlotToCid) Close() error {
 
 func (b *Builder_SlotToCid) Seal(ctx context.Context, carPath string, rootCid cid.Cid) (string, error) {
 	indexFilePath := filepath.Join(b.indexDir, fmt.Sprintf("%s.%s.slot-to-cid.index", filepath.Base(carPath), rootCid.String()))
-	klog.Infof("Creating index file at %s", indexFilePath)
+	klog.Infof("Creating slot_to_cid index file at %s", indexFilePath)
 	targetFile, err := os.Create(indexFilePath)
 	if err != nil {
-		return "", fmt.Errorf("failed to create index file: %w", err)
+		return "", fmt.Errorf("failed to create slot_to_cid index file: %w", err)
 	}
 	defer targetFile.Close()
 
 	klog.Infof("Sealing index...")
 	if err = b.index.Seal(ctx, targetFile); err != nil {
-		return "", fmt.Errorf("failed to seal index: %w", err)
+		return "", fmt.Errorf("failed to seal slot_to_cid index: %w", err)
 	}
 	return indexFilePath, nil
 }
