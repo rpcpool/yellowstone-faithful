@@ -185,7 +185,7 @@ func newCmd_DumpCar() *cli.Command {
 								if err != nil {
 									panic(err)
 								}
-								status, err := blockstore.ParseTransactionStatusMeta(uncompressedMeta)
+								status, err := blockstore.ParseAnyTransactionStatusMeta(uncompressedMeta)
 								if err != nil {
 									panic(err)
 								}
@@ -254,6 +254,7 @@ func newCmd_DumpCar() *cli.Command {
 								// try decoding as protobuf
 								parsed, err := blockstore.ParseRewards(uncompressedRewards)
 								if err != nil {
+									// TODO: add support for legacy rewards format
 									fmt.Println("Rewards are not protobuf: " + err.Error())
 								} else {
 									spew.Dump(parsed)

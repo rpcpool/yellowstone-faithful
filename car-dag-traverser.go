@@ -460,6 +460,92 @@ func FindTransactions(
 	return nil
 }
 
+// FindRewards calls the callback for each solana Rewards in the CAR file.
+// It stops iterating if the callback returns an error.
+// It works by iterating over all objects in the CAR file and
+// calling the callback for each object that is a Rewards.
+func (t *SimpleIterator) FindRewards(ctx context.Context, callback func(cid.Cid, *ipldbindcode.Rewards) error) error {
+	dr, err := t.cr.DataReader()
+	if err != nil {
+		return fmt.Errorf("failed to get data reader: %w", err)
+	}
+	return FindRewards(ctx, dr, callback)
+}
+
+func FindRewards(
+	ctx context.Context,
+	sectionReader carv2.SectionReader,
+	callback func(cid.Cid, *ipldbindcode.Rewards) error,
+) error {
+	rd, err := car.NewCarReader(sectionReader)
+	if err != nil {
+		return fmt.Errorf("failed to create car reader: %w", err)
+	}
+	for {
+		block, err := rd.Next()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		{
+			if block.RawData()[1] != byte(iplddecoders.KindRewards) {
+				continue
+			}
+			decoded, err := iplddecoders.DecodeRewards(block.RawData())
+			if err != nil {
+				continue
+			}
+			err = callback(block.Cid(), decoded)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// FindDataFrames calls the callback for each DataFrame in the CAR file.
+// It stops iterating if the callback returns an error.
+// It works by iterating over all objects in the CAR file and
+// calling the callback for each object that is a DataFrame.
+func (t *SimpleIterator) FindDataFrames(ctx context.Context, callback func(cid.Cid, *ipldbindcode.DataFrame) error) error {
+	dr, err := t.cr.DataReader()
+	if err != nil {
+		return fmt.Errorf("failed to get data reader: %w", err)
+	}
+	return FindDataFrames(ctx, dr, callback)
+}
+
+func FindDataFrames(
+	ctx context.Context,
+	sectionReader carv2.SectionReader,
+	callback func(cid.Cid, *ipldbindcode.DataFrame) error,
+) error {
+	rd, err := car.NewCarReader(sectionReader)
+	if err != nil {
+		return fmt.Errorf("failed to create car reader: %w", err)
+	}
+	for {
+		block, err := rd.Next()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		{
+			if block.RawData()[1] != byte(iplddecoders.KindDataFrame) {
+				continue
+			}
+			decoded, err := iplddecoders.DecodeDataFrame(block.RawData())
+			if err != nil {
+				continue
+			}
+			err = callback(block.Cid(), decoded)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 func FindAny(
 	ctx context.Context,
 	sectionReader carv2.SectionReader,

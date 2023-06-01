@@ -28,7 +28,6 @@ import (
 	"go.firedancer.io/radiance/cmd/radiance/car/createcar/ipld/ipldbindcode"
 	"go.firedancer.io/radiance/cmd/radiance/car/createcar/iplddecoders"
 	"go.firedancer.io/radiance/pkg/blockstore"
-	"go.firedancer.io/radiance/third_party/solana_proto/confirmed_block"
 	"golang.org/x/sync/errgroup"
 	"k8s.io/klog/v2"
 )
@@ -511,7 +510,83 @@ func (ser *rpcServer) Handle(ctx context.Context, conn *requestContext, req *jso
 		}
 
 		var allTransactions []GetTransactionResponse
-		var rewards []any // TODO: implement rewards as in solana
+		var rewards any // TODO: implement rewards as in solana
+		if !block.Rewards.(cidlink.Link).Cid.Equals(DummyCID) {
+			rewardsNode, err := ser.GetRewardsByCid(ctx, block.Rewards.(cidlink.Link).Cid)
+			if err != nil {
+				klog.Errorf("failed to decode Rewards: %v", err)
+				conn.ReplyWithError(
+					ctx,
+					req.ID,
+					&jsonrpc2.Error{
+						Code:    jsonrpc2.CodeInternalError,
+						Message: "internal error",
+					})
+				return
+			}
+			buf := new(bytes.Buffer)
+			buf.Write(rewardsNode.Data.Data)
+			if rewardsNode.Data.Total > 1 {
+				for _, _cid := range rewardsNode.Data.Next {
+					nextNode, err := ser.GetDataFrameByCid(ctx, _cid.(cidlink.Link).Cid)
+					if err != nil {
+						klog.Errorf("failed to decode Rewards: %v", err)
+						conn.ReplyWithError(
+							ctx,
+							req.ID,
+							&jsonrpc2.Error{
+								Code:    jsonrpc2.CodeInternalError,
+								Message: "internal error",
+							})
+						return
+					}
+					buf.Write(nextNode.Data)
+				}
+			}
+
+			uncompressedRewards, err := decompressZstd(buf.Bytes())
+			if err != nil {
+				panic(err)
+			}
+			// try decoding as protobuf
+			actualRewards, err := blockstore.ParseRewards(uncompressedRewards)
+			if err != nil {
+				// TODO: add support for legacy rewards format
+				fmt.Println("Rewards are not protobuf: " + err.Error())
+			} else {
+				{
+					// encode rewards as JSON, then decode it as a map
+					buf, err := json.Marshal(actualRewards)
+					if err != nil {
+						klog.Errorf("failed to encode rewards: %v", err)
+						conn.ReplyWithError(
+							ctx,
+							req.ID,
+							&jsonrpc2.Error{
+								Code:    jsonrpc2.CodeInternalError,
+								Message: "internal error",
+							})
+						return
+					}
+					var m map[string]any
+					err = json.Unmarshal(buf, &m)
+					if err != nil {
+						klog.Errorf("failed to decode rewards: %v", err)
+						conn.ReplyWithError(
+							ctx,
+							req.ID,
+							&jsonrpc2.Error{
+								Code:    jsonrpc2.CodeInternalError,
+								Message: "internal error",
+							})
+						return
+					}
+					if _, ok := m["rewards"]; ok {
+						rewards = m["rewards"]
+					}
+				}
+			}
+		}
 		{
 			for _, transactionNode := range allTransactionNodes {
 				var response GetTransactionResponse
@@ -541,15 +616,6 @@ func (ser *rpcServer) Handle(ctx context.Context, conn *requestContext, req *jso
 						response.Version = "legacy"
 					}
 					response.Meta = meta
-					if meta != nil {
-						switch mt := meta.(type) {
-						case *confirmed_block.TransactionStatusMeta:
-							if mt.Rewards != nil {
-								// NOTE: rewards are in the last transaction???
-								rewards = append(rewards, mt.Rewards)
-							}
-						}
-					}
 
 					b64Tx, err := tx.ToBase64()
 					if err != nil {
@@ -570,13 +636,13 @@ func (ser *rpcServer) Handle(ctx context.Context, conn *requestContext, req *jso
 				allTransactions = append(allTransactions, response)
 			}
 		}
-		var response GetBlockResponse
-		response.Transactions = allTransactions
-		response.BlockTime = &blocktime
-		response.Blockhash = lastEntryHash.String()
-		response.ParentSlot = uint64(block.Meta.Parent_slot)
-		response.Rewards = rewards                                 // TODO: implement rewards as in solana
-		response.BlockHeight = calcBlockHeight(uint64(block.Slot)) // TODO: implement block height
+		var blockResp GetBlockResponse
+		blockResp.Transactions = allTransactions
+		blockResp.BlockTime = &blocktime
+		blockResp.Blockhash = lastEntryHash.String()
+		blockResp.ParentSlot = uint64(block.Meta.Parent_slot)
+		blockResp.Rewards = rewards                                 // TODO: implement rewards as in solana
+		blockResp.BlockHeight = calcBlockHeight(uint64(block.Slot)) // TODO: implement block height
 		{
 			// get parent slot
 			parentSlot := uint64(block.Meta.Parent_slot)
@@ -608,13 +674,13 @@ func (ser *rpcServer) Handle(ctx context.Context, conn *requestContext, req *jso
 					return
 				}
 				parentEntryHash := solana.HashFromBytes(parentEntryNode.Hash)
-				response.PreviousBlockhash = parentEntryHash.String()
+				blockResp.PreviousBlockhash = parentEntryHash.String()
 			}
 		}
 
 		// TODO: get all the transactions from the block
 		// reply with the data
-		err = conn.Reply(ctx, req.ID, response)
+		err = conn.Reply(ctx, req.ID, blockResp)
 		if err != nil {
 			klog.Errorf("failed to reply: %v", err)
 		}
@@ -728,7 +794,7 @@ type GetBlockResponse struct {
 	Blockhash         string                   `json:"blockhash"`
 	ParentSlot        uint64                   `json:"parentSlot"`
 	PreviousBlockhash string                   `json:"previousBlockhash"`
-	Rewards           []any                    `json:"rewards"` // TODO: use same format as solana
+	Rewards           any                      `json:"rewards"` // TODO: use same format as solana
 	Transactions      []GetTransactionResponse `json:"transactions"`
 }
 
@@ -796,6 +862,7 @@ func parseTransactionAndMetaFromNode(
 }
 
 func calcBlockHeight(slot uint64) uint64 {
+	// TODO: fix this
 	// a block contains 43,200 slots
 	// return the remainder of the division
 	return slot % 43200
