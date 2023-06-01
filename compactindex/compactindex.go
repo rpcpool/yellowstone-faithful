@@ -133,15 +133,24 @@ func (h *Header) Store(buf *[headerSize]byte) {
 //
 // Uses a truncated xxHash64 rotated until the result fits.
 func (h *Header) BucketHash(key []byte) uint {
-	xsum := xxhash.Sum64(key)
-	mask := maxCls64(uint64(h.NumBuckets))
-	for {
-		index := xsum & mask
-		if index < uint64(h.NumBuckets) {
-			return uint(index)
-		}
-		xsum = bits.RotateLeft64(xsum, bits.LeadingZeros64(mask))
+	u := xxhash.Sum64(key)
+	n := uint64(h.NumBuckets)
+	r := (-n) % n
+	for u < r {
+		u = hashUint64(u)
 	}
+	return uint(u % n)
+}
+
+// hashUint64 is a reversible uint64 permutation based on Google's
+// Murmur3 hash finalizer (public domain)
+func hashUint64(x uint64) uint64 {
+	x ^= x >> 33
+	x *= 0xff51afd7ed558ccd
+	x ^= x >> 33
+	x *= 0xc4ceb9fe1a85ec53
+	x ^= x >> 33
+	return x
 }
 
 // BucketHeader occurs at the beginning of each bucket.
