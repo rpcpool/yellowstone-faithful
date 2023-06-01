@@ -17,7 +17,7 @@ func (ser *rpcServer) getTransaction(ctx context.Context, conn *requestContext, 
 			req.ID,
 			&jsonrpc2.Error{
 				Code:    jsonrpc2.CodeInvalidParams,
-				Message: "invalid params",
+				Message: "Invalid params",
 			})
 		return
 	}
@@ -32,7 +32,7 @@ func (ser *rpcServer) getTransaction(ctx context.Context, conn *requestContext, 
 			req.ID,
 			&jsonrpc2.Error{
 				Code:    jsonrpc2.CodeInternalError,
-				Message: "internal error",
+				Message: "Internal error",
 			})
 		return
 	}
@@ -49,7 +49,7 @@ func (ser *rpcServer) getTransaction(ctx context.Context, conn *requestContext, 
 				req.ID,
 				&jsonrpc2.Error{
 					Code:    jsonrpc2.CodeInternalError,
-					Message: "internal error",
+					Message: "Internal error",
 				})
 			return
 		}
@@ -68,7 +68,7 @@ func (ser *rpcServer) getTransaction(ctx context.Context, conn *requestContext, 
 				req.ID,
 				&jsonrpc2.Error{
 					Code:    jsonrpc2.CodeInternalError,
-					Message: "internal error",
+					Message: "Internal error",
 				})
 			return
 		}
@@ -88,7 +88,7 @@ func (ser *rpcServer) getTransaction(ctx context.Context, conn *requestContext, 
 				req.ID,
 				&jsonrpc2.Error{
 					Code:    jsonrpc2.CodeInternalError,
-					Message: "internal error",
+					Message: "Internal error",
 				})
 			return
 		}

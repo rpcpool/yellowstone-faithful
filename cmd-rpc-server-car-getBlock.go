@@ -51,7 +51,7 @@ func (ser *rpcServer) getBlock(ctx context.Context, conn *requestContext, req *j
 			req.ID,
 			&jsonrpc2.Error{
 				Code:    jsonrpc2.CodeInvalidParams,
-				Message: "invalid params",
+				Message: "Invalid params",
 			})
 		return
 	}
@@ -65,7 +65,7 @@ func (ser *rpcServer) getBlock(ctx context.Context, conn *requestContext, req *j
 			req.ID,
 			&jsonrpc2.Error{
 				Code:    jsonrpc2.CodeInternalError,
-				Message: "failed to get block",
+				Message: "Failed to get block",
 			})
 		return
 	}
@@ -116,7 +116,7 @@ func (ser *rpcServer) getBlock(ctx context.Context, conn *requestContext, req *j
 				req.ID,
 				&jsonrpc2.Error{
 					Code:    jsonrpc2.CodeInternalError,
-					Message: "internal error",
+					Message: "Internal error",
 				})
 			return
 		}
@@ -133,7 +133,7 @@ func (ser *rpcServer) getBlock(ctx context.Context, conn *requestContext, req *j
 				req.ID,
 				&jsonrpc2.Error{
 					Code:    jsonrpc2.CodeInternalError,
-					Message: "internal error",
+					Message: "Internal error",
 				})
 			return
 		}
@@ -149,7 +149,7 @@ func (ser *rpcServer) getBlock(ctx context.Context, conn *requestContext, req *j
 						req.ID,
 						&jsonrpc2.Error{
 							Code:    jsonrpc2.CodeInternalError,
-							Message: "internal error",
+							Message: "Internal error",
 						})
 					return
 				}
@@ -177,7 +177,7 @@ func (ser *rpcServer) getBlock(ctx context.Context, conn *requestContext, req *j
 						req.ID,
 						&jsonrpc2.Error{
 							Code:    jsonrpc2.CodeInternalError,
-							Message: "internal error",
+							Message: "Internal error",
 						})
 					return
 				}
@@ -190,7 +190,7 @@ func (ser *rpcServer) getBlock(ctx context.Context, conn *requestContext, req *j
 						req.ID,
 						&jsonrpc2.Error{
 							Code:    jsonrpc2.CodeInternalError,
-							Message: "internal error",
+							Message: "Internal error",
 						})
 					return
 				}
@@ -220,7 +220,7 @@ func (ser *rpcServer) getBlock(ctx context.Context, conn *requestContext, req *j
 						req.ID,
 						&jsonrpc2.Error{
 							Code:    jsonrpc2.CodeInternalError,
-							Message: "internal error",
+							Message: "Internal error",
 						})
 					return
 				}
@@ -240,7 +240,7 @@ func (ser *rpcServer) getBlock(ctx context.Context, conn *requestContext, req *j
 						req.ID,
 						&jsonrpc2.Error{
 							Code:    jsonrpc2.CodeInternalError,
-							Message: "internal error",
+							Message: "Internal error",
 						})
 					return
 				}
@@ -270,7 +270,7 @@ func (ser *rpcServer) getBlock(ctx context.Context, conn *requestContext, req *j
 					req.ID,
 					&jsonrpc2.Error{
 						Code:    jsonrpc2.CodeInternalError,
-						Message: "internal error",
+						Message: "Internal error",
 					})
 				return
 			}
@@ -284,7 +284,7 @@ func (ser *rpcServer) getBlock(ctx context.Context, conn *requestContext, req *j
 					req.ID,
 					&jsonrpc2.Error{
 						Code:    jsonrpc2.CodeInternalError,
-						Message: "internal error",
+						Message: "Internal error",
 					})
 				return
 			}
