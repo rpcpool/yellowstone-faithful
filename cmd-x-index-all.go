@@ -75,7 +75,7 @@ func newCmd_Index_all() *cli.Command {
 				spew.Dump(indexPaths)
 				klog.Info("Index created")
 				if verify {
-					panic("not implemented")
+					return verifyAllIndexes(context.Background(), carPath, indexPaths)
 				}
 			}
 			return nil
@@ -127,7 +127,6 @@ func createAllIndexes(
 		return nil, fmt.Errorf("failed to get car file size: %w", err)
 	}
 
-	// TODO: use another way to precisely count the number of solana Blocks in the CAR file.
 	klog.Infof("Counting items in car file...")
 	numItems, err := carCountItemsByFirstByte(carPath)
 	if err != nil {
@@ -498,4 +497,266 @@ func (b *Builder_SlotToCid) Seal(ctx context.Context, carPath string, rootCid ci
 		return "", fmt.Errorf("failed to seal slot_to_cid index: %w", err)
 	}
 	return indexFilePath, nil
+}
+
+func verifyAllIndexes(
+	ctx context.Context,
+	carPath string,
+	indexes *IndexPaths,
+) error {
+	// Check if the CAR file exists:
+	exists, err := fileExists(carPath)
+	if err != nil {
+		return fmt.Errorf("failed to check if CAR file exists: %w", err)
+	}
+	if !exists {
+		return fmt.Errorf("CAR file %q does not exist", carPath)
+	}
+
+	carFile, err := os.Open(carPath)
+	if err != nil {
+		return fmt.Errorf("failed to open car file: %w", err)
+	}
+	defer carFile.Close()
+
+	rd, err := newCarReader(carFile)
+	if err != nil {
+		return fmt.Errorf("failed to create car reader: %w", err)
+	}
+	// check it has 1 root
+	if len(rd.header.Roots) != 1 {
+		return fmt.Errorf("car file must have exactly 1 root, but has %d", len(rd.header.Roots))
+	}
+
+	cid_to_offset, err := OpenIndex_CidToOffset(
+		indexes.CidToOffset,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to open cid_to_offset index: %w", err)
+	}
+	defer cid_to_offset.Close()
+
+	slot_to_cid, err := OpenIndex_SlotToCid(
+		indexes.SlotToCid,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to open slot_to_cid index: %w", err)
+	}
+	defer slot_to_cid.Close()
+
+	sig_to_cid, err := OpenIndex_SigToCid(
+		indexes.SignatureToCid,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to open sig_to_cid index: %w", err)
+	}
+	defer sig_to_cid.Close()
+
+	totalOffset := uint64(0)
+	{
+		var buf bytes.Buffer
+		if err = carv1.WriteHeader(rd.header, &buf); err != nil {
+			return err
+		}
+		totalOffset = uint64(buf.Len())
+	}
+
+	numIndexedOffsets := uint64(0)
+	numIndexedBlocks := uint64(0)
+	numIndexedTransactions := uint64(0)
+	klog.Infof("Verifying indexes...")
+	for {
+		_cid, sectionLength, block, err := rd.NextNode()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return err
+		}
+
+		// klog.Infof("key: %s, offset: %d", bin.FormatByteSlice(c.Bytes()), totalOffset)
+
+		offset, err := cid_to_offset.Get(_cid)
+		if err != nil {
+			return fmt.Errorf("failed to lookup offset for %s: %w", _cid, err)
+		}
+		if offset != totalOffset {
+			return fmt.Errorf("offset mismatch for %s: %d != %d", _cid, offset, totalOffset)
+		}
+
+		numIndexedOffsets++
+
+		kind := iplddecoders.Kind(block.RawData()[1])
+		switch kind {
+		case iplddecoders.KindBlock:
+			{
+				block, err := iplddecoders.DecodeBlock(block.RawData())
+				if err != nil {
+					return fmt.Errorf("failed to decode block: %w", err)
+				}
+
+				got, err := slot_to_cid.Get(uint64(block.Slot))
+				if err != nil {
+					return fmt.Errorf("failed to index slot to cid: %w", err)
+				}
+				if !got.Equals(_cid) {
+					return fmt.Errorf("slot to cid mismatch for %d: expected cid %s, got %s", block.Slot, _cid, got)
+				}
+				numIndexedBlocks++
+			}
+		case iplddecoders.KindTransaction:
+			{
+				txNode, err := iplddecoders.DecodeTransaction(block.RawData())
+				if err != nil {
+					return fmt.Errorf("failed to decode transaction: %w", err)
+				}
+
+				var tx solana.Transaction
+				txBuffer := new(bytes.Buffer)
+				txBuffer.Write(txNode.Data.Data)
+				if txNode.Data.Total > 1 {
+					// TODO: handle this case
+					continue
+				}
+				if err := bin.UnmarshalBin(&tx, txBuffer.Bytes()); err != nil {
+					return fmt.Errorf("failed to unmarshal transaction: %w", err)
+				} else if len(tx.Signatures) == 0 {
+					panic("no signatures")
+				}
+				sig := tx.Signatures[0]
+
+				got, err := sig_to_cid.Get(sig)
+				if err != nil {
+					return fmt.Errorf("failed to index signature to cid: %w", err)
+				}
+				if !got.Equals(_cid) {
+					return fmt.Errorf("sig to cid mismatch for sig %s: expected cid %s, got %s", sig, _cid, got)
+				}
+				numIndexedTransactions++
+			}
+		}
+
+		totalOffset += sectionLength
+
+		if numIndexedOffsets%100_000 == 0 {
+			printToStderr(".")
+		}
+	}
+	printToStderr("\n")
+	klog.Infof(
+		"Verified %s offsets, %s blocks, %s transactions",
+		humanize.Comma(int64(numIndexedOffsets)),
+		humanize.Comma(int64(numIndexedBlocks)),
+		humanize.Comma(int64(numIndexedTransactions)),
+	)
+
+	return nil
+}
+
+type Index_CidToOffset struct {
+	file *os.File
+	db   *compactindex.DB
+}
+
+func OpenIndex_CidToOffset(
+	indexFilePath string,
+) (*Index_CidToOffset, error) {
+	indexFile, err := os.Open(indexFilePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open index file: %w", err)
+	}
+
+	index, err := compactindex.Open(indexFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open index: %w", err)
+	}
+
+	return &Index_CidToOffset{
+		file: indexFile,
+		db:   index,
+	}, nil
+}
+
+func (i *Index_CidToOffset) Get(cid_ cid.Cid) (uint64, error) {
+	offset, err := findOffsetFromCid(i.db, cid_)
+	if err != nil {
+		return 0, fmt.Errorf("failed to lookup offset for %s: %w", cid_, err)
+	}
+	return offset, nil
+}
+
+func (i *Index_CidToOffset) Close() error {
+	return i.file.Close()
+}
+
+type Index_SlotToCid struct {
+	file *os.File
+	db   *compactindex36.DB
+}
+
+func OpenIndex_SlotToCid(
+	indexFilePath string,
+) (*Index_SlotToCid, error) {
+	indexFile, err := os.Open(indexFilePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open index file: %w", err)
+	}
+
+	index, err := compactindex36.Open(indexFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open index: %w", err)
+	}
+
+	return &Index_SlotToCid{
+		file: indexFile,
+		db:   index,
+	}, nil
+}
+
+func (i *Index_SlotToCid) Get(slot uint64) (cid.Cid, error) {
+	cid_, err := findCidFromSlot(i.db, slot)
+	if err != nil {
+		return cid.Undef, fmt.Errorf("failed to lookup cid for slot %d: %w", slot, err)
+	}
+	return cid_, nil
+}
+
+func (i *Index_SlotToCid) Close() error {
+	return i.file.Close()
+}
+
+type Index_SigToCid struct {
+	file *os.File
+	db   *compactindex36.DB
+}
+
+func OpenIndex_SigToCid(
+	indexFilePath string,
+) (*Index_SigToCid, error) {
+	indexFile, err := os.Open(indexFilePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open index file: %w", err)
+	}
+
+	index, err := compactindex36.Open(indexFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open index: %w", err)
+	}
+
+	return &Index_SigToCid{
+		file: indexFile,
+		db:   index,
+	}, nil
+}
+
+func (i *Index_SigToCid) Get(sig solana.Signature) (cid.Cid, error) {
+	cid_, err := findCidFromSignature(i.db, sig)
+	if err != nil {
+		return cid.Undef, fmt.Errorf("failed to lookup cid for sig %x: %w", sig, err)
+	}
+	return cid_, nil
+}
+
+func (i *Index_SigToCid) Close() error {
+	return i.file.Close()
 }
