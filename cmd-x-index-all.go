@@ -50,6 +50,18 @@ func newCmd_Index_all() *cli.Command {
 			indexDir := c.Args().Get(1)
 			tmpDir := c.String("tmp-dir")
 
+			if carPath == "" {
+				return fmt.Errorf("missing car-path argument")
+			}
+			if indexDir == "" {
+				return fmt.Errorf("missing index-dir argument")
+			}
+			if ok, err := IsDir(indexDir); err != nil {
+				return err
+			} else if !ok {
+				return fmt.Errorf("index-dir is not a directory")
+			}
+
 			{
 				startedAt := time.Now()
 				defer func() {
@@ -69,6 +81,14 @@ func newCmd_Index_all() *cli.Command {
 			return nil
 		},
 	}
+}
+
+func IsDir(path string) (bool, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return false, err
+	}
+	return info.IsDir(), nil
 }
 
 func createAllIndexes(

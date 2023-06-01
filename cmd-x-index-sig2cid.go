@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/urfave/cli/v2"
@@ -34,6 +35,12 @@ func newCmd_Index_sig2cid() *cli.Command {
 			carPath := c.Args().Get(0)
 			indexDir := c.Args().Get(1)
 			tmpDir := c.String("tmp-dir")
+
+			if ok, err := IsDir(indexDir); err != nil {
+				return err
+			} else if !ok {
+				return fmt.Errorf("index-dir is not a directory")
+			}
 
 			{
 				startedAt := time.Now()
