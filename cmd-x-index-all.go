@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/davecgh/go-spew/spew"
+	"github.com/dustin/go-humanize"
 	bin "github.com/gagliardetto/binary"
 	"github.com/gagliardetto/solana-go"
 	"github.com/ipfs/go-cid"
@@ -119,9 +120,10 @@ func createAllIndexes(
 		kinds = append(kinds, kind)
 	}
 	for _, kind := range kinds {
-		klog.Infof("  %s: %d items", iplddecoders.Kind(kind), numItems[kind])
+		klog.Infof("  %s: %s items", iplddecoders.Kind(kind), humanize.Comma(int64(numItems[kind])))
 		numTotalItems += numItems[kind]
 	}
+	klog.Infof("Total: %s items", humanize.Comma(int64(numTotalItems)))
 
 	cid_to_offset, err := NewBuilder_CidToOffset(
 		tmpDir,
@@ -168,6 +170,7 @@ func createAllIndexes(
 	numIndexedOffsets := uint64(0)
 	numIndexedBlocks := uint64(0)
 	numIndexedTransactions := uint64(0)
+	lastCheckpoint := time.Now()
 	klog.Infof("Indexing...")
 	for {
 		_cid, sectionLength, block, err := rd.NextNode()
@@ -232,9 +235,23 @@ func createAllIndexes(
 
 		totalOffset += sectionLength
 
-		numIndexedOffsets++
 		if numIndexedOffsets%100_000 == 0 {
 			printToStderr(".")
+		}
+		if numIndexedOffsets%10_000_000 == 0 {
+			timeFor10_000_000 := time.Since(lastCheckpoint)
+			howMany10_000_000 := (numTotalItems - numIndexedOffsets) / 10_000_000
+			eta := timeFor10_000_000 * time.Duration(howMany10_000_000)
+
+			printToStderr(
+				"\n" + greenBackground(
+					fmt.Sprintf(" %s (%s) ",
+						humanize.Comma(int64(numIndexedOffsets)),
+						time.Since(lastCheckpoint),
+					),
+				) + "ETA: " + eta.String() + "\n",
+			)
+			lastCheckpoint = time.Now()
 		}
 	}
 	klog.Infof("Indexed %d offsets, %d blocks, %d transactions", numIndexedOffsets, numIndexedBlocks, numIndexedTransactions)
@@ -269,6 +286,14 @@ func createAllIndexes(
 	}
 
 	return paths, nil
+}
+
+func greenBackground(s string) string {
+	return blackText(fmt.Sprintf("\x1b[42m%s\x1b[0m", s))
+}
+
+func blackText(s string) string {
+	return fmt.Sprintf("\x1b[30m%s\x1b[0m", s)
 }
 
 type IndexPaths struct {

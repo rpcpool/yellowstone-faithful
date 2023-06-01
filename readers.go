@@ -217,6 +217,7 @@ func carCountItemsByFirstByte(carPath string) (map[byte]uint64, error) {
 		return nil, fmt.Errorf("failed to open car file: %w", err)
 	}
 
+	numTotalItems := uint64(0)
 	counts := make(map[byte]uint64)
 	for {
 		_, _, block, err := rd.NextNode()
@@ -229,6 +230,11 @@ func carCountItemsByFirstByte(carPath string) (map[byte]uint64, error) {
 		// the first data byte is the block type (after the CBOR tag)
 		firstDataByte := block.RawData()[1]
 		counts[firstDataByte]++
+		numTotalItems++
+
+		if numTotalItems%1_000_000 == 0 {
+			printToStderr(".")
+		}
 	}
 
 	return counts, nil
