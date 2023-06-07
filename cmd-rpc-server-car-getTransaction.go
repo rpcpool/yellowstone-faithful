@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/sourcegraph/jsonrpc2"
 	"k8s.io/klog/v2"
@@ -78,7 +77,7 @@ func (ser *rpcServer) getTransaction(ctx context.Context, conn *requestContext, 
 		}
 		if tx.Message.IsVersioned() {
 			// TODO: use the actual version
-			response.Version = fmt.Sprintf("%d", tx.Message.GetVersion())
+			response.Version = tx.Message.GetVersion()
 		} else {
 			response.Version = "legacy"
 		}

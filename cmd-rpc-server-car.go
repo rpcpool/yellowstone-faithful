@@ -517,7 +517,7 @@ type GetTransactionResponse struct {
 	Meta        any     `json:"meta"`
 	Slot        *uint64 `json:"slot,omitempty"`
 	Transaction []any   `json:"transaction"`
-	Version     string  `json:"version"`
+	Version     any     `json:"version"`
 }
 
 func parseTransactionAndMetaFromNode(
