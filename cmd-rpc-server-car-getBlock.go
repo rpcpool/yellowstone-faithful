@@ -247,7 +247,6 @@ func (ser *rpcServer) getBlock(ctx context.Context, conn *requestContext, req *j
 					return
 				}
 				if tx.Message.IsVersioned() {
-					// TODO: use the actual version
 					txResp.Version = tx.Message.GetVersion()
 				} else {
 					txResp.Version = "legacy"

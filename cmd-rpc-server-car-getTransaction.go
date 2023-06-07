@@ -76,7 +76,6 @@ func (ser *rpcServer) getTransaction(ctx context.Context, conn *requestContext, 
 			return
 		}
 		if tx.Message.IsVersioned() {
-			// TODO: use the actual version
 			response.Version = tx.Message.GetVersion()
 		} else {
 			response.Version = "legacy"
