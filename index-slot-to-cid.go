@@ -206,12 +206,14 @@ func VerifyIndex_slot2cid(ctx context.Context, carPath string, indexFilePath str
 	return nil
 }
 
+// uint64ToLeBytes converts a uint64 to a little-endian byte slice.
 func uint64ToLeBytes(n uint64) []byte {
 	b := make([]byte, 8)
 	binary.LittleEndian.PutUint64(b, n)
 	return b
 }
 
+// findCidFromSlot finds the CID for the given slot number in the given index.
 func findCidFromSlot(db *compactindex36.DB, slotNum uint64) (cid.Cid, error) {
 	slotBytes := uint64ToLeBytes(uint64(slotNum))
 	bucket, err := db.LookupBucket(slotBytes)

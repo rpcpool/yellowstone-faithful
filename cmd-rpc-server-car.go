@@ -10,6 +10,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	bin "github.com/gagliardetto/binary"
@@ -19,6 +20,7 @@ import (
 	"github.com/ipld/go-car/util"
 	carv2 "github.com/ipld/go-car/v2"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	jsoniter "github.com/json-iterator/go"
 	"github.com/rpcpool/yellowstone-faithful/compactindex"
 	"github.com/rpcpool/yellowstone-faithful/compactindex36"
 	"github.com/sourcegraph/jsonrpc2"
@@ -210,9 +212,67 @@ func (c *requestContext) ReplyWithError(ctx context.Context, id jsonrpc2.ID, res
 	return nil
 }
 
+func toMapAny(v any) (map[string]any, error) {
+	b, err := jsoniter.ConfigCompatibleWithStandardLibrary.Marshal(v)
+	if err != nil {
+		return nil, err
+	}
+	var m map[string]any
+	if err := jsoniter.ConfigCompatibleWithStandardLibrary.Unmarshal(b, &m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+// MapToCamelCase converts a map[string]interface{} to a map[string]interface{} with camelCase keys
+func MapToCamelCase(m map[string]any) map[string]any {
+	newMap := make(map[string]any)
+	for k, v := range m {
+		newMap[toLowerCamelCase(k)] = v
+
+		if m, ok := v.(map[string]any); ok {
+			newMap[toLowerCamelCase(k)] = MapToCamelCase(m)
+		}
+		if v, ok := v.([]any); ok {
+			for i, vv := range v {
+				if m, ok := vv.(map[string]any); ok {
+					v[i] = MapToCamelCase(m)
+				}
+			}
+		}
+	}
+	return newMap
+}
+
+func toLowerCamelCase(v string) string {
+	pascal := bin.ToPascalCase(v)
+	if len(pascal) == 0 {
+		return ""
+	}
+	if len(pascal) == 1 {
+		return strings.ToLower(pascal)
+	}
+	return strings.ToLower(pascal[:1]) + pascal[1:]
+}
+
 // Reply(ctx context.Context, id ID, result interface{}) error {
-func (c *requestContext) Reply(ctx context.Context, id jsonrpc2.ID, result interface{}) error {
-	resRaw, err := json.Marshal(result)
+func (c *requestContext) Reply(
+	ctx context.Context,
+	id jsonrpc2.ID,
+	result interface{},
+	remapCallback func(map[string]any) map[string]any,
+) error {
+	mm, err := toMapAny(result)
+	if err != nil {
+		return err
+	}
+	result = MapToCamelCase(mm)
+	if remapCallback != nil {
+		if mp, ok := result.(map[string]any); ok {
+			result = remapCallback(mp)
+		}
+	}
+	resRaw, err := jsoniter.ConfigCompatibleWithStandardLibrary.Marshal(result)
 	if err != nil {
 		return err
 	}
@@ -453,9 +513,9 @@ type GetBlockResponse struct {
 
 type GetTransactionResponse struct {
 	// TODO: use same format as solana
-	Blocktime   *uint64 `json:"blockTime"`
+	Blocktime   *uint64 `json:"blockTime,omitempty"`
 	Meta        any     `json:"meta"`
-	Slot        uint64  `json:"slot"`
+	Slot        *uint64 `json:"slot,omitempty"`
 	Transaction []any   `json:"transaction"`
 	Version     string  `json:"version"`
 }
@@ -516,7 +576,5 @@ func parseTransactionAndMetaFromNode(
 
 func calcBlockHeight(slot uint64) uint64 {
 	// TODO: fix this
-	// a block contains 43,200 slots
-	// return the remainder of the division
-	return slot % 43200
+	return 0
 }

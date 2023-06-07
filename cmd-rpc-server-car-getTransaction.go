@@ -8,6 +8,10 @@ import (
 	"k8s.io/klog/v2"
 )
 
+func ptrToUint64(v uint64) *uint64 {
+	return &v
+}
+
 func (ser *rpcServer) getTransaction(ctx context.Context, conn *requestContext, req *jsonrpc2.Request) {
 	params, err := parseGetTransactionRequest(req.Params)
 	if err != nil {
@@ -39,7 +43,7 @@ func (ser *rpcServer) getTransaction(ctx context.Context, conn *requestContext, 
 
 	var response GetTransactionResponse
 
-	response.Slot = uint64(transactionNode.Slot)
+	response.Slot = ptrToUint64(uint64(transactionNode.Slot))
 	{
 		block, err := ser.GetBlock(ctx, uint64(transactionNode.Slot))
 		if err != nil {
@@ -97,7 +101,12 @@ func (ser *rpcServer) getTransaction(ctx context.Context, conn *requestContext, 
 	}
 
 	// reply with the data
-	err = conn.Reply(ctx, req.ID, response)
+	err = conn.Reply(
+		ctx,
+		req.ID,
+		response,
+		nil,
+	)
 	if err != nil {
 		klog.Errorf("failed to reply: %v", err)
 	}

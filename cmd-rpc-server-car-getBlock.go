@@ -195,6 +195,28 @@ func (ser *rpcServer) getBlock(ctx context.Context, conn *requestContext, req *j
 					return
 				}
 				if _, ok := m["rewards"]; ok {
+					// iter over rewards as an array of maps, and add a "commission" field to each = nil
+					rewardsAsArray := m["rewards"].([]any)
+					for _, reward := range rewardsAsArray {
+						rewardAsMap := reward.(map[string]any)
+						rewardAsMap["commission"] = nil
+
+						// if it has a post_balance field, convert it to postBalance
+						if _, ok := rewardAsMap["post_balance"]; ok {
+							rewardAsMap["postBalance"] = rewardAsMap["post_balance"]
+							delete(rewardAsMap, "post_balance")
+						}
+						// if it has a reward_type field, convert it to rewardType
+						if _, ok := rewardAsMap["reward_type"]; ok {
+							rewardAsMap["rewardType"] = rewardAsMap["reward_type"]
+							delete(rewardAsMap, "reward_type")
+
+							// if it's a float, convert to int and use rentTypeToString
+							if asFloat, ok := rewardAsMap["rewardType"].(float64); ok {
+								rewardAsMap["rewardType"] = rentTypeToString(int(asFloat))
+							}
+						}
+					}
 					rewards = m["rewards"]
 				} else {
 					klog.Errorf("did not find rewards field in rewards")
@@ -204,12 +226,12 @@ func (ser *rpcServer) getBlock(ctx context.Context, conn *requestContext, req *j
 	}
 	{
 		for _, transactionNode := range allTransactionNodes {
-			var response GetTransactionResponse
+			var txResp GetTransactionResponse
 
-			response.Slot = uint64(transactionNode.Slot)
-			if blocktime != 0 {
-				response.Blocktime = &blocktime
-			}
+			// response.Slot = uint64(transactionNode.Slot)
+			// if blocktime != 0 {
+			// 	response.Blocktime = &blocktime
+			// }
 
 			{
 				tx, meta, err := parseTransactionAndMetaFromNode(transactionNode, ser.GetDataFrameByCid)
@@ -226,11 +248,11 @@ func (ser *rpcServer) getBlock(ctx context.Context, conn *requestContext, req *j
 				}
 				if tx.Message.IsVersioned() {
 					// TODO: use the actual version
-					response.Version = fmt.Sprintf("%d", tx.Message.GetVersion())
+					txResp.Version = fmt.Sprintf("%d", tx.Message.GetVersion())
 				} else {
-					response.Version = "legacy"
+					txResp.Version = "legacy"
 				}
-				response.Meta = meta
+				txResp.Meta = meta
 
 				b64Tx, err := tx.ToBase64()
 				if err != nil {
@@ -245,10 +267,10 @@ func (ser *rpcServer) getBlock(ctx context.Context, conn *requestContext, req *j
 					return
 				}
 
-				response.Transaction = []any{b64Tx, "base64"}
+				txResp.Transaction = []any{b64Tx, "base64"}
 			}
 
-			allTransactions = append(allTransactions, response)
+			allTransactions = append(allTransactions, txResp)
 		}
 	}
 	var blockResp GetBlockResponse
@@ -295,8 +317,36 @@ func (ser *rpcServer) getBlock(ctx context.Context, conn *requestContext, req *j
 
 	// TODO: get all the transactions from the block
 	// reply with the data
-	err = conn.Reply(ctx, req.ID, blockResp)
+	err = conn.Reply(
+		ctx,
+		req.ID,
+		blockResp,
+		func(m map[string]any) map[string]any {
+			return m
+		},
+	)
 	if err != nil {
 		klog.Errorf("failed to reply: %v", err)
+	}
+}
+
+//	pub enum RewardType {
+//	    Fee,
+//	    Rent,
+//	    Staking,
+//	    Voting,
+//	}
+func rentTypeToString(typ int) string {
+	switch typ {
+	case 1:
+		return "Fee"
+	case 2:
+		return "Rent"
+	case 3:
+		return "Staking"
+	case 4:
+		return "Voting"
+	default:
+		return "Unknown"
 	}
 }
