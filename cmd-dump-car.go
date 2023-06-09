@@ -15,9 +15,10 @@ import (
 	bin "github.com/gagliardetto/binary"
 	"github.com/gagliardetto/solana-go"
 	"github.com/ipld/go-car"
+	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
+	solanablockrewards "github.com/rpcpool/yellowstone-faithful/solana-block-rewards"
+	solanatxmetaparsers "github.com/rpcpool/yellowstone-faithful/solana-tx-meta-parsers"
 	"github.com/urfave/cli/v2"
-	"go.firedancer.io/radiance/cmd/radiance/car/createcar/iplddecoders"
-	"go.firedancer.io/radiance/pkg/blockstore"
 	"k8s.io/klog/v2"
 )
 
@@ -185,7 +186,7 @@ func newCmd_DumpCar() *cli.Command {
 								if err != nil {
 									panic(err)
 								}
-								status, err := blockstore.ParseAnyTransactionStatusMeta(uncompressedMeta)
+								status, err := solanatxmetaparsers.ParseAnyTransactionStatusMeta(uncompressedMeta)
 								if err != nil {
 									panic(err)
 								}
@@ -252,7 +253,7 @@ func newCmd_DumpCar() *cli.Command {
 									panic(err)
 								}
 								// try decoding as protobuf
-								parsed, err := blockstore.ParseRewards(uncompressedRewards)
+								parsed, err := solanablockrewards.ParseRewards(uncompressedRewards)
 								if err != nil {
 									// TODO: add support for legacy rewards format
 									fmt.Println("Rewards are not protobuf: " + err.Error())

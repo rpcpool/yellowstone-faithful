@@ -18,8 +18,8 @@ import (
 	carv1 "github.com/ipld/go-car"
 	"github.com/rpcpool/yellowstone-faithful/compactindex"
 	"github.com/rpcpool/yellowstone-faithful/compactindex36"
+	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
 	"github.com/urfave/cli/v2"
-	"go.firedancer.io/radiance/cmd/radiance/car/createcar/iplddecoders"
 	"k8s.io/klog/v2"
 )
 

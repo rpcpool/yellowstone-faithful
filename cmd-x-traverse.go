@@ -11,9 +11,9 @@ import (
 	"github.com/gagliardetto/solana-go"
 	"github.com/ipfs/go-cid"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
+	solanatxmetaparsers "github.com/rpcpool/yellowstone-faithful/solana-tx-meta-parsers"
 	"github.com/urfave/cli/v2"
-	"go.firedancer.io/radiance/cmd/radiance/car/createcar/ipld/ipldbindcode"
-	"go.firedancer.io/radiance/pkg/blockstore"
 	"k8s.io/klog/v2"
 )
 
@@ -137,7 +137,7 @@ func newCmd_XTraverse() *cli.Command {
 											if err != nil {
 												panic(err)
 											}
-											status, err := blockstore.ParseTransactionStatusMeta(uncompressedMeta)
+											status, err := solanatxmetaparsers.ParseTransactionStatusMeta(uncompressedMeta)
 											if err != nil {
 												panic(err)
 											}

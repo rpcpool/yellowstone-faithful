@@ -11,9 +11,9 @@ import (
 
 	"github.com/gagliardetto/solana-go"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
+	solanablockrewards "github.com/rpcpool/yellowstone-faithful/solana-block-rewards"
 	"github.com/sourcegraph/jsonrpc2"
-	"go.firedancer.io/radiance/cmd/radiance/car/createcar/ipld/ipldbindcode"
-	"go.firedancer.io/radiance/pkg/blockstore"
 	"golang.org/x/sync/errgroup"
 	"k8s.io/klog/v2"
 )
@@ -162,7 +162,7 @@ func (ser *rpcServer) getBlock(ctx context.Context, conn *requestContext, req *j
 			panic(err)
 		}
 		// try decoding as protobuf
-		actualRewards, err := blockstore.ParseRewards(uncompressedRewards)
+		actualRewards, err := solanablockrewards.ParseRewards(uncompressedRewards)
 		if err != nil {
 			// TODO: add support for legacy rewards format
 			fmt.Println("Rewards are not protobuf: " + err.Error())

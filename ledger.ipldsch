@@ -1,0 +1,63 @@
+type Epoch struct {
+  kind   Int
+  epoch  Int
+  subsets [ Link ] # [ &Subset ]
+} representation tuple
+
+type Subset struct {
+  kind   Int
+  first  Int
+  last   Int
+  blocks [ Link ] # [ &Block ]
+} representation tuple
+
+type Block struct {
+  kind      Int
+  slot      Int
+  shredding [ Shredding ]
+  entries   [ Link ] # [ &Entry ]
+  meta      SlotMeta
+  rewards   Link     # &Rewards
+} representation tuple
+
+type Rewards struct {
+  kind       Int
+  slot       Int
+  data       DataFrame
+} representation tuple
+
+type SlotMeta struct {
+  parent_slot         Int
+  blocktime           Int
+} representation tuple
+
+type Shredding struct {
+  entryEndIdx Int
+  shredEndIdx Int
+} representation tuple
+
+type Entry struct {
+  kind         Int
+  numHashes    Int
+  hash         Hash
+  transactions [ Link ] # [ &Transaction ]
+} representation tuple
+
+type Transaction struct {
+  kind     Int
+  data     DataFrame
+  metadata DataFrame
+  slot     Int
+} representation tuple
+
+type Hash bytes
+type Buffer bytes
+
+type DataFrame struct {
+  kind  Int
+  hash  Int
+  index Int
+  total Int
+  data  Buffer
+  next  [ Link ] # [ &DataFrame ]
+} representation tuple

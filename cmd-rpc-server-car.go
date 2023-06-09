@@ -23,11 +23,11 @@ import (
 	jsoniter "github.com/json-iterator/go"
 	"github.com/rpcpool/yellowstone-faithful/compactindex"
 	"github.com/rpcpool/yellowstone-faithful/compactindex36"
+	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
+	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
+	solanatxmetaparsers "github.com/rpcpool/yellowstone-faithful/solana-tx-meta-parsers"
 	"github.com/sourcegraph/jsonrpc2"
 	"github.com/urfave/cli/v2"
-	"go.firedancer.io/radiance/cmd/radiance/car/createcar/ipld/ipldbindcode"
-	"go.firedancer.io/radiance/cmd/radiance/car/createcar/iplddecoders"
-	"go.firedancer.io/radiance/pkg/blockstore"
 	"k8s.io/klog/v2"
 )
 
@@ -563,7 +563,7 @@ func parseTransactionAndMetaFromNode(
 				klog.Errorf("failed to decompress metadata: %v", err)
 				return
 			}
-			status, err := blockstore.ParseAnyTransactionStatusMeta(uncompressedMeta)
+			status, err := solanatxmetaparsers.ParseAnyTransactionStatusMeta(uncompressedMeta)
 			if err != nil {
 				klog.Errorf("failed to parse metadata: %v", err)
 				return
