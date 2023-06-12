@@ -1,6 +1,10 @@
 name: main
 
-on: [tags, pull_request]
+on:
+  pull_request:
+  push:
+    tags:
+      - '*'
 
 jobs:
   build:
