@@ -1,6 +1,6 @@
 //go:build !linux
 
-package compactindex
+package compactindex36
 
 import (
 	"os"
