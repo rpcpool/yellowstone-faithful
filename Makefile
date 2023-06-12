@@ -5,7 +5,7 @@ IPLD_SCHEMA_PATH := ledger.ipldsch
 compile:
 	@echo "\nCompiling faithful-cli binary for current platform ..."
 	go build -o ./bin/faithful-cli .
-compile-all: compile-linux compile-mac
+compile-all: compile-linux compile-mac compile-windows
 compile-linux:
 	@echo "\nCompiling faithful-cli binary for linux amd64 ..."
 	GOOS=linux GOARCH=amd64 go build -o ./bin/linux/amd64/faithful-cli_linux_amd64 .

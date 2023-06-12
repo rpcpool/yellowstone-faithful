@@ -1,5 +1,3 @@
-//go:build unix
-
 package compactindex36
 
 // This is a fork of the original project at https://github.com/firedancer-io/radiance/tree/main/pkg/compactindex

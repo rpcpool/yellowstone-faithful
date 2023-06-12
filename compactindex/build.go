@@ -1,5 +1,3 @@
-//go:build unix
-
 package compactindex
 
 import (
@@ -46,7 +44,7 @@ func NewBuilder(dir string, numItems uint, targetFileSize uint64) (*Builder, err
 	buckets := make([]tempBucket, numBuckets)
 	for i := range buckets {
 		name := filepath.Join(dir, fmt.Sprintf("keys-%d", i))
-		f, err := os.OpenFile(name, os.O_CREATE|os.O_RDWR, 0666)
+		f, err := os.OpenFile(name, os.O_CREATE|os.O_RDWR, 0o666)
 		if err != nil {
 			return nil, err
 		}
