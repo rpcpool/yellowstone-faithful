@@ -1,7 +1,7 @@
 DEFAULT:compile
 
 IPLD_SCHEMA_PATH := ledger.ipldsch
-LD_FLAGS := "-X main.GitCommit=`git rev-parse HEAD` -X main.GitTag=`git symbolic-ref -q --short HEAD || git describe --tags --exact-match`"
+LD_FLAGS := "-X main.GitCommit=`git rev-parse HEAD` -X main.GitTag=`git symbolic-ref -q --short HEAD || git describe --tags --exact-match || git rev-parse HEAD`"
 
 compile:
 	@echo "\nCompiling faithful-cli binary for current platform ..."
