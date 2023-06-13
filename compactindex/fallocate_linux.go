@@ -1,10 +1,17 @@
+//go:build linux
+
 package compactindex
 
 import (
+	"fmt"
 	"os"
 	"syscall"
 )
 
 func fallocate(f *os.File, offset int64, size int64) error {
-	return syscall.Fallocate(int(f.Fd()), 0, offset, size)
+	err := syscall.Fallocate(int(f.Fd()), 0, offset, size)
+	if err != nil {
+		return fmt.Errorf("failure while linux fallocate: %w", err)
+	}
+	return nil
 }
