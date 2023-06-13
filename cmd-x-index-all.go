@@ -65,7 +65,7 @@ func newCmd_Index_all() *cli.Command {
 			{
 				startedAt := time.Now()
 				defer func() {
-					klog.Infof("Finished in %s", time.Since(startedAt))
+					klog.Infof("Took %s", time.Since(startedAt))
 				}()
 				klog.Infof("Creating all indexes for %s", carPath)
 				indexPaths, err := createAllIndexes(context.Background(), tmpDir, carPath, indexDir)
@@ -73,10 +73,11 @@ func newCmd_Index_all() *cli.Command {
 					return err
 				}
 				spew.Dump(indexPaths)
-				klog.Info("Index created")
+				klog.Info("Indexes created.")
 				if verify {
 					return verifyAllIndexes(context.Background(), carPath, indexPaths)
 				}
+				klog.Info("Skipping verification.")
 			}
 			return nil
 		},
