@@ -16,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"syscall"
 )
 
 // Builder creates new compactindex files.
@@ -93,6 +94,13 @@ func (b *Builder) Seal(ctx context.Context, f *os.File) (err error) {
 	// Create hole to leave space for bucket header table.
 	bucketTableLen := int64(b.NumBuckets) * bucketHdrLen
 	err = fallocate(f, headerSize, bucketTableLen)
+	if errors.Is(err, syscall.EOPNOTSUPP) {
+		// The underlying file system may not support fallocate
+		err = fake_fallocate(f, headerSize, bucketTableLen)
+		if err != nil {
+			return fmt.Errorf("failed to fake fallocate() bucket table: %w", err)
+		}
+	}
 	if err != nil {
 		return fmt.Errorf("failed to fallocate() bucket table: %w", err)
 	}

@@ -1,12 +1,11 @@
-//go:build !linux
-
-package compactindex
+package compactindex36
 
 import (
+	"fmt"
 	"os"
 )
 
-func fallocate(f *os.File, offset int64, size int64) error {
+func fake_fallocate(f *os.File, offset int64, size int64) error {
 	const blockSize = 4096
 	var zero [blockSize]byte
 
