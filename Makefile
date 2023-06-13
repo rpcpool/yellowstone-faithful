@@ -1,23 +1,24 @@
 DEFAULT:compile
 
 IPLD_SCHEMA_PATH := ledger.ipldsch
+LD_FLAGS := "-X main.GitCommit=`git rev-parse HEAD` -X main.GitTag=`git symbolic-ref -q --short HEAD || git describe --tags --exact-match`"
 
 compile:
 	@echo "\nCompiling faithful-cli binary for current platform ..."
-	go build -o ./bin/faithful-cli .
+	go build -ldflags=$(LD_FLAGS) -o ./bin/faithful-cli .
 compile-all: compile-linux compile-mac compile-windows
 compile-linux:
 	@echo "\nCompiling faithful-cli binary for linux amd64 ..."
-	GOOS=linux GOARCH=amd64 go build -o ./bin/linux/amd64/faithful-cli_linux_amd64 .
+	GOOS=linux GOARCH=amd64 go build -ldflags=$(LD_FLAGS) -o ./bin/linux/amd64/faithful-cli_linux_amd64 .
 compile-mac:
 	@echo "\nCompiling faithful-cli binary for mac amd64 ..."
-	GOOS=darwin GOARCH=amd64 go build -o ./bin/darwin/amd64/faithful-cli_darwin_amd64 .
+	GOOS=darwin GOARCH=amd64 go build -ldflags=$(LD_FLAGS) -o ./bin/darwin/amd64/faithful-cli_darwin_amd64 .
 
 	@echo "\nCompiling faithful-cli binary for mac arm64 ..."
-	GOOS=darwin GOARCH=arm64 go build -o ./bin/darwin/arm64/faithful-cli_darwin_arm64 .
+	GOOS=darwin GOARCH=arm64 go build -ldflags=$(LD_FLAGS) -o ./bin/darwin/arm64/faithful-cli_darwin_arm64 .
 compile-windows:
 	@echo "\nCompiling faithful-cli binary for windows amd64 ..."
-	GOOS=windows GOARCH=amd64 go build -o ./bin/windows-amd64/faithful-cli_windows_amd64
+	GOOS=windows GOARCH=amd64 go build -ldflags=$(LD_FLAGS) -o ./bin/windows-amd64/faithful-cli_windows_amd64
 test:
 	go test -v ./...
 bindcode: install-deps
