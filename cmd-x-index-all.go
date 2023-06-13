@@ -281,6 +281,8 @@ func createAllIndexes(
 		humanize.Comma(int64(numIndexedTransactions)),
 	)
 
+	klog.Infof("Preparing to seal indexes...")
+
 	rootCID := rd.header.Roots[0]
 	paths := &IndexPaths{}
 
@@ -293,21 +295,21 @@ func createAllIndexes(
 		if err != nil {
 			return nil, fmt.Errorf("failed to seal cid_to_offset index: %w", err)
 		}
-		klog.Infof("Sealed cid_to_offset index: %s", paths.CidToOffset)
+		klog.Infof("Successfully sealed cid_to_offset index: %s", paths.CidToOffset)
 
 		klog.Infof("Sealing slot_to_cid index...")
 		paths.SlotToCid, err = slot_to_cid.Seal(ctx, carPath, rootCID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to seal slot_to_cid index: %w", err)
 		}
-		klog.Infof("Sealed slot_to_cid index: %s", paths.SlotToCid)
+		klog.Infof("Successfully sealed slot_to_cid index: %s", paths.SlotToCid)
 
 		klog.Infof("Sealing sig_to_cid index...")
 		paths.SignatureToCid, err = sig_to_cid.Seal(ctx, carPath, rootCID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to seal sig_to_cid index: %w", err)
 		}
-		klog.Infof("Sealed sig_to_cid index: %s", paths.SignatureToCid)
+		klog.Infof("Successfully sealed sig_to_cid index: %s", paths.SignatureToCid)
 	}
 
 	return paths, nil
