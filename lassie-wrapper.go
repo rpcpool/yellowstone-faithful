@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/ipfs/go-cid"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/ipld/go-ipld-prime/storage"
+	"github.com/ipld/go-ipld-prime/storage/memstore"
 	"github.com/libp2p/go-libp2p"
 	"github.com/urfave/cli/v2"
 	"k8s.io/klog/v2"
@@ -141,4 +143,24 @@ func newLassieWrapper(cctx *cli.Context) (*lassieWrapper, error) {
 	return &lassieWrapper{
 		lassie: lassie,
 	}, nil
+}
+
+type WrappedMemStore struct {
+	*memstore.Store
+}
+
+func NewWrappedMemStore() *WrappedMemStore {
+	return &WrappedMemStore{Store: &memstore.Store{}}
+}
+
+func (w *WrappedMemStore) Each(ctx context.Context, cb func(cid.Cid, []byte) error) error {
+	for key, value := range w.Store.Bag {
+		if err := cb(cid.MustParse([]byte(key)), value); err != nil {
+			if errors.Is(err, ErrStopIteration) {
+				return nil
+			}
+			return err
+		}
+	}
+	return nil
 }
