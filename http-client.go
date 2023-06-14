@@ -9,14 +9,14 @@ import (
 )
 
 var (
-	defaultMaxIdleConnsPerHost = 50
-	defaultTimeout             = 5 * time.Minute
+	defaultMaxIdleConnsPerHost = 20
+	defaultTimeout             = 20 * time.Second
 	defaultKeepAlive           = 180 * time.Second
 )
 
 func newHTTPTransport() *http.Transport {
 	return &http.Transport{
-		IdleConnTimeout:     defaultTimeout,
+		IdleConnTimeout:     time.Minute,
 		MaxConnsPerHost:     defaultMaxIdleConnsPerHost,
 		MaxIdleConnsPerHost: defaultMaxIdleConnsPerHost,
 		Proxy:               http.ProxyFromEnvironment,
