@@ -1,10 +1,9 @@
 name: main
 
 on:
-  pull_request:
   push:
     tags:
-      - '*'
+      - "v*.*.*"
 
 jobs:
   build:
