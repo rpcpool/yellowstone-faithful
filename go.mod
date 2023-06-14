@@ -59,6 +59,7 @@ require (
 
 require (
 	github.com/ipld/go-car v0.5.0
+	github.com/patrickmn/go-cache v2.1.0+incompatible
 	gopkg.in/yaml.v2 v2.4.0
 )
 

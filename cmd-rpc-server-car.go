@@ -23,6 +23,7 @@ import (
 	carv2 "github.com/ipld/go-car/v2"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	jsoniter "github.com/json-iterator/go"
+	"github.com/patrickmn/go-cache"
 	"github.com/rpcpool/yellowstone-faithful/compactindex"
 	"github.com/rpcpool/yellowstone-faithful/compactindex36"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
@@ -149,35 +150,6 @@ func openCarStorage(where string) (*carv2.Reader, ReaderAtCloser, error) {
 	return carReader, nil, nil
 }
 
-type HTTPSingleFileRemoteReaderAt struct {
-	url           string
-	contentLength int64
-	client        *http.Client
-	// TODO: add caching
-}
-
-// Close implements io.Closer.
-func (r *HTTPSingleFileRemoteReaderAt) Close() error {
-	return nil
-}
-
-func (r *HTTPSingleFileRemoteReaderAt) ReadAt(p []byte, off int64) (n int, err error) {
-	if off >= r.contentLength {
-		return 0, io.EOF
-	}
-	req, err := http.NewRequest("GET", r.url, nil)
-	if err != nil {
-		return 0, err
-	}
-	req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", off, off+int64(len(p))))
-	resp, err := r.client.Do(req)
-	if err != nil {
-		return 0, err
-	}
-	defer resp.Body.Close()
-	return io.ReadFull(resp.Body, p)
-}
-
 type ReaderAtCloser interface {
 	io.ReaderAt
 	io.Closer
@@ -196,11 +168,75 @@ func remoteHTTPFileAsIoReaderAt(url string) (ReaderAtCloser, error) {
 	}
 	contentLength := resp.ContentLength
 
+	// Create a cache with a default expiration time of 5 minutes, and which
+	// purges expired items every 10 minutes
+	ca := cache.New(5*time.Minute, 10*time.Minute)
+
 	return &HTTPSingleFileRemoteReaderAt{
 		url:           url,
 		contentLength: contentLength,
 		client:        newHTTPClient(),
+		ca:            ca,
 	}, nil
+}
+
+type HTTPSingleFileRemoteReaderAt struct {
+	url           string
+	contentLength int64
+	client        *http.Client
+	// TODO: add caching
+	ca *cache.Cache
+}
+
+func getCacheKey(off int64, p []byte) string {
+	return fmt.Sprintf("%d-%d", off, len(p))
+}
+
+func (r *HTTPSingleFileRemoteReaderAt) getFromCache(off int64, p []byte) (n int, err error, has bool) {
+	key := getCacheKey(off, p)
+	if v, ok := r.ca.Get(key); ok {
+		return copy(p, v.([]byte)), nil, true
+	}
+	return 0, nil, false
+}
+
+func (r *HTTPSingleFileRemoteReaderAt) putInCache(off int64, p []byte) {
+	key := getCacheKey(off, p)
+	r.ca.Set(key, p, cache.DefaultExpiration)
+}
+
+// Close implements io.Closer.
+func (r *HTTPSingleFileRemoteReaderAt) Close() error {
+	return nil
+}
+
+func (r *HTTPSingleFileRemoteReaderAt) ReadAt(p []byte, off int64) (n int, err error) {
+	if off >= r.contentLength {
+		return 0, io.EOF
+	}
+	if n, err, has := r.getFromCache(off, p); has {
+		return n, err
+	}
+	req, err := http.NewRequest("GET", r.url, nil)
+	if err != nil {
+		return 0, err
+	}
+	req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", off, off+int64(len(p))))
+	resp, err := r.client.Do(req)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+	{
+		n, err := io.ReadFull(resp.Body, p)
+		if err != nil {
+			return 0, err
+		}
+		copyForCache := make([]byte, len(p))
+		copy(copyForCache, p)
+		r.putInCache(off, copyForCache)
+		return n, nil
+	}
 }
 
 // createAndStartRPCServer_withCar creates and starts a JSON RPC server.
