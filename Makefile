@@ -18,7 +18,7 @@ compile-mac:
 	GOOS=darwin GOARCH=arm64 go build -ldflags=$(LD_FLAGS) -o ./bin/darwin/arm64/faithful-cli_darwin_arm64 .
 compile-windows:
 	@echo "\nCompiling faithful-cli binary for windows amd64 ..."
-	GOOS=windows GOARCH=amd64 go build -ldflags=$(LD_FLAGS) -o ./bin/windows-amd64/faithful-cli_windows_amd64
+	GOOS=windows GOARCH=amd64 go build -ldflags=$(LD_FLAGS) -o ./bin/windows/amd64/faithful-cli_windows_amd64.exe .
 test:
 	go test -v ./...
 bindcode: install-deps
