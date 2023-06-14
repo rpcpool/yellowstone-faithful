@@ -124,7 +124,8 @@ func (ser *rpcServer) getBlock(ctx context.Context, conn *requestContext, req *j
 
 	var allTransactions []GetTransactionResponse
 	var rewards any // TODO: implement rewards as in solana
-	if !block.Rewards.(cidlink.Link).Cid.Equals(DummyCID) {
+	hasRewards := !block.Rewards.(cidlink.Link).Cid.Equals(DummyCID)
+	if hasRewards {
 		rewardsNode, err := ser.GetRewardsByCid(ctx, block.Rewards.(cidlink.Link).Cid)
 		if err != nil {
 			klog.Errorf("failed to decode Rewards: %v", err)

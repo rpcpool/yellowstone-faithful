@@ -8,7 +8,7 @@ syntax = "proto3";
 package solana.storage.ConfirmedBlock;
 
 // [This line is not present in upstream proto file]
-option go_package = "go.firedancer.io/radiance/third_party/solana_proto;confirmed_block";
+option go_package = "github.com/rpcpool/yellowstone-faithful/third_party/solana_proto;confirmed_block";
 
 message ConfirmedBlock {
     string previous_blockhash = 1;

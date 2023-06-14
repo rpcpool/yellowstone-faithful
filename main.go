@@ -56,6 +56,7 @@ func main() {
 			newCmd_VerifyIndex(),
 			newCmd_XTraverse(),
 			newCmd_rpcServerCar(),
+			newCmd_rpcServerFilecoin(),
 			newCmd_Version(),
 		},
 	}

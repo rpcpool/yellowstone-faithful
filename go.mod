@@ -13,7 +13,7 @@ require (
 	github.com/gagliardetto/solana-go v1.8.3-0.20230302093440-c6043ec381e3
 	github.com/gin-gonic/gin v1.9.0
 	github.com/golang/protobuf v1.5.3
-	github.com/google/uuid v1.3.0 // indirect
+	github.com/google/uuid v1.3.0
 	github.com/hannahhoward/go-pubsub v1.0.0 // indirect
 	github.com/ipfs/go-blockservice v0.5.0 // indirect
 	github.com/ipfs/go-cid v0.4.1
@@ -57,7 +57,10 @@ require (
 	github.com/novifinancial/serde-reflection/serde-generate/runtime/golang v0.0.0-20220519162058-e5cd3c3b3f3a
 )
 
-require github.com/ipld/go-car v0.5.0
+require (
+	github.com/ipld/go-car v0.5.0
+	gopkg.in/yaml.v2 v2.4.0
+)
 
 require (
 	contrib.go.opencensus.io/exporter/stackdriver v0.13.14 // indirect

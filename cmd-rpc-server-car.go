@@ -4,7 +4,9 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -36,7 +38,7 @@ func newCmd_rpcServerCar() *cli.Command {
 	return &cli.Command{
 		Name:        "rpc-server-car",
 		Description: "Start a Solana JSON RPC that exposes getTransaction and getBlock",
-		ArgsUsage:   "<car-path> <cid-to-offset-index-filepath> <slot-to-cid-index-filepath> <sig-to-cid-index-filepath>",
+		ArgsUsage:   "<car-filepath-or-url> <cid-to-offset-index-filepath-or-url> <slot-to-cid-index-filepath-or-url> <sig-to-cid-index-filepath-or-url>",
 		Before: func(c *cli.Context) error {
 			return nil
 		},
@@ -55,24 +57,18 @@ func newCmd_rpcServerCar() *cli.Command {
 			}
 			cidToOffsetIndexFilepath := c.Args().Get(1)
 			if cidToOffsetIndexFilepath == "" {
-				return cli.Exit("Must provide a CID-to-offset index filepath", 1)
+				return cli.Exit("Must provide a CID-to-offset index filepath/url", 1)
 			}
 			slotToCidIndexFilepath := c.Args().Get(2)
 			if slotToCidIndexFilepath == "" {
-				return cli.Exit("Must provide a slot-to-CID index filepath", 1)
+				return cli.Exit("Must provide a slot-to-CID index filepath/url", 1)
 			}
 			sigToCidIndexFilepath := c.Args().Get(3)
 			if sigToCidIndexFilepath == "" {
-				return cli.Exit("Must provide a signature-to-CID index filepath", 1)
+				return cli.Exit("Must provide a signature-to-CID index filepath/url", 1)
 			}
 
-			carReader, err := carv2.OpenReader(carFilepath)
-			if err != nil {
-				return fmt.Errorf("failed to open CAR file: %w", err)
-			}
-			defer carReader.Close()
-
-			cidToOffsetIndexFile, err := os.Open(cidToOffsetIndexFilepath)
+			cidToOffsetIndexFile, err := openIndexStorage(cidToOffsetIndexFilepath)
 			if err != nil {
 				return fmt.Errorf("failed to open index file: %w", err)
 			}
@@ -83,7 +79,7 @@ func newCmd_rpcServerCar() *cli.Command {
 				return fmt.Errorf("failed to open index: %w", err)
 			}
 
-			slotToCidIndexFile, err := os.Open(slotToCidIndexFilepath)
+			slotToCidIndexFile, err := openIndexStorage(slotToCidIndexFilepath)
 			if err != nil {
 				return fmt.Errorf("failed to open index file: %w", err)
 			}
@@ -94,7 +90,7 @@ func newCmd_rpcServerCar() *cli.Command {
 				return fmt.Errorf("failed to open index: %w", err)
 			}
 
-			sigToCidIndexFile, err := os.Open(sigToCidIndexFilepath)
+			sigToCidIndexFile, err := openIndexStorage(sigToCidIndexFilepath)
 			if err != nil {
 				return fmt.Errorf("failed to open index file: %w", err)
 			}
@@ -105,10 +101,16 @@ func newCmd_rpcServerCar() *cli.Command {
 				return fmt.Errorf("failed to open index: %w", err)
 			}
 
-			return newRPCServer(
+			localCarReader, remoteCarReader, err := openCarStorage(carFilepath)
+			if err != nil {
+				return fmt.Errorf("failed to open CAR file: %w", err)
+			}
+
+			return createAndStartRPCServer_withCar(
 				c.Context,
 				listenOn,
-				carReader,
+				localCarReader,
+				remoteCarReader,
 				cidToOffsetIndex,
 				slotToCidIndex,
 				sigToCidIndex,
@@ -117,29 +119,142 @@ func newCmd_rpcServerCar() *cli.Command {
 	}
 }
 
-func newRPCServer(
+// openIndexStorage open a compactindex from a local file, or from a remote URL.
+// Supported protocols are:
+// - http://
+// - https://
+func openIndexStorage(where string) (ReaderAtCloser, error) {
+	where = strings.TrimSpace(where)
+	if strings.HasPrefix(where, "http://") || strings.HasPrefix(where, "https://") {
+		return remoteHTTPFileAsIoReaderAt(where)
+	}
+	// TODO: add support for IPFS gateways.
+	// TODO: add support for Filecoin gateways.
+	return os.Open(where)
+}
+
+func openCarStorage(where string) (*carv2.Reader, ReaderAtCloser, error) {
+	where = strings.TrimSpace(where)
+	if strings.HasPrefix(where, "http://") || strings.HasPrefix(where, "https://") {
+		rem, err := remoteHTTPFileAsIoReaderAt(where)
+		return nil, rem, err
+	}
+	// TODO: add support for IPFS gateways.
+	// TODO: add support for Filecoin gateways.
+
+	carReader, err := carv2.OpenReader(where)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to open CAR file: %w", err)
+	}
+	return carReader, nil, nil
+}
+
+type HTTPSingleFileRemoteReaderAt struct {
+	url           string
+	contentLength int64
+	client        *http.Client
+	// TODO: add caching
+}
+
+// Close implements io.Closer.
+func (r *HTTPSingleFileRemoteReaderAt) Close() error {
+	return nil
+}
+
+func (r *HTTPSingleFileRemoteReaderAt) ReadAt(p []byte, off int64) (n int, err error) {
+	if off >= r.contentLength {
+		return 0, io.EOF
+	}
+	req, err := http.NewRequest("GET", r.url, nil)
+	if err != nil {
+		return 0, err
+	}
+	req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", off, off+int64(len(p))))
+	resp, err := r.client.Do(req)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+	return io.ReadFull(resp.Body, p)
+}
+
+type ReaderAtCloser interface {
+	io.ReaderAt
+	io.Closer
+}
+
+// remoteHTTPFileAsIoReaderAt returns a ReaderAtCloser for a remote file.
+// The returned ReaderAtCloser is backed by a http.Client.
+func remoteHTTPFileAsIoReaderAt(url string) (ReaderAtCloser, error) {
+	// send a request to the server to get the file size:
+	resp, err := http.Head(url)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+	contentLength := resp.ContentLength
+
+	return &HTTPSingleFileRemoteReaderAt{
+		url:           url,
+		contentLength: contentLength,
+		client:        newHTTPClient(),
+	}, nil
+}
+
+// createAndStartRPCServer_withCar creates and starts a JSON RPC server.
+// Data:
+//   - Nodes: the node data is read from a CAR file (which can be a local file or a remote URL).
+//   - Indexes: the indexes are read from files (which can be a local file or a remote URL).
+//
+// The server is backed by a CAR file (meaning that it can only serve the content of the CAR file).
+// It blocks until the server is stopped.
+// It returns an error if the server fails to start or stops unexpectedly.
+// It returns nil if the server is stopped gracefully.
+func createAndStartRPCServer_withCar(
 	ctx context.Context,
 	listenOn string,
 	carReader *carv2.Reader,
+	remoteCarReader ReaderAtCloser,
 	cidToOffsetIndex *compactindex.DB,
 	slotToCidIndex *compactindex36.DB,
 	sigToCidIndex *compactindex36.DB,
 ) error {
-	// start a JSON RPC server
 	handler := &rpcServer{
-		carReader:        carReader,
+		localCarReader:   carReader,
+		remoteCarReader:  remoteCarReader,
 		cidToOffsetIndex: cidToOffsetIndex,
 		slotToCidIndex:   slotToCidIndex,
 		sigToCidIndex:    sigToCidIndex,
 	}
 
-	r := gin.Default()
-	r.POST("/", newRPC(handler))
-	klog.Infof("Listening on %s", listenOn)
-	return r.Run(listenOn)
+	engine := gin.Default()
+	engine.POST("/", newRPCHandler(handler))
+	klog.Infof("RPC server listening on %s", listenOn)
+	return engine.Run(listenOn)
 }
 
-func newRPC(handler *rpcServer) func(c *gin.Context) {
+func createAndStartRPCServer_lassie(
+	ctx context.Context,
+	listenOn string,
+	lassieWr *lassieWrapper,
+	slotToCidIndex *compactindex36.DB,
+	sigToCidIndex *compactindex36.DB,
+) error {
+	handler := &rpcServer{
+		lassieFetcher:  lassieWr,
+		slotToCidIndex: slotToCidIndex,
+		sigToCidIndex:  sigToCidIndex,
+	}
+
+	engine := gin.Default()
+	engine.POST("/", newRPCHandler(handler))
+	klog.Infof("RPC server listening on %s", listenOn)
+	return engine.Run(listenOn)
+}
+
+func newRPCHandler(handler *rpcServer) func(c *gin.Context) {
 	return func(c *gin.Context) {
 		startedAt := time.Now()
 		defer func() {
@@ -172,27 +287,18 @@ func newRPC(handler *rpcServer) func(c *gin.Context) {
 			return
 		}
 
-		klog.Infof("request: %s", string(body))
+		klog.Infof("Received request: %q", string(body))
 
-		rf := &requestContext{ctx: c}
+		rqCtx := &requestContext{ctx: c}
 
-		// handle request
-		handler.Handle(c.Request.Context(), rf, &rpcRequest)
+		handler.Handle(c.Request.Context(), rqCtx, &rpcRequest)
 	}
 }
 
-type responseWriter struct {
-	http.ResponseWriter
-}
-
-type logger struct{}
-
-func (l logger) Printf(tmpl string, args ...interface{}) {
-	klog.Infof(tmpl, args...)
-}
-
 type rpcServer struct {
-	carReader        *carv2.Reader
+	lassieFetcher    *lassieWrapper
+	localCarReader   *carv2.Reader
+	remoteCarReader  ReaderAtCloser
 	cidToOffsetIndex *compactindex.DB
 	slotToCidIndex   *compactindex36.DB
 	sigToCidIndex    *compactindex36.DB
@@ -286,6 +392,16 @@ func (c *requestContext) Reply(
 }
 
 func (s *rpcServer) GetNodeByCid(ctx context.Context, wantedCid cid.Cid) ([]byte, error) {
+	if s.lassieFetcher != nil {
+		// Fetch the node from lassie.
+		data, err := s.lassieFetcher.GetNodeByCid(ctx, wantedCid)
+		if err == nil {
+			return data, nil
+		}
+		klog.Errorf("failed to get node from lassie: %v", err)
+		return nil, err
+	}
+	// Find CAR file offset for CID in index.
 	offset, err := s.FindOffsetFromCid(ctx, wantedCid)
 	if err != nil {
 		klog.Errorf("failed to find offset for CID %s: %v", wantedCid, err)
@@ -295,9 +411,46 @@ func (s *rpcServer) GetNodeByCid(ctx context.Context, wantedCid cid.Cid) ([]byte
 	return s.GetNodeByOffset(ctx, wantedCid, offset)
 }
 
+func readNodeFromReaderAt(reader ReaderAtCloser, wantedCid cid.Cid, offset uint64) ([]byte, error) {
+	// read MaxVarintLen64 bytes
+	lenBuf := make([]byte, binary.MaxVarintLen64)
+	_, err := reader.ReadAt(lenBuf, int64(offset))
+	if err != nil {
+		return nil, err
+	}
+	// read uvarint
+	dataLen, n := binary.Uvarint(lenBuf)
+	offset += uint64(n)
+	if dataLen > uint64(util.MaxAllowedSectionSize) { // Don't OOM
+		return nil, errors.New("malformed car; header is bigger than util.MaxAllowedSectionSize")
+	}
+	data := make([]byte, dataLen)
+	_, err = reader.ReadAt(data, int64(offset))
+	if err != nil {
+		return nil, err
+	}
+
+	n, gotCid, err := cid.CidFromReader(bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+	// verify that the CID we read matches the one we expected.
+	if !gotCid.Equals(wantedCid) {
+		return nil, fmt.Errorf("CID mismatch: expected %s, got %s", wantedCid, gotCid)
+	}
+	return data[n:], nil
+}
+
 func (s *rpcServer) GetNodeByOffset(ctx context.Context, wantedCid cid.Cid, offset uint64) ([]byte, error) {
-	// seek to offset
-	dr, err := s.carReader.DataReader()
+	if s.localCarReader == nil {
+		// try remote reader
+		if s.remoteCarReader == nil {
+			return nil, fmt.Errorf("no CAR reader available")
+		}
+		return readNodeFromReaderAt(s.remoteCarReader, wantedCid, offset)
+	}
+	// Get reader and seek to offset, then read node.
+	dr, err := s.localCarReader.DataReader()
 	if err != nil {
 		klog.Errorf("failed to get data reader: %v", err)
 		return nil, err
@@ -313,7 +466,7 @@ func (s *rpcServer) GetNodeByOffset(ctx context.Context, wantedCid cid.Cid, offs
 	// verify that the CID we read matches the one we expected.
 	if !gotCid.Equals(wantedCid) {
 		klog.Errorf("CID mismatch: expected %s, got %s", wantedCid, gotCid)
-		return nil, err
+		return nil, fmt.Errorf("CID mismatch: expected %s, got %s", wantedCid, gotCid)
 	}
 	return data, nil
 }
@@ -359,6 +512,7 @@ func (ser *rpcServer) GetBlock(ctx context.Context, slot uint64) (*ipldbindcode.
 		klog.Errorf("failed to find CID for slot %d: %v", slot, err)
 		return nil, err
 	}
+	klog.Infof("found CID for slot %d: %s", slot, wantedCid)
 	// get the block by CID
 	data, err := ser.GetNodeByCid(ctx, wantedCid)
 	if err != nil {
@@ -441,6 +595,7 @@ func (ser *rpcServer) GetTransaction(ctx context.Context, sig solana.Signature) 
 		klog.Errorf("failed to find CID for signature %s: %v", sig, err)
 		return nil, err
 	}
+	klog.Infof("found CID for signature %s: %s", sig, wantedCid)
 	// get the transaction by CID
 	data, err := ser.GetNodeByCid(ctx, wantedCid)
 	if err != nil {
