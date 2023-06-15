@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"runtime"
 	"sync"
+	"time"
 
 	"github.com/gagliardetto/solana-go"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
@@ -42,7 +43,26 @@ func (e *InternalError) As(target interface{}) bool {
 	return errors.As(e.Err, target)
 }
 
+type timer struct {
+	start time.Time
+	prev  time.Time
+}
+
+func newTimer() *timer {
+	now := time.Now()
+	return &timer{
+		start: now,
+		prev:  now,
+	}
+}
+
+func (t *timer) time(name string) {
+	klog.V(2).Infof("TIMED: %s: %s (overall %s)", name, time.Since(t.prev), time.Since(t.start))
+	t.prev = time.Now()
+}
+
 func (ser *rpcServer) getBlock(ctx context.Context, conn *requestContext, req *jsonrpc2.Request) {
+	tim := newTimer()
 	params, err := parseGetBlockRequest(req.Params)
 	if err != nil {
 		klog.Errorf("failed to parse params: %v", err)
@@ -55,6 +75,7 @@ func (ser *rpcServer) getBlock(ctx context.Context, conn *requestContext, req *j
 			})
 		return
 	}
+	tim.time("parseGetBlockRequest")
 	slot := params.Slot
 
 	block, err := ser.GetBlock(ctx, slot)
@@ -69,6 +90,7 @@ func (ser *rpcServer) getBlock(ctx context.Context, conn *requestContext, req *j
 			})
 		return
 	}
+	tim.time("GetBlock")
 	blocktime := uint64(block.Meta.Blocktime)
 
 	allTransactionNodes := make([]*ipldbindcode.Transaction, 0)
@@ -76,7 +98,7 @@ func (ser *rpcServer) getBlock(ctx context.Context, conn *requestContext, req *j
 	var lastEntryHash solana.Hash
 	{
 		wg := new(errgroup.Group)
-		wg.SetLimit(runtime.NumCPU())
+		wg.SetLimit(runtime.NumCPU() * 2)
 		// get entries from the block
 		for entryIndex, entry := range block.Entries {
 			entryIndex := entryIndex
@@ -93,19 +115,27 @@ func (ser *rpcServer) getBlock(ctx context.Context, conn *requestContext, req *j
 					lastEntryHash = solana.HashFromBytes(entryNode.Hash)
 				}
 
+				twg := new(errgroup.Group)
+				twg.SetLimit(runtime.NumCPU())
 				// get the transactions from the entry
-				for _, tx := range entryNode.Transactions {
-					// get the transaction by CID
-					txNode, err := ser.GetTransactionByCid(ctx, tx.(cidlink.Link).Cid)
-					if err != nil {
-						klog.Errorf("failed to decode Transaction: %v", err)
-						continue
-					}
-					mu.Lock()
-					allTransactionNodes = append(allTransactionNodes, txNode)
-					mu.Unlock()
+				for txI := range entryNode.Transactions {
+					txI := txI
+					tx := entryNode.Transactions[txI]
+					twg.Go(func() error {
+						// get the transaction by CID
+						tcid := tx.(cidlink.Link).Cid
+						txNode, err := ser.GetTransactionByCid(ctx, tcid)
+						if err != nil {
+							klog.Errorf("failed to decode Transaction %s: %v", tcid, err)
+							return nil
+						}
+						mu.Lock()
+						allTransactionNodes = append(allTransactionNodes, txNode)
+						mu.Unlock()
+						return nil
+					})
 				}
-				return nil
+				return twg.Wait()
 			})
 		}
 		err = wg.Wait()
@@ -121,6 +151,7 @@ func (ser *rpcServer) getBlock(ctx context.Context, conn *requestContext, req *j
 			return
 		}
 	}
+	tim.time("get entries")
 
 	var allTransactions []GetTransactionResponse
 	var rewards any // TODO: implement rewards as in solana
@@ -225,6 +256,7 @@ func (ser *rpcServer) getBlock(ctx context.Context, conn *requestContext, req *j
 			}
 		}
 	}
+	tim.time("get rewards")
 	{
 		for _, transactionNode := range allTransactionNodes {
 			var txResp GetTransactionResponse
@@ -273,6 +305,7 @@ func (ser *rpcServer) getBlock(ctx context.Context, conn *requestContext, req *j
 			allTransactions = append(allTransactions, txResp)
 		}
 	}
+	tim.time("get transactions")
 	var blockResp GetBlockResponse
 	blockResp.Transactions = allTransactions
 	blockResp.BlockTime = &blocktime
@@ -314,6 +347,7 @@ func (ser *rpcServer) getBlock(ctx context.Context, conn *requestContext, req *j
 			blockResp.PreviousBlockhash = parentEntryHash.String()
 		}
 	}
+	tim.time("get parent block")
 
 	// TODO: get all the transactions from the block
 	// reply with the data
@@ -325,6 +359,7 @@ func (ser *rpcServer) getBlock(ctx context.Context, conn *requestContext, req *j
 			return m
 		},
 	)
+	tim.time("reply")
 	if err != nil {
 		klog.Errorf("failed to reply: %v", err)
 	}

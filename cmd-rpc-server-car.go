@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"strings"
@@ -17,7 +16,6 @@ import (
 
 	bin "github.com/gagliardetto/binary"
 	"github.com/gagliardetto/solana-go"
-	"github.com/gin-gonic/gin"
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-car/util"
 	carv2 "github.com/ipld/go-car/v2"
@@ -31,6 +29,7 @@ import (
 	solanatxmetaparsers "github.com/rpcpool/yellowstone-faithful/solana-tx-meta-parsers"
 	"github.com/sourcegraph/jsonrpc2"
 	"github.com/urfave/cli/v2"
+	"github.com/valyala/fasthttp"
 	"k8s.io/klog/v2"
 )
 
@@ -303,10 +302,11 @@ func createAndStartRPCServer_withCar(
 		sigToCidIndex:    sigToCidIndex,
 	}
 
-	engine := gin.Default()
-	engine.POST("/", newRPCHandler(handler))
+	h := newRPCHandler_fast(handler)
+	h = fasthttp.CompressHandler(h)
+
 	klog.Infof("RPC server listening on %s", listenOn)
-	return engine.Run(listenOn)
+	return fasthttp.ListenAndServe(listenOn, h)
 }
 
 func createAndStartRPCServer_lassie(
@@ -322,51 +322,11 @@ func createAndStartRPCServer_lassie(
 		sigToCidIndex:  sigToCidIndex,
 	}
 
-	engine := gin.Default()
-	engine.POST("/", newRPCHandler(handler))
+	h := newRPCHandler_fast(handler)
+	h = fasthttp.CompressHandler(h)
+
 	klog.Infof("RPC server listening on %s", listenOn)
-	return engine.Run(listenOn)
-}
-
-func newRPCHandler(handler *rpcServer) func(c *gin.Context) {
-	return func(c *gin.Context) {
-		startedAt := time.Now()
-		defer func() {
-			klog.Infof("request took %s", time.Since(startedAt))
-		}()
-		// read request body
-		body, err := ioutil.ReadAll(c.Request.Body)
-		if err != nil {
-			klog.Errorf("failed to read request body: %v", err)
-			// reply with error
-			c.JSON(http.StatusBadRequest, jsonrpc2.Response{
-				Error: &jsonrpc2.Error{
-					Code:    jsonrpc2.CodeParseError,
-					Message: "Parse error",
-				},
-			})
-			return
-		}
-
-		// parse request
-		var rpcRequest jsonrpc2.Request
-		if err := json.Unmarshal(body, &rpcRequest); err != nil {
-			klog.Errorf("failed to unmarshal request: %v", err)
-			c.JSON(http.StatusBadRequest, jsonrpc2.Response{
-				Error: &jsonrpc2.Error{
-					Code:    jsonrpc2.CodeParseError,
-					Message: "Parse error",
-				},
-			})
-			return
-		}
-
-		klog.Infof("Received request: %q", string(body))
-
-		rqCtx := &requestContext{ctx: c}
-
-		handler.Handle(c.Request.Context(), rqCtx, &rpcRequest)
-	}
+	return fasthttp.ListenAndServe(listenOn, h)
 }
 
 type rpcServer struct {
@@ -379,7 +339,7 @@ type rpcServer struct {
 }
 
 type requestContext struct {
-	ctx *gin.Context
+	ctx *fasthttp.RequestCtx
 }
 
 // ReplyWithError(ctx context.Context, id ID, respErr *Error) error {
@@ -388,7 +348,7 @@ func (c *requestContext) ReplyWithError(ctx context.Context, id jsonrpc2.ID, res
 		ID:    id,
 		Error: respErr,
 	}
-	c.ctx.JSON(http.StatusOK, resp)
+	replyJSON(c.ctx, http.StatusOK, resp)
 	return nil
 }
 
@@ -408,20 +368,25 @@ func toMapAny(v any) (map[string]any, error) {
 func MapToCamelCase(m map[string]any) map[string]any {
 	newMap := make(map[string]any)
 	for k, v := range m {
-		newMap[toLowerCamelCase(k)] = v
-
-		if m, ok := v.(map[string]any); ok {
-			newMap[toLowerCamelCase(k)] = MapToCamelCase(m)
-		}
-		if v, ok := v.([]any); ok {
-			for i, vv := range v {
-				if m, ok := vv.(map[string]any); ok {
-					v[i] = MapToCamelCase(m)
-				}
-			}
-		}
+		newMap[toLowerCamelCase(k)] = MapToCamelCaseAny(v)
 	}
 	return newMap
+}
+
+func MapToCamelCaseAny(m any) any {
+	if m == nil {
+		return nil
+	}
+	if m, ok := m.(map[string]any); ok {
+		return MapToCamelCase(m)
+	}
+	// if array, convert each element
+	if m, ok := m.([]any); ok {
+		for i, v := range m {
+			m[i] = MapToCamelCaseAny(v)
+		}
+	}
+	return m
 }
 
 func toLowerCamelCase(v string) string {
@@ -446,7 +411,7 @@ func (c *requestContext) Reply(
 	if err != nil {
 		return err
 	}
-	result = MapToCamelCase(mm)
+	result = MapToCamelCaseAny(mm)
 	if remapCallback != nil {
 		if mp, ok := result.(map[string]any); ok {
 			result = remapCallback(mp)
@@ -461,7 +426,7 @@ func (c *requestContext) Reply(
 		ID:     id,
 		Result: &raw,
 	}
-	c.ctx.JSON(http.StatusOK, resp)
+	replyJSON(c.ctx, http.StatusOK, resp)
 	return err
 }
 
