@@ -207,13 +207,37 @@ func (r *HTTPSingleFileRemoteReaderAt) putInCache(off int64, p []byte) {
 
 // Close implements io.Closer.
 func (r *HTTPSingleFileRemoteReaderAt) Close() error {
+	r.client.CloseIdleConnections()
 	return nil
+}
+
+func retryExpotentialBackoff(
+	ctx context.Context,
+	startDuration time.Duration,
+	maxRetries int,
+	fn func() error,
+) error {
+	var err error
+	for i := 0; i < maxRetries; i++ {
+		err = fn()
+		if err == nil {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(startDuration):
+			startDuration *= 2
+		}
+	}
+	return fmt.Errorf("failed after %d retries; last error: %w", maxRetries, err)
 }
 
 func (r *HTTPSingleFileRemoteReaderAt) ReadAt(p []byte, off int64) (n int, err error) {
 	if off >= r.contentLength {
 		return 0, io.EOF
 	}
+	fmt.Print(".")
 	if n, err, has := r.getFromCache(off, p); has {
 		return n, err
 	}
@@ -221,8 +245,22 @@ func (r *HTTPSingleFileRemoteReaderAt) ReadAt(p []byte, off int64) (n int, err e
 	if err != nil {
 		return 0, err
 	}
+	{
+		req.Header.Set("Connection", "keep-alive")
+		req.Header.Set("Keep-Alive", "timeout=600")
+	}
+
 	req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", off, off+int64(len(p))))
-	resp, err := r.client.Do(req)
+
+	var resp *http.Response
+	err = retryExpotentialBackoff(
+		context.Background(),
+		100*time.Millisecond,
+		3,
+		func() error {
+			resp, err = r.client.Do(req)
+			return err
+		})
 	if err != nil {
 		return 0, err
 	}

@@ -9,8 +9,8 @@ import (
 )
 
 var (
-	defaultMaxIdleConnsPerHost = 20
-	defaultTimeout             = 20 * time.Second
+	defaultMaxIdleConnsPerHost = 100
+	defaultTimeout             = 1000 * time.Second
 	defaultKeepAlive           = 180 * time.Second
 )
 
@@ -19,11 +19,11 @@ func newHTTPTransport() *http.Transport {
 		IdleConnTimeout:     time.Minute,
 		MaxConnsPerHost:     defaultMaxIdleConnsPerHost,
 		MaxIdleConnsPerHost: defaultMaxIdleConnsPerHost,
+		MaxIdleConns:        defaultMaxIdleConnsPerHost,
 		Proxy:               http.ProxyFromEnvironment,
 		DialContext: (&net.Dialer{
 			Timeout:   defaultTimeout,
 			KeepAlive: defaultKeepAlive,
-			DualStack: true,
 		}).DialContext,
 		ForceAttemptHTTP2: true,
 		// MaxIdleConns:          100,
