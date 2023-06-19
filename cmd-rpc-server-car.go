@@ -759,7 +759,7 @@ func getAllFramesFromDataFrame(
 }
 
 // checksumFnv is the legacy checksum function, used in the first version of the radiance
-// car creator.
+// car creator. Some old cars still use this function.
 func checksumFnv(data []byte) uint64 {
 	h := fnv.New64a()
 	h.Write(data)
@@ -767,6 +767,7 @@ func checksumFnv(data []byte) uint64 {
 }
 
 // checksumCrc64 returns the hash of the provided buffer.
+// It is used in the latest version of the radiance car creator.
 func checksumCrc64(buf []byte) uint64 {
 	return crc64.Checksum(buf, crc64.MakeTable(crc64.ISO))
 }
