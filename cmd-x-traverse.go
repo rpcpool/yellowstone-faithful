@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"time"
@@ -98,18 +97,11 @@ func newCmd_XTraverse() *cli.Command {
 								{
 									var transaction solana.Transaction
 									{
-										txBuffer := new(bytes.Buffer)
-										txBuffer.Write(tx.Data.Data)
-										if tx.Data.Total > 1 {
-											for _, frameCid := range tx.Data.Next {
-												frame, err := simpleIter.GetDataFrame(context.Background(), frameCid.(cidlink.Link).Cid)
-												if err != nil {
-													return fmt.Errorf("failed to get DataFrame: %w", err)
-												}
-												txBuffer.Write(frame.Data)
-											}
+										txBuffer, err := loadDataFromDataFrames(&tx.Data, simpleIter.GetDataFrame)
+										if err != nil {
+											panic(err)
 										}
-										if err := bin.UnmarshalBin(&transaction, txBuffer.Bytes()); err != nil {
+										if err := bin.UnmarshalBin(&transaction, txBuffer); err != nil {
 											panic(err)
 										} else if len(transaction.Signatures) == 0 {
 											panic("no signatures")
@@ -120,20 +112,12 @@ func newCmd_XTraverse() *cli.Command {
 										fmt.Println(transaction.String())
 									}
 									{
-										metaBuffer := new(bytes.Buffer)
-										metaBuffer.Write(tx.Metadata.Data)
-										if tx.Metadata.Total > 1 {
-											for _, frameCid := range tx.Metadata.Next {
-												frame, err := simpleIter.GetDataFrame(context.Background(), frameCid.(cidlink.Link).Cid)
-												if err != nil {
-													return fmt.Errorf("failed to get DataFrame for meta: %w", err)
-												}
-												metaBuffer.Write(frame.Data)
-											}
+										metaBuffer, err := loadDataFromDataFrames(&tx.Metadata, simpleIter.GetDataFrame)
+										if err != nil {
+											panic(err)
 										}
-
-										if len(metaBuffer.Bytes()) > 0 {
-											uncompressedMeta, err := decompressZstd(metaBuffer.Bytes())
+										if len(metaBuffer) > 0 {
+											uncompressedMeta, err := decompressZstd(metaBuffer)
 											if err != nil {
 												panic(err)
 											}

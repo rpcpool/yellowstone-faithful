@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash/crc64"
+	"hash/fnv"
 	"io"
 	"net/http"
 	"os"
@@ -714,23 +716,71 @@ type GetTransactionResponse struct {
 	Version     any     `json:"version"`
 }
 
+func loadDataFromDataFrames(
+	firstDataFrame *ipldbindcode.DataFrame,
+	dataFrameGetter func(ctx context.Context, wantedCid cid.Cid) (*ipldbindcode.DataFrame, error),
+) ([]byte, error) {
+	dataBuffer := new(bytes.Buffer)
+	allFrames, err := getAllFramesFromDataFrame(firstDataFrame, dataFrameGetter)
+	if err != nil {
+		return nil, err
+	}
+	for _, frame := range allFrames {
+		dataBuffer.Write(frame.Data)
+	}
+	// verify the data hash
+	if checksumCrc64(dataBuffer.Bytes()) != uint64(firstDataFrame.Hash) {
+		// Maybe it's the legacy checksum function?
+		if checksumFnv(dataBuffer.Bytes()) != uint64(firstDataFrame.Hash) {
+			return nil, fmt.Errorf("data hash mismatch")
+		}
+	}
+	return dataBuffer.Bytes(), nil
+}
+
+func getAllFramesFromDataFrame(
+	firstDataFrame *ipldbindcode.DataFrame,
+	dataFrameGetter func(ctx context.Context, wantedCid cid.Cid) (*ipldbindcode.DataFrame, error),
+) ([]*ipldbindcode.DataFrame, error) {
+	frames := []*ipldbindcode.DataFrame{firstDataFrame}
+	// get the next data frames
+	for _, cid := range firstDataFrame.Next {
+		nextDataFrame, err := dataFrameGetter(context.Background(), cid.(cidlink.Link).Cid)
+		if err != nil {
+			return nil, err
+		}
+		nextFrames, err := getAllFramesFromDataFrame(nextDataFrame, dataFrameGetter)
+		if err != nil {
+			return nil, err
+		}
+		frames = append(frames, nextFrames...)
+	}
+	return frames, nil
+}
+
+// checksumFnv is the legacy checksum function, used in the first version of the radiance
+// car creator.
+func checksumFnv(data []byte) uint64 {
+	h := fnv.New64a()
+	h.Write(data)
+	return h.Sum64()
+}
+
+// checksumCrc64 returns the hash of the provided buffer.
+func checksumCrc64(buf []byte) uint64 {
+	return crc64.Checksum(buf, crc64.MakeTable(crc64.ISO))
+}
+
 func parseTransactionAndMetaFromNode(
 	transactionNode *ipldbindcode.Transaction,
 	dataFrameGetter func(ctx context.Context, wantedCid cid.Cid) (*ipldbindcode.DataFrame, error),
 ) (tx solana.Transaction, meta any, _ error) {
 	{
-		transactionBuffer := new(bytes.Buffer)
-		transactionBuffer.Write(transactionNode.Data.Data)
-		if transactionNode.Data.Total > 1 {
-			for _, cid := range transactionNode.Data.Next {
-				nextDataFrame, err := dataFrameGetter(context.Background(), cid.(cidlink.Link).Cid)
-				if err != nil {
-					return solana.Transaction{}, nil, err
-				}
-				transactionBuffer.Write(nextDataFrame.Data)
-			}
+		transactionBuffer, err := loadDataFromDataFrames(&transactionNode.Data, dataFrameGetter)
+		if err != nil {
+			return solana.Transaction{}, nil, err
 		}
-		if err := bin.UnmarshalBin(&tx, transactionBuffer.Bytes()); err != nil {
+		if err := bin.UnmarshalBin(&tx, transactionBuffer); err != nil {
 			klog.Errorf("failed to unmarshal transaction: %v", err)
 			return solana.Transaction{}, nil, err
 		} else if len(tx.Signatures) == 0 {
@@ -740,19 +790,12 @@ func parseTransactionAndMetaFromNode(
 	}
 
 	{
-		metaBuffer := new(bytes.Buffer)
-		metaBuffer.Write(transactionNode.Metadata.Data)
-		if transactionNode.Metadata.Total > 1 {
-			for _, cid := range transactionNode.Metadata.Next {
-				nextDataFrame, err := dataFrameGetter(context.Background(), cid.(cidlink.Link).Cid)
-				if err != nil {
-					return solana.Transaction{}, nil, err
-				}
-				metaBuffer.Write(nextDataFrame.Data)
-			}
+		metaBuffer, err := loadDataFromDataFrames(&transactionNode.Metadata, dataFrameGetter)
+		if err != nil {
+			return solana.Transaction{}, nil, err
 		}
-		if len(metaBuffer.Bytes()) > 0 {
-			uncompressedMeta, err := decompressZstd(metaBuffer.Bytes())
+		if len(metaBuffer) > 0 {
+			uncompressedMeta, err := decompressZstd(metaBuffer)
 			if err != nil {
 				klog.Errorf("failed to decompress metadata: %v", err)
 				return

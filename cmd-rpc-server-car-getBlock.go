@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -169,29 +168,30 @@ func (ser *rpcServer) getBlock(ctx context.Context, conn *requestContext, req *j
 				})
 			return
 		}
-		buf := new(bytes.Buffer)
-		buf.Write(rewardsNode.Data.Data)
-		if rewardsNode.Data.Total > 1 {
-			for _, _cid := range rewardsNode.Data.Next {
-				nextNode, err := ser.GetDataFrameByCid(ctx, _cid.(cidlink.Link).Cid)
-				if err != nil {
-					klog.Errorf("failed to decode Rewards: %v", err)
-					conn.ReplyWithError(
-						ctx,
-						req.ID,
-						&jsonrpc2.Error{
-							Code:    jsonrpc2.CodeInternalError,
-							Message: "Internal error",
-						})
-					return
-				}
-				buf.Write(nextNode.Data)
-			}
+		rewardsBuf, err := loadDataFromDataFrames(&rewardsNode.Data, ser.GetDataFrameByCid)
+		if err != nil {
+			klog.Errorf("failed to load Rewards dataFrames: %v", err)
+			conn.ReplyWithError(
+				ctx,
+				req.ID,
+				&jsonrpc2.Error{
+					Code:    jsonrpc2.CodeInternalError,
+					Message: "Internal error",
+				})
+			return
 		}
 
-		uncompressedRewards, err := decompressZstd(buf.Bytes())
+		uncompressedRewards, err := decompressZstd(rewardsBuf)
 		if err != nil {
-			panic(err)
+			klog.Errorf("failed to decompress Rewards: %v", err)
+			conn.ReplyWithError(
+				ctx,
+				req.ID,
+				&jsonrpc2.Error{
+					Code:    jsonrpc2.CodeInternalError,
+					Message: "Internal error",
+				})
+			return
 		}
 		// try decoding as protobuf
 		actualRewards, err := solanablockrewards.ParseRewards(uncompressedRewards)
