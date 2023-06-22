@@ -8,8 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"hash/crc64"
-	"hash/fnv"
 	"io"
 	"net/http"
 	"os"
@@ -726,14 +724,16 @@ func loadDataFromDataFrames(
 		return nil, err
 	}
 	for _, frame := range allFrames {
-		dataBuffer.Write(frame.Data)
+		dataBuffer.Write(frame.Bytes())
 	}
-	// verify the data hash
-	if checksumCrc64(dataBuffer.Bytes()) != uint64(firstDataFrame.Hash) {
-		// Maybe it's the legacy checksum function?
-		if checksumFnv(dataBuffer.Bytes()) != uint64(firstDataFrame.Hash) {
-			return nil, fmt.Errorf("data hash mismatch")
-		}
+	// verify the data hash (if present)
+	bufHash, ok := firstDataFrame.GetHash()
+	if !ok {
+		return dataBuffer.Bytes(), nil
+	}
+	err = ipldbindcode.VerifyHash(dataBuffer.Bytes(), bufHash)
+	if err != nil {
+		return nil, err
 	}
 	return dataBuffer.Bytes(), nil
 }
@@ -744,7 +744,11 @@ func getAllFramesFromDataFrame(
 ) ([]*ipldbindcode.DataFrame, error) {
 	frames := []*ipldbindcode.DataFrame{firstDataFrame}
 	// get the next data frames
-	for _, cid := range firstDataFrame.Next {
+	next, ok := firstDataFrame.GetNext()
+	if !ok || len(next) == 0 {
+		return frames, nil
+	}
+	for _, cid := range next {
 		nextDataFrame, err := dataFrameGetter(context.Background(), cid.(cidlink.Link).Cid)
 		if err != nil {
 			return nil, err
@@ -756,20 +760,6 @@ func getAllFramesFromDataFrame(
 		frames = append(frames, nextFrames...)
 	}
 	return frames, nil
-}
-
-// checksumFnv is the legacy checksum function, used in the first version of the radiance
-// car creator. Some old cars still use this function.
-func checksumFnv(data []byte) uint64 {
-	h := fnv.New64a()
-	h.Write(data)
-	return h.Sum64()
-}
-
-// checksumCrc64 returns the hash of the provided buffer.
-// It is used in the latest version of the radiance car creator.
-func checksumCrc64(buf []byte) uint64 {
-	return crc64.Checksum(buf, crc64.MakeTable(crc64.ISO))
 }
 
 func parseTransactionAndMetaFromNode(

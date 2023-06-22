@@ -88,11 +88,11 @@ type _Bytes struct{ x []byte }
 type DataFrame = *_DataFrame
 type _DataFrame struct {
 	kind  _Int
-	hash  _Int
-	index _Int
-	total _Int
+	hash  _Int__Maybe
+	index _Int__Maybe
+	total _Int__Maybe
 	data  _Buffer
-	next  _List__Link
+	next  _List__Link__Maybe
 }
 
 // Entry matches the IPLD Schema type "Entry".  It has struct type-kind, and may be interrogated like map kind.

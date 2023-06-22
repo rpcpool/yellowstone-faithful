@@ -56,11 +56,11 @@ type Transaction struct {
 }
 type DataFrame struct {
 	Kind  int
-	Hash  int
-	Index int
-	Total int
+	Hash  **int
+	Index **int
+	Total **int
 	Data  []uint8
-	Next  List__Link
+	Next  **List__Link
 }
 
 type (

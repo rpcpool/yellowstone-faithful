@@ -233,9 +233,10 @@ func createAllIndexes(
 
 				var tx solana.Transaction
 				txBuffer := new(bytes.Buffer)
-				txBuffer.Write(txNode.Data.Data)
-				if txNode.Data.Total > 1 {
+				txBuffer.Write(txNode.Data.Bytes())
+				if total, ok := txNode.Data.GetTotal(); ok && total > 1 {
 					// TODO: handle this case
+					klog.Infof("skipping transaction with %d partials", total)
 					continue
 				}
 				if err := bin.UnmarshalBin(&tx, txBuffer.Bytes()); err != nil {
@@ -617,9 +618,10 @@ func verifyAllIndexes(
 
 				var tx solana.Transaction
 				txBuffer := new(bytes.Buffer)
-				txBuffer.Write(txNode.Data.Data)
-				if txNode.Data.Total > 1 {
+				txBuffer.Write(txNode.Data.Bytes())
+				if total, ok := txNode.Data.GetTotal(); ok && total > 1 {
 					// TODO: handle this case
+					klog.Infof("skipping transaction with %d partials", total)
 					continue
 				}
 				if err := bin.UnmarshalBin(&tx, txBuffer.Bytes()); err != nil {
