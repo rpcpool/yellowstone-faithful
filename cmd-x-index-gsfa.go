@@ -65,6 +65,26 @@ func newCmd_Index_gsfa() *cli.Command {
 			}
 
 			gsfaIndexDir := c.Args().Get(1)
+			if ok, err := IsDir(gsfaIndexDir); err != nil {
+				if !os.IsNotExist(err) {
+					return fmt.Errorf("error while checking if gsfa-index-dir exists: %w", err)
+				}
+			} else if !ok {
+				return fmt.Errorf("gsfa-index-dir is not a directory")
+			}
+			exists, err := fileExists(gsfaIndexDir)
+			if err != nil {
+				return fmt.Errorf("error while checking if gsfa-index-dir exists: %w", err)
+			}
+			if exists {
+				empty, err := isDirEmpty(gsfaIndexDir)
+				if err != nil {
+					return fmt.Errorf("error while checking if gsfa-index-dir is empty: %w", err)
+				}
+				if !empty {
+					return fmt.Errorf("gsfa-index-dir is not empty")
+				}
+			}
 
 			flushEvery := c.Uint64("flush-every")
 
