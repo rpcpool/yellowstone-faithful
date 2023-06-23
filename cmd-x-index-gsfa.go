@@ -6,8 +6,10 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"time"
 
+	"github.com/dustin/go-humanize"
 	bin "github.com/gagliardetto/binary"
 	"github.com/gagliardetto/solana-go"
 	"github.com/ipld/go-car"
@@ -22,7 +24,7 @@ func newCmd_Index_gsfa() *cli.Command {
 	return &cli.Command{
 		Name:        "gsfa",
 		Description: "Create GSFA index from a CAR file",
-		ArgsUsage:   "<car-path> <gsfa-index-dir>",
+		ArgsUsage:   "<car-path> <index-dir>",
 		Before: func(c *cli.Context) error {
 			return nil
 		},
@@ -70,33 +72,28 @@ func newCmd_Index_gsfa() *cli.Command {
 				}
 			}
 
-			gsfaIndexDir := c.Args().Get(1)
-			if ok, err := IsDir(gsfaIndexDir); err != nil {
-				if !os.IsNotExist(err) {
-					return fmt.Errorf("error while checking if gsfa-index-dir exists: %w", err)
-				}
+			indexDir := c.Args().Get(1)
+			if ok, err := IsDir(indexDir); err != nil {
+				return err
 			} else if !ok {
-				return fmt.Errorf("gsfa-index-dir is not a directory")
+				return fmt.Errorf("index-dir is not a directory")
 			}
-			exists, err := dirExists(gsfaIndexDir)
+
+			rootCID := rd.Header.Roots[0]
+
+			// Use the car file name and root CID to name the gsfa index dir:
+			gsfaIndexDir := filepath.Join(indexDir, fmt.Sprintf("%s-%s-gsfa-index", filepath.Base(carPath), rootCID.String()))
+			klog.Infof("Creating gsfa index dir at %s", gsfaIndexDir)
+			err = os.Mkdir(gsfaIndexDir, 0o755)
 			if err != nil {
-				return fmt.Errorf("error while checking if gsfa-index-dir exists: %w", err)
-			}
-			if exists {
-				empty, err := isDirEmpty(gsfaIndexDir)
-				if err != nil {
-					return fmt.Errorf("error while checking if gsfa-index-dir is empty: %w", err)
-				}
-				if !empty {
-					return fmt.Errorf("index dir %q is not empty", gsfaIndexDir)
-				}
+				return fmt.Errorf("failed to create index dir: %w", err)
 			}
 
 			flushEvery := c.Uint64("flush-every")
 			if flushEvery == 0 {
 				return fmt.Errorf("flush-every must be > 0")
 			}
-			klog.Infof("Will flush to index every %d transactions", flushEvery)
+			klog.Infof("Will flush to index every %s transactions", humanize.Comma(int64(flushEvery)))
 
 			accu, err := gsfa.NewGsfaWriter(
 				gsfaIndexDir,
@@ -118,10 +115,10 @@ func newCmd_Index_gsfa() *cli.Command {
 			numTransactionsSeen := 0
 			defer func() {
 				klog.Infof("Finished in %s", time.Since(startedAt))
-				klog.Infof("Indexed %d transactions", numTransactionsSeen)
+				klog.Infof("Indexed %s transactions", humanize.Comma(int64(numTransactionsSeen)))
 			}()
 			dotEvery := 100_000
-			klog.Infof("A dot is printed every %d transactions", dotEvery)
+			klog.Infof("A dot is printed every %s transactions", humanize.Comma(int64(dotEvery)))
 
 			verifyHash := c.Bool("verify-hash")
 
