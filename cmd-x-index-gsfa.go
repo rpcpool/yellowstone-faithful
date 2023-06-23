@@ -1,21 +1,27 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/dustin/go-humanize"
 	bin "github.com/gagliardetto/binary"
 	"github.com/gagliardetto/solana-go"
+	"github.com/ipfs/go-libipfs/blocks"
 	"github.com/ipld/go-car"
 	"github.com/rpcpool/yellowstone-faithful/gsfa"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
+	concurrently "github.com/tejzpr/ordered-concurrently/v3"
 	"github.com/urfave/cli/v2"
 	"k8s.io/klog/v2"
 )
@@ -39,6 +45,12 @@ func newCmd_Index_gsfa() *cli.Command {
 				Name:  "verify-hash",
 				Usage: "verify hash of transactions",
 				Value: false,
+			},
+			// w number of workers:
+			&cli.UintFlag{
+				Name:  "w",
+				Usage: "number of workers",
+				Value: uint(runtime.NumCPU()),
 			},
 		},
 		Action: func(c *cli.Context) error {
@@ -120,7 +132,42 @@ func newCmd_Index_gsfa() *cli.Command {
 			dotEvery := 100_000
 			klog.Infof("A dot is printed every %s transactions", humanize.Comma(int64(dotEvery)))
 
-			verifyHash := c.Bool("verify-hash")
+			verifyHash = c.Bool("verify-hash")
+			numWorkers := c.Uint("w")
+
+			if numWorkers == 0 {
+				numWorkers = uint(runtime.NumCPU())
+			}
+			workerInputChan := make(chan concurrently.WorkFunction, numWorkers)
+			waitExecuted := new(sync.WaitGroup)
+			waitResultsReceived := new(sync.WaitGroup)
+			numReceivedAtomic := new(atomic.Int64)
+
+			outputChan := concurrently.Process(
+				context.Background(),
+				workerInputChan,
+				&concurrently.Options{PoolSize: int(numWorkers), OutChannelBuffer: int(numWorkers)},
+			)
+			go func() {
+				// process the results from the workers
+				for result := range outputChan {
+					switch resValue := result.Value.(type) {
+					case error:
+						panic(resValue)
+					case solana.Transaction:
+						tx := resValue
+						sig := tx.Signatures[0]
+						err = accu.Push(sig, tx.Message.AccountKeys)
+						if err != nil {
+							klog.Exitf("Error while pushing to gsfa index: %s", err)
+						}
+						waitResultsReceived.Done()
+						numReceivedAtomic.Add(-1)
+					default:
+						panic(fmt.Errorf("unexpected result type: %T", result.Value))
+					}
+				}
+			}()
 
 			for {
 				block, err := rd.Next()
@@ -136,44 +183,88 @@ func newCmd_Index_gsfa() *cli.Command {
 					if numTransactionsSeen%dotEvery == 0 {
 						fmt.Print(".")
 					}
-					decoded, err := iplddecoders.DecodeTransaction(block.RawData())
-					if err != nil {
-						panic(err)
-					}
 					{
-						if total, ok := decoded.Data.GetTotal(); !ok || total == 1 {
-							completeData := decoded.Data.Bytes()
-							if verifyHash {
-								// verify hash (if present)
-								if ha, ok := decoded.Data.GetHash(); ok {
-									err := ipldbindcode.VerifyHash(completeData, ha)
-									if err != nil {
-										klog.Exitf("Error while verifying hash for %s: %s", block.Cid(), err)
-									}
-								}
-							}
-							var tx solana.Transaction
-							if err := bin.UnmarshalBin(&tx, completeData); err != nil {
-								klog.Exitf("Error while unmarshaling transaction from nodex %s: %s", block.Cid(), err)
-							} else if len(tx.Signatures) == 0 {
-								klog.Exitf("Error while unmarshaling transaction from nodex %s: no signatures", block.Cid())
-							}
-							sig := tx.Signatures[0]
-
-							err = accu.Push(sig, tx.Message.AccountKeys)
-							if err != nil {
-								klog.Exitf("Error while pushing to gsfa index: %s", err)
-							}
-						} else {
-							klog.Warningf("Transaction data is split into multiple objects for %s; skipping", block.Cid())
-						}
+						waitExecuted.Add(1)
+						waitResultsReceived.Add(1)
+						numReceivedAtomic.Add(1)
+						workerInputChan <- newTxParserWorker(
+							block,
+							func() {
+								waitExecuted.Done()
+							},
+						)
 					}
 				default:
 					continue
 				}
 			}
+
+			{
+				klog.Infof("Waiting for all transactions to be parsed...")
+				waitExecuted.Wait()
+				klog.Infof("All transactions parsed.")
+
+				klog.Infof("Waiting to receive all results...")
+				close(workerInputChan)
+				waitResultsReceived.Wait()
+				klog.Infof("All results received")
+			}
 			klog.Infof("Success: GSFA index created at %s", gsfaIndexDir)
 			return nil
 		},
 	}
+}
+
+type txParserWorker struct {
+	blk  blocks.Block
+	done func()
+}
+
+func newTxParserWorker(
+	blk blocks.Block,
+	done func(),
+) *txParserWorker {
+	return &txParserWorker{
+		blk:  blk,
+		done: done,
+	}
+}
+
+var verifyHash bool
+
+func (w txParserWorker) Run(ctx context.Context) interface{} {
+	defer func() {
+		w.done()
+	}()
+
+	block := w.blk
+
+	decoded, err := iplddecoders.DecodeTransaction(block.RawData())
+	if err != nil {
+		return fmt.Errorf("error while decoding transaction from nodex %s: %w", block.Cid(), err)
+	}
+	{
+		if total, ok := decoded.Data.GetTotal(); !ok || total == 1 {
+			completeData := decoded.Data.Bytes()
+			if verifyHash {
+				// verify hash (if present)
+				if ha, ok := decoded.Data.GetHash(); ok {
+					err := ipldbindcode.VerifyHash(completeData, ha)
+					if err != nil {
+						klog.Exitf("Error while verifying hash for %s: %s", block.Cid(), err)
+					}
+				}
+			}
+			var tx solana.Transaction
+			if err := bin.UnmarshalBin(&tx, completeData); err != nil {
+				klog.Exitf("Error while unmarshaling transaction from nodex %s: %s", block.Cid(), err)
+			} else if len(tx.Signatures) == 0 {
+				klog.Exitf("Error while unmarshaling transaction from nodex %s: no signatures", block.Cid())
+			}
+			return tx
+		} else {
+			klog.Warningf("Transaction data is split into multiple objects for %s; skipping", block.Cid())
+		}
+	}
+	return nil
 }
