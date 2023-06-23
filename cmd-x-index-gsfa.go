@@ -32,6 +32,12 @@ func newCmd_Index_gsfa() *cli.Command {
 				Usage: "flush every N transactions",
 				Value: 1_000_000,
 			},
+			// verify hash of transactions:
+			&cli.BoolFlag{
+				Name:  "verify-hash",
+				Usage: "verify hash of transactions",
+				Value: false,
+			},
 		},
 		Action: func(c *cli.Context) error {
 			carPath := c.Args().First()
@@ -72,7 +78,7 @@ func newCmd_Index_gsfa() *cli.Command {
 			} else if !ok {
 				return fmt.Errorf("gsfa-index-dir is not a directory")
 			}
-			exists, err := fileExists(gsfaIndexDir)
+			exists, err := dirExists(gsfaIndexDir)
 			if err != nil {
 				return fmt.Errorf("error while checking if gsfa-index-dir exists: %w", err)
 			}
@@ -82,7 +88,7 @@ func newCmd_Index_gsfa() *cli.Command {
 					return fmt.Errorf("error while checking if gsfa-index-dir is empty: %w", err)
 				}
 				if !empty {
-					return fmt.Errorf("gsfa-index-dir is not empty")
+					return fmt.Errorf("index dir %q is not empty", gsfaIndexDir)
 				}
 			}
 
@@ -117,6 +123,8 @@ func newCmd_Index_gsfa() *cli.Command {
 			dotEvery := 100_000
 			klog.Infof("A dot is printed every %d transactions", dotEvery)
 
+			verifyHash := c.Bool("verify-hash")
+
 			for {
 				block, err := rd.Next()
 				if errors.Is(err, io.EOF) {
@@ -138,7 +146,7 @@ func newCmd_Index_gsfa() *cli.Command {
 					{
 						if total, ok := decoded.Data.GetTotal(); !ok || total == 1 {
 							completeData := decoded.Data.Bytes()
-							{
+							if verifyHash {
 								// verify hash (if present)
 								if ha, ok := decoded.Data.GetHash(); ok {
 									err := ipldbindcode.VerifyHash(completeData, ha)
