@@ -60,9 +60,6 @@ func took(name string, cb func()) {
 }
 
 func workerDemoLoad(root string, numGlobalAccounts uint64, numSigs int) error {
-	indexFolder := filepath.Join(root, "offsets-index")
-	os.MkdirAll(indexFolder, os.ModePerm)
-
 	defer func() {
 		{
 			// print the size of the index.
