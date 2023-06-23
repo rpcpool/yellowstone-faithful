@@ -50,7 +50,7 @@ func newCmd_Index_gsfa() *cli.Command {
 			&cli.UintFlag{
 				Name:  "w",
 				Usage: "number of workers",
-				Value: uint(runtime.NumCPU()),
+				Value: uint(runtime.NumCPU()) * 3,
 			},
 		},
 		Action: func(c *cli.Context) error {
