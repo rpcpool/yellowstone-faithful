@@ -30,7 +30,7 @@ func newCmd_Index_gsfa() *cli.Command {
 			&cli.Uint64Flag{
 				Name:  "flush-every",
 				Usage: "flush every N transactions",
-				Value: 500_000,
+				Value: 1_000_000,
 			},
 		},
 		Action: func(c *cli.Context) error {
@@ -87,6 +87,10 @@ func newCmd_Index_gsfa() *cli.Command {
 			}
 
 			flushEvery := c.Uint64("flush-every")
+			if flushEvery == 0 {
+				return fmt.Errorf("flush-every must be > 0")
+			}
+			klog.Infof("Will flush to index every %d transactions", flushEvery)
 
 			accu, err := gsfa.NewGsfaWriter(
 				gsfaIndexDir,
