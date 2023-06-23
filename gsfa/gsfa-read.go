@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -20,8 +21,21 @@ type GsfaReader struct {
 	sff     *sff.SignaturesFlatFile
 }
 
+func isDir(path string) (bool, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return false, err
+	}
+	return info.IsDir(), nil
+}
+
 // NewGsfaReader opens an existing index in READ-ONLY mode.
 func NewGsfaReader(indexRootDir string) (*GsfaReader, error) {
+	if ok, err := isDir(indexRootDir); err != nil {
+		return nil, err
+	} else if !ok {
+		return nil, fmt.Errorf("provided path is not a directory: %s", indexRootDir)
+	}
 	index := &GsfaReader{}
 	{
 		offsetsIndexDir := filepath.Join(indexRootDir, "offsets-index")

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"sync"
 	"time"
@@ -31,6 +32,20 @@ func NewGsfaWriter(
 	indexRootDir string,
 	flushEveryXSigs uint64,
 ) (*GsfaWriter, error) {
+	// if exists and is dir, open.
+	// if exists and is not dir, error.
+	// if not exists, create.
+	if ok, err := isDir(indexRootDir); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			if err := os.MkdirAll(indexRootDir, 0o755); err != nil {
+				return nil, err
+			}
+		} else {
+			return nil, err
+		}
+	} else if !ok {
+		return nil, fmt.Errorf("provided path is not a directory: %s", indexRootDir)
+	}
 	if flushEveryXSigs == 0 {
 		return nil, fmt.Errorf("flushAt must be greater than 0")
 	}
