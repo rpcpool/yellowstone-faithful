@@ -1,5 +1,10 @@
 package primary
 
+// Copyright 2023 rpcpool
+// This file has been modified by github.com/gagliardetto
+//
+// Copyright 2020 IPLD Team and various authors and contributors
+// See LICENSE for details.
 import "github.com/rpcpool/yellowstone-faithful/gsfa/store/types"
 
 // PrimaryStorage is an interface for storing and retrieving key value pairs on disk

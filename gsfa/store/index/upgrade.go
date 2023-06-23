@@ -1,5 +1,10 @@
 package index
 
+// Copyright 2023 rpcpool
+// This file has been modified by github.com/gagliardetto
+//
+// Copyright 2020 IPLD Team and various authors and contributors
+// See LICENSE for details.
 import (
 	"bufio"
 	"context"

@@ -71,7 +71,7 @@ func (index *GsfaReader) Get(
 	locs, err := index.offsets.Get(context.Background(), pk)
 	if err != nil {
 		if offsetstore.IsNotFound(err) {
-			return nil, offsetstore.ErrNotFound{pk}
+			return nil, offsetstore.ErrNotFound{PubKey: pk}
 		}
 		return nil, fmt.Errorf("error while getting initial offset: %w", err)
 	}

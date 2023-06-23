@@ -1,3 +1,8 @@
+// Copyright 2023 rpcpool
+// This file has been modified by github.com/gagliardetto
+//
+// Copyright 2020 IPLD Team and various authors and contributors
+// See LICENSE for details.
 package filecache
 
 import (
@@ -23,7 +28,7 @@ func TestOpen(t *testing.T) {
 		evictedRefs = refs
 	}
 
-	fc := NewOpenFile(2, os.O_CREATE|os.O_RDWR, 0644)
+	fc := NewOpenFile(2, os.O_CREATE|os.O_RDWR, 0o644)
 	fc.SetOnEvicted(onEvicted)
 
 	tmp := t.TempDir()
@@ -110,7 +115,7 @@ func TestMultiFileInstances(t *testing.T) {
 		evictedName = file.Name()
 		evictedRefs = refs
 	}
-	fc := NewOpenFile(2, os.O_CREATE|os.O_RDWR, 0644)
+	fc := NewOpenFile(2, os.O_CREATE|os.O_RDWR, 0o644)
 	fc.SetOnEvicted(onEvicted)
 
 	tmp := t.TempDir()
@@ -213,7 +218,7 @@ func TestMultiFileInstances(t *testing.T) {
 }
 
 func TestZeroSize(t *testing.T) {
-	fc := NewOpenFile(0, os.O_CREATE|os.O_RDWR, 0644)
+	fc := NewOpenFile(0, os.O_CREATE|os.O_RDWR, 0o644)
 
 	var evicted bool
 	fc.SetOnEvicted(func(file *os.File, refs int) {
@@ -255,7 +260,7 @@ func TestFuzz(t *testing.T) {
 		delay       = 500 * time.Microsecond
 	)
 
-	fc := NewOpenFile(capacity, os.O_CREATE|os.O_RDWR, 0644)
+	fc := NewOpenFile(capacity, os.O_CREATE|os.O_RDWR, 0o644)
 
 	tmp := t.TempDir()
 	fooName := filepath.Join(tmp, "foo")
@@ -306,7 +311,7 @@ func TestEvict(t *testing.T) {
 		t.Logf("Removed %q from cache, refs: %d", filepath.Base(file.Name()), refs)
 		evictions++
 	}
-	fc := NewOpenFile(capacity, os.O_CREATE|os.O_RDWR, 0644)
+	fc := NewOpenFile(capacity, os.O_CREATE|os.O_RDWR, 0o644)
 	fc.SetOnEvicted(onEvicted)
 
 	tmp := t.TempDir()
