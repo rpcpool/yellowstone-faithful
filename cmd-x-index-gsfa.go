@@ -65,12 +65,6 @@ func newCmd_Index_gsfa() *cli.Command {
 			}
 
 			gsfaIndexDir := c.Args().Get(1)
-			// check if indexDir exists and is a directory:
-			if ok, err := IsDir(gsfaIndexDir); err != nil {
-				return err
-			} else if !ok {
-				return fmt.Errorf("index-dir is not a directory")
-			}
 
 			flushEvery := c.Uint64("flush-every")
 

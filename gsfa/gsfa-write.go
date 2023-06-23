@@ -55,6 +55,9 @@ func NewGsfaWriter(
 	}
 	{
 		offsetsIndexDir := filepath.Join(indexRootDir, "offsets-index")
+		if err := os.MkdirAll(offsetsIndexDir, 0o755); err != nil {
+			return nil, err
+		}
 		offsets, err := offsetstore.OpenOffsetStore(
 			context.Background(),
 			filepath.Join(offsetsIndexDir, "index"),
@@ -63,7 +66,7 @@ func NewGsfaWriter(
 			store.GCInterval(time.Hour),
 		)
 		if err != nil {
-			return nil, fmt.Errorf("error while opening index: %w", err)
+			return nil, fmt.Errorf("error while opening offset index: %w", err)
 		}
 		index.offsets = offsets
 		index.offsets.Start()

@@ -106,11 +106,10 @@ func (ser *rpcServer) getSignaturesForAddress(ctx context.Context, conn *request
 	}
 
 	// reply with the data
-	err = conn.Reply(
+	err = conn.ReplyNoMod(
 		ctx,
 		req.ID,
 		response,
-		nil,
 	)
 	if err != nil {
 		klog.Errorf("failed to reply: %v", err)

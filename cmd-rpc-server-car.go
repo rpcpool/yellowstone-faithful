@@ -447,6 +447,24 @@ func (c *requestContext) Reply(
 	return err
 }
 
+func (c *requestContext) ReplyNoMod(
+	ctx context.Context,
+	id jsonrpc2.ID,
+	result interface{},
+) error {
+	resRaw, err := jsoniter.ConfigCompatibleWithStandardLibrary.Marshal(result)
+	if err != nil {
+		return err
+	}
+	raw := json.RawMessage(resRaw)
+	resp := &jsonrpc2.Response{
+		ID:     id,
+		Result: &raw,
+	}
+	replyJSON(c.ctx, http.StatusOK, resp)
+	return err
+}
+
 func (s *rpcServer) GetNodeByCid(ctx context.Context, wantedCid cid.Cid) ([]byte, error) {
 	if s.lassieFetcher != nil {
 		// Fetch the node from lassie.
