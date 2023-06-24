@@ -107,6 +107,8 @@ func (s *LinkedLog) write(b []byte) (uint64, uint32, error) {
 	return startOffset, uint32(numWritten), nil
 }
 
+const mib = 1024 * 1024
+
 // Read reads the block stored at the given offset.
 func (s *LinkedLog) Read(offset uint64) ([]uint64, uint64, error) {
 	lenBuf := make([]byte, binary.MaxVarintLen64)
@@ -119,6 +121,9 @@ func (s *LinkedLog) Read(offset uint64) ([]uint64, uint64, error) {
 	compactedIndexesLen, n := binary.Uvarint(lenBuf)
 	if n <= 0 {
 		return nil, 0, errors.New("invalid compacted indexes length")
+	}
+	if compactedIndexesLen > 256*mib {
+		return nil, 0, fmt.Errorf("compacted indexes length too large: %d", compactedIndexesLen)
 	}
 	// debugln("compactedIndexesLen:", compactedIndexesLen)
 	// Read the compressed indexes
@@ -199,7 +204,7 @@ func uint64ToBytes(i uint64) []byte {
 
 func overwrite8BytesAtOffset(file *os.File, offset uint64, data []byte) error {
 	if len(data) != 8 {
-		return fmt.Errorf("data must be 8 bytes long")
+		return fmt.Errorf("data must be 8 bytes long, got %d", len(data))
 	}
 	n, err := file.WriteAt(data, int64(offset))
 	if err != nil {
@@ -213,7 +218,7 @@ func overwrite8BytesAtOffset(file *os.File, offset uint64, data []byte) error {
 
 func uint64SliceFromBytes(buf []byte) []uint64 {
 	if len(buf)%8 != 0 {
-		panic("invalid length")
+		panic(fmt.Sprintf("buf length must be a multiple of 8, got %d", len(buf)))
 	}
 	slice := make([]uint64, len(buf)/8)
 	for i := 0; i < len(slice); i++ {
