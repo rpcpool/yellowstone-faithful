@@ -46,84 +46,86 @@ import (
 
 var fetchProviderAddrInfos []peer.AddrInfo
 
+var lassieFetchFlags = []cli.Flag{
+	&cli.StringFlag{
+		Name:      "output",
+		Aliases:   []string{"o"},
+		Usage:     "the CAR file to write to, may be an existing or a new CAR, or use '-' to write to stdout",
+		TakesFile: true,
+	},
+	&cli.DurationFlag{
+		Name:    "provider-timeout",
+		Aliases: []string{"pt"},
+		Usage:   "consider it an error after not receiving a response from a storage provider after this amount of time",
+		Value:   20 * time.Second,
+	},
+	&cli.DurationFlag{
+		Name:    "global-timeout",
+		Aliases: []string{"gt"},
+		Usage:   "consider it an error after not completing the retrieval after this amount of time",
+		Value:   0,
+	},
+	&cli.BoolFlag{
+		Name:    "progress",
+		Aliases: []string{"p"},
+		Usage:   "print progress output",
+	},
+	&cli.StringFlag{
+		Name:        "dag-scope",
+		Usage:       "describes the fetch behavior at the end of the traversal path. Valid values include [all, entity, block].",
+		DefaultText: "defaults to all, the entire DAG at the end of the path will be fetched",
+		Value:       "all",
+		Action: func(cctx *cli.Context, v string) error {
+			switch v {
+			case string(types.DagScopeAll):
+			case string(types.DagScopeEntity):
+			case string(types.DagScopeBlock):
+			default:
+				return fmt.Errorf("invalid dag-scope parameter, must be of value [all, entity, block]")
+			}
+
+			return nil
+		},
+	},
+	&cli.StringFlag{
+		Name:        "providers",
+		Aliases:     []string{"provider"},
+		DefaultText: "Providers will be discovered automatically",
+		Usage:       "Addresses of providers, including peer IDs, to use instead of automatic discovery, seperated by a comma. All protocols will be attempted when connecting to these providers. Example: /ip4/1.2.3.4/tcp/1234/p2p/12D3KooWBSTEYMLSu5FnQjshEVah9LFGEZoQt26eacCEVYfedWA4",
+		Action: func(cctx *cli.Context, v string) error {
+			// Do nothing if given an empty string
+			if v == "" {
+				return nil
+			}
+
+			var err error
+			fetchProviderAddrInfos, err = types.ParseProviderStrings(v)
+			return err
+		},
+	},
+	&cli.StringFlag{
+		Name:        "ipni-endpoint",
+		Aliases:     []string{"ipni"},
+		DefaultText: "Defaults to https://cid.contact",
+		Usage:       "HTTP endpoint of the IPNI instance used to discover providers.",
+	},
+	FlagEventRecorderAuth,
+	FlagEventRecorderInstanceId,
+	FlagEventRecorderUrl,
+	FlagVerbose,
+	FlagVeryVerbose,
+	FlagProtocols,
+	FlagExcludeProviders,
+	FlagTempDir,
+	FlagBitswapConcurrency,
+}
+
 var fetchCmd = &cli.Command{
 	Name:   "fetch",
 	Usage:  "Fetches content from the IPFS and Filecoin network",
 	Before: before,
 	Action: Fetch,
-	Flags: []cli.Flag{
-		&cli.StringFlag{
-			Name:      "output",
-			Aliases:   []string{"o"},
-			Usage:     "the CAR file to write to, may be an existing or a new CAR, or use '-' to write to stdout",
-			TakesFile: true,
-		},
-		&cli.DurationFlag{
-			Name:    "provider-timeout",
-			Aliases: []string{"pt"},
-			Usage:   "consider it an error after not receiving a response from a storage provider after this amount of time",
-			Value:   20 * time.Second,
-		},
-		&cli.DurationFlag{
-			Name:    "global-timeout",
-			Aliases: []string{"gt"},
-			Usage:   "consider it an error after not completing the retrieval after this amount of time",
-			Value:   0,
-		},
-		&cli.BoolFlag{
-			Name:    "progress",
-			Aliases: []string{"p"},
-			Usage:   "print progress output",
-		},
-		&cli.StringFlag{
-			Name:        "dag-scope",
-			Usage:       "describes the fetch behavior at the end of the traversal path. Valid values include [all, entity, block].",
-			DefaultText: "defaults to all, the entire DAG at the end of the path will be fetched",
-			Value:       "all",
-			Action: func(cctx *cli.Context, v string) error {
-				switch v {
-				case string(types.DagScopeAll):
-				case string(types.DagScopeEntity):
-				case string(types.DagScopeBlock):
-				default:
-					return fmt.Errorf("invalid dag-scope parameter, must be of value [all, entity, block]")
-				}
-
-				return nil
-			},
-		},
-		&cli.StringFlag{
-			Name:        "providers",
-			Aliases:     []string{"provider"},
-			DefaultText: "Providers will be discovered automatically",
-			Usage:       "Addresses of providers, including peer IDs, to use instead of automatic discovery, seperated by a comma. All protocols will be attempted when connecting to these providers. Example: /ip4/1.2.3.4/tcp/1234/p2p/12D3KooWBSTEYMLSu5FnQjshEVah9LFGEZoQt26eacCEVYfedWA4",
-			Action: func(cctx *cli.Context, v string) error {
-				// Do nothing if given an empty string
-				if v == "" {
-					return nil
-				}
-
-				var err error
-				fetchProviderAddrInfos, err = types.ParseProviderStrings(v)
-				return err
-			},
-		},
-		&cli.StringFlag{
-			Name:        "ipni-endpoint",
-			Aliases:     []string{"ipni"},
-			DefaultText: "Defaults to https://cid.contact",
-			Usage:       "HTTP endpoint of the IPNI instance used to discover providers.",
-		},
-		FlagEventRecorderAuth,
-		FlagEventRecorderInstanceId,
-		FlagEventRecorderUrl,
-		FlagVerbose,
-		FlagVeryVerbose,
-		FlagProtocols,
-		FlagExcludeProviders,
-		FlagTempDir,
-		FlagBitswapConcurrency,
-	},
+	Flags:  lassieFetchFlags,
 }
 
 func Fetch(cctx *cli.Context) error {

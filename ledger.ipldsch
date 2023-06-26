@@ -1,33 +1,51 @@
+# Epoch is the top-level data structure in the DAG. It contains a list of
+# subsets, which in turn contain a list of blocks. Each block contains a list
+# of entries, which in turn contain a list of transactions.
 type Epoch struct {
+  # The kind of this object. This is used to determine which fields are
+  # present, and how to interpret them. This is useful for knowing which
+  # type of object to deserialize.
   kind   Int
+  # The epoch number.
   epoch  Int
+  # The list of subsets in this epoch.
   subsets [ Link ] # [ &Subset ]
 } representation tuple
 
 type Subset struct {
   kind   Int
+  # First slot in this subset.
   first  Int
+  # Last slot in this subset.
   last   Int
+  # The list of blocks in this subset.
   blocks [ Link ] # [ &Block ]
 } representation tuple
 
 type Block struct {
   kind      Int
+  # The slot number where this block was created.
   slot      Int
   shredding [ Shredding ]
   entries   [ Link ] # [ &Entry ]
+  # The metadata for this block.
   meta      SlotMeta
+  # Link to the rewards for this block.
   rewards   Link     # &Rewards
 } representation tuple
 
 type Rewards struct {
   kind       Int
+  # The slot number for which these rewards are for.
   slot       Int
+  # The raw rewards data.
   data       DataFrame
 } representation tuple
 
 type SlotMeta struct {
+  # The parent slot of this slot.
   parent_slot         Int
+  # Block time of this slot.
   blocktime           Int
 } representation tuple
 
@@ -40,24 +58,57 @@ type Entry struct {
   kind         Int
   numHashes    Int
   hash         Hash
+  # The list of transactions in this entry.
   transactions [ Link ] # [ &Transaction ]
 } representation tuple
 
 type Transaction struct {
   kind     Int
+  # Raw transaction data.
   data     DataFrame
+  # Raw tx metadata data.
   metadata DataFrame
+  # The slot number where this transaction was created.
   slot     Int
 } representation tuple
 
 type Hash bytes
 type Buffer bytes
 
+# DataFrame is a chunk of data that is part of a larger whole. It contains
+# a hash of the whole data, and the index of this chunk in the larger whole.
+# This is used to verify that the data is not corrupted, and to reassemble
+# the data in the correct order.
+#
+# The data is stored in a Buffer, which is a raw byte array.
+# The hash is stored as a CRC64 ISO 3309.
+# 
+# The `next` field is used to link multiple frames together. This is used
+# when the data is too large to fit in a single frame.
+#
+# Example: a payload is too large to fit in a single frame, so it is
+# split into multiple frames. Let's say it is split into 10 frames.
+# These are what the frames would look like (excluding some fields):
+# - DataFrame { index: 0, total: 10, data: [...], next: [cid1, cid2, cid3, cid4, cid5] }
+# - DataFrame { index: 1, total: 10, data: [...], next: [] }
+# - DataFrame { index: 2, total: 10, data: [...], next: [] }
+# - DataFrame { index: 3, total: 10, data: [...], next: [] }
+# - DataFrame { index: 4, total: 10, data: [...], next: [] }
+# - DataFrame { index: 5, total: 10, data: [...], next: [cid6, cid7, cid8, cid9] }
+# - DataFrame { index: 6, total: 10, data: [...], next: [] }
+# - DataFrame { index: 7, total: 10, data: [...], next: [] }
+# - DataFrame { index: 8, total: 10, data: [...], next: [] }
+# - DataFrame { index: 9, total: 10, data: [...], next: [] }
 type DataFrame struct {
   kind  Int
+  # Hash of the whole data across all frames, using CRC64 ISO 3309.
   hash  Int
+  # Index of this frame among all frames (0-indexed).
   index Int
+  # Total number of frames.
   total Int
+  # Raw data, stored as a byte array.
   data  Buffer
+  # The next frames in the list (if any).
   next  [ Link ] # [ &DataFrame ]
 } representation tuple

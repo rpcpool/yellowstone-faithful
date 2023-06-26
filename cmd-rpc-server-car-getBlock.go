@@ -1,13 +1,13 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"runtime"
 	"sync"
+	"time"
 
 	"github.com/gagliardetto/solana-go"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
@@ -42,7 +42,26 @@ func (e *InternalError) As(target interface{}) bool {
 	return errors.As(e.Err, target)
 }
 
+type timer struct {
+	start time.Time
+	prev  time.Time
+}
+
+func newTimer() *timer {
+	now := time.Now()
+	return &timer{
+		start: now,
+		prev:  now,
+	}
+}
+
+func (t *timer) time(name string) {
+	klog.V(2).Infof("TIMED: %s: %s (overall %s)", name, time.Since(t.prev), time.Since(t.start))
+	t.prev = time.Now()
+}
+
 func (ser *rpcServer) getBlock(ctx context.Context, conn *requestContext, req *jsonrpc2.Request) {
+	tim := newTimer()
 	params, err := parseGetBlockRequest(req.Params)
 	if err != nil {
 		klog.Errorf("failed to parse params: %v", err)
@@ -55,6 +74,7 @@ func (ser *rpcServer) getBlock(ctx context.Context, conn *requestContext, req *j
 			})
 		return
 	}
+	tim.time("parseGetBlockRequest")
 	slot := params.Slot
 
 	block, err := ser.GetBlock(ctx, slot)
@@ -69,6 +89,7 @@ func (ser *rpcServer) getBlock(ctx context.Context, conn *requestContext, req *j
 			})
 		return
 	}
+	tim.time("GetBlock")
 	blocktime := uint64(block.Meta.Blocktime)
 
 	allTransactionNodes := make([]*ipldbindcode.Transaction, 0)
@@ -76,7 +97,7 @@ func (ser *rpcServer) getBlock(ctx context.Context, conn *requestContext, req *j
 	var lastEntryHash solana.Hash
 	{
 		wg := new(errgroup.Group)
-		wg.SetLimit(runtime.NumCPU())
+		wg.SetLimit(runtime.NumCPU() * 2)
 		// get entries from the block
 		for entryIndex, entry := range block.Entries {
 			entryIndex := entryIndex
@@ -93,19 +114,27 @@ func (ser *rpcServer) getBlock(ctx context.Context, conn *requestContext, req *j
 					lastEntryHash = solana.HashFromBytes(entryNode.Hash)
 				}
 
+				twg := new(errgroup.Group)
+				twg.SetLimit(runtime.NumCPU())
 				// get the transactions from the entry
-				for _, tx := range entryNode.Transactions {
-					// get the transaction by CID
-					txNode, err := ser.GetTransactionByCid(ctx, tx.(cidlink.Link).Cid)
-					if err != nil {
-						klog.Errorf("failed to decode Transaction: %v", err)
-						continue
-					}
-					mu.Lock()
-					allTransactionNodes = append(allTransactionNodes, txNode)
-					mu.Unlock()
+				for txI := range entryNode.Transactions {
+					txI := txI
+					tx := entryNode.Transactions[txI]
+					twg.Go(func() error {
+						// get the transaction by CID
+						tcid := tx.(cidlink.Link).Cid
+						txNode, err := ser.GetTransactionByCid(ctx, tcid)
+						if err != nil {
+							klog.Errorf("failed to decode Transaction %s: %v", tcid, err)
+							return nil
+						}
+						mu.Lock()
+						allTransactionNodes = append(allTransactionNodes, txNode)
+						mu.Unlock()
+						return nil
+					})
 				}
-				return nil
+				return twg.Wait()
 			})
 		}
 		err = wg.Wait()
@@ -121,10 +150,12 @@ func (ser *rpcServer) getBlock(ctx context.Context, conn *requestContext, req *j
 			return
 		}
 	}
+	tim.time("get entries")
 
 	var allTransactions []GetTransactionResponse
 	var rewards any // TODO: implement rewards as in solana
-	if !block.Rewards.(cidlink.Link).Cid.Equals(DummyCID) {
+	hasRewards := !block.Rewards.(cidlink.Link).Cid.Equals(DummyCID)
+	if hasRewards {
 		rewardsNode, err := ser.GetRewardsByCid(ctx, block.Rewards.(cidlink.Link).Cid)
 		if err != nil {
 			klog.Errorf("failed to decode Rewards: %v", err)
@@ -137,29 +168,30 @@ func (ser *rpcServer) getBlock(ctx context.Context, conn *requestContext, req *j
 				})
 			return
 		}
-		buf := new(bytes.Buffer)
-		buf.Write(rewardsNode.Data.Data)
-		if rewardsNode.Data.Total > 1 {
-			for _, _cid := range rewardsNode.Data.Next {
-				nextNode, err := ser.GetDataFrameByCid(ctx, _cid.(cidlink.Link).Cid)
-				if err != nil {
-					klog.Errorf("failed to decode Rewards: %v", err)
-					conn.ReplyWithError(
-						ctx,
-						req.ID,
-						&jsonrpc2.Error{
-							Code:    jsonrpc2.CodeInternalError,
-							Message: "Internal error",
-						})
-					return
-				}
-				buf.Write(nextNode.Data)
-			}
+		rewardsBuf, err := loadDataFromDataFrames(&rewardsNode.Data, ser.GetDataFrameByCid)
+		if err != nil {
+			klog.Errorf("failed to load Rewards dataFrames: %v", err)
+			conn.ReplyWithError(
+				ctx,
+				req.ID,
+				&jsonrpc2.Error{
+					Code:    jsonrpc2.CodeInternalError,
+					Message: "Internal error",
+				})
+			return
 		}
 
-		uncompressedRewards, err := decompressZstd(buf.Bytes())
+		uncompressedRewards, err := decompressZstd(rewardsBuf)
 		if err != nil {
-			panic(err)
+			klog.Errorf("failed to decompress Rewards: %v", err)
+			conn.ReplyWithError(
+				ctx,
+				req.ID,
+				&jsonrpc2.Error{
+					Code:    jsonrpc2.CodeInternalError,
+					Message: "Internal error",
+				})
+			return
 		}
 		// try decoding as protobuf
 		actualRewards, err := solanablockrewards.ParseRewards(uncompressedRewards)
@@ -224,6 +256,7 @@ func (ser *rpcServer) getBlock(ctx context.Context, conn *requestContext, req *j
 			}
 		}
 	}
+	tim.time("get rewards")
 	{
 		for _, transactionNode := range allTransactionNodes {
 			var txResp GetTransactionResponse
@@ -272,6 +305,7 @@ func (ser *rpcServer) getBlock(ctx context.Context, conn *requestContext, req *j
 			allTransactions = append(allTransactions, txResp)
 		}
 	}
+	tim.time("get transactions")
 	var blockResp GetBlockResponse
 	blockResp.Transactions = allTransactions
 	blockResp.BlockTime = &blocktime
@@ -313,6 +347,7 @@ func (ser *rpcServer) getBlock(ctx context.Context, conn *requestContext, req *j
 			blockResp.PreviousBlockhash = parentEntryHash.String()
 		}
 	}
+	tim.time("get parent block")
 
 	// TODO: get all the transactions from the block
 	// reply with the data
@@ -324,6 +359,7 @@ func (ser *rpcServer) getBlock(ctx context.Context, conn *requestContext, req *j
 			return m
 		},
 	)
+	tim.time("reply")
 	if err != nil {
 		klog.Errorf("failed to reply: %v", err)
 	}
