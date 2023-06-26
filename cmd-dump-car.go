@@ -15,6 +15,7 @@ import (
 	bin "github.com/gagliardetto/binary"
 	"github.com/gagliardetto/solana-go"
 	"github.com/ipld/go-car"
+	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
 	solanablockrewards "github.com/rpcpool/yellowstone-faithful/solana-block-rewards"
 	solanatxmetaparsers "github.com/rpcpool/yellowstone-faithful/solana-tx-meta-parsers"
@@ -158,8 +159,17 @@ func newCmd_DumpCar() *cli.Command {
 						panic(err)
 					}
 					{
-						if decoded.Data.Total == 1 {
-							completeData := decoded.Data.Data
+						if total, ok := decoded.Data.GetTotal(); !ok || total == 1 {
+							completeData := decoded.Data.Bytes()
+							{
+								// verify hash (if present)
+								if ha, ok := decoded.Data.GetHash(); ok {
+									err := ipldbindcode.VerifyHash(completeData, ha)
+									if err != nil {
+										panic(err)
+									}
+								}
+							}
 							var tx solana.Transaction
 							if err := bin.UnmarshalBin(&tx, completeData); err != nil {
 								panic(err)
@@ -176,11 +186,17 @@ func newCmd_DumpCar() *cli.Command {
 							}
 						} else {
 							if doPrint {
-								fmt.Println("transaction data is split into multiple blocks; skipping printing")
+								fmt.Println("transaction data is split into multiple objects; skipping printing")
 							}
 						}
-						if decoded.Metadata.Total == 1 {
-							completeBuffer := decoded.Metadata.Data
+						if total, ok := decoded.Metadata.GetTotal(); !ok || total == 1 {
+							completeBuffer := decoded.Metadata.Bytes()
+							if ha, ok := decoded.Metadata.GetHash(); ok {
+								err := ipldbindcode.VerifyHash(completeBuffer, ha)
+								if err != nil {
+									panic(err)
+								}
+							}
 							if len(completeBuffer) > 0 {
 								uncompressedMeta, err := decompressZstd(completeBuffer)
 								if err != nil {
@@ -196,7 +212,7 @@ func newCmd_DumpCar() *cli.Command {
 							}
 						} else {
 							if doPrint {
-								fmt.Println("transaction metadata is split into multiple blocks; skipping printing")
+								fmt.Println("transaction metadata is split into multiple objects; skipping printing")
 							}
 						}
 					}
@@ -245,8 +261,14 @@ func newCmd_DumpCar() *cli.Command {
 						spew.Dump(decoded)
 						numNodesPrinted++
 
-						if decoded.Data.Total == 1 {
-							completeBuffer := decoded.Data.Data
+						if total, ok := decoded.Data.GetTotal(); !ok || total == 1 {
+							completeBuffer := decoded.Data.Bytes()
+							if ha, ok := decoded.Data.GetHash(); ok {
+								err := ipldbindcode.VerifyHash(completeBuffer, ha)
+								if err != nil {
+									panic(err)
+								}
+							}
 							if len(completeBuffer) > 0 {
 								uncompressedRewards, err := decompressZstd(completeBuffer)
 								if err != nil {
@@ -262,7 +284,7 @@ func newCmd_DumpCar() *cli.Command {
 								}
 							}
 						} else {
-							fmt.Println("rewards data is split into multiple blocks; skipping printing")
+							fmt.Println("rewards data is split into multiple objects; skipping printing")
 						}
 					}
 				case iplddecoders.KindDataFrame:

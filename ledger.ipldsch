@@ -102,13 +102,13 @@ type Buffer bytes
 type DataFrame struct {
   kind  Int
   # Hash of the whole data across all frames, using CRC64 ISO 3309.
-  hash  Int
+  hash nullable optional  Int
   # Index of this frame among all frames (0-indexed).
-  index Int
+  index nullable optional Int
   # Total number of frames.
-  total Int
+  total nullable optional Int
   # Raw data, stored as a byte array.
-  data  Buffer
+  data                    Buffer
   # The next frames in the list (if any).
-  next  [ Link ] # [ &DataFrame ]
+  next nullable optional  [ Link ] # [ &DataFrame ]
 } representation tuple

@@ -84,9 +84,10 @@ func CreateIndex_sig2cid(ctx context.Context, tmpDir string, carPath string, ind
 		func(c cid.Cid, txNode *ipldbindcode.Transaction) error {
 			var tx solana.Transaction
 			txBuffer := new(bytes.Buffer)
-			txBuffer.Write(txNode.Data.Data)
-			if txNode.Data.Total > 1 {
+			txBuffer.Write(txNode.Data.Bytes())
+			if total, ok := txNode.Data.GetTotal(); ok && total > 1 {
 				// TODO: handle this case
+				klog.Infof("skipping transaction with %d partials", total)
 				return nil
 			}
 			if err := bin.UnmarshalBin(&tx, txBuffer.Bytes()); err != nil {
@@ -194,9 +195,10 @@ func VerifyIndex_sig2cid(ctx context.Context, carPath string, indexFilePath stri
 		func(c cid.Cid, txNode *ipldbindcode.Transaction) error {
 			var tx solana.Transaction
 			txBuffer := new(bytes.Buffer)
-			txBuffer.Write(txNode.Data.Data)
-			if txNode.Data.Total > 1 {
+			txBuffer.Write(txNode.Data.Bytes())
+			if total, ok := txNode.Data.GetTotal(); ok && total > 1 {
 				// TODO: handle this case
+				klog.Infof("skipping transaction with %d partials", total)
 				return nil
 			}
 			if err := bin.UnmarshalBin(&tx, txBuffer.Bytes()); err != nil {

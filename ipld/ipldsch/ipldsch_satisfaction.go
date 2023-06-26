@@ -1687,19 +1687,19 @@ type _Bytes__ReprAssembler = _Bytes__Assembler
 func (n _DataFrame) FieldKind() Int {
 	return &n.kind
 }
-func (n _DataFrame) FieldHash() Int {
+func (n _DataFrame) FieldHash() MaybeInt {
 	return &n.hash
 }
-func (n _DataFrame) FieldIndex() Int {
+func (n _DataFrame) FieldIndex() MaybeInt {
 	return &n.index
 }
-func (n _DataFrame) FieldTotal() Int {
+func (n _DataFrame) FieldTotal() MaybeInt {
 	return &n.total
 }
 func (n _DataFrame) FieldData() Buffer {
 	return &n.data
 }
-func (n _DataFrame) FieldNext() List__Link {
+func (n _DataFrame) FieldNext() MaybeList__Link {
 	return &n.next
 }
 
@@ -1756,15 +1756,39 @@ func (n DataFrame) LookupByString(key string) (datamodel.Node, error) {
 	case "kind":
 		return &n.kind, nil
 	case "hash":
-		return &n.hash, nil
+		if n.hash.m == schema.Maybe_Absent {
+			return datamodel.Absent, nil
+		}
+		if n.hash.m == schema.Maybe_Null {
+			return datamodel.Null, nil
+		}
+		return &n.hash.v, nil
 	case "index":
-		return &n.index, nil
+		if n.index.m == schema.Maybe_Absent {
+			return datamodel.Absent, nil
+		}
+		if n.index.m == schema.Maybe_Null {
+			return datamodel.Null, nil
+		}
+		return &n.index.v, nil
 	case "total":
-		return &n.total, nil
+		if n.total.m == schema.Maybe_Absent {
+			return datamodel.Absent, nil
+		}
+		if n.total.m == schema.Maybe_Null {
+			return datamodel.Null, nil
+		}
+		return &n.total.v, nil
 	case "data":
 		return &n.data, nil
 	case "next":
-		return &n.next, nil
+		if n.next.m == schema.Maybe_Absent {
+			return datamodel.Absent, nil
+		}
+		if n.next.m == schema.Maybe_Null {
+			return datamodel.Null, nil
+		}
+		return &n.next.v, nil
 	default:
 		return nil, schema.ErrNoSuchField{Type: nil /*TODO*/, Field: datamodel.PathSegmentOfString(key)}
 	}
@@ -1801,19 +1825,51 @@ func (itr *_DataFrame__MapItr) Next() (k datamodel.Node, v datamodel.Node, _ err
 		v = &itr.n.kind
 	case 1:
 		k = &fieldName__DataFrame_Hash
-		v = &itr.n.hash
+		if itr.n.hash.m == schema.Maybe_Absent {
+			v = datamodel.Absent
+			break
+		}
+		if itr.n.hash.m == schema.Maybe_Null {
+			v = datamodel.Null
+			break
+		}
+		v = &itr.n.hash.v
 	case 2:
 		k = &fieldName__DataFrame_Index
-		v = &itr.n.index
+		if itr.n.index.m == schema.Maybe_Absent {
+			v = datamodel.Absent
+			break
+		}
+		if itr.n.index.m == schema.Maybe_Null {
+			v = datamodel.Null
+			break
+		}
+		v = &itr.n.index.v
 	case 3:
 		k = &fieldName__DataFrame_Total
-		v = &itr.n.total
+		if itr.n.total.m == schema.Maybe_Absent {
+			v = datamodel.Absent
+			break
+		}
+		if itr.n.total.m == schema.Maybe_Null {
+			v = datamodel.Null
+			break
+		}
+		v = &itr.n.total.v
 	case 4:
 		k = &fieldName__DataFrame_Data
 		v = &itr.n.data
 	case 5:
 		k = &fieldName__DataFrame_Next
-		v = &itr.n.next
+		if itr.n.next.m == schema.Maybe_Absent {
+			v = datamodel.Absent
+			break
+		}
+		if itr.n.next.m == schema.Maybe_Null {
+			v = datamodel.Null
+			break
+		}
+		v = &itr.n.next.v
 	default:
 		panic("unreachable")
 	}
@@ -1916,7 +1972,7 @@ var (
 	fieldBit__DataFrame_Total       = 1 << 3
 	fieldBit__DataFrame_Data        = 1 << 4
 	fieldBit__DataFrame_Next        = 1 << 5
-	fieldBits__DataFrame_sufficient = 0 + 1<<0 + 1<<1 + 1<<2 + 1<<3 + 1<<4 + 1<<5
+	fieldBits__DataFrame_sufficient = 0 + 1<<0 + 1<<4
 )
 
 func (na *_DataFrame__Assembler) BeginMap(int64) (datamodel.MapAssembler, error) {
@@ -2021,30 +2077,33 @@ func (ma *_DataFrame__Assembler) valueFinishTidy() bool {
 			return false
 		}
 	case 1:
-		switch ma.cm {
+		switch ma.w.hash.m {
+		case schema.Maybe_Null:
+			ma.state = maState_initial
+			return true
 		case schema.Maybe_Value:
-			ma.ca_hash.w = nil
-			ma.cm = schema.Maybe_Absent
 			ma.state = maState_initial
 			return true
 		default:
 			return false
 		}
 	case 2:
-		switch ma.cm {
+		switch ma.w.index.m {
+		case schema.Maybe_Null:
+			ma.state = maState_initial
+			return true
 		case schema.Maybe_Value:
-			ma.ca_index.w = nil
-			ma.cm = schema.Maybe_Absent
 			ma.state = maState_initial
 			return true
 		default:
 			return false
 		}
 	case 3:
-		switch ma.cm {
+		switch ma.w.total.m {
+		case schema.Maybe_Null:
+			ma.state = maState_initial
+			return true
 		case schema.Maybe_Value:
-			ma.ca_total.w = nil
-			ma.cm = schema.Maybe_Absent
 			ma.state = maState_initial
 			return true
 		default:
@@ -2061,10 +2120,11 @@ func (ma *_DataFrame__Assembler) valueFinishTidy() bool {
 			return false
 		}
 	case 5:
-		switch ma.cm {
+		switch ma.w.next.m {
+		case schema.Maybe_Null:
+			ma.state = maState_initial
+			return true
 		case schema.Maybe_Value:
-			ma.ca_next.w = nil
-			ma.cm = schema.Maybe_Absent
 			ma.state = maState_initial
 			return true
 		default:
@@ -2107,8 +2167,9 @@ func (ma *_DataFrame__Assembler) AssembleEntry(k string) (datamodel.NodeAssemble
 		ma.s += fieldBit__DataFrame_Hash
 		ma.state = maState_midValue
 		ma.f = 1
-		ma.ca_hash.w = &ma.w.hash
-		ma.ca_hash.m = &ma.cm
+		ma.ca_hash.w = &ma.w.hash.v
+		ma.ca_hash.m = &ma.w.hash.m
+		ma.w.hash.m = allowNull
 		return &ma.ca_hash, nil
 	case "index":
 		if ma.s&fieldBit__DataFrame_Index != 0 {
@@ -2117,8 +2178,9 @@ func (ma *_DataFrame__Assembler) AssembleEntry(k string) (datamodel.NodeAssemble
 		ma.s += fieldBit__DataFrame_Index
 		ma.state = maState_midValue
 		ma.f = 2
-		ma.ca_index.w = &ma.w.index
-		ma.ca_index.m = &ma.cm
+		ma.ca_index.w = &ma.w.index.v
+		ma.ca_index.m = &ma.w.index.m
+		ma.w.index.m = allowNull
 		return &ma.ca_index, nil
 	case "total":
 		if ma.s&fieldBit__DataFrame_Total != 0 {
@@ -2127,8 +2189,9 @@ func (ma *_DataFrame__Assembler) AssembleEntry(k string) (datamodel.NodeAssemble
 		ma.s += fieldBit__DataFrame_Total
 		ma.state = maState_midValue
 		ma.f = 3
-		ma.ca_total.w = &ma.w.total
-		ma.ca_total.m = &ma.cm
+		ma.ca_total.w = &ma.w.total.v
+		ma.ca_total.m = &ma.w.total.m
+		ma.w.total.m = allowNull
 		return &ma.ca_total, nil
 	case "data":
 		if ma.s&fieldBit__DataFrame_Data != 0 {
@@ -2147,8 +2210,9 @@ func (ma *_DataFrame__Assembler) AssembleEntry(k string) (datamodel.NodeAssemble
 		ma.s += fieldBit__DataFrame_Next
 		ma.state = maState_midValue
 		ma.f = 5
-		ma.ca_next.w = &ma.w.next
-		ma.ca_next.m = &ma.cm
+		ma.ca_next.w = &ma.w.next.v
+		ma.ca_next.m = &ma.w.next.m
+		ma.w.next.m = allowNull
 		return &ma.ca_next, nil
 	}
 	return nil, schema.ErrInvalidKey{TypeName: "ipldsch.DataFrame", Key: &_String{k}}
@@ -2191,24 +2255,28 @@ func (ma *_DataFrame__Assembler) AssembleValue() datamodel.NodeAssembler {
 		ma.ca_kind.m = &ma.cm
 		return &ma.ca_kind
 	case 1:
-		ma.ca_hash.w = &ma.w.hash
-		ma.ca_hash.m = &ma.cm
+		ma.ca_hash.w = &ma.w.hash.v
+		ma.ca_hash.m = &ma.w.hash.m
+		ma.w.hash.m = allowNull
 		return &ma.ca_hash
 	case 2:
-		ma.ca_index.w = &ma.w.index
-		ma.ca_index.m = &ma.cm
+		ma.ca_index.w = &ma.w.index.v
+		ma.ca_index.m = &ma.w.index.m
+		ma.w.index.m = allowNull
 		return &ma.ca_index
 	case 3:
-		ma.ca_total.w = &ma.w.total
-		ma.ca_total.m = &ma.cm
+		ma.ca_total.w = &ma.w.total.v
+		ma.ca_total.m = &ma.w.total.m
+		ma.w.total.m = allowNull
 		return &ma.ca_total
 	case 4:
 		ma.ca_data.w = &ma.w.data
 		ma.ca_data.m = &ma.cm
 		return &ma.ca_data
 	case 5:
-		ma.ca_next.w = &ma.w.next
-		ma.ca_next.m = &ma.cm
+		ma.ca_next.w = &ma.w.next.v
+		ma.ca_next.m = &ma.w.next.m
+		ma.w.next.m = allowNull
 		return &ma.ca_next
 	default:
 		panic("unreachable")
@@ -2234,20 +2302,8 @@ func (ma *_DataFrame__Assembler) Finish() error {
 		if ma.s&fieldBit__DataFrame_Kind == 0 {
 			err.Missing = append(err.Missing, "kind")
 		}
-		if ma.s&fieldBit__DataFrame_Hash == 0 {
-			err.Missing = append(err.Missing, "hash")
-		}
-		if ma.s&fieldBit__DataFrame_Index == 0 {
-			err.Missing = append(err.Missing, "index")
-		}
-		if ma.s&fieldBit__DataFrame_Total == 0 {
-			err.Missing = append(err.Missing, "total")
-		}
 		if ma.s&fieldBit__DataFrame_Data == 0 {
 			err.Missing = append(err.Missing, "data")
-		}
-		if ma.s&fieldBit__DataFrame_Next == 0 {
-			err.Missing = append(err.Missing, "next")
 		}
 		return err
 	}
@@ -2384,15 +2440,39 @@ func (n *_DataFrame__Repr) LookupByIndex(idx int64) (datamodel.Node, error) {
 	case 0:
 		return n.kind.Representation(), nil
 	case 1:
-		return n.hash.Representation(), nil
+		if n.hash.m == schema.Maybe_Absent {
+			return datamodel.Absent, datamodel.ErrNotExists{Segment: datamodel.PathSegmentOfInt(idx)}
+		}
+		if n.hash.m == schema.Maybe_Null {
+			return datamodel.Null, nil
+		}
+		return n.hash.v.Representation(), nil
 	case 2:
-		return n.index.Representation(), nil
+		if n.index.m == schema.Maybe_Absent {
+			return datamodel.Absent, datamodel.ErrNotExists{Segment: datamodel.PathSegmentOfInt(idx)}
+		}
+		if n.index.m == schema.Maybe_Null {
+			return datamodel.Null, nil
+		}
+		return n.index.v.Representation(), nil
 	case 3:
-		return n.total.Representation(), nil
+		if n.total.m == schema.Maybe_Absent {
+			return datamodel.Absent, datamodel.ErrNotExists{Segment: datamodel.PathSegmentOfInt(idx)}
+		}
+		if n.total.m == schema.Maybe_Null {
+			return datamodel.Null, nil
+		}
+		return n.total.v.Representation(), nil
 	case 4:
 		return n.data.Representation(), nil
 	case 5:
-		return n.next.Representation(), nil
+		if n.next.m == schema.Maybe_Absent {
+			return datamodel.Absent, datamodel.ErrNotExists{Segment: datamodel.PathSegmentOfInt(idx)}
+		}
+		if n.next.m == schema.Maybe_Null {
+			return datamodel.Null, nil
+		}
+		return n.next.v.Representation(), nil
 	default:
 		return nil, schema.ErrNoSuchField{Type: nil /*TODO*/, Field: datamodel.PathSegmentOfInt(idx)}
 	}
@@ -2408,12 +2488,20 @@ func (_DataFrame__Repr) MapIterator() datamodel.MapIterator {
 	return nil
 }
 func (n *_DataFrame__Repr) ListIterator() datamodel.ListIterator {
-	return &_DataFrame__ReprListItr{n, 0}
+	end := 6
+	if n.next.m == schema.Maybe_Absent {
+		end = 5
+	} else {
+		goto done
+	}
+done:
+	return &_DataFrame__ReprListItr{n, 0, end}
 }
 
 type _DataFrame__ReprListItr struct {
 	n   *_DataFrame__Repr
 	idx int
+	end int
 }
 
 func (itr *_DataFrame__ReprListItr) Next() (idx int64, v datamodel.Node, err error) {
@@ -2426,19 +2514,47 @@ func (itr *_DataFrame__ReprListItr) Next() (idx int64, v datamodel.Node, err err
 		v = itr.n.kind.Representation()
 	case 1:
 		idx = int64(itr.idx)
-		v = itr.n.hash.Representation()
+		if itr.n.hash.m == schema.Maybe_Absent {
+			return -1, nil, datamodel.ErrIteratorOverread{}
+		}
+		if itr.n.hash.m == schema.Maybe_Null {
+			v = datamodel.Null
+			break
+		}
+		v = itr.n.hash.v.Representation()
 	case 2:
 		idx = int64(itr.idx)
-		v = itr.n.index.Representation()
+		if itr.n.index.m == schema.Maybe_Absent {
+			return -1, nil, datamodel.ErrIteratorOverread{}
+		}
+		if itr.n.index.m == schema.Maybe_Null {
+			v = datamodel.Null
+			break
+		}
+		v = itr.n.index.v.Representation()
 	case 3:
 		idx = int64(itr.idx)
-		v = itr.n.total.Representation()
+		if itr.n.total.m == schema.Maybe_Absent {
+			return -1, nil, datamodel.ErrIteratorOverread{}
+		}
+		if itr.n.total.m == schema.Maybe_Null {
+			v = datamodel.Null
+			break
+		}
+		v = itr.n.total.v.Representation()
 	case 4:
 		idx = int64(itr.idx)
 		v = itr.n.data.Representation()
 	case 5:
 		idx = int64(itr.idx)
-		v = itr.n.next.Representation()
+		if itr.n.next.m == schema.Maybe_Absent {
+			return -1, nil, datamodel.ErrIteratorOverread{}
+		}
+		if itr.n.next.m == schema.Maybe_Null {
+			v = datamodel.Null
+			break
+		}
+		v = itr.n.next.v.Representation()
 	default:
 		panic("unreachable")
 	}
@@ -2446,11 +2562,23 @@ func (itr *_DataFrame__ReprListItr) Next() (idx int64, v datamodel.Node, err err
 	return
 }
 func (itr *_DataFrame__ReprListItr) Done() bool {
-	return itr.idx >= 6
+	return itr.idx >= itr.end
 }
 
 func (rn *_DataFrame__Repr) Length() int64 {
 	l := 6
+	if rn.hash.m == schema.Maybe_Absent {
+		l--
+	}
+	if rn.index.m == schema.Maybe_Absent {
+		l--
+	}
+	if rn.total.m == schema.Maybe_Absent {
+		l--
+	}
+	if rn.next.m == schema.Maybe_Absent {
+		l--
+	}
 	return int64(l)
 }
 func (_DataFrame__Repr) IsAbsent() bool {
@@ -2629,9 +2757,12 @@ func (la *_DataFrame__ReprAssembler) valueFinishTidy() bool {
 			return false
 		}
 	case 1:
-		switch la.cm {
+		switch la.w.hash.m {
 		case schema.Maybe_Value:
-			la.cm = schema.Maybe_Absent
+			la.state = laState_initial
+			la.f++
+			return true
+		case schema.Maybe_Null:
 			la.state = laState_initial
 			la.f++
 			return true
@@ -2639,9 +2770,12 @@ func (la *_DataFrame__ReprAssembler) valueFinishTidy() bool {
 			return false
 		}
 	case 2:
-		switch la.cm {
+		switch la.w.index.m {
 		case schema.Maybe_Value:
-			la.cm = schema.Maybe_Absent
+			la.state = laState_initial
+			la.f++
+			return true
+		case schema.Maybe_Null:
 			la.state = laState_initial
 			la.f++
 			return true
@@ -2649,9 +2783,12 @@ func (la *_DataFrame__ReprAssembler) valueFinishTidy() bool {
 			return false
 		}
 	case 3:
-		switch la.cm {
+		switch la.w.total.m {
 		case schema.Maybe_Value:
-			la.cm = schema.Maybe_Absent
+			la.state = laState_initial
+			la.f++
+			return true
+		case schema.Maybe_Null:
 			la.state = laState_initial
 			la.f++
 			return true
@@ -2669,9 +2806,12 @@ func (la *_DataFrame__ReprAssembler) valueFinishTidy() bool {
 			return false
 		}
 	case 5:
-		switch la.cm {
+		switch la.w.next.m {
 		case schema.Maybe_Value:
-			la.cm = schema.Maybe_Absent
+			la.state = laState_initial
+			la.f++
+			return true
+		case schema.Maybe_Null:
 			la.state = laState_initial
 			la.f++
 			return true
@@ -2703,24 +2843,28 @@ func (la *_DataFrame__ReprAssembler) AssembleValue() datamodel.NodeAssembler {
 		la.ca_kind.m = &la.cm
 		return &la.ca_kind
 	case 1:
-		la.ca_hash.w = &la.w.hash
-		la.ca_hash.m = &la.cm
+		la.ca_hash.w = &la.w.hash.v
+		la.ca_hash.m = &la.w.hash.m
+		la.w.hash.m = allowNull
 		return &la.ca_hash
 	case 2:
-		la.ca_index.w = &la.w.index
-		la.ca_index.m = &la.cm
+		la.ca_index.w = &la.w.index.v
+		la.ca_index.m = &la.w.index.m
+		la.w.index.m = allowNull
 		return &la.ca_index
 	case 3:
-		la.ca_total.w = &la.w.total
-		la.ca_total.m = &la.cm
+		la.ca_total.w = &la.w.total.v
+		la.ca_total.m = &la.w.total.m
+		la.w.total.m = allowNull
 		return &la.ca_total
 	case 4:
 		la.ca_data.w = &la.w.data
 		la.ca_data.m = &la.cm
 		return &la.ca_data
 	case 5:
-		la.ca_next.w = &la.w.next
-		la.ca_next.m = &la.cm
+		la.ca_next.w = &la.w.next.v
+		la.ca_next.m = &la.w.next.m
+		la.w.next.m = allowNull
 		return &la.ca_next
 	default:
 		panic("unreachable")
