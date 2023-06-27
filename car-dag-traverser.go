@@ -33,6 +33,20 @@ func fileExists(path string) (bool, error) {
 	return true, nil
 }
 
+func dirExists(path string) (bool, error) {
+	info, err := os.Stat(path)
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if !info.IsDir() {
+		return false, fmt.Errorf("path %s is not a directory", path)
+	}
+	return true, nil
+}
+
 func openCarReaderWithCidIndex(carPath string, indexFilePath string) (*SimpleIterator, error) {
 	// Check if the CAR file exists:
 	exists, err := fileExists(carPath)

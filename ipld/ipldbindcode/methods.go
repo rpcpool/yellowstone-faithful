@@ -94,3 +94,17 @@ func VerifyHash(data []byte, hash int) error {
 	}
 	return nil
 }
+
+// Transaction.HasIndex returns whether the 'Index' field is present.
+func (n Transaction) HasIndex() bool {
+	return n.Index != nil && *n.Index != nil
+}
+
+// GetIndex returns the value of the 'Index' field and
+// a flag indicating whether the field has a value.
+func (n Transaction) GetIndex() (int, bool) {
+	if n.Index == nil || *n.Index == nil {
+		return 0, false
+	}
+	return **n.Index, true
+}

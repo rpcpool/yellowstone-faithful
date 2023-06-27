@@ -70,6 +70,8 @@ type Transaction struct {
   metadata DataFrame
   # The slot number where this transaction was created.
   slot     Int
+  # The index of this transaction in the the block (0-indexed).
+  index nullable optional  Int
 } representation tuple
 
 type Hash bytes

@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/rpcpool/yellowstone-faithful/compactindex36"
+	"github.com/rpcpool/yellowstone-faithful/gsfa"
 	"github.com/urfave/cli/v2"
 )
 
@@ -12,7 +13,7 @@ func newCmd_rpcServerFilecoin() *cli.Command {
 	return &cli.Command{
 		Name:        "rpc-server-filecoin",
 		Description: "Start a Solana JSON RPC that exposes getTransaction and getBlock",
-		ArgsUsage:   "<slot-to-cid-index-filepath-or-url> <sig-to-cid-index-filepath-or-url>",
+		ArgsUsage:   "<slot-to-cid-index-filepath-or-url> <sig-to-cid-index-filepath-or-url> <gsfa-index-dir>",
 		Before: func(c *cli.Context) error {
 			return nil
 		},
@@ -61,12 +62,23 @@ func newCmd_rpcServerFilecoin() *cli.Command {
 				return fmt.Errorf("newLassieWrapper: %w", err)
 			}
 
+			var gsfaIndex *gsfa.GsfaReader
+			gsfaIndexDir := c.Args().Get(4)
+			if gsfaIndexDir != "" {
+				gsfaIndex, err = gsfa.NewGsfaReader(gsfaIndexDir)
+				if err != nil {
+					return fmt.Errorf("failed to open gsfa index: %w", err)
+				}
+				defer gsfaIndex.Close()
+			}
+
 			return createAndStartRPCServer_lassie(
 				c.Context,
 				listenOn,
 				ls,
 				slotToCidIndex,
 				sigToCidIndex,
+				gsfaIndex,
 			)
 		},
 	}

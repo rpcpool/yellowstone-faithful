@@ -24,6 +24,7 @@ import (
 	"github.com/patrickmn/go-cache"
 	"github.com/rpcpool/yellowstone-faithful/compactindex"
 	"github.com/rpcpool/yellowstone-faithful/compactindex36"
+	"github.com/rpcpool/yellowstone-faithful/gsfa"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
 	solanatxmetaparsers "github.com/rpcpool/yellowstone-faithful/solana-tx-meta-parsers"
@@ -38,7 +39,7 @@ func newCmd_rpcServerCar() *cli.Command {
 	return &cli.Command{
 		Name:        "rpc-server-car",
 		Description: "Start a Solana JSON RPC that exposes getTransaction and getBlock",
-		ArgsUsage:   "<car-filepath-or-url> <cid-to-offset-index-filepath-or-url> <slot-to-cid-index-filepath-or-url> <sig-to-cid-index-filepath-or-url>",
+		ArgsUsage:   "<car-filepath-or-url> <cid-to-offset-index-filepath-or-url> <slot-to-cid-index-filepath-or-url> <sig-to-cid-index-filepath-or-url> <gsfa-index-dir>",
 		Before: func(c *cli.Context) error {
 			return nil
 		},
@@ -106,6 +107,16 @@ func newCmd_rpcServerCar() *cli.Command {
 				return fmt.Errorf("failed to open CAR file: %w", err)
 			}
 
+			var gsfaIndex *gsfa.GsfaReader
+			gsfaIndexDir := c.Args().Get(4)
+			if gsfaIndexDir != "" {
+				gsfaIndex, err = gsfa.NewGsfaReader(gsfaIndexDir)
+				if err != nil {
+					return fmt.Errorf("failed to open gsfa index: %w", err)
+				}
+				defer gsfaIndex.Close()
+			}
+
 			return createAndStartRPCServer_withCar(
 				c.Context,
 				listenOn,
@@ -114,6 +125,7 @@ func newCmd_rpcServerCar() *cli.Command {
 				cidToOffsetIndex,
 				slotToCidIndex,
 				sigToCidIndex,
+				gsfaIndex,
 			)
 		},
 	}
@@ -293,6 +305,7 @@ func createAndStartRPCServer_withCar(
 	cidToOffsetIndex *compactindex.DB,
 	slotToCidIndex *compactindex36.DB,
 	sigToCidIndex *compactindex36.DB,
+	gsfaReader *gsfa.GsfaReader,
 ) error {
 	handler := &rpcServer{
 		localCarReader:   carReader,
@@ -300,6 +313,7 @@ func createAndStartRPCServer_withCar(
 		cidToOffsetIndex: cidToOffsetIndex,
 		slotToCidIndex:   slotToCidIndex,
 		sigToCidIndex:    sigToCidIndex,
+		gsfaReader:       gsfaReader,
 	}
 
 	h := newRPCHandler_fast(handler)
@@ -315,11 +329,13 @@ func createAndStartRPCServer_lassie(
 	lassieWr *lassieWrapper,
 	slotToCidIndex *compactindex36.DB,
 	sigToCidIndex *compactindex36.DB,
+	gsfaReader *gsfa.GsfaReader,
 ) error {
 	handler := &rpcServer{
 		lassieFetcher:  lassieWr,
 		slotToCidIndex: slotToCidIndex,
 		sigToCidIndex:  sigToCidIndex,
+		gsfaReader:     gsfaReader,
 	}
 
 	h := newRPCHandler_fast(handler)
@@ -336,6 +352,7 @@ type rpcServer struct {
 	cidToOffsetIndex *compactindex.DB
 	slotToCidIndex   *compactindex36.DB
 	sigToCidIndex    *compactindex36.DB
+	gsfaReader       *gsfa.GsfaReader
 }
 
 type requestContext struct {
@@ -417,6 +434,24 @@ func (c *requestContext) Reply(
 			result = remapCallback(mp)
 		}
 	}
+	resRaw, err := jsoniter.ConfigCompatibleWithStandardLibrary.Marshal(result)
+	if err != nil {
+		return err
+	}
+	raw := json.RawMessage(resRaw)
+	resp := &jsonrpc2.Response{
+		ID:     id,
+		Result: &raw,
+	}
+	replyJSON(c.ctx, http.StatusOK, resp)
+	return err
+}
+
+func (c *requestContext) ReplyNoMod(
+	ctx context.Context,
+	id jsonrpc2.ID,
+	result interface{},
+) error {
 	resRaw, err := jsoniter.ConfigCompatibleWithStandardLibrary.Marshal(result)
 	if err != nil {
 		return err
@@ -684,6 +719,8 @@ func (ser *rpcServer) Handle(ctx context.Context, conn *requestContext, req *jso
 		ser.getBlock(ctx, conn, req)
 	case "getTransaction":
 		ser.getTransaction(ctx, conn, req)
+	case "getSignaturesForAddress":
+		ser.getSignaturesForAddress(ctx, conn, req)
 	default:
 		conn.ReplyWithError(
 			ctx,

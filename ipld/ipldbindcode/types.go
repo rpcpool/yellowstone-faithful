@@ -53,6 +53,7 @@ type Transaction struct {
 	Data     DataFrame
 	Metadata DataFrame
 	Slot     int
+	Index    **int
 }
 type DataFrame struct {
 	Kind  int

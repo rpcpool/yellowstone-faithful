@@ -182,4 +182,5 @@ type _Transaction struct {
 	data     _DataFrame
 	metadata _DataFrame
 	slot     _Int
+	index    _Int__Maybe
 }

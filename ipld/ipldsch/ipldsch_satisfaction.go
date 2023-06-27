@@ -10254,6 +10254,9 @@ func (n _Transaction) FieldMetadata() DataFrame {
 func (n _Transaction) FieldSlot() Int {
 	return &n.slot
 }
+func (n _Transaction) FieldIndex() MaybeInt {
+	return &n.index
+}
 
 type _Transaction__Maybe struct {
 	m schema.Maybe
@@ -10294,6 +10297,7 @@ var (
 	fieldName__Transaction_Data     = _String{"data"}
 	fieldName__Transaction_Metadata = _String{"metadata"}
 	fieldName__Transaction_Slot     = _String{"slot"}
+	fieldName__Transaction_Index    = _String{"index"}
 )
 var _ datamodel.Node = (Transaction)(&_Transaction{})
 var _ schema.TypedNode = (Transaction)(&_Transaction{})
@@ -10311,6 +10315,14 @@ func (n Transaction) LookupByString(key string) (datamodel.Node, error) {
 		return &n.metadata, nil
 	case "slot":
 		return &n.slot, nil
+	case "index":
+		if n.index.m == schema.Maybe_Absent {
+			return datamodel.Absent, nil
+		}
+		if n.index.m == schema.Maybe_Null {
+			return datamodel.Null, nil
+		}
+		return &n.index.v, nil
 	default:
 		return nil, schema.ErrNoSuchField{Type: nil /*TODO*/, Field: datamodel.PathSegmentOfString(key)}
 	}
@@ -10338,7 +10350,7 @@ type _Transaction__MapItr struct {
 }
 
 func (itr *_Transaction__MapItr) Next() (k datamodel.Node, v datamodel.Node, _ error) {
-	if itr.idx >= 4 {
+	if itr.idx >= 5 {
 		return nil, nil, datamodel.ErrIteratorOverread{}
 	}
 	switch itr.idx {
@@ -10354,6 +10366,17 @@ func (itr *_Transaction__MapItr) Next() (k datamodel.Node, v datamodel.Node, _ e
 	case 3:
 		k = &fieldName__Transaction_Slot
 		v = &itr.n.slot
+	case 4:
+		k = &fieldName__Transaction_Index
+		if itr.n.index.m == schema.Maybe_Absent {
+			v = datamodel.Absent
+			break
+		}
+		if itr.n.index.m == schema.Maybe_Null {
+			v = datamodel.Null
+			break
+		}
+		v = &itr.n.index.v
 	default:
 		panic("unreachable")
 	}
@@ -10361,14 +10384,14 @@ func (itr *_Transaction__MapItr) Next() (k datamodel.Node, v datamodel.Node, _ e
 	return
 }
 func (itr *_Transaction__MapItr) Done() bool {
-	return itr.idx >= 4
+	return itr.idx >= 5
 }
 
 func (Transaction) ListIterator() datamodel.ListIterator {
 	return nil
 }
 func (Transaction) Length() int64 {
-	return 4
+	return 5
 }
 func (Transaction) IsAbsent() bool {
 	return false
@@ -10434,6 +10457,7 @@ type _Transaction__Assembler struct {
 	ca_data     _DataFrame__Assembler
 	ca_metadata _DataFrame__Assembler
 	ca_slot     _Int__Assembler
+	ca_index    _Int__Assembler
 }
 
 func (na *_Transaction__Assembler) reset() {
@@ -10443,6 +10467,7 @@ func (na *_Transaction__Assembler) reset() {
 	na.ca_data.reset()
 	na.ca_metadata.reset()
 	na.ca_slot.reset()
+	na.ca_index.reset()
 }
 
 var (
@@ -10450,6 +10475,7 @@ var (
 	fieldBit__Transaction_Data        = 1 << 1
 	fieldBit__Transaction_Metadata    = 1 << 2
 	fieldBit__Transaction_Slot        = 1 << 3
+	fieldBit__Transaction_Index       = 1 << 4
 	fieldBits__Transaction_sufficient = 0 + 1<<0 + 1<<1 + 1<<2 + 1<<3
 )
 
@@ -10584,6 +10610,17 @@ func (ma *_Transaction__Assembler) valueFinishTidy() bool {
 		default:
 			return false
 		}
+	case 4:
+		switch ma.w.index.m {
+		case schema.Maybe_Null:
+			ma.state = maState_initial
+			return true
+		case schema.Maybe_Value:
+			ma.state = maState_initial
+			return true
+		default:
+			return false
+		}
 	default:
 		panic("unreachable")
 	}
@@ -10644,6 +10681,17 @@ func (ma *_Transaction__Assembler) AssembleEntry(k string) (datamodel.NodeAssemb
 		ma.ca_slot.w = &ma.w.slot
 		ma.ca_slot.m = &ma.cm
 		return &ma.ca_slot, nil
+	case "index":
+		if ma.s&fieldBit__Transaction_Index != 0 {
+			return nil, datamodel.ErrRepeatedMapKey{Key: &fieldName__Transaction_Index}
+		}
+		ma.s += fieldBit__Transaction_Index
+		ma.state = maState_midValue
+		ma.f = 4
+		ma.ca_index.w = &ma.w.index.v
+		ma.ca_index.m = &ma.w.index.m
+		ma.w.index.m = allowNull
+		return &ma.ca_index, nil
 	}
 	return nil, schema.ErrInvalidKey{TypeName: "ipldsch.Transaction", Key: &_String{k}}
 }
@@ -10696,6 +10744,11 @@ func (ma *_Transaction__Assembler) AssembleValue() datamodel.NodeAssembler {
 		ma.ca_slot.w = &ma.w.slot
 		ma.ca_slot.m = &ma.cm
 		return &ma.ca_slot
+	case 4:
+		ma.ca_index.w = &ma.w.index.v
+		ma.ca_index.m = &ma.w.index.m
+		ma.w.index.m = allowNull
+		return &ma.ca_index
 	default:
 		panic("unreachable")
 	}
@@ -10799,6 +10852,14 @@ func (ka *_Transaction__KeyAssembler) AssignString(k string) error {
 		ka.state = maState_expectValue
 		ka.f = 3
 		return nil
+	case "index":
+		if ka.s&fieldBit__Transaction_Index != 0 {
+			return datamodel.ErrRepeatedMapKey{Key: &fieldName__Transaction_Index}
+		}
+		ka.s += fieldBit__Transaction_Index
+		ka.state = maState_expectValue
+		ka.f = 4
+		return nil
 	default:
 		return schema.ErrInvalidKey{TypeName: "ipldsch.Transaction", Key: &_String{k}}
 	}
@@ -10853,6 +10914,14 @@ func (n *_Transaction__Repr) LookupByIndex(idx int64) (datamodel.Node, error) {
 		return n.metadata.Representation(), nil
 	case 3:
 		return n.slot.Representation(), nil
+	case 4:
+		if n.index.m == schema.Maybe_Absent {
+			return datamodel.Absent, datamodel.ErrNotExists{Segment: datamodel.PathSegmentOfInt(idx)}
+		}
+		if n.index.m == schema.Maybe_Null {
+			return datamodel.Null, nil
+		}
+		return n.index.v.Representation(), nil
 	default:
 		return nil, schema.ErrNoSuchField{Type: nil /*TODO*/, Field: datamodel.PathSegmentOfInt(idx)}
 	}
@@ -10868,16 +10937,24 @@ func (_Transaction__Repr) MapIterator() datamodel.MapIterator {
 	return nil
 }
 func (n *_Transaction__Repr) ListIterator() datamodel.ListIterator {
-	return &_Transaction__ReprListItr{n, 0}
+	end := 5
+	if n.index.m == schema.Maybe_Absent {
+		end = 4
+	} else {
+		goto done
+	}
+done:
+	return &_Transaction__ReprListItr{n, 0, end}
 }
 
 type _Transaction__ReprListItr struct {
 	n   *_Transaction__Repr
 	idx int
+	end int
 }
 
 func (itr *_Transaction__ReprListItr) Next() (idx int64, v datamodel.Node, err error) {
-	if itr.idx >= 4 {
+	if itr.idx >= 5 {
 		return -1, nil, datamodel.ErrIteratorOverread{}
 	}
 	switch itr.idx {
@@ -10893,6 +10970,16 @@ func (itr *_Transaction__ReprListItr) Next() (idx int64, v datamodel.Node, err e
 	case 3:
 		idx = int64(itr.idx)
 		v = itr.n.slot.Representation()
+	case 4:
+		idx = int64(itr.idx)
+		if itr.n.index.m == schema.Maybe_Absent {
+			return -1, nil, datamodel.ErrIteratorOverread{}
+		}
+		if itr.n.index.m == schema.Maybe_Null {
+			v = datamodel.Null
+			break
+		}
+		v = itr.n.index.v.Representation()
 	default:
 		panic("unreachable")
 	}
@@ -10900,11 +10987,14 @@ func (itr *_Transaction__ReprListItr) Next() (idx int64, v datamodel.Node, err e
 	return
 }
 func (itr *_Transaction__ReprListItr) Done() bool {
-	return itr.idx >= 4
+	return itr.idx >= itr.end
 }
 
 func (rn *_Transaction__Repr) Length() int64 {
-	l := 4
+	l := 5
+	if rn.index.m == schema.Maybe_Absent {
+		l--
+	}
 	return int64(l)
 }
 func (_Transaction__Repr) IsAbsent() bool {
@@ -10970,6 +11060,7 @@ type _Transaction__ReprAssembler struct {
 	ca_data     _DataFrame__ReprAssembler
 	ca_metadata _DataFrame__ReprAssembler
 	ca_slot     _Int__ReprAssembler
+	ca_index    _Int__ReprAssembler
 }
 
 func (na *_Transaction__ReprAssembler) reset() {
@@ -10979,6 +11070,7 @@ func (na *_Transaction__ReprAssembler) reset() {
 	na.ca_data.reset()
 	na.ca_metadata.reset()
 	na.ca_slot.reset()
+	na.ca_index.reset()
 }
 func (_Transaction__ReprAssembler) BeginMap(sizeHint int64) (datamodel.MapAssembler, error) {
 	return mixins.ListAssembler{TypeName: "ipldsch.Transaction.Repr"}.BeginMap(0)
@@ -11108,6 +11200,19 @@ func (la *_Transaction__ReprAssembler) valueFinishTidy() bool {
 		default:
 			return false
 		}
+	case 4:
+		switch la.w.index.m {
+		case schema.Maybe_Value:
+			la.state = laState_initial
+			la.f++
+			return true
+		case schema.Maybe_Null:
+			la.state = laState_initial
+			la.f++
+			return true
+		default:
+			return false
+		}
 	default:
 		panic("unreachable")
 	}
@@ -11123,8 +11228,8 @@ func (la *_Transaction__ReprAssembler) AssembleValue() datamodel.NodeAssembler {
 	case laState_finished:
 		panic("invalid state: AssembleValue cannot be called on an assembler that's already finished")
 	}
-	if la.f >= 4 {
-		return _ErrorThunkAssembler{schema.ErrNoSuchField{Type: nil /*TODO*/, Field: datamodel.PathSegmentOfInt(4)}}
+	if la.f >= 5 {
+		return _ErrorThunkAssembler{schema.ErrNoSuchField{Type: nil /*TODO*/, Field: datamodel.PathSegmentOfInt(5)}}
 	}
 	la.state = laState_midValue
 	switch la.f {
@@ -11144,6 +11249,11 @@ func (la *_Transaction__ReprAssembler) AssembleValue() datamodel.NodeAssembler {
 		la.ca_slot.w = &la.w.slot
 		la.ca_slot.m = &la.cm
 		return &la.ca_slot
+	case 4:
+		la.ca_index.w = &la.w.index.v
+		la.ca_index.m = &la.w.index.m
+		la.w.index.m = allowNull
+		return &la.ca_index
 	default:
 		panic("unreachable")
 	}
