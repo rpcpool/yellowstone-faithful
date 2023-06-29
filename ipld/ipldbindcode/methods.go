@@ -100,9 +100,10 @@ func (n Transaction) HasIndex() bool {
 	return n.Index != nil && *n.Index != nil
 }
 
-// GetIndex returns the value of the 'Index' field and
+// GetPositionIndex returns the 'Index' field, which indicates
+// the index of the transaction in the block (0-based), and
 // a flag indicating whether the field has a value.
-func (n Transaction) GetIndex() (int, bool) {
+func (n Transaction) GetPositionIndex() (int, bool) {
 	if n.Index == nil || *n.Index == nil {
 		return 0, false
 	}

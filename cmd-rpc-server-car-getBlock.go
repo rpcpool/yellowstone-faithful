@@ -11,6 +11,7 @@ import (
 
 	"github.com/gagliardetto/solana-go"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	"github.com/rpcpool/yellowstone-faithful/compactindex36"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	solanablockrewards "github.com/rpcpool/yellowstone-faithful/solana-block-rewards"
 	"github.com/sourcegraph/jsonrpc2"
@@ -60,7 +61,7 @@ func (t *timer) time(name string) {
 	t.prev = time.Now()
 }
 
-func (ser *rpcServer) getBlock(ctx context.Context, conn *requestContext, req *jsonrpc2.Request) {
+func (ser *rpcServer) handleGetBlock(ctx context.Context, conn *requestContext, req *jsonrpc2.Request) {
 	tim := newTimer()
 	params, err := parseGetBlockRequest(req.Params)
 	if err != nil {
@@ -77,16 +78,26 @@ func (ser *rpcServer) getBlock(ctx context.Context, conn *requestContext, req *j
 	tim.time("parseGetBlockRequest")
 	slot := params.Slot
 
-	block, err := ser.GetBlock(ctx, slot)
+	block, err := ser.GetBlock(WithSubrapghPrefetch(ctx, true), slot)
 	if err != nil {
 		klog.Errorf("failed to get block: %v", err)
-		conn.ReplyWithError(
-			ctx,
-			req.ID,
-			&jsonrpc2.Error{
-				Code:    jsonrpc2.CodeInternalError,
-				Message: "Failed to get block",
-			})
+		if errors.Is(err, compactindex36.ErrNotFound) {
+			conn.ReplyWithError(
+				ctx,
+				req.ID,
+				&jsonrpc2.Error{
+					Code:    CodeNotFound,
+					Message: fmt.Sprintf("Slot %d was skipped, or missing in long-term storage", slot),
+				})
+		} else {
+			conn.ReplyWithError(
+				ctx,
+				req.ID,
+				&jsonrpc2.Error{
+					Code:    jsonrpc2.CodeInternalError,
+					Message: "Failed to get block",
+				})
+		}
 		return
 	}
 	tim.time("GetBlock")
@@ -317,7 +328,7 @@ func (ser *rpcServer) getBlock(ctx context.Context, conn *requestContext, req *j
 		// get parent slot
 		parentSlot := uint64(block.Meta.Parent_slot)
 		if parentSlot != 0 {
-			parentBlock, err := ser.GetBlock(ctx, parentSlot)
+			parentBlock, err := ser.GetBlock(WithSubrapghPrefetch(ctx, false), parentSlot)
 			if err != nil {
 				klog.Errorf("failed to decode block: %v", err)
 				conn.ReplyWithError(
@@ -385,3 +396,5 @@ func rentTypeToString(typ int) string {
 		return "Unknown"
 	}
 }
+
+const CodeNotFound = -32009
