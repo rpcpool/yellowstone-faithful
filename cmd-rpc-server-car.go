@@ -195,16 +195,15 @@ type HTTPSingleFileRemoteReaderAt struct {
 	url           string
 	contentLength int64
 	client        *http.Client
-	// TODO: add caching
-	ca *cache.Cache
+	ca            *cache.Cache
 }
 
-func getCacheKey(off int64, p []byte) string {
+func getHttpCacheKey(off int64, p []byte) string {
 	return fmt.Sprintf("%d-%d", off, len(p))
 }
 
 func (r *HTTPSingleFileRemoteReaderAt) getFromCache(off int64, p []byte) (n int, err error, has bool) {
-	key := getCacheKey(off, p)
+	key := getHttpCacheKey(off, p)
 	if v, ok := r.ca.Get(key); ok {
 		return copy(p, v.([]byte)), nil, true
 	}
@@ -212,7 +211,7 @@ func (r *HTTPSingleFileRemoteReaderAt) getFromCache(off int64, p []byte) (n int,
 }
 
 func (r *HTTPSingleFileRemoteReaderAt) putInCache(off int64, p []byte) {
-	key := getCacheKey(off, p)
+	key := getHttpCacheKey(off, p)
 	r.ca.Set(key, p, cache.DefaultExpiration)
 }
 
@@ -307,6 +306,7 @@ func createAndStartRPCServer_withCar(
 	sigToCidIndex *compactindex36.DB,
 	gsfaReader *gsfa.GsfaReader,
 ) error {
+	ca := cache.New(30*time.Second, 1*time.Minute)
 	handler := &rpcServer{
 		localCarReader:   carReader,
 		remoteCarReader:  remoteCarReader,
@@ -314,6 +314,7 @@ func createAndStartRPCServer_withCar(
 		slotToCidIndex:   slotToCidIndex,
 		sigToCidIndex:    sigToCidIndex,
 		gsfaReader:       gsfaReader,
+		cidToBlockCache:  ca,
 	}
 
 	h := newRPCHandler_fast(handler)
@@ -331,11 +332,13 @@ func createAndStartRPCServer_lassie(
 	sigToCidIndex *compactindex36.DB,
 	gsfaReader *gsfa.GsfaReader,
 ) error {
+	ca := cache.New(30*time.Second, 1*time.Minute)
 	handler := &rpcServer{
-		lassieFetcher:  lassieWr,
-		slotToCidIndex: slotToCidIndex,
-		sigToCidIndex:  sigToCidIndex,
-		gsfaReader:     gsfaReader,
+		lassieFetcher:   lassieWr,
+		slotToCidIndex:  slotToCidIndex,
+		sigToCidIndex:   sigToCidIndex,
+		gsfaReader:      gsfaReader,
+		cidToBlockCache: ca,
 	}
 
 	h := newRPCHandler_fast(handler)
@@ -353,6 +356,22 @@ type rpcServer struct {
 	slotToCidIndex   *compactindex36.DB
 	sigToCidIndex    *compactindex36.DB
 	gsfaReader       *gsfa.GsfaReader
+	cidToBlockCache  *cache.Cache // TODO: prevent OOM
+}
+
+func getCidCacheKey(off int64, p []byte) string {
+	return fmt.Sprintf("%d-%d", off, len(p))
+}
+
+func (r *rpcServer) getFromCache(c cid.Cid) (v []byte, err error, has bool) {
+	if v, ok := r.cidToBlockCache.Get(c.String()); ok {
+		return v.([]byte), nil, true
+	}
+	return nil, nil, false
+}
+
+func (r *rpcServer) putInCache(c cid.Cid, data []byte) {
+	r.cidToBlockCache.Set(c.String(), data, cache.DefaultExpiration)
 }
 
 type requestContext struct {
@@ -465,11 +484,40 @@ func (c *requestContext) ReplyNoMod(
 	return err
 }
 
+func (s *rpcServer) prefetchSubgraph(ctx context.Context, wantedCid cid.Cid) error {
+	if s.lassieFetcher != nil {
+		// Fetch the subgraph from lassie
+		sub, err := s.lassieFetcher.GetSubgraph(ctx, wantedCid)
+		if err == nil {
+			// put in cache
+			return sub.Each(ctx, func(c cid.Cid, data []byte) error {
+				s.putInCache(c, data)
+				return nil
+			})
+		}
+		klog.Errorf("failed to get subgraph from lassie: %v", err)
+		return err
+	}
+	return nil
+}
+
 func (s *rpcServer) GetNodeByCid(ctx context.Context, wantedCid cid.Cid) ([]byte, error) {
+	{
+		// try from cache
+		data, err, has := s.getFromCache(wantedCid)
+		if err != nil {
+			return nil, err
+		}
+		if has {
+			return data, nil
+		}
+	}
 	if s.lassieFetcher != nil {
 		// Fetch the node from lassie.
 		data, err := s.lassieFetcher.GetNodeByCid(ctx, wantedCid)
 		if err == nil {
+			// put in cache
+			s.putInCache(wantedCid, data)
 			return data, nil
 		}
 		klog.Errorf("failed to get node from lassie: %v", err)
@@ -579,6 +627,20 @@ func (ser *rpcServer) FindOffsetFromCid(ctx context.Context, cid cid.Cid) (uint6
 	return findOffsetFromCid(ser.cidToOffsetIndex, cid)
 }
 
+func putValueIntoContext(ctx context.Context, key, value interface{}) context.Context {
+	return context.WithValue(ctx, key, value)
+}
+
+func getValueFromContext(ctx context.Context, key interface{}) interface{} {
+	return ctx.Value(key)
+}
+
+// WithSubrapghPrefetch sets the prefetch flag in the context
+// to enable prefetching of subgraphs.
+func WithSubrapghPrefetch(ctx context.Context, yesNo bool) context.Context {
+	return putValueIntoContext(ctx, "prefetch", yesNo)
+}
+
 func (ser *rpcServer) GetBlock(ctx context.Context, slot uint64) (*ipldbindcode.Block, error) {
 	// get the slot by slot number
 	wantedCid, err := ser.FindCidFromSlot(ctx, slot)
@@ -587,6 +649,13 @@ func (ser *rpcServer) GetBlock(ctx context.Context, slot uint64) (*ipldbindcode.
 		return nil, err
 	}
 	klog.Infof("found CID for slot %d: %s", slot, wantedCid)
+	{
+		doPrefetch := getValueFromContext(ctx, "prefetch")
+		if doPrefetch != nil && doPrefetch.(bool) {
+			// prefetch the block
+			ser.prefetchSubgraph(ctx, wantedCid)
+		}
+	}
 	// get the block by CID
 	data, err := ser.GetNodeByCid(ctx, wantedCid)
 	if err != nil {
@@ -670,6 +739,13 @@ func (ser *rpcServer) GetTransaction(ctx context.Context, sig solana.Signature) 
 		return nil, err
 	}
 	klog.Infof("found CID for signature %s: %s", sig, wantedCid)
+	{
+		doPrefetch := getValueFromContext(ctx, "prefetch")
+		if doPrefetch != nil && doPrefetch.(bool) {
+			// prefetch the block
+			ser.prefetchSubgraph(ctx, wantedCid)
+		}
+	}
 	// get the transaction by CID
 	data, err := ser.GetNodeByCid(ctx, wantedCid)
 	if err != nil {
@@ -716,11 +792,11 @@ func parseGetTransactionRequest(raw *json.RawMessage) (*GetTransactionRequest, e
 func (ser *rpcServer) Handle(ctx context.Context, conn *requestContext, req *jsonrpc2.Request) {
 	switch req.Method {
 	case "getBlock":
-		ser.getBlock(ctx, conn, req)
+		ser.handleGetBlock(ctx, conn, req)
 	case "getTransaction":
-		ser.getTransaction(ctx, conn, req)
+		ser.handleGetTransaction(ctx, conn, req)
 	case "getSignaturesForAddress":
-		ser.getSignaturesForAddress(ctx, conn, req)
+		ser.handleGetSignaturesForAddress(ctx, conn, req)
 	default:
 		conn.ReplyWithError(
 			ctx,

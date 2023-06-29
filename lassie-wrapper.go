@@ -52,6 +52,23 @@ func (l *lassieWrapper) GetNodeByCid(ctx context.Context, wantedCid cid.Cid) ([]
 	return nil, nil
 }
 
+func (l *lassieWrapper) GetSubgraph(ctx context.Context, wantedCid cid.Cid) (*WrappedMemStore, error) {
+	store := NewWrappedMemStore()
+	{
+		_, err := l.Fetch(
+			ctx,
+			wantedCid,
+			"",
+			types.DagScopeAll,
+			store,
+		)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return store, nil
+}
+
 func (l *lassieWrapper) Fetch(
 	ctx context.Context,
 	rootCid cid.Cid,
