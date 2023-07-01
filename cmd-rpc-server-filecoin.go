@@ -30,7 +30,7 @@ func newCmd_rpcServerFilecoin() *cli.Command {
 			},
 			&cli.StringFlag{
 				Name:  "config",
-				Usage: "Global config filepath",
+				Usage: "Load config from file instead of arguments",
 				Value: "",
 			},
 		},
@@ -108,31 +108,31 @@ func rpcServerFilecoinLoadConfig(c *cli.Context) (*RpcServerFilecoinConfig, erro
 		cfg.Indexes.Gsfa = gsfaIndexDir
 	}
 
-	// if a global config file is specified, load it:
+	// if a file is specified, load it:
 	if configFilepath := c.String("config"); configFilepath != "" {
-		globalConfig, err := loadGlobalConfig(configFilepath)
+		configFromFile, err := loadRpcServerFilecoinConfig(configFilepath)
 		if err != nil {
-			return nil, fmt.Errorf("failed to load global config: %w", err)
+			return nil, fmt.Errorf("failed to load config: %w", err)
 		}
 		if cfg.Indexes.SlotToCid == "" {
-			cfg.Indexes.SlotToCid = globalConfig.Indexes.SlotToCid
+			cfg.Indexes.SlotToCid = configFromFile.Indexes.SlotToCid
 		}
 		if cfg.Indexes.SigToCid == "" {
-			cfg.Indexes.SigToCid = globalConfig.Indexes.SigToCid
+			cfg.Indexes.SigToCid = configFromFile.Indexes.SigToCid
 		}
 		if cfg.Indexes.Gsfa == "" {
-			cfg.Indexes.Gsfa = globalConfig.Indexes.Gsfa
+			cfg.Indexes.Gsfa = configFromFile.Indexes.Gsfa
 		}
 	}
 
 	return cfg, nil
 }
 
-func loadGlobalConfig(configFilepath string) (*RpcServerFilecoinConfig, error) {
+func loadRpcServerFilecoinConfig(configFilepath string) (*RpcServerFilecoinConfig, error) {
 	cfg := &RpcServerFilecoinConfig{}
 	err := cfg.load(configFilepath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load global config: %w", err)
+		return nil, fmt.Errorf("failed to load config: %w", err)
 	}
 	return cfg, nil
 }
@@ -145,13 +145,13 @@ func (cfg *RpcServerFilecoinConfig) load(configFilepath string) error {
 	if isYAMLFile(configFilepath) {
 		return cfg.loadFromYAML(configFilepath)
 	}
-	return fmt.Errorf("unknown file type for global config: %s", configFilepath)
+	return fmt.Errorf("unknown file type for config: %s", configFilepath)
 }
 
 func (cfg *RpcServerFilecoinConfig) loadFromJSON(configFilepath string) error {
 	file, err := os.Open(configFilepath)
 	if err != nil {
-		return fmt.Errorf("failed to open global config file: %w", err)
+		return fmt.Errorf("failed to open config file: %w", err)
 	}
 	defer file.Close()
 	return json.NewDecoder(file).Decode(cfg)
@@ -160,7 +160,7 @@ func (cfg *RpcServerFilecoinConfig) loadFromJSON(configFilepath string) error {
 func (cfg *RpcServerFilecoinConfig) loadFromYAML(configFilepath string) error {
 	file, err := os.Open(configFilepath)
 	if err != nil {
-		return fmt.Errorf("failed to open global config file: %w", err)
+		return fmt.Errorf("failed to open config file: %w", err)
 	}
 	defer file.Close()
 
