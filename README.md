@@ -161,6 +161,10 @@ faithful-cli index all epoch-107.car .
 
 This would generate the indexes in the current dir for epoch-107.
 
+## Contributing
+
+We are currently requesting contributions from the community in testing this tool for retrievals and for generating data. We also request input on the IPLD Schema and data format. Proposals, bug reports, questions, help requests etc. can be reported via issues on this repo. 
+
 ## Contact
 
 This project is currently managed by [Triton One](https://triton.one/). If you want more information contact us via [Telegram](https://t.me/+K0ONdq7fE4s0Mjdl). 
