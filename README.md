@@ -26,7 +26,7 @@ If you have a local copy of a CAR archive and the indexes and run a RPC server s
     epoch-455.car-*-gsfa-index
 ```
 
-To get URLs for downloading the local files, please get in touch with help@triton.one. 
+To get URLs for downloading the local files, please open a data cloning request as an issue on this repo with your contact details and we will help organise a cloning setup for you. 
 
 ### Filecoin RPC server
 
