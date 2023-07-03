@@ -41,12 +41,12 @@ faithful-cli rpc-server-filecoin -config 455.yml
 The config file points faithful to the location of the required indexes (`455.yaml`):
 ```
 indexes:
-  slot_to_cid: 'https://f003.backblazeb2.com/file/filecoin-car/455/epoch-455.car.bafyreibkequ55hyrhyk6f24ctsofzri6bjykh76jxl3zju4oazu3u3ru7y.slot-to-cid.index'
-  sig_to_cid: 'https://f003.backblazeb2.com/file/filecoin-car/455/epoch-455.car.bafyreibkequ55hyrhyk6f24ctsofzri6bjykh76jxl3zju4oazu3u3ru7y.sig-to-cid.index'
-  gsfa: /path/to/local/gsfa-455-dir
+  slot_to_cid: './epoch-455.car.bafyreibkequ55hyrhyk6f24ctsofzri6bjykh76jxl3zju4oazu3u3ru7y.slot-to-cid.index'
+  sig_to_cid: './epoch-455.car.bafyreibkequ55hyrhyk6f24ctsofzri6bjykh76jxl3zju4oazu3u3ru7y.sig-to-cid.index'
+  gsfa: './epoch-455.car.gsfa.index'
 ```
 
-The getSignaturesForAddress index needs to be stored in a local directory, but the other indexes can be fetched via HTTP/S3 as illustrated above or via local file system access. 
+The getSignaturesForAddress index needs to be stored in a local directory, but the other indexes can be fetched via HTTP or via local file system access. If you provide a URL, you need to make sure that the url supports HTTP Range requests. S3 or similar APIs will support this. 
 
 ### Filecoin fetch via CID
 
