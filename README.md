@@ -117,6 +117,16 @@ The data generation flow is illustrated below:
 
 ![radiance datagen flow](https://github.com/rpcpool/yellowstone-faithful/assets/5172293/65f6dd75-189b-4253-968a-e81bfe6c130f)
 
+## Generating an epoch car file
+
+Once you have downloaded rocksdb ledger archives you can run the Radiance tool to generate a car file for an epoch. Make sure you have all the slots available in rocksdb ledger archive for the epoch. You may need to download multiple ledger snapshots in order to have a full set of slots available. Once you know you have a rocksdb that covers all the slots for the epoch run the radiance tool like follows:
+
+```
+radiance car create2 107 --db=46223992/rocksdb --out=/storage/car/epoch-107.car
+```
+
+This will produce a car file called epoch-107.car containing all the blocks and transactions for that epoch.
+
 ## Index generation
 
 Once the radiance tooling has been used to prepare a car file (or if you have downloaded a car file externally) you can generate indexes from this car file by using the `faithful-cli`:
@@ -146,10 +156,10 @@ OPTIONS:
 For example, to generate the three indexes cid-to-offset, slot-to-cid, sig-to-cid you would run:
 
 ```
-faithful-cli index all epoch-455.car .
+faithful-cli index all epoch-107.car .
 ```
 
-This would generate the indexes in the current dir for epoch-455.
+This would generate the indexes in the current dir for epoch-107.
 
 ## Contact
 
