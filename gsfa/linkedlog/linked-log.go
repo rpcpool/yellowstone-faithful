@@ -141,12 +141,12 @@ func (s *LinkedLog) Read(offset uint64) ([]uint64, uint64, error) {
 	return sigIndexes, nextOffset, nil
 }
 
-// Write map[PublicKey][]uint64 to file
-func (s *LinkedLog) Write(
+// Put map[PublicKey][]uint64 to file
+func (s *LinkedLog) Put(
 	dataMap map[solana.PublicKey][]uint64,
 	callbackBefore func(pk solana.PublicKey) (uint64, error),
 	callbackAfter func(pk solana.PublicKey, offset uint64, ln uint32) error,
-) error {
+) (uint64, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	pubkeys := make(solana.PublicKeySlice, 0, len(dataMap))
@@ -155,6 +155,11 @@ func (s *LinkedLog) Write(
 	}
 	// Sort pubkeys
 	pubkeys.Sort()
+
+	previousSize, err := s.getSize()
+	if err != nil {
+		return 0, err
+	}
 
 	wg := new(errgroup.Group)
 	wg.SetLimit(256)
@@ -190,7 +195,7 @@ func (s *LinkedLog) Write(
 			return callbackAfter(pk, offset, numWrittenBytes)
 		})
 	}
-	return wg.Wait()
+	return uint64(previousSize), wg.Wait()
 }
 
 func reverseUint64Slice(s []uint64) {

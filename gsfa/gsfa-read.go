@@ -10,6 +10,7 @@ import (
 
 	"github.com/gagliardetto/solana-go"
 	"github.com/rpcpool/yellowstone-faithful/gsfa/linkedlog"
+	"github.com/rpcpool/yellowstone-faithful/gsfa/manifest"
 	"github.com/rpcpool/yellowstone-faithful/gsfa/offsetstore"
 	"github.com/rpcpool/yellowstone-faithful/gsfa/sff"
 	"github.com/rpcpool/yellowstone-faithful/gsfa/store"
@@ -19,6 +20,7 @@ type GsfaReader struct {
 	offsets *offsetstore.OffsetStore
 	ll      *linkedlog.LinkedLog
 	sff     *sff.SignaturesFlatFile
+	man     *manifest.Manifest
 }
 
 func isDir(path string) (bool, error) {
@@ -65,6 +67,13 @@ func NewGsfaReader(indexRootDir string) (*GsfaReader, error) {
 			return nil, err
 		}
 		index.sff = sff
+	}
+	{
+		man, err := manifest.NewManifest(filepath.Join(indexRootDir, "manifest"))
+		if err != nil {
+			return nil, err
+		}
+		index.man = man
 	}
 	return index, nil
 }

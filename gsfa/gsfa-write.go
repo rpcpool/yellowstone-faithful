@@ -11,6 +11,7 @@ import (
 
 	"github.com/gagliardetto/solana-go"
 	"github.com/rpcpool/yellowstone-faithful/gsfa/linkedlog"
+	"github.com/rpcpool/yellowstone-faithful/gsfa/manifest"
 	"github.com/rpcpool/yellowstone-faithful/gsfa/offsetstore"
 	"github.com/rpcpool/yellowstone-faithful/gsfa/sff"
 	"github.com/rpcpool/yellowstone-faithful/gsfa/store"
@@ -25,7 +26,9 @@ type GsfaWriter struct {
 	mu                        sync.Mutex
 	offsets                   *offsetstore.OffsetStore
 	ll                        *linkedlog.LinkedLog
+	man                       *manifest.Manifest
 	lastSlot                  uint64
+	firstSlotOfCurrentBatch   uint64
 }
 
 // NewGsfaWriter creates or opens an existing index in WRITE mode.
@@ -86,6 +89,13 @@ func NewGsfaWriter(
 		}
 		index.sff = sff
 	}
+	{
+		man, err := manifest.NewManifest(filepath.Join(indexRootDir, "manifest"))
+		if err != nil {
+			return nil, err
+		}
+		index.man = man
+	}
 	return index, nil
 }
 
@@ -98,6 +108,7 @@ func (a *GsfaWriter) Push(slot uint64, signature solana.Signature, publicKeys []
 		if err := a.flush(); err != nil {
 			return fmt.Errorf("error while flushing current batch: %w", err)
 		}
+		a.firstSlotOfCurrentBatch = slot
 	}
 	index, err := a.sff.Put(signature)
 	for _, publicKey := range publicKeys {
@@ -105,6 +116,9 @@ func (a *GsfaWriter) Push(slot uint64, signature solana.Signature, publicKeys []
 	}
 	a.numCurrentBatchSignatures++
 	a.lastSlot = slot
+	if a.firstSlotOfCurrentBatch == 0 {
+		a.firstSlotOfCurrentBatch = slot
+	}
 	return err
 }
 
@@ -126,22 +140,23 @@ func (a *GsfaWriter) Close() error {
 		a.sff.Close(),
 		a.offsets.Close(),
 		a.ll.Close(),
+		a.man.Close(),
 	)
 }
 
 func (a *GsfaWriter) flush() error {
-	klog.Infof("Flushing %d key-to-sigs...", len(a.batch))
-	startedAt := time.Now()
-	defer func() {
-		klog.Infof(" Flushed key-to-sigs in %s.", time.Since(startedAt))
-	}()
-
 	if err := a.sff.Flush(); err != nil {
 		return err
 	}
 	if len(a.batch) == 0 {
 		return nil
 	}
+	klog.Infof("Flushing %d key-to-sigs...", len(a.batch))
+	startedAt := time.Now()
+	defer func() {
+		klog.Infof(" Flushed key-to-sigs in %s.", time.Since(startedAt))
+	}()
+
 	// Flush the offsets store.
 	err := a.offsets.Flush()
 	if err != nil {
@@ -154,7 +169,7 @@ func (a *GsfaWriter) flush() error {
 			return fmt.Errorf("error while flushing linked log cache: %w", err)
 		}
 		debugf("Writing %d account batches to linked log...", len(a.batch))
-		err := a.ll.Write(
+		startOffset, err := a.ll.Put(
 			a.batch,
 			func(pk solana.PublicKey) (uint64, error) {
 				got, err := a.offsets.Get(context.Background(), pk)
@@ -179,7 +194,12 @@ func (a *GsfaWriter) flush() error {
 			},
 		)
 		if err != nil {
-			return err
+			return fmt.Errorf("error while writing account lists batch to linked log: %w", err)
+		}
+		// Maps first slot of the batch to the offset of the batch in the linked log.
+		err = a.man.Put(a.firstSlotOfCurrentBatch, startOffset)
+		if err != nil {
+			return fmt.Errorf("error while writing entry to manifest: %w", err)
 		}
 	}
 	a.batch = make(map[solana.PublicKey][]uint64)
