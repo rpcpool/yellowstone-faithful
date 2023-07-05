@@ -4,7 +4,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/stretchr/testify/require"
 )
 
@@ -70,24 +69,6 @@ func TestManifest(t *testing.T) {
 			{111, 222},
 			{333, 444},
 			{555, 666},
-		}, all)
-	}
-}
-
-func TestManifest2(t *testing.T) {
-	fp := "/media/withparty/solana-history/indexes/gsfa/epoch-233-1000.car-bafyreigwd7dlunmm3ghhjop2eryrckyzxkluudlawzejnfxjx4avm65wze-gsfa-index/manifest"
-	m, err := NewManifest(fp)
-	require.NoError(t, err)
-	defer m.Close()
-	require.NotNil(t, m)
-
-	{
-		all, err := m.ReadAll()
-		require.NoError(t, err)
-		spew.Dump(all)
-		require.Equal(t, [][2]uint64{
-			{111, 222},
-			{333, 444},
 		}, all)
 	}
 }
