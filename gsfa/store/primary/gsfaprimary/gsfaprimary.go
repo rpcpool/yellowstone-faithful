@@ -9,20 +9,21 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"sync"
-	"time"
 
 	"github.com/gagliardetto/solana-go"
+	logging "github.com/ipfs/go-log/v2"
 	"github.com/rpcpool/yellowstone-faithful/gsfa/store/filecache"
 	"github.com/rpcpool/yellowstone-faithful/gsfa/store/freelist"
 	"github.com/rpcpool/yellowstone-faithful/gsfa/store/primary"
 	"github.com/rpcpool/yellowstone-faithful/gsfa/store/types"
 )
+
+var log = logging.Logger("storethehash/gsfaprimary")
 
 const (
 	// PrimaryVersion is stored in the header data to indicate how to interpret
@@ -68,10 +69,7 @@ type GsfaPrimary struct {
 	recFileNum uint32
 	recPos     types.Position
 
-	// gc is the garbage collector for the primary.
-	gc      *primaryGC
-	gcMutex sync.Mutex
-	closed  bool
+	closed bool
 }
 
 type blockRecord struct {
@@ -159,38 +157,6 @@ func Open(path string, freeList *freelist.FreeList, fileCache *filecache.FileCac
 	}
 
 	return mp, nil
-}
-
-func (mp *GsfaPrimary) StartGC(freeList *freelist.FreeList, interval, timeLimit time.Duration, updateIndex UpdateIndexFunc) {
-	// TODO: implement GC?
-	return
-	if freeList == nil || interval == 0 {
-		return
-	}
-
-	mp.gcMutex.Lock()
-	defer mp.gcMutex.Unlock()
-
-	// If GC already started, then do nothing.
-	if mp.gc != nil {
-		return
-	}
-
-	mp.gc = newGC(mp, freeList, interval, timeLimit, updateIndex)
-}
-
-func (mp *GsfaPrimary) GC(ctx context.Context, lowUsePercent int64) (int64, error) {
-	// TODO: implement GC?
-	return 0, nil
-	mp.gcMutex.Lock()
-	gc := mp.gc
-	mp.gcMutex.Unlock()
-
-	if gc == nil {
-		return 0, errors.New("gc disabled")
-	}
-
-	return gc.gc(ctx, lowUsePercent, 0)
 }
 
 func (cp *GsfaPrimary) FileSize() uint32 {
@@ -448,15 +414,9 @@ func (mp *GsfaPrimary) Sync() error {
 // Close calls Flush to write work and data to the primary file, and then
 // closes the file.
 func (mp *GsfaPrimary) Close() error {
-	mp.gcMutex.Lock()
 	if mp.closed {
-		mp.gcMutex.Unlock()
 		return nil
 	}
-	if mp.gc != nil {
-		mp.gc.close()
-	}
-	mp.gcMutex.Unlock()
 
 	mp.fileCache.Clear()
 

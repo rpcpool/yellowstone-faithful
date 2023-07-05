@@ -106,13 +106,6 @@ func OpenStore(ctx context.Context, primaryType string, dataPath, indexPath stri
 		return nil, err
 	}
 
-	// Start primary GC only after index is started so that primary GC does not
-	// interfere with any index remapping.
-	mp, ok := primary.(*gsfaprimary.GsfaPrimary)
-	if ok && mp != nil {
-		mp.StartGC(freeList, c.gcInterval, c.gcTimeLimit, idx.Update)
-	}
-
 	store := &Store{
 		lastFlush:    time.Now(),
 		index:        idx,

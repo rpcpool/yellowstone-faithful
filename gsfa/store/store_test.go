@@ -18,7 +18,7 @@ import (
 func initStore(t *testing.T, dir string) (*store.Store, error) {
 	indexPath := filepath.Join(dir, "storethehash.index")
 	dataPath := filepath.Join(dir, "storethehash.data")
-	store, err := store.OpenStore(context.Background(), store.GsfaPrimary, dataPath, indexPath, store.GCInterval(0))
+	store, err := store.OpenStore(context.Background(), store.GsfaPrimary, dataPath, indexPath)
 	if err != nil {
 		return nil, err
 	}
@@ -157,7 +157,7 @@ func TestTranslate(t *testing.T) {
 	dataPath := filepath.Join(tempDir, "storethehash.data")
 
 	t.Logf("Createing store with 16-bit index")
-	s1, err := store.OpenStore(context.Background(), store.GsfaPrimary, dataPath, indexPath, store.IndexBitSize(16), store.GCInterval(0))
+	s1, err := store.OpenStore(context.Background(), store.GsfaPrimary, dataPath, indexPath, store.IndexBitSize(16))
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, s1.Close()) })
 
@@ -176,7 +176,7 @@ func TestTranslate(t *testing.T) {
 
 	// Translate to 26 bits
 	t.Logf("Translating store index from 16-bit to 24-bit")
-	s2, err := store.OpenStore(context.Background(), store.GsfaPrimary, dataPath, indexPath, store.IndexBitSize(24), store.GCInterval(0))
+	s2, err := store.OpenStore(context.Background(), store.GsfaPrimary, dataPath, indexPath, store.IndexBitSize(24))
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, s2.Close()) })
 
@@ -197,7 +197,7 @@ func TestTranslate(t *testing.T) {
 
 	// Translate back to 24 bits.
 	t.Logf("Translating store index from 24-bit to 16-bit")
-	s3, err := store.OpenStore(context.Background(), store.GsfaPrimary, dataPath, indexPath, store.IndexBitSize(16), store.GCInterval(0))
+	s3, err := store.OpenStore(context.Background(), store.GsfaPrimary, dataPath, indexPath, store.IndexBitSize(16))
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, s3.Close()) })
 
