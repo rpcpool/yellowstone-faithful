@@ -29,7 +29,7 @@ func TestGC(t *testing.T) {
 	dataPath := filepath.Join(tempDir, "storethehash.data")
 	t.Logf("Creating store in directory %s\n", tempDir)
 
-	store, err := store.OpenStore(ctx, store.GsfaPrimary, dataPath, indexPath, false, store.GCInterval(time.Hour), store.PrimaryFileSize(1024), store.IndexFileSize(10240), store.SyncInterval(time.Minute))
+	store, err := store.OpenStore(ctx, store.GsfaPrimary, dataPath, indexPath, store.GCInterval(time.Hour), store.PrimaryFileSize(1024), store.IndexFileSize(10240), store.SyncInterval(time.Minute))
 	require.NoError(t, err)
 	defer store.Close()
 

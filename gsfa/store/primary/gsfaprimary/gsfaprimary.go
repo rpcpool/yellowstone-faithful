@@ -7,6 +7,7 @@ package gsfaprimary
 // See LICENSE for details.
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -89,7 +90,7 @@ func newBlockPool() blockPool {
 	}
 }
 
-// Open opens the multihash primary storage file. The primary is created if
+// Open opens the gsfa primary storage file. The primary is created if
 // there is no existing primary at the specified path. If there is an older
 // version primary, then it is automatically upgraded.
 func Open(path string, freeList *freelist.FreeList, fileCache *filecache.FileCache, maxFileSize uint32) (*GsfaPrimary, error) {
@@ -196,6 +197,27 @@ func (cp *GsfaPrimary) FileSize() uint32 {
 	return cp.maxFileSize
 }
 
+// upgradeCachedValue updates the cached value for the given key if it exists.
+// This is used to make sure that the cached value is updated when a new value
+// is written to the primary (overwriting the old value), otherwise the cached
+// value will be stale.
+func (cp *GsfaPrimary) upgradeCachedValue(blk types.Block, key []byte, value []byte) {
+	idx, ok := cp.nextPool.refs[blk]
+	if ok {
+		if !bytes.Equal(cp.nextPool.blocks[idx].key, key) {
+			return
+		}
+		cp.nextPool.blocks[idx].value = value
+	}
+	idx, ok = cp.curPool.refs[blk]
+	if ok {
+		if !bytes.Equal(cp.curPool.blocks[idx].key, key) {
+			return
+		}
+		cp.curPool.blocks[idx].value = value
+	}
+}
+
 func (cp *GsfaPrimary) getCached(blk types.Block) ([]byte, []byte, error) {
 	cp.poolLk.RLock()
 	defer cp.poolLk.RUnlock()
@@ -234,7 +256,7 @@ func (cp *GsfaPrimary) Get(blk types.Block) ([]byte, []byte, error) {
 
 	read := make([]byte, int(blk.Size))
 	if _, err = file.ReadAt(read, int64(localPos)); err != nil {
-		return nil, nil, fmt.Errorf("error reading data from multihash primary: %w", err)
+		return nil, nil, fmt.Errorf("error reading data from gsfa primary: %w", err)
 	}
 
 	return readNode(read)
@@ -267,7 +289,7 @@ func readPubkey(buf []byte) (Pubkey, int, error) {
 // files.
 func (cp *GsfaPrimary) Put(key []byte, value []byte) (types.Block, error) {
 	recSize := int64(len(key) + len(value))
-	dataSize := 32 + 8 + 8
+	dataSize := 32 + 8
 	if recSize != int64(dataSize) {
 		return types.Block{}, fmt.Errorf("expected record size %d, got %d", dataSize, recSize)
 	}
@@ -298,32 +320,23 @@ func (cp *GsfaPrimary) Overwrite(blk types.Block, key []byte, value []byte) erro
 	if recSize != int64(blk.Size) {
 		return fmt.Errorf("expected record size %d, got %d", blk.Size, recSize)
 	}
+	cp.poolLk.Lock()
+	defer cp.poolLk.Unlock()
 
 	localPos, fileNum := localizePrimaryPos(blk.Offset, cp.maxFileSize)
 
-	file, err := os.OpenFile(primaryFileName(cp.basePath, fileNum), os.O_WRONLY, 0o666)
+	fi, err := os.OpenFile(primaryFileName(cp.basePath, fileNum), os.O_WRONLY, 0o666)
 	if err != nil {
 		return err
 	}
-	defer file.Close()
-	// defer cp.fileCache.Close(file)
+	defer fi.Close()
 	payload := append(key, value...)
-	// {
-	// 	// dump localPos
-	// 	buf := make([]byte, recSize)
-	// 	if _, err = file.ReadAt(buf, int64(localPos)); err != nil {
-	// 		return fmt.Errorf("error reading data from multihash primary: %w", err)
-	// 	}
-	// 	// first 32 bytes are the pubkey and must match
-	// 	if !bytes.Equal(buf[:32], payload[:32]) {
-	// 		return fmt.Errorf("error overwriting data from multihash primary: %w", types.ErrOutOfBounds)
-	// 	}
-	// }
 
 	// overwrite the record
-	if _, err = file.WriteAt(payload, int64(localPos)); err != nil {
-		return fmt.Errorf("error writing data to multihash primary: %w", err)
+	if _, err = fi.WriteAt(payload, int64(localPos)); err != nil {
+		return fmt.Errorf("error writing data to gsfa primary: %w", err)
 	}
+	cp.upgradeCachedValue(blk, key, value)
 	return nil
 }
 
@@ -509,7 +522,7 @@ func (iter *Iterator) Next() ([]byte, []byte, error) {
 		iter.pos = 0
 	}
 
-	size := 32 + 8 + 8
+	size := 32 + 8
 	pos := iter.pos
 	data := make([]byte, size)
 	_, err := iter.file.ReadAt(data, pos)

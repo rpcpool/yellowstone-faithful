@@ -26,8 +26,7 @@ type OffsetStore struct {
 }
 
 type Locs struct {
-	OffsetToFirst    uint64
-	OffsetToLastNext uint64 // the offset of the latest block `next` field.
+	OffsetToLatest uint64
 }
 
 // OpenOffsetStore opens a HashedBlockstore with the default index size
@@ -37,7 +36,6 @@ func OpenOffsetStore(ctx context.Context, indexPath string, dataPath string, opt
 		store.GsfaPrimary,
 		dataPath,
 		indexPath,
-		false,
 		options...,
 	)
 	if err != nil {
@@ -90,20 +88,18 @@ func (as *OffsetStore) Get(ctx context.Context, pk solana.PublicKey) (Locs, erro
 }
 
 func parseLocs(value []byte) (Locs, error) {
-	if len(value) != 16 {
+	if len(value) != 8 {
 		return Locs{}, errors.New("invalid Loc size")
 	}
 	return Locs{
 		readUint64(value[0:8]),
-		readUint64(value[8:16]),
 	}, nil
 }
 
 // Encode returns the encoded bytes of an account.
 func (a Locs) Bytes() []byte {
-	buf := make([]byte, 16)
-	binary.LittleEndian.PutUint64(buf[0:8], a.OffsetToFirst)
-	binary.LittleEndian.PutUint64(buf[8:16], a.OffsetToLastNext)
+	buf := make([]byte, 8)
+	binary.LittleEndian.PutUint64(buf[0:8], a.OffsetToLatest)
 	return buf
 }
 
@@ -142,7 +138,16 @@ func (as *OffsetStore) Put(ctx context.Context, pk solana.PublicKey, loc Locs) e
 }
 
 func (as *OffsetStore) Flush() error {
-	return as.store.Flush()
+	if err := as.store.Flush(); err != nil {
+		return err
+	}
+	if _, err := as.store.Primary().Flush(); err != nil {
+		return err
+	}
+	if err := as.store.Primary().Sync(); err != nil {
+		return err
+	}
+	return nil
 }
 
 // AllKeysChan returns a channel from which

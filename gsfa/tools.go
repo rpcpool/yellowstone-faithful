@@ -161,13 +161,6 @@ func sortByKey(keysToLocs [][48]byte) {
 	})
 }
 
-func encodeAddr(addr [2]uint64) []byte {
-	buf := make([]byte, 16)
-	binary.LittleEndian.PutUint64(buf[:8], addr[0])
-	binary.LittleEndian.PutUint64(buf[8:], addr[1])
-	return buf
-}
-
 func toBase64(b []byte) string {
 	return strings.TrimRight(
 		strings.TrimRight(

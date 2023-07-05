@@ -20,7 +20,7 @@ func RandomBytes(n int64) []byte {
 
 type Entry struct {
 	Key   solana.PublicKey
-	Value []byte // 8 + 8 bytes
+	Value []byte // 8 bytes
 }
 
 // RawValue returns the Value of the Entry.
@@ -32,7 +32,7 @@ func GenerateEntries(n int) []Entry {
 	generatedEntries := make([]Entry, 0, n)
 	for i := 0; i < n; i++ {
 		key := solana.NewWallet().PublicKey()
-		value := RandomBytes(16)
+		value := RandomBytes(8) // The value is 8 bytes long (uint64 little-endian).
 		generatedEntries = append(generatedEntries, Entry{
 			Key:   key,
 			Value: value,

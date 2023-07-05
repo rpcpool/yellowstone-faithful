@@ -154,10 +154,11 @@ func newCmd_Index_gsfa() *cli.Command {
 					switch resValue := result.Value.(type) {
 					case error:
 						panic(resValue)
-					case solana.Transaction:
-						tx := resValue
+					case TransactionWithSlot:
+						tx := resValue.Transaction
+						slot := resValue.Slot
 						sig := tx.Signatures[0]
-						err = accu.Push(sig, tx.Message.AccountKeys)
+						err = accu.Push(slot, sig, tx.Message.AccountKeys)
 						if err != nil {
 							klog.Exitf("Error while pushing to gsfa index: %s", err)
 						}
@@ -215,6 +216,11 @@ func newCmd_Index_gsfa() *cli.Command {
 	}
 }
 
+type TransactionWithSlot struct {
+	Slot        uint64
+	Transaction solana.Transaction
+}
+
 type txParserWorker struct {
 	blk  blocks.Block
 	done func()
@@ -261,7 +267,10 @@ func (w txParserWorker) Run(ctx context.Context) interface{} {
 			} else if len(tx.Signatures) == 0 {
 				klog.Exitf("Error while unmarshaling transaction from nodex %s: no signatures", block.Cid())
 			}
-			return tx
+			return TransactionWithSlot{
+				Slot:        uint64(decoded.Slot),
+				Transaction: tx,
+			}
 		} else {
 			klog.Warningf("Transaction data is split into multiple objects for %s; skipping", block.Cid())
 		}

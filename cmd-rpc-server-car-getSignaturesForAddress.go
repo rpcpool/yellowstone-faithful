@@ -14,6 +14,8 @@ type GetSignaturesForAddressParams struct {
 	Address solana.PublicKey `json:"address"`
 	Limit   int              `json:"limit"`
 	// TODO: add more params
+	Before solana.Signature `json:"before"`
+	After  solana.Signature `json:"after"`
 }
 
 func parseGetSignaturesForAddressParams(raw *json.RawMessage) (*GetSignaturesForAddressParams, error) {
@@ -45,12 +47,33 @@ func parseGetSignaturesForAddressParams(raw *json.RawMessage) (*GetSignaturesFor
 					out.Limit = int(limit)
 				}
 			}
+			if before, ok := m["before"]; ok {
+				if before, ok := before.(string); ok {
+					sig, err := solana.SignatureFromBase58(before)
+					if err != nil {
+						klog.Errorf("failed to parse signature from base58: %v", err)
+						return nil, err
+					}
+					out.Before = sig
+				}
+			}
+			if after, ok := m["after"]; ok {
+				if after, ok := after.(string); ok {
+					sig, err := solana.SignatureFromBase58(after)
+					if err != nil {
+						klog.Errorf("failed to parse signature from base58: %v", err)
+						return nil, err
+					}
+					out.After = sig
+				}
+			}
 		}
 	}
 	if out.Limit <= 0 || out.Limit > 1000 {
 		// default limit
 		out.Limit = 1000
 	}
+	// TODO: can `before` and `after` be used together?
 	return out, nil
 }
 

@@ -92,7 +92,7 @@ func (index *GsfaReader) Get(
 	debugln("locs.OffsetToFirst:", locs)
 
 	var sigs []solana.Signature
-	next := locs.OffsetToFirst
+	next := locs.OffsetToLatest // Start from the latest, and go back in time.
 
 	for {
 		if next == 0 {

@@ -6,6 +6,8 @@ import (
 	"io"
 	"os"
 	"sync"
+
+	"github.com/gagliardetto/solana-go"
 )
 
 const (
@@ -94,8 +96,8 @@ func (s *SignaturesFlatFile) Flush() error {
 	return s.cache.Flush()
 }
 
-func (s *SignaturesFlatFile) Put(sig [SignatureSize]byte) (uint64, error) {
-	if sig == EmptySignature {
+func (s *SignaturesFlatFile) Put(sig solana.Signature) (uint64, error) {
+	if sig.IsZero() {
 		return 0, os.ErrInvalid
 	}
 	s.mu.Lock()
@@ -111,27 +113,25 @@ func (s *SignaturesFlatFile) Put(sig [SignatureSize]byte) (uint64, error) {
 	return s.count - 1, nil
 }
 
-var EmptySignature = [SignatureSize]byte{}
-
 // IsEmpty returns true if the signature is empty
-func IsEmpty(sig [SignatureSize]byte) bool {
-	return sig == EmptySignature
+func IsEmpty(sig solana.Signature) bool {
+	return sig.IsZero()
 }
 
 // Get returns the signature at the given index.
 // If the index is out of bounds, os.ErrNotExist is returned.
 // NOTE: Just-written signatures may not be available until the cache is flushed.
-func (s *SignaturesFlatFile) Get(index uint64) ([SignatureSize]byte, error) {
+func (s *SignaturesFlatFile) Get(index uint64) (solana.Signature, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if index >= s.count {
-		return EmptySignature, os.ErrNotExist
+		return solana.Signature{}, os.ErrNotExist
 	}
 	sectionReader := io.NewSectionReader(s.file, int64(index*SignatureSize), SignatureSize)
-	var sig [SignatureSize]byte
+	var sig solana.Signature
 	_, err := io.ReadFull(sectionReader, sig[:])
 	if err != nil {
-		return EmptySignature, err
+		return solana.Signature{}, err
 	}
 	return sig, nil
 }
