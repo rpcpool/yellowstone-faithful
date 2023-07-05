@@ -34,7 +34,7 @@ func TestManifest(t *testing.T) {
 	{
 		all, err := m.ReadAll()
 		require.NoError(t, err)
-		require.Equal(t, [][2]uint64{
+		require.Equal(t, Values{
 			{111, 222},
 			{333, 444},
 		}, all)
@@ -50,7 +50,7 @@ func TestManifest(t *testing.T) {
 	{
 		all, err := m.ReadAll()
 		require.NoError(t, err)
-		require.Equal(t, [][2]uint64{
+		require.Equal(t, Values{
 			{111, 222},
 			{333, 444},
 		}, all)
@@ -65,7 +65,7 @@ func TestManifest(t *testing.T) {
 	{
 		all, err := m.ReadAll()
 		require.NoError(t, err)
-		require.Equal(t, [][2]uint64{
+		require.Equal(t, Values{
 			{111, 222},
 			{333, 444},
 			{555, 666},
