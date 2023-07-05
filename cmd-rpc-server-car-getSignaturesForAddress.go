@@ -14,8 +14,8 @@ type GetSignaturesForAddressParams struct {
 	Address solana.PublicKey `json:"address"`
 	Limit   int              `json:"limit"`
 	// TODO: add more params
-	Before solana.Signature `json:"before"`
-	After  solana.Signature `json:"after"`
+	Before *solana.Signature `json:"before"`
+	Until  *solana.Signature `json:"after"`
 }
 
 func parseGetSignaturesForAddressParams(raw *json.RawMessage) (*GetSignaturesForAddressParams, error) {
@@ -54,17 +54,17 @@ func parseGetSignaturesForAddressParams(raw *json.RawMessage) (*GetSignaturesFor
 						klog.Errorf("failed to parse signature from base58: %v", err)
 						return nil, err
 					}
-					out.Before = sig
+					out.Before = &sig
 				}
 			}
-			if after, ok := m["after"]; ok {
+			if after, ok := m["until"]; ok {
 				if after, ok := after.(string); ok {
 					sig, err := solana.SignatureFromBase58(after)
 					if err != nil {
 						klog.Errorf("failed to parse signature from base58: %v", err)
 						return nil, err
 					}
-					out.After = sig
+					out.Until = &sig
 				}
 			}
 		}
@@ -105,7 +105,13 @@ func (ser *rpcServer) handleGetSignaturesForAddress(ctx context.Context, conn *r
 	pk := params.Address
 	limit := params.Limit
 
-	sigs, err := ser.gsfaReader.Get(context.Background(), pk, limit)
+	sigs, err := ser.gsfaReader.GetBeforeUntil(
+		ctx,
+		pk,
+		limit,
+		params.Before,
+		params.Until,
+	)
 	if err != nil {
 		if offsetstore.IsNotFound(err) {
 			klog.Infof("No signatures found for address: %s", pk)
