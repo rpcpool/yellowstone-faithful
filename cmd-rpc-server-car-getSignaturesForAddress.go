@@ -11,11 +11,11 @@ import (
 )
 
 type GetSignaturesForAddressParams struct {
-	Address solana.PublicKey `json:"address"`
-	Limit   int              `json:"limit"`
+	Address solana.PublicKey
+	Limit   int
+	Before  *solana.Signature
+	Until   *solana.Signature
 	// TODO: add more params
-	Before *solana.Signature `json:"before"`
-	Until  *solana.Signature `json:"after"`
 }
 
 func parseGetSignaturesForAddressParams(raw *json.RawMessage) (*GetSignaturesForAddressParams, error) {
@@ -73,7 +73,6 @@ func parseGetSignaturesForAddressParams(raw *json.RawMessage) (*GetSignaturesFor
 		// default limit
 		out.Limit = 1000
 	}
-	// TODO: can `before` and `after` be used together?
 	return out, nil
 }
 
