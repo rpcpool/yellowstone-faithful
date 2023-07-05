@@ -106,6 +106,11 @@ func OpenStore(ctx context.Context, primaryType string, dataPath, indexPath stri
 		return nil, err
 	}
 
+	_, ok := primary.(*gsfaprimary.GsfaPrimary)
+	if !ok {
+		return nil, fmt.Errorf("unsupported primary type: %T", primary)
+	}
+
 	store := &Store{
 		lastFlush:    time.Now(),
 		index:        idx,
