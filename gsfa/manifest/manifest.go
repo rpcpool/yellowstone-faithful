@@ -9,31 +9,104 @@ import (
 )
 
 type Manifest struct {
-	file *os.File
-	mu   sync.RWMutex
+	file   *os.File
+	mu     sync.RWMutex
+	header *Header
 }
 
+var (
+	_MAGIC   = [...]byte{'g', 's', 'f', 'a', 'm', 'n', 'f', 's'}
+	_Version = uint64(1)
+)
+
+var headerLen = len(_MAGIC) + 8 // 8 bytes for the version
+
+type Header struct {
+	version uint64
+}
+
+// Version returns the version of the manifest.
+func (h *Header) Version() uint64 {
+	return h.version
+}
+
+func readHeader(file *os.File) (*Header, error) {
+	// seek to the beginning of the file
+	_, err := file.Seek(0, io.SeekStart)
+	if err != nil {
+		return nil, err
+	}
+	var magic [8]byte
+	_, err = io.ReadFull(file, magic[:])
+	if err != nil {
+		return nil, err
+	}
+	if magic != _MAGIC {
+		return nil, fmt.Errorf("this is not a gsfa manifest file")
+	}
+	var version uint64
+	err = binary.Read(file, binary.LittleEndian, &version)
+	if err != nil {
+		return nil, err
+	}
+	return &Header{
+		version: version,
+	}, nil
+}
+
+func writeHeader(file *os.File) error {
+	_, err := file.Seek(0, io.SeekStart)
+	if err != nil {
+		return err
+	}
+	_, err = file.Write(_MAGIC[:])
+	if err != nil {
+		return err
+	}
+	err = binary.Write(file, binary.LittleEndian, _Version)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// NewManifest creates a new manifest or opens an existing one.
 func NewManifest(filename string) (*Manifest, error) {
 	file, err := os.OpenFile(filename, os.O_CREATE|os.O_RDWR, 0o644)
 	if err != nil {
 		return nil, err
+	}
+	man := &Manifest{
+		file: file,
+	}
+	currentFileSize, err := man.getFileSize()
+	if err != nil {
+		return nil, err
+	}
+	if currentFileSize == 0 {
+		err = writeHeader(file)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		header, err := readHeader(file)
+		if err != nil {
+			return nil, err
+		}
+		if header.Version() != _Version {
+			return nil, fmt.Errorf("unsupported manifest version: %d", header.Version())
+		}
+		man.header = header
 	}
 	// seek to the end of the file
 	_, err = file.Seek(0, io.SeekEnd)
 	if err != nil {
 		return nil, err
 	}
-	m := &Manifest{
-		file: file,
+	if currentFileSize > 0 && (currentFileSize-int64(headerLen))%16 != 0 {
+		return nil, fmt.Errorf("manifest is corrupt: size=%d", currentFileSize)
 	}
-	currentSize, err := m.getSize()
-	if err != nil {
-		return nil, err
-	}
-	if currentSize > 0 && currentSize%16 != 0 {
-		return nil, fmt.Errorf("manifest is corrupt: size=%d", currentSize)
-	}
-	return m, nil
+	return man, nil
 }
 
 func (m *Manifest) Close() error {
@@ -57,15 +130,16 @@ func (m *Manifest) Flush() error {
 	return m.file.Sync()
 }
 
-// Size returns the size of the file in bytes.
-func (m *Manifest) Size() (int64, error) {
+// ContentSizeBytes returns the size of the content in bytes
+// (not including the header).
+func (m *Manifest) ContentSizeBytes() (int64, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return m.getSize()
+	return m.getContentLength()
 }
 
-// getSize returns the size of the file in bytes.
-func (m *Manifest) getSize() (int64, error) {
+// getFileSize returns the size of the file in bytes (header + content).
+func (m *Manifest) getFileSize() (int64, error) {
 	fi, err := m.file.Stat()
 	if err != nil {
 		return 0, err
@@ -73,10 +147,32 @@ func (m *Manifest) getSize() (int64, error) {
 	return fi.Size(), nil
 }
 
+// getContentLength returns the length of the content in bytes.
+func (m *Manifest) getContentLength() (int64, error) {
+	currentFileSize, err := m.getFileSize()
+	if err != nil {
+		return 0, err
+	}
+	return currentFileSize - int64(headerLen), nil
+}
+
 // Put appends the given uint64 tuple to the file.
 func (m *Manifest) Put(key, value uint64) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.header == nil {
+		err := writeHeader(m.file)
+		if err != nil {
+			return err
+		}
+		m.header = &Header{
+			version: _Version,
+		}
+		_, err = m.file.Seek(0, io.SeekEnd)
+		if err != nil {
+			return err
+		}
+	}
 	return m.write(key, value)
 }
 
@@ -114,18 +210,25 @@ func (v Values) Last() ([2]uint64, bool) {
 func (m *Manifest) ReadAll() (Values, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	return m.readAll()
+	return m.readAllContent()
 }
 
-// readAll reads all the uint64 tuples from the file.
-func (m *Manifest) readAll() (Values, error) {
-	currentFileSize, err := m.getSize()
+func (m *Manifest) getContentReader() (io.Reader, int64, error) {
+	currentContentSize, err := m.getContentLength()
+	if err != nil {
+		return nil, -1, err
+	}
+	return io.NewSectionReader(m.file, int64(headerLen), currentContentSize), currentContentSize, nil
+}
+
+// readAllContent reads all the uint64 tuples from the file.
+func (m *Manifest) readAllContent() (Values, error) {
+	sectionReader, currentContentSize, err := m.getContentReader()
 	if err != nil {
 		return nil, err
 	}
-	sectionReader := io.NewSectionReader(m.file, 0, currentFileSize)
 	buf := make([]byte, 16)
-	values := make([][2]uint64, 0, currentFileSize/16)
+	values := make([][2]uint64, 0, currentContentSize/16)
 	for {
 		_, err := io.ReadFull(sectionReader, buf)
 		if err == io.EOF {

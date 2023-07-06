@@ -14,20 +14,20 @@ func TestManifest(t *testing.T) {
 	defer m.Close()
 	require.NotNil(t, m)
 
-	size, err := m.Size()
+	size, err := m.ContentSizeBytes()
 	require.NoError(t, err)
 	require.Equal(t, int64(0), size)
 	{
 		err := m.Put(111, 222)
 		require.NoError(t, err)
-		size, err := m.Size()
+		size, err := m.ContentSizeBytes()
 		require.NoError(t, err)
 		require.Equal(t, int64(16), size)
 	}
 	{
 		err := m.Put(333, 444)
 		require.NoError(t, err)
-		size, err := m.Size()
+		size, err := m.ContentSizeBytes()
 		require.NoError(t, err)
 		require.Equal(t, int64(32), size)
 	}
@@ -58,7 +58,7 @@ func TestManifest(t *testing.T) {
 	{
 		err := m.Put(555, 666)
 		require.NoError(t, err)
-		size, err := m.Size()
+		size, err := m.ContentSizeBytes()
 		require.NoError(t, err)
 		require.Equal(t, int64(48), size)
 	}
