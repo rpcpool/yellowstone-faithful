@@ -54,3 +54,8 @@ gen-proto: install-protoc
 		--go_out=paths=source_relative:$$(pwd)/third_party/solana_proto/confirmed_block \
 		-I=$$(pwd)/third_party/solana_proto/confirmed_block/ \
 		$$(pwd)/third_party/solana_proto/confirmed_block/confirmed_block.proto
+	$$(pwd)/third_party/protoc/bin/protoc \
+		--experimental_allow_proto3_optional \
+		--go_out=paths=source_relative:$$(pwd)/third_party/solana_proto/transaction_by_addr \
+		-I=$$(pwd)/third_party/solana_proto/transaction_by_addr/ \
+		$$(pwd)/third_party/solana_proto/transaction_by_addr/transaction_by_addr.proto

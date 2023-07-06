@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"runtime"
+	"sort"
 	"sync"
 	"time"
 
@@ -278,6 +279,10 @@ func (ser *rpcServer) handleGetBlock(ctx context.Context, conn *requestContext, 
 			// }
 
 			{
+				pos, ok := transactionNode.GetPositionIndex()
+				if ok {
+					txResp.Position = uint64(pos)
+				}
 				tx, meta, err := parseTransactionAndMetaFromNode(transactionNode, ser.GetDataFrameByCid)
 				if err != nil {
 					klog.Errorf("failed to decode transaction: %v", err)
@@ -290,6 +295,7 @@ func (ser *rpcServer) handleGetBlock(ctx context.Context, conn *requestContext, 
 						})
 					return
 				}
+				txResp.Signatures = tx.Signatures
 				if tx.Message.IsVersioned() {
 					txResp.Version = tx.Message.GetVersion() - 1
 				} else {
@@ -316,6 +322,9 @@ func (ser *rpcServer) handleGetBlock(ctx context.Context, conn *requestContext, 
 			allTransactions = append(allTransactions, txResp)
 		}
 	}
+	sort.Slice(allTransactions, func(i, j int) bool {
+		return allTransactions[i].Position < allTransactions[j].Position
+	})
 	tim.time("get transactions")
 	var blockResp GetBlockResponse
 	blockResp.Transactions = allTransactions
@@ -367,6 +376,18 @@ func (ser *rpcServer) handleGetBlock(ctx context.Context, conn *requestContext, 
 		req.ID,
 		blockResp,
 		func(m map[string]any) map[string]any {
+			transactions, ok := m["transactions"].([]any)
+			if !ok {
+				return m
+			}
+			for i := range transactions {
+				transaction, ok := transactions[i].(map[string]any)
+				if !ok {
+					continue
+				}
+				transactions[i] = adaptTransactionMetaToExpectedOutput(transaction)
+			}
+
 			return m
 		},
 	)
