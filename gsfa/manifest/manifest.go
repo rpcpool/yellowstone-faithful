@@ -188,24 +188,6 @@ func (m *Manifest) write(key, value uint64) error {
 	return nil
 }
 
-type Values [][2]uint64
-
-// First returns the first value in the slice.
-func (v Values) First() ([2]uint64, bool) {
-	if len(v) == 0 {
-		return [2]uint64{}, false
-	}
-	return v[0], true
-}
-
-// Last returns the last value in the slice.
-func (v Values) Last() ([2]uint64, bool) {
-	if len(v) == 0 {
-		return [2]uint64{}, false
-	}
-	return v[len(v)-1], true
-}
-
 // ReadAll reads all the uint64 tuples from the file.
 func (m *Manifest) ReadAll() (Values, error) {
 	m.mu.RLock()
@@ -248,4 +230,22 @@ func uint64ToBytes(i uint64) []byte {
 	b := make([]byte, 8)
 	binary.LittleEndian.PutUint64(b, i)
 	return b
+}
+
+type Values [][2]uint64
+
+// First returns the first value in the slice.
+func (v Values) First() ([2]uint64, bool) {
+	if len(v) == 0 {
+		return [2]uint64{}, false
+	}
+	return v[0], true
+}
+
+// Last returns the last value in the slice.
+func (v Values) Last() ([2]uint64, bool) {
+	if len(v) == 0 {
+		return [2]uint64{}, false
+	}
+	return v[len(v)-1], true
 }
