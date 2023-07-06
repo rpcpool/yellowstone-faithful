@@ -129,6 +129,7 @@ func (ser *rpcServer) handleGetTransaction(ctx context.Context, conn *requestCon
 	}
 }
 
+// byteSliceAsIntegerSlice converts a byte slice to an integer slice.
 func byteSliceAsIntegerSlice(b []byte) []uint64 {
 	var ret []uint64
 	for i := 0; i < len(b); i++ {
@@ -137,6 +138,8 @@ func byteSliceAsIntegerSlice(b []byte) []uint64 {
 	return ret
 }
 
+// adaptTransactionMetaToExpectedOutput adapts the transaction meta to the expected output
+// as per what solana RPC server returns.
 func adaptTransactionMetaToExpectedOutput(m map[string]any) map[string]any {
 	meta, ok := m["meta"].(map[string]any)
 	if !ok {
