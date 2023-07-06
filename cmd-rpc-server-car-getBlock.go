@@ -140,6 +140,8 @@ func (ser *rpcServer) handleGetBlock(ctx context.Context, conn *requestContext, 
 							klog.Errorf("failed to decode Transaction %s: %v", tcid, err)
 							return nil
 						}
+						// NOTE: this messes up the order of transactions,
+						// but we sort them later anyway.
 						mu.Lock()
 						allTransactionNodes = append(allTransactionNodes, txNode)
 						mu.Unlock()
