@@ -14,6 +14,7 @@ import (
 
 func newCmd_rpcServerFilecoin() *cli.Command {
 	var listenOn string
+	var gsfaOnlySignatures bool
 	return &cli.Command{
 		Name:        "rpc-server-filecoin",
 		Description: "Start a Solana JSON RPC that exposes getTransaction and getBlock",
@@ -32,6 +33,12 @@ func newCmd_rpcServerFilecoin() *cli.Command {
 				Name:  "config",
 				Usage: "Load config from file instead of arguments",
 				Value: "",
+			},
+			&cli.BoolFlag{
+				Name:        "gsfa-only-signatures",
+				Usage:       "gSFA: only return signatures",
+				Value:       false,
+				Destination: &gsfaOnlySignatures,
 			},
 		},
 		Action: func(c *cli.Context) error {
@@ -83,9 +90,14 @@ func newCmd_rpcServerFilecoin() *cli.Command {
 				defer gsfaIndex.Close()
 			}
 
+			options := &RpcServerOptions{
+				ListenOn:           listenOn,
+				GsfaOnlySignatures: gsfaOnlySignatures,
+			}
+
 			return createAndStartRPCServer_lassie(
 				c.Context,
-				listenOn,
+				options,
 				ls,
 				slotToCidIndex,
 				sigToCidIndex,

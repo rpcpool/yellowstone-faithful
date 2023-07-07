@@ -36,6 +36,7 @@ import (
 
 func newCmd_rpcServerCar() *cli.Command {
 	var listenOn string
+	var gsfaOnlySignatures bool
 	return &cli.Command{
 		Name:        "rpc-server-car",
 		Description: "Start a Solana JSON RPC that exposes getTransaction and getBlock",
@@ -49,6 +50,12 @@ func newCmd_rpcServerCar() *cli.Command {
 				Usage:       "Listen address",
 				Value:       ":8899",
 				Destination: &listenOn,
+			},
+			&cli.BoolFlag{
+				Name:        "gsfa-only-signatures",
+				Usage:       "gSFA: only return signatures",
+				Value:       false,
+				Destination: &gsfaOnlySignatures,
 			},
 		},
 		Action: func(c *cli.Context) error {
@@ -117,9 +124,14 @@ func newCmd_rpcServerCar() *cli.Command {
 				defer gsfaIndex.Close()
 			}
 
+			options := &RpcServerOptions{
+				ListenOn:           listenOn,
+				GsfaOnlySignatures: gsfaOnlySignatures,
+			}
+
 			return createAndStartRPCServer_withCar(
 				c.Context,
-				listenOn,
+				options,
 				localCarReader,
 				remoteCarReader,
 				cidToOffsetIndex,
@@ -298,7 +310,7 @@ func (r *HTTPSingleFileRemoteReaderAt) ReadAt(p []byte, off int64) (n int, err e
 // It returns nil if the server is stopped gracefully.
 func createAndStartRPCServer_withCar(
 	ctx context.Context,
-	listenOn string,
+	options *RpcServerOptions,
 	carReader *carv2.Reader,
 	remoteCarReader ReaderAtCloser,
 	cidToOffsetIndex *compactindex.DB,
@@ -306,6 +318,10 @@ func createAndStartRPCServer_withCar(
 	sigToCidIndex *compactindex36.DB,
 	gsfaReader *gsfa.GsfaReader,
 ) error {
+	if options == nil {
+		panic("options cannot be nil")
+	}
+	listenOn := options.ListenOn
 	ca := cache.New(30*time.Second, 1*time.Minute)
 	handler := &rpcServer{
 		localCarReader:   carReader,
@@ -315,6 +331,7 @@ func createAndStartRPCServer_withCar(
 		sigToCidIndex:    sigToCidIndex,
 		gsfaReader:       gsfaReader,
 		cidToBlockCache:  ca,
+		options:          options,
 	}
 
 	h := newRPCHandler_fast(handler)
@@ -326,12 +343,16 @@ func createAndStartRPCServer_withCar(
 
 func createAndStartRPCServer_lassie(
 	ctx context.Context,
-	listenOn string,
+	options *RpcServerOptions,
 	lassieWr *lassieWrapper,
 	slotToCidIndex *compactindex36.DB,
 	sigToCidIndex *compactindex36.DB,
 	gsfaReader *gsfa.GsfaReader,
 ) error {
+	if options == nil {
+		panic("options cannot be nil")
+	}
+	listenOn := options.ListenOn
 	ca := cache.New(30*time.Second, 1*time.Minute)
 	handler := &rpcServer{
 		lassieFetcher:   lassieWr,
@@ -339,6 +360,7 @@ func createAndStartRPCServer_lassie(
 		sigToCidIndex:   sigToCidIndex,
 		gsfaReader:      gsfaReader,
 		cidToBlockCache: ca,
+		options:         options,
 	}
 
 	h := newRPCHandler_fast(handler)
@@ -346,6 +368,11 @@ func createAndStartRPCServer_lassie(
 
 	klog.Infof("RPC server listening on %s", listenOn)
 	return fasthttp.ListenAndServe(listenOn, h)
+}
+
+type RpcServerOptions struct {
+	ListenOn           string
+	GsfaOnlySignatures bool
 }
 
 type rpcServer struct {
@@ -357,6 +384,7 @@ type rpcServer struct {
 	sigToCidIndex    *compactindex36.DB
 	gsfaReader       *gsfa.GsfaReader
 	cidToBlockCache  *cache.Cache // TODO: prevent OOM
+	options          *RpcServerOptions
 }
 
 func getCidCacheKey(off int64, p []byte) string {

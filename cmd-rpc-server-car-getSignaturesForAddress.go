@@ -97,6 +97,7 @@ func (ser *rpcServer) handleGetSignaturesForAddress(ctx context.Context, conn *r
 			})
 		return
 	}
+	signaturesOnly := ser.options.GsfaOnlySignatures
 
 	params, err := parseGetSignaturesForAddressParams(req.Params)
 	if err != nil {
@@ -164,6 +165,9 @@ func (ser *rpcServer) handleGetSignaturesForAddress(ctx context.Context, conn *r
 		wg.Go(func() error {
 			response[ii] = map[string]any{
 				"signature": sig.String(),
+			}
+			if signaturesOnly {
+				return nil
 			}
 			transactionNode, err := ser.GetTransaction(ctx, sig)
 			if err != nil {
