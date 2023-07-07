@@ -287,6 +287,7 @@ func parseTransactionError(v any) (map[string]any, error) {
 		if err != nil {
 			return nil, err
 		}
+		// TODO: is this uint8 or uvarint or something else?
 		errorCode, err := dec.ReadUint8()
 		if err != nil {
 			return nil, err
