@@ -254,6 +254,7 @@ var (
 )
 
 func parseTransactionError(v any) (map[string]any, error) {
+	// TODO: if any of the following fails, return the original value.
 	// marshal to json
 	b, err := json.Marshal(v)
 	if err != nil {
