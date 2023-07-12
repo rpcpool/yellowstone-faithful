@@ -56,7 +56,7 @@ faithful-cli rpc-server-filecoin -config 455.yml -gsfa-only-signatures=true
 
 ### Filecoin fetch via CID
 
-If you already know the CID of the data you are looking for you can fetch it via `faithful-cli fetch <cid>`. This requires no further indexes and can also be used to recursively fetch data for example for an epoch. To avoid fetching the full dataset for an epoch (100s of GB) you probably want to pass the parameter `--dag-scope=entity` to fetch only the particular CID entity that you are interested in.
+If you already know the CID of the data you are looking for you can fetch it via `faithful-cli fetch <cid>`. This requires no further indexes and can also be used to recursively fetch data for example for an epoch. To avoid fetching the full dataset for an epoch (100s of GB) you probably want to pass the parameter `--dag-scope=block` to fetch only the particular CID entity that you are interested in.
 
 ### Limitations
 
@@ -96,7 +96,8 @@ The data that you will need to be able to run a local RPC server is:
 
 The epoch car file can be generated from a rocksdb snapshot from a running validator or from one of the archives provided by the Solana foundation or third parties like Triton. You can also download a pre-generated Epoch car file either from Filecoin itself or via the download URLs provided by Triton. 
 
-If you have an epoch car file you can generate all the other indexes, see below notes about index generation. You can also download indexes from a third party source or (soon) retrieve them via Filecoin. 
+If you have an epoch car file you can generate all the other indexes, see below notes about index generation. You can also download indexes from a third party source or (soon) retrieve them via Filecoin.
+
 
 ### Data tooling
 
@@ -166,6 +167,8 @@ faithful-cli index all epoch-107.car .
 ```
 
 This would generate the indexes in the current dir for epoch-107.
+
+
 
 ## Contributing
 
