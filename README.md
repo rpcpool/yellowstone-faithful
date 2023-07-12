@@ -56,7 +56,7 @@ faithful-cli rpc-server-filecoin -config 455.yml -gsfa-only-signatures=true
 
 ### Filecoin fetch via CID
 
-If you already know the CID of the data you are looking for you can fetch it via `faithful-cli fetch <cid>`. This requires no further indexes and can also be used to recursively fetch data for example for an epoch. 
+If you already know the CID of the data you are looking for you can fetch it via `faithful-cli fetch <cid>`. This requires no further indexes and can also be used to recursively fetch data for example for an epoch. To avoid fetching the full dataset for an epoch (100s of GB) you probably want to pass the parameter `--dag-scope=entity` to fetch only the particular CID entity that you are interested in.
 
 ### Limitations
 
