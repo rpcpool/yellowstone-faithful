@@ -12,7 +12,7 @@ import (
 
 	"github.com/gagliardetto/solana-go"
 	"github.com/rpcpool/yellowstone-faithful/gsfa/store/filecache"
-	mhprimary "github.com/rpcpool/yellowstone-faithful/gsfa/store/primary/gsfaprimary"
+	"github.com/rpcpool/yellowstone-faithful/gsfa/store/primary/gsfaprimary"
 	"github.com/rpcpool/yellowstone-faithful/gsfa/store/testutil"
 	"github.com/rpcpool/yellowstone-faithful/gsfa/store/types"
 	"github.com/stretchr/testify/require"
@@ -24,7 +24,7 @@ import (
 func TestIndexPut(t *testing.T) {
 	tempDir := t.TempDir()
 	primaryPath := filepath.Join(tempDir, "storethehash.primary")
-	primaryStorage, err := mhprimary.Open(primaryPath, nil, filecache.New(1), 0)
+	primaryStorage, err := gsfaprimary.Open(primaryPath, nil, filecache.New(1), 0)
 	require.NoError(t, err)
 
 	blks := testutil.GenerateEntries(5)
@@ -46,7 +46,7 @@ func TestIndexPut(t *testing.T) {
 	err = primaryStorage.Sync()
 	require.NoError(t, err)
 
-	iter := mhprimary.NewIterator(primaryPath, 0)
+	iter := gsfaprimary.NewIterator(primaryPath, 0)
 	t.Cleanup(func() { iter.Close() })
 
 	for _, expectedBlk := range blks {
@@ -67,7 +67,7 @@ func TestIndexPut(t *testing.T) {
 func TestIndexGetEmptyIndex(t *testing.T) {
 	tempDir := t.TempDir()
 	primaryPath := filepath.Join(tempDir, "storethehash.primary")
-	primaryStorage, err := mhprimary.Open(primaryPath, nil, filecache.New(1), 0)
+	primaryStorage, err := gsfaprimary.Open(primaryPath, nil, filecache.New(1), 0)
 	require.NoError(t, err)
 	defer primaryStorage.Close()
 
@@ -83,7 +83,7 @@ func TestIndexGetEmptyIndex(t *testing.T) {
 func TestIndexGet(t *testing.T) {
 	tempDir := t.TempDir()
 	primaryPath := filepath.Join(tempDir, "storethehash.primary")
-	primaryStorage, err := mhprimary.Open(primaryPath, nil, filecache.New(1), 0)
+	primaryStorage, err := gsfaprimary.Open(primaryPath, nil, filecache.New(1), 0)
 	require.NoError(t, err)
 
 	// load blocks
@@ -130,7 +130,7 @@ func TestFlushRace(t *testing.T) {
 	const goroutines = 64
 	tempDir := t.TempDir()
 	primaryPath := filepath.Join(tempDir, "storethehash.primary")
-	primaryStorage, err := mhprimary.Open(primaryPath, nil, filecache.New(1), 0)
+	primaryStorage, err := gsfaprimary.Open(primaryPath, nil, filecache.New(1), 0)
 	require.NoError(t, err)
 
 	// load blocks
@@ -161,7 +161,7 @@ func TestFlushRace(t *testing.T) {
 func TestFlushExcess(t *testing.T) {
 	tempDir := t.TempDir()
 	primaryPath := filepath.Join(tempDir, "storethehash.primary")
-	primaryStorage, err := mhprimary.Open(primaryPath, nil, filecache.New(1), 0)
+	primaryStorage, err := gsfaprimary.Open(primaryPath, nil, filecache.New(1), 0)
 	require.NoError(t, err)
 
 	// load blocks

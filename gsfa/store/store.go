@@ -52,14 +52,13 @@ type Store struct {
 	closing      chan struct{}
 	flushNow     chan struct{}
 	syncInterval time.Duration
-	immutable    bool
 	syncOnFlush  bool
 }
 
 // OpenStore opens the index and returns a Store with the specified primary type.
 //
 // Calling Store.Close closes the primary and freelist.
-func OpenStore(ctx context.Context, primaryType string, dataPath, indexPath string, immutable bool, options ...Option) (*Store, error) {
+func OpenStore(ctx context.Context, primaryType string, dataPath, indexPath string, options ...Option) (*Store, error) {
 	c := config{
 		fileCacheSize:   defaultFileCacheSize,
 		indexSizeBits:   defaultIndexSizeBits,
@@ -107,11 +106,9 @@ func OpenStore(ctx context.Context, primaryType string, dataPath, indexPath stri
 		return nil, err
 	}
 
-	// Start primary GC only after index is started so that primary GC does not
-	// interfere with any index remapping.
-	mp, ok := primary.(*gsfaprimary.GsfaPrimary)
-	if ok && mp != nil {
-		mp.StartGC(freeList, c.gcInterval, c.gcTimeLimit, idx.Update)
+	_, ok := primary.(*gsfaprimary.GsfaPrimary)
+	if !ok {
+		return nil, fmt.Errorf("unsupported primary type: %T", primary)
 	}
 
 	store := &Store{
@@ -126,62 +123,10 @@ func OpenStore(ctx context.Context, primaryType string, dataPath, indexPath stri
 		closed:       make(chan struct{}),
 		closing:      make(chan struct{}),
 		flushNow:     make(chan struct{}, 1),
-		immutable:    immutable,
 		syncOnFlush:  c.syncOnFlush,
 	}
 	return store, nil
 }
-
-// func OpenIndex(ctx context.Context, primaryType string, dataPath, indexPath string, immutable bool, options ...Option) (*index.Index, error) {
-// 	c := config{
-// 		fileCacheSize:   defaultFileCacheSize,
-// 		indexSizeBits:   defaultIndexSizeBits,
-// 		indexFileSize:   defaultIndexFileSize,
-// 		primaryFileSize: defaultPrimaryFileSize,
-// 		syncInterval:    defaultSyncInterval,
-// 		burstRate:       defaultBurstRate,
-// 		gcInterval:      defaultGCInterval,
-// 		gcTimeLimit:     defaultGCTimeLimit,
-// 	}
-// 	c.apply(options)
-
-// 	freeList, err := freelist.Open(indexPath + ".free")
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	fileCache := filecache.New(c.fileCacheSize)
-
-// 	var primary primary.PrimaryStorage
-// 	switch primaryType {
-// 	case GsfaPrimary:
-// 		primary, err = gsfaprimary.Open(dataPath, freeList, fileCache, c.primaryFileSize)
-// 	default:
-// 		err = fmt.Errorf("unsupported primary type: %s", primaryType)
-// 	}
-// 	if err != nil {
-// 		freeList.Close()
-// 		return nil, err
-// 	}
-
-// 	idx, err := index.Open(ctx, indexPath, primary, c.indexSizeBits, c.indexFileSize, c.gcInterval, c.gcTimeLimit, fileCache)
-// 	var bitSizeError types.ErrIndexWrongBitSize
-// 	if errors.As(err, &bitSizeError) {
-// 		err = translateIndex(ctx, indexPath, primary, c.indexSizeBits, c.indexFileSize)
-// 		if err != nil {
-// 			err = fmt.Errorf("error translating index to %d bit prefix size: %w", c.indexSizeBits, err)
-// 		} else {
-// 			idx, err = index.Open(ctx, indexPath, primary, c.indexSizeBits, c.indexFileSize, c.gcInterval, c.gcTimeLimit, fileCache)
-// 		}
-// 	}
-// 	if err != nil {
-// 		primary.Close()
-// 		freeList.Close()
-// 		return nil, err
-// 	}
-
-// 	return idx, nil
-// }
 
 func translateIndex(ctx context.Context, indexPath string, primary primary.PrimaryStorage, indexSizeBits uint8, indexFileSize uint32) error {
 	const progressLogInterval = 5 * time.Second
@@ -399,7 +344,7 @@ func (s *Store) setErr(err error) {
 	s.stateLk.Unlock()
 }
 
-func (s *Store) Put(key []byte, value []byte) error {
+func (s *Store) Put(key []byte, newValue []byte) error {
 	err := s.Err()
 	if err != nil {
 		return err
@@ -432,30 +377,20 @@ func (s *Store) Put(key []byte, value []byte) error {
 		if storedKey != nil {
 			// if we're not accepting updates, this is the point we bail --
 			// the identical key is in primary storage, we don't do update operations
-			if s.immutable {
-				return types.ErrKeyExists
-			}
 			cmpKey = true
-		}
-		if len(value) >= 8 && len(storedVal) >= 8 {
-			// First 8 bytes of storedVal must be kept the same.
-			// copy first 8 bytes of storedVal to value
-			copy(value[:8], storedVal[:8])
 		}
 		// TODO: the key-value that we got here might be from the cache of primary storage,
 		// and this means that it could be outdated if another direct write happened to primary storage.
-		if bytes.Equal(value, storedVal) {
+		if bytes.Equal(newValue, storedVal) {
 			// Trying to put the same value in an existing key, so ok to
-			// directly return. This is not needed for the blockstore, since it
-			// sets s.immutable = true.
+			// directly return.
 			return nil
 		}
 		// overwrite in primary storage:
-		err = s.index.Primary.Overwrite(prevOffset, key, value)
+		err = s.index.Primary.Overwrite(prevOffset, key, newValue)
 		if err != nil {
 			return err
 		}
-
 		// TODO: remove?
 		s.flushTick()
 
@@ -466,7 +401,7 @@ func (s *Store) Put(key []byte, value []byte) error {
 	// Put value in primary storage first. In primary storage we put
 	// the key, not the indexKey. The storage knows how to manage the key
 	// under the hood while the index is primary storage-agnostic.
-	fileOffset, err := s.index.Primary.Put(key, value)
+	fileOffset, err := s.index.Primary.Put(key, newValue)
 	if err != nil {
 		return err
 	}

@@ -141,11 +141,12 @@ func (s *LinkedLog) Read(offset uint64) ([]uint64, uint64, error) {
 	return sigIndexes, nextOffset, nil
 }
 
-// Write map[PublicKey][]uint64 to file
-func (s *LinkedLog) Write(
+// Put map[PublicKey][]uint64 to file
+func (s *LinkedLog) Put(
 	dataMap map[solana.PublicKey][]uint64,
-	callback func(pk solana.PublicKey, offset uint64, ln uint32) error,
-) error {
+	callbackBefore func(pk solana.PublicKey) (uint64, error),
+	callbackAfter func(pk solana.PublicKey, offset uint64, ln uint32) error,
+) (uint64, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	pubkeys := make(solana.PublicKeySlice, 0, len(dataMap))
@@ -155,11 +156,17 @@ func (s *LinkedLog) Write(
 	// Sort pubkeys
 	pubkeys.Sort()
 
+	previousSize, err := s.getSize()
+	if err != nil {
+		return 0, err
+	}
+
 	wg := new(errgroup.Group)
 	wg.SetLimit(256)
 	for pkIndex := range pubkeys {
 		pk := pubkeys[pkIndex]
 		sigIndexes := dataMap[pk]
+		reverseUint64Slice(sigIndexes) // reverse the slice so that the most recent indexes are first
 		wg.Go(func() error {
 			compactedIndexes := intcomp.CompressUint64(sigIndexes, make([]uint64, 0))
 
@@ -171,49 +178,36 @@ func (s *LinkedLog) Write(
 			finalPayload = append(finalPayload, uvLen...)
 			// Write the compressed indexes
 			finalPayload = append(finalPayload, encodedIndexes...)
-			// append 8 empty bytes to the end of the slice for the `next` offset.
-			finalPayload = append(finalPayload, []byte{0, 0, 0, 0, 0, 0, 0, 0}...)
 
-			offset, numWritten, err := s.write(finalPayload)
+			{
+				previousListOffset, err := callbackBefore(pk)
+				if err != nil {
+					return err
+				}
+				// Write the offset of the previous list for this pubkey:
+				finalPayload = append(finalPayload, uint64ToBytes(previousListOffset)...)
+			}
+
+			offset, numWrittenBytes, err := s.write(finalPayload)
 			if err != nil {
 				return err
 			}
-			return callback(pk, offset, numWritten)
+			return callbackAfter(pk, offset, numWrittenBytes)
 		})
 	}
-	return wg.Wait()
+	return uint64(previousSize), wg.Wait()
 }
 
-// Overwrite the last 8 bytes of the file with the given offset.
-func (s *LinkedLog) OverwriteNextOffset(offset uint64, next uint64) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	// Write the next offset to the last 8 bytes of the file.
-	return s.OverwriteNextOffset_NoMutex(offset, next)
-}
-
-func (s *LinkedLog) OverwriteNextOffset_NoMutex(offset uint64, next uint64) error {
-	return overwrite8BytesAtOffset(s.file, offset, uint64ToBytes(next))
+func reverseUint64Slice(s []uint64) {
+	for i, j := 0, len(s)-1; i < j; i, j = i+1, j-1 {
+		s[i], s[j] = s[j], s[i]
+	}
 }
 
 func uint64ToBytes(i uint64) []byte {
 	b := make([]byte, 8)
 	binary.LittleEndian.PutUint64(b, i)
 	return b
-}
-
-func overwrite8BytesAtOffset(file *os.File, offset uint64, data []byte) error {
-	if len(data) != 8 {
-		return fmt.Errorf("data must be 8 bytes long, got %d", len(data))
-	}
-	n, err := file.WriteAt(data, int64(offset))
-	if err != nil {
-		return err
-	}
-	if n != 8 {
-		return fmt.Errorf("wrote %d bytes instead of 8", n)
-	}
-	return nil
 }
 
 func uint64SliceFromBytes(buf []byte) []uint64 {

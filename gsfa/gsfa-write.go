@@ -11,6 +11,7 @@ import (
 
 	"github.com/gagliardetto/solana-go"
 	"github.com/rpcpool/yellowstone-faithful/gsfa/linkedlog"
+	"github.com/rpcpool/yellowstone-faithful/gsfa/manifest"
 	"github.com/rpcpool/yellowstone-faithful/gsfa/offsetstore"
 	"github.com/rpcpool/yellowstone-faithful/gsfa/sff"
 	"github.com/rpcpool/yellowstone-faithful/gsfa/store"
@@ -25,6 +26,9 @@ type GsfaWriter struct {
 	mu                        sync.Mutex
 	offsets                   *offsetstore.OffsetStore
 	ll                        *linkedlog.LinkedLog
+	man                       *manifest.Manifest
+	lastSlot                  uint64
+	firstSlotOfCurrentBatch   uint64
 }
 
 // NewGsfaWriter creates or opens an existing index in WRITE mode.
@@ -62,7 +66,7 @@ func NewGsfaWriter(
 			context.Background(),
 			filepath.Join(offsetsIndexDir, "index"),
 			filepath.Join(offsetsIndexDir, "data"),
-			store.IndexBitSize(22), // NOTE: if you don't specify this, the final size is smaller.
+			store.IndexBitSize(22),
 			store.GCInterval(time.Hour),
 		)
 		if err != nil {
@@ -85,22 +89,36 @@ func NewGsfaWriter(
 		}
 		index.sff = sff
 	}
+	{
+		man, err := manifest.NewManifest(filepath.Join(indexRootDir, "manifest"))
+		if err != nil {
+			return nil, err
+		}
+		index.man = man
+	}
 	return index, nil
 }
 
-func (a *GsfaWriter) Push(signature solana.Signature, publicKeys []solana.PublicKey) error {
+func (a *GsfaWriter) Push(slot uint64, signature solana.Signature, publicKeys []solana.PublicKey) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.numCurrentBatchSignatures >= a.optAutoflushAtNumSigs {
+	if a.numCurrentBatchSignatures >= a.optAutoflushAtNumSigs && slot != a.lastSlot {
+		// Flush the current batch. Only flush if the slot is different from the last one.
+		// This is to avoid flushing mid-slot.
 		if err := a.flush(); err != nil {
 			return fmt.Errorf("error while flushing current batch: %w", err)
 		}
+		a.firstSlotOfCurrentBatch = slot
 	}
 	index, err := a.sff.Put(signature)
 	for _, publicKey := range publicKeys {
 		a.batch[publicKey] = append(a.batch[publicKey], index)
 	}
 	a.numCurrentBatchSignatures++
+	a.lastSlot = slot
+	if a.firstSlotOfCurrentBatch == 0 {
+		a.firstSlotOfCurrentBatch = slot
+	}
 	return err
 }
 
@@ -122,22 +140,23 @@ func (a *GsfaWriter) Close() error {
 		a.sff.Close(),
 		a.offsets.Close(),
 		a.ll.Close(),
+		a.man.Close(),
 	)
 }
 
 func (a *GsfaWriter) flush() error {
-	klog.Infof("Flushing %d key-to-sigs...", len(a.batch))
-	startedAt := time.Now()
-	defer func() {
-		klog.Infof(" Flushed key-to-sigs in %s.", time.Since(startedAt))
-	}()
-
 	if err := a.sff.Flush(); err != nil {
 		return err
 	}
 	if len(a.batch) == 0 {
 		return nil
 	}
+	klog.Infof("Flushing %d key-to-sigs...", len(a.batch))
+	startedAt := time.Now()
+	defer func() {
+		klog.Infof(" Flushed key-to-sigs in %s.", time.Since(startedAt))
+	}()
+
 	// Flush the offsets store.
 	err := a.offsets.Flush()
 	if err != nil {
@@ -150,40 +169,37 @@ func (a *GsfaWriter) flush() error {
 			return fmt.Errorf("error while flushing linked log cache: %w", err)
 		}
 		debugf("Writing %d account batches to linked log...", len(a.batch))
-		err := a.ll.Write(
+		startOffset, err := a.ll.Put(
 			a.batch,
-			func(pk solana.PublicKey, offset uint64, ln uint32) error {
-				startOfLast8Bytes := offset + uint64(ln) - 8
-
+			func(pk solana.PublicKey) (uint64, error) {
 				got, err := a.offsets.Get(context.Background(), pk)
-				if err == nil {
-					debugf(
-						"Offsets for %s already exists, overwriting `next` of previous with %d...",
-						pk,
-						offset,
-					)
-					// overwrite the next offset of the previous batch of this pubkey:
-					err = a.ll.OverwriteNextOffset_NoMutex(got.OffsetToLastNext, offset)
-					if err != nil {
-						return fmt.Errorf("error while overwriting next offset: %w", err)
-					}
-				} else {
-					if !offsetstore.IsNotFound(err) {
-						return fmt.Errorf("error while getting account: %w", err)
+				if err != nil {
+					if offsetstore.IsNotFound(err) {
+						// This is the first time we see this account.
+						// And there is no offset for the previous list.
+						return 0, nil
+					} else {
+						return 0, fmt.Errorf("error while getting account: %w", err)
 					}
 				}
-
+				return got.OffsetToLatest, nil
+			},
+			func(pk solana.PublicKey, offset uint64, ln uint32) error {
 				return a.offsets.Put(
 					context.Background(),
 					pk,
 					offsetstore.Locs{
-						OffsetToFirst:    offset, // in case this is the first time we see this account.
-						OffsetToLastNext: startOfLast8Bytes,
+						OffsetToLatest: offset, // in case this is the first time we see this account.
 					})
 			},
 		)
 		if err != nil {
-			return err
+			return fmt.Errorf("error while writing account lists batch to linked log: %w", err)
+		}
+		// Maps first slot of the batch to the offset of the batch in the linked log.
+		err = a.man.Put(a.firstSlotOfCurrentBatch, startOffset)
+		if err != nil {
+			return fmt.Errorf("error while writing entry to manifest: %w", err)
 		}
 	}
 	a.batch = make(map[solana.PublicKey][]uint64)

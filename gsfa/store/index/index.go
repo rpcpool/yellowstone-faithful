@@ -19,7 +19,7 @@ import (
 
 	"github.com/rpcpool/yellowstone-faithful/gsfa/store/filecache"
 	"github.com/rpcpool/yellowstone-faithful/gsfa/store/primary"
-	mhprimary "github.com/rpcpool/yellowstone-faithful/gsfa/store/primary/gsfaprimary"
+	"github.com/rpcpool/yellowstone-faithful/gsfa/store/primary/gsfaprimary"
 	"github.com/rpcpool/yellowstone-faithful/gsfa/store/types"
 )
 
@@ -172,7 +172,7 @@ func Open(ctx context.Context, path string, primary primary.PrimaryStorage, inde
 			maxFileSize = defaultMaxFileSize
 		}
 		header = newHeader(indexSizeBits, maxFileSize)
-		mp, ok := primary.(*mhprimary.GsfaPrimary)
+		mp, ok := primary.(*gsfaprimary.GsfaPrimary)
 		if ok {
 			header.PrimaryFileSize = mp.FileSize()
 		}
@@ -219,7 +219,7 @@ func Open(ctx context.Context, path string, primary primary.PrimaryStorage, inde
 			}
 		}
 
-		mp, ok := primary.(*mhprimary.GsfaPrimary)
+		mp, ok := primary.(*gsfaprimary.GsfaPrimary)
 		if ok {
 			switch header.PrimaryFileSize {
 			case 0:
@@ -1292,7 +1292,7 @@ func copyFile(src, dst string) error {
 // remapping the index files is not completed, there are no files in a
 // partially remapped state. This allows remapping to resume from where it left
 // off, without corrupting any files that were already remapped.
-func remapIndex(ctx context.Context, mp *mhprimary.GsfaPrimary, buckets Buckets, basePath, headerPath string, header Header) (bucketPool, error) {
+func remapIndex(ctx context.Context, mp *gsfaprimary.GsfaPrimary, buckets Buckets, basePath, headerPath string, header Header) (bucketPool, error) {
 	remapper, err := mp.NewIndexRemapper()
 	if err != nil {
 		return nil, err

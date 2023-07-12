@@ -87,7 +87,7 @@ func workerDemoLoad(root string, numGlobalAccounts uint64, numSigs int) error {
 		sig := generateRandomSignature()
 		howManyKeys := genRandomNumberBetween(1, 10)
 		keys := genRandomKeys(numGlobalAccounts, howManyKeys)
-		err = accu.Push(sig, keys)
+		err = accu.Push(111, sig, keys)
 		if err != nil {
 			panic(err)
 		}
@@ -146,16 +146,18 @@ func worker(root string) error {
 		keys[i] = solana.MustPublicKeyFromBase58(keyString)
 	}
 
+	slot := uint64(123456789)
+
 	{
 		sig := solana.MustSignatureFromBase58("5YXMTLhABRRs5NtE66kjS6re17pN7xoC8UYvChYMuHySBviyTjxKcsw7riibTtmbRBGxqXX7C3FHgbbsfNk6z2Ga")
-		err = accu.Push(sig, keys)
+		err = accu.Push(slot, sig, keys)
 		if err != nil {
 			panic(err)
 		}
 	}
 	{
 		sig := solana.MustSignatureFromBase58("5kyKrGTGHJhPgWohMW7kn3YS7rq3rdKAHf7J7SnZNZjwPta7jT5tKV9oNejvKQX6k2DcCbk358zKSdQFawMnr8ci")
-		err = accu.Push(sig, keys[0:1])
+		err = accu.Push(slot, sig, keys[0:1])
 		if err != nil {
 			panic(err)
 		}
@@ -163,7 +165,7 @@ func worker(root string) error {
 	}
 	{
 		sig := solana.MustSignatureFromBase58("5tPrsxsjifTuXJKvw4KvpGAG73s3JWwhgGbQckYYQC4gexHqiV9tBRnSan5YjMv7vwvJjZfC6rvC8AX8HaRpjA13")
-		err = accu.Push(sig, keys[0:3])
+		err = accu.Push(slot, sig, keys[0:3])
 		if err != nil {
 			panic(err)
 		}
@@ -175,21 +177,21 @@ func worker(root string) error {
 	fmt.Println("Flushed.")
 	{
 		sig := solana.MustSignatureFromBase58("3ighZ7KKy1SQsayDX4sfsoC5HAKqZG8XT8NfQh9GmSjq3DCHBnNY9Vc6JNinAxnUdCHxTKoNVALeUA24yd98ZEWt")
-		err = accu.Push(sig, keys)
+		err = accu.Push(slot, sig, keys)
 		if err != nil {
 			panic(err)
 		}
 	}
 	{
 		sig := solana.MustSignatureFromBase58("4LoJumTFxec2viccvKZZL2gieYDbUu7EsuDzNkr73aKxrF4Kb5FNqgQvUpthYoGbjU46iDVsfEYTpMtZEFZy5RCG")
-		err = accu.Push(sig, keys[0:1])
+		err = accu.Push(slot, sig, keys[0:1])
 		if err != nil {
 			panic(err)
 		}
 	}
 	{
 		sig := solana.MustSignatureFromBase58("3MGAb27HPFka3JhoLYwoR268EVHe7NMa8mLuTV7Z9sPXayDhFEmNLGvjDR1aBoPzoVKD4i6ws38vRZ7X45NkneeS")
-		err = accu.Push(sig, keys[0:3])
+		err = accu.Push(slot, sig, keys[0:3])
 		if err != nil {
 			panic(err)
 		}

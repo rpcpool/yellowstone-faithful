@@ -4,6 +4,7 @@ import (
 	"math/rand"
 	"testing"
 
+	"github.com/gagliardetto/solana-go"
 	"github.com/stretchr/testify/require"
 )
 
@@ -45,8 +46,8 @@ func TestSignaturesFlatFile(t *testing.T) {
 	}
 }
 
-func newRandomSignature() [SignatureSize]byte {
-	var sig [SignatureSize]byte
+func newRandomSignature() solana.Signature {
+	var sig solana.Signature
 	rand.Read(sig[:])
 	return sig
 }

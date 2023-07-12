@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/davecgh/go-spew/spew"
 	store "github.com/rpcpool/yellowstone-faithful/gsfa/store"
 	"github.com/rpcpool/yellowstone-faithful/gsfa/store/freelist"
 	"github.com/rpcpool/yellowstone-faithful/gsfa/store/testutil"
@@ -14,10 +15,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func initStore(t *testing.T, dir string, immutable bool) (*store.Store, error) {
+func initStore(t *testing.T, dir string) (*store.Store, error) {
 	indexPath := filepath.Join(dir, "storethehash.index")
 	dataPath := filepath.Join(dir, "storethehash.data")
-	store, err := store.OpenStore(context.Background(), store.GsfaPrimary, dataPath, indexPath, immutable, store.GCInterval(0))
+	store, err := store.OpenStore(context.Background(), store.GsfaPrimary, dataPath, indexPath)
 	if err != nil {
 		return nil, err
 	}
@@ -28,7 +29,7 @@ func initStore(t *testing.T, dir string, immutable bool) (*store.Store, error) {
 func TestUpdate(t *testing.T) {
 	t.Run("when not immutable", func(t *testing.T) {
 		tempDir := t.TempDir()
-		s, err := initStore(t, tempDir, false)
+		s, err := initStore(t, tempDir)
 		require.NoError(t, err)
 		blks := testutil.GenerateEntries(2)
 
@@ -40,21 +41,43 @@ func TestUpdate(t *testing.T) {
 		require.True(t, found)
 		require.Equal(t, value, blks[0].RawValue())
 
+		{
+			_, err = s.Primary().Flush()
+			require.NoError(t, err)
+			require.NoError(t, s.Flush())
+			require.NoError(t, s.Primary().Sync())
+		}
+
 		t.Logf("Overwrite same key with different value")
+		spew.Dump(blks)
 		err = s.Put(blks[0].Key.Bytes(), blks[1].RawValue())
 		require.NoError(t, err)
+
+		{
+			_, err = s.Primary().Flush()
+			require.NoError(t, err)
+			require.NoError(t, s.Flush())
+			require.NoError(t, s.Primary().Sync())
+		}
+
 		value, found, err = s.Get(blks[0].Key.Bytes())
 		require.NoError(t, err)
 		require.True(t, found)
-		// the put must only have updated the second half of the value (the first half is immutable)
-		// i.e. [0:8] of the updated value should be the same as [0:8] of the original value.
-		require.Equal(t, append(value[0:8], blks[1].RawValue()[8:16]...), blks[1].RawValue())
-		require.Equal(t, value[0:8], blks[0].RawValue()[0:8])
-		require.Equal(t, value[8:16], blks[1].RawValue()[8:16])
+		require.Equal(t, blks[1].RawValue()[0:8], value[0:8], "value should be overwritten")
+		require.Equal(t, blks[1].RawValue(), value, "value should be overwritten")
+		require.NotEqual(t, blks[0].RawValue(), value, "value should be overwritten")
+		{
+			it, err := s.Primary().Iter()
+			require.NoError(t, err)
+			key, value, err := it.Next()
+			require.NoError(t, err)
+			require.Equal(t, blks[0].Key.Bytes(), key)
+			require.Equal(t, blks[1].RawValue(), value)
+		}
 
 		t.Logf("Overwrite same key with same value")
 		err = s.Put(blks[0].Key.Bytes(), blks[1].RawValue())
-		require.NoError(t, err) // immutable would return error
+		require.NoError(t, err)
 		value, found, err = s.Get(blks[0].Key.Bytes())
 		require.NoError(t, err)
 		require.True(t, found)
@@ -76,68 +99,11 @@ func TestUpdate(t *testing.T) {
 			count++
 		}
 	})
-	t.Run("when immutable", func(t *testing.T) {
-		tempDir := t.TempDir()
-		s, err := initStore(t, tempDir, true)
-		require.NoError(t, err)
-		blks := testutil.GenerateEntries(2)
-
-		t.Logf("Putting a new block")
-		err = s.Put(blks[0].Key.Bytes(), blks[0].RawValue())
-		require.NoError(t, err)
-		value, found, err := s.Get(blks[0].Key.Bytes())
-		require.NoError(t, err)
-		require.True(t, found)
-		require.Equal(t, value, blks[0].RawValue())
-
-		t.Logf("Overwrite same key with different value")
-		err = s.Put(blks[0].Key.Bytes(), blks[1].RawValue())
-		require.Error(t, err, types.ErrKeyExists.Error())
-		value, found, err = s.Get(blks[0].Key.Bytes())
-		require.NoError(t, err)
-		require.True(t, found)
-		require.Equal(t, value, blks[0].RawValue())
-
-		t.Logf("Overwrite same key with same value")
-		err = s.Put(blks[0].Key.Bytes(), blks[1].RawValue())
-		require.Error(t, err, types.ErrKeyExists.Error())
-		value, found, err = s.Get(blks[0].Key.Bytes())
-		require.NoError(t, err)
-		require.True(t, found)
-		require.Equal(t, value, blks[0].RawValue())
-
-		s.Flush()
-
-		// Start iterator
-		flPath := filepath.Join(tempDir, "storethehash.index.free")
-		file, err := os.Open(flPath)
-		require.NoError(t, err)
-		t.Cleanup(func() { require.NoError(t, file.Close()) })
-
-		iter := freelist.NewIterator(file)
-		// Check freelist -- no updates
-		_, err = iter.Next()
-		require.EqualError(t, err, io.EOF.Error())
-
-		storeIter := s.NewIterator()
-		var count int
-		for {
-			key, val, err := storeIter.Next()
-			if err == io.EOF {
-				break
-			}
-			require.Zero(t, count)
-			require.NoError(t, err)
-			require.Equal(t, blks[0].Key.Bytes(), key)
-			require.Equal(t, blks[0].RawValue(), val)
-			count++
-		}
-	})
 }
 
 func TestRemove(t *testing.T) {
 	tempDir := t.TempDir()
-	s, err := initStore(t, tempDir, false)
+	s, err := initStore(t, tempDir)
 	require.NoError(t, err)
 	blks := testutil.GenerateEntries(2)
 
@@ -191,7 +157,7 @@ func TestTranslate(t *testing.T) {
 	dataPath := filepath.Join(tempDir, "storethehash.data")
 
 	t.Logf("Createing store with 16-bit index")
-	s1, err := store.OpenStore(context.Background(), store.GsfaPrimary, dataPath, indexPath, false, store.IndexBitSize(16), store.GCInterval(0))
+	s1, err := store.OpenStore(context.Background(), store.GsfaPrimary, dataPath, indexPath, store.IndexBitSize(16))
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, s1.Close()) })
 
@@ -210,7 +176,7 @@ func TestTranslate(t *testing.T) {
 
 	// Translate to 26 bits
 	t.Logf("Translating store index from 16-bit to 24-bit")
-	s2, err := store.OpenStore(context.Background(), store.GsfaPrimary, dataPath, indexPath, false, store.IndexBitSize(24), store.GCInterval(0))
+	s2, err := store.OpenStore(context.Background(), store.GsfaPrimary, dataPath, indexPath, store.IndexBitSize(24))
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, s2.Close()) })
 
@@ -231,7 +197,7 @@ func TestTranslate(t *testing.T) {
 
 	// Translate back to 24 bits.
 	t.Logf("Translating store index from 24-bit to 16-bit")
-	s3, err := store.OpenStore(context.Background(), store.GsfaPrimary, dataPath, indexPath, false, store.IndexBitSize(16), store.GCInterval(0))
+	s3, err := store.OpenStore(context.Background(), store.GsfaPrimary, dataPath, indexPath, store.IndexBitSize(16))
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, s3.Close()) })
 
