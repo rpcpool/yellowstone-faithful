@@ -10,7 +10,7 @@ This repo provides the `faithful-cli` command line interface. This tool allows y
 
   - getBlock
   - getTransaction 
-  - getSignaturesForAddress (with local tx-to-addr index)
+  - getSignaturesForAddress
 
 ### Local RPC server
 
@@ -46,7 +46,13 @@ indexes:
   gsfa: './epoch-455.car.gsfa.index'
 ```
 
-The getSignaturesForAddress index needs to be stored in a local directory, but the other indexes can be fetched via HTTP or via local file system access. If you provide a URL, you need to make sure that the url supports HTTP Range requests. S3 or similar APIs will support this. 
+Due to latency in fetching signatures, typically the getSignaturesForAddress index needs to be stored in a local directory, but the other indexes can be fetched via HTTP or via local file system access. If you provide a URL, you need to make sure that the url supports HTTP Range requests. S3 or similar APIs will support this. 
+
+There is a mode in which you can use a remote gSFA index, which limits it to only return signatures and not additional transaction meta data. In this mode, you can use a remote gSFA index. To enable this mode run faithful-cli in the following way:
+
+```
+faithful-cli rpc-server-filecoin -config 455.yml -gsfa-only-signatures=true
+```
 
 ### Filecoin fetch via CID
 
