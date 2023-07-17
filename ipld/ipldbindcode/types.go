@@ -10,7 +10,6 @@ type (
 		Subsets List__Link
 	}
 )
-
 type Subset struct {
 	Kind   int
 	First  int
@@ -28,15 +27,15 @@ type (
 		Rewards   datamodel.Link
 	}
 )
-
 type Rewards struct {
 	Kind int
 	Slot int
 	Data DataFrame
 }
 type SlotMeta struct {
-	Parent_slot int
-	Blocktime   int
+	Parent_slot  int
+	Blocktime    int
+	Block_height **int
 }
 type Shredding struct {
 	EntryEndIdx int
@@ -63,8 +62,3 @@ type DataFrame struct {
 	Data  []uint8
 	Next  **List__Link
 }
-
-type (
-	Hash   []uint8
-	Buffer []uint8
-)

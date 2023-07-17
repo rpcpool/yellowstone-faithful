@@ -167,7 +167,7 @@ func (ser *rpcServer) handleGetBlock(ctx context.Context, conn *requestContext, 
 	tim.time("get entries")
 
 	var allTransactions []GetTransactionResponse
-	var rewards any // TODO: implement rewards as in solana
+	var rewards any
 	hasRewards := !block.Rewards.(cidlink.Link).Cid.Equals(DummyCID)
 	if hasRewards {
 		rewardsNode, err := ser.GetRewardsByCid(ctx, block.Rewards.(cidlink.Link).Cid)
@@ -333,8 +333,14 @@ func (ser *rpcServer) handleGetBlock(ctx context.Context, conn *requestContext, 
 	blockResp.BlockTime = &blocktime
 	blockResp.Blockhash = lastEntryHash.String()
 	blockResp.ParentSlot = uint64(block.Meta.Parent_slot)
-	blockResp.Rewards = rewards                                 // TODO: implement rewards as in solana
-	blockResp.BlockHeight = calcBlockHeight(uint64(block.Slot)) // TODO: implement block height
+	blockResp.Rewards = rewards
+
+	{
+		blockHeight, ok := block.GetBlockHeight()
+		if ok {
+			blockResp.BlockHeight = blockHeight
+		}
+	}
 	{
 		// get parent slot
 		parentSlot := uint64(block.Meta.Parent_slot)
@@ -352,27 +358,27 @@ func (ser *rpcServer) handleGetBlock(ctx context.Context, conn *requestContext, 
 				return
 			}
 
-			lastEntryCidOfParent := parentBlock.Entries[len(parentBlock.Entries)-1]
-			parentEntryNode, err := ser.GetEntryByCid(ctx, lastEntryCidOfParent.(cidlink.Link).Cid)
-			if err != nil {
-				klog.Errorf("failed to decode Entry: %v", err)
-				conn.ReplyWithError(
-					ctx,
-					req.ID,
-					&jsonrpc2.Error{
-						Code:    jsonrpc2.CodeInternalError,
-						Message: "Internal error",
-					})
-				return
+			if len(parentBlock.Entries) > 0 {
+				lastEntryCidOfParent := parentBlock.Entries[len(parentBlock.Entries)-1]
+				parentEntryNode, err := ser.GetEntryByCid(ctx, lastEntryCidOfParent.(cidlink.Link).Cid)
+				if err != nil {
+					klog.Errorf("failed to decode Entry: %v", err)
+					conn.ReplyWithError(
+						ctx,
+						req.ID,
+						&jsonrpc2.Error{
+							Code:    jsonrpc2.CodeInternalError,
+							Message: "Internal error",
+						})
+					return
+				}
+				parentEntryHash := solana.HashFromBytes(parentEntryNode.Hash)
+				blockResp.PreviousBlockhash = parentEntryHash.String()
 			}
-			parentEntryHash := solana.HashFromBytes(parentEntryNode.Hash)
-			blockResp.PreviousBlockhash = parentEntryHash.String()
 		}
 	}
 	tim.time("get parent block")
 
-	// TODO: get all the transactions from the block
-	// reply with the data
 	err = conn.Reply(
 		ctx,
 		req.ID,

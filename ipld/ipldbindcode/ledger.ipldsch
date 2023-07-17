@@ -47,6 +47,8 @@ type SlotMeta struct {
   parent_slot         Int
   # Block time of this slot.
   blocktime           Int
+  # Block height of this slot.
+  block_height nullable optional Int
 } representation tuple
 
 type Shredding struct {
@@ -70,7 +72,7 @@ type Transaction struct {
   metadata DataFrame
   # The slot number where this transaction was created.
   slot     Int
-  # The index of this transaction in the the block (0-indexed).
+  # The index of the position of this transaction in the block (0-indexed).
   index nullable optional  Int
 } representation tuple
 

@@ -12,7 +12,6 @@ import (
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/dustin/go-humanize"
-	bin "github.com/gagliardetto/binary"
 	"github.com/gagliardetto/solana-go"
 	"github.com/ipfs/go-cid"
 	carv1 "github.com/ipld/go-car"
@@ -231,20 +230,10 @@ func createAllIndexes(
 					return nil, fmt.Errorf("failed to decode transaction: %w", err)
 				}
 
-				var tx solana.Transaction
-				txBuffer := new(bytes.Buffer)
-				txBuffer.Write(txNode.Data.Bytes())
-				if total, ok := txNode.Data.GetTotal(); ok && total > 1 {
-					// TODO: handle this case
-					klog.Infof("skipping transaction with %d partials", total)
-					continue
+				sig, err := readFirstSignature(txNode.Data.Bytes())
+				if err != nil {
+					return nil, fmt.Errorf("failed to read signature: %w", err)
 				}
-				if err := bin.UnmarshalBin(&tx, txBuffer.Bytes()); err != nil {
-					return nil, fmt.Errorf("failed to unmarshal transaction: %w", err)
-				} else if len(tx.Signatures) == 0 {
-					panic("no signatures")
-				}
-				sig := tx.Signatures[0]
 
 				err = sig_to_cid.Put(sig, _cid)
 				if err != nil {
@@ -616,20 +605,10 @@ func verifyAllIndexes(
 					return fmt.Errorf("failed to decode transaction: %w", err)
 				}
 
-				var tx solana.Transaction
-				txBuffer := new(bytes.Buffer)
-				txBuffer.Write(txNode.Data.Bytes())
-				if total, ok := txNode.Data.GetTotal(); ok && total > 1 {
-					// TODO: handle this case
-					klog.Infof("skipping transaction with %d partials", total)
-					continue
+				sig, err := readFirstSignature(txNode.Data.Bytes())
+				if err != nil {
+					return fmt.Errorf("failed to read signature: %w", err)
 				}
-				if err := bin.UnmarshalBin(&tx, txBuffer.Bytes()); err != nil {
-					return fmt.Errorf("failed to unmarshal transaction: %w", err)
-				} else if len(tx.Signatures) == 0 {
-					panic("no signatures")
-				}
-				sig := tx.Signatures[0]
 
 				got, err := sig_to_cid.Get(sig)
 				if err != nil {

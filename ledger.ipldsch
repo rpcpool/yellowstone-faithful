@@ -47,6 +47,8 @@ type SlotMeta struct {
   parent_slot         Int
   # Block time of this slot.
   blocktime           Int
+  # Block height of this slot.
+  block_height nullable optional Int
 } representation tuple
 
 type Shredding struct {

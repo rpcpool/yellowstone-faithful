@@ -944,8 +944,3 @@ func parseTransactionAndMetaFromNode(
 	}
 	return
 }
-
-func calcBlockHeight(slot uint64) uint64 {
-	// TODO: fix this
-	return 0
-}
