@@ -338,7 +338,7 @@ func (ser *rpcServer) handleGetBlock(ctx context.Context, conn *requestContext, 
 	{
 		blockHeight, ok := block.GetBlockHeight()
 		if ok {
-			blockResp.BlockHeight = blockHeight
+			blockResp.BlockHeight = &blockHeight
 		}
 	}
 	{

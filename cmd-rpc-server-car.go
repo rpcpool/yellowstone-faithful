@@ -837,7 +837,7 @@ func (ser *rpcServer) Handle(ctx context.Context, conn *requestContext, req *jso
 }
 
 type GetBlockResponse struct {
-	BlockHeight       uint64                   `json:"blockHeight"`
+	BlockHeight       *uint64                  `json:"blockHeight"`
 	BlockTime         *uint64                  `json:"blockTime"`
 	Blockhash         string                   `json:"blockhash"`
 	ParentSlot        uint64                   `json:"parentSlot"`
