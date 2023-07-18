@@ -8,7 +8,7 @@ This is currently in RFC stage, which means that it is not intended for producti
 
 ## Usage
 
-This repo provides the `faithful-cli` command line interface. This tool allows you to interact with the Old Faithful archive as stored on disk (if you have made a local copy) or directly from Filecoin. The CLI provides an RPC server that supports;
+This repo provides the `faithful-cli` command line interface. This tool allows you to interact with the Old Faithful archive as stored on disk (if you have made a local copy), from old-faithful.net or directly from Filecoin. The CLI provides an RPC server that supports;
 
   - getBlock
   - getTransaction
