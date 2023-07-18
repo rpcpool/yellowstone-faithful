@@ -31,10 +31,11 @@ jobs:
       - name: Setup Pages
         uses: actions/configure-pages@v3
       - name: Build with Jekyll
-        uses: actions/jekyll-build-pages@v1
-        with:
-          source: ./site
-          destination: ./_site
+        # Outputs to the './_site' directory by default
+        run: bundle exec jekyll build --baseurl "${{ steps.pages.outputs.base_path }}"
+        working-directory: ./site
+        env:
+          JEKYLL_ENV: productione
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v2
 
