@@ -158,8 +158,9 @@ type _Shredding struct {
 // SlotMeta matches the IPLD Schema type "SlotMeta".  It has struct type-kind, and may be interrogated like map kind.
 type SlotMeta = *_SlotMeta
 type _SlotMeta struct {
-	parent_slot _Int
-	blocktime   _Int
+	parent_slot  _Int
+	blocktime    _Int
+	block_height _Int__Maybe
 }
 
 // String matches the IPLD Schema type "String".  It has string kind.

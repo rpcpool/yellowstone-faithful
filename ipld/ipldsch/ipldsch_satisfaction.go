@@ -8325,6 +8325,9 @@ func (n _SlotMeta) FieldParent_slot() Int {
 func (n _SlotMeta) FieldBlocktime() Int {
 	return &n.blocktime
 }
+func (n _SlotMeta) FieldBlock_height() MaybeInt {
+	return &n.block_height
+}
 
 type _SlotMeta__Maybe struct {
 	m schema.Maybe
@@ -8361,8 +8364,9 @@ func (m MaybeSlotMeta) Must() SlotMeta {
 }
 
 var (
-	fieldName__SlotMeta_Parent_slot = _String{"parent_slot"}
-	fieldName__SlotMeta_Blocktime   = _String{"blocktime"}
+	fieldName__SlotMeta_Parent_slot  = _String{"parent_slot"}
+	fieldName__SlotMeta_Blocktime    = _String{"blocktime"}
+	fieldName__SlotMeta_Block_height = _String{"block_height"}
 )
 var _ datamodel.Node = (SlotMeta)(&_SlotMeta{})
 var _ schema.TypedNode = (SlotMeta)(&_SlotMeta{})
@@ -8376,6 +8380,14 @@ func (n SlotMeta) LookupByString(key string) (datamodel.Node, error) {
 		return &n.parent_slot, nil
 	case "blocktime":
 		return &n.blocktime, nil
+	case "block_height":
+		if n.block_height.m == schema.Maybe_Absent {
+			return datamodel.Absent, nil
+		}
+		if n.block_height.m == schema.Maybe_Null {
+			return datamodel.Null, nil
+		}
+		return &n.block_height.v, nil
 	default:
 		return nil, schema.ErrNoSuchField{Type: nil /*TODO*/, Field: datamodel.PathSegmentOfString(key)}
 	}
@@ -8403,7 +8415,7 @@ type _SlotMeta__MapItr struct {
 }
 
 func (itr *_SlotMeta__MapItr) Next() (k datamodel.Node, v datamodel.Node, _ error) {
-	if itr.idx >= 2 {
+	if itr.idx >= 3 {
 		return nil, nil, datamodel.ErrIteratorOverread{}
 	}
 	switch itr.idx {
@@ -8413,6 +8425,17 @@ func (itr *_SlotMeta__MapItr) Next() (k datamodel.Node, v datamodel.Node, _ erro
 	case 1:
 		k = &fieldName__SlotMeta_Blocktime
 		v = &itr.n.blocktime
+	case 2:
+		k = &fieldName__SlotMeta_Block_height
+		if itr.n.block_height.m == schema.Maybe_Absent {
+			v = datamodel.Absent
+			break
+		}
+		if itr.n.block_height.m == schema.Maybe_Null {
+			v = datamodel.Null
+			break
+		}
+		v = &itr.n.block_height.v
 	default:
 		panic("unreachable")
 	}
@@ -8420,14 +8443,14 @@ func (itr *_SlotMeta__MapItr) Next() (k datamodel.Node, v datamodel.Node, _ erro
 	return
 }
 func (itr *_SlotMeta__MapItr) Done() bool {
-	return itr.idx >= 2
+	return itr.idx >= 3
 }
 
 func (SlotMeta) ListIterator() datamodel.ListIterator {
 	return nil
 }
 func (SlotMeta) Length() int64 {
-	return 2
+	return 3
 }
 func (SlotMeta) IsAbsent() bool {
 	return false
@@ -8488,9 +8511,10 @@ type _SlotMeta__Assembler struct {
 	s     int
 	f     int
 
-	cm             schema.Maybe
-	ca_parent_slot _Int__Assembler
-	ca_blocktime   _Int__Assembler
+	cm              schema.Maybe
+	ca_parent_slot  _Int__Assembler
+	ca_blocktime    _Int__Assembler
+	ca_block_height _Int__Assembler
 }
 
 func (na *_SlotMeta__Assembler) reset() {
@@ -8498,12 +8522,14 @@ func (na *_SlotMeta__Assembler) reset() {
 	na.s = 0
 	na.ca_parent_slot.reset()
 	na.ca_blocktime.reset()
+	na.ca_block_height.reset()
 }
 
 var (
-	fieldBit__SlotMeta_Parent_slot = 1 << 0
-	fieldBit__SlotMeta_Blocktime   = 1 << 1
-	fieldBits__SlotMeta_sufficient = 0 + 1<<0 + 1<<1
+	fieldBit__SlotMeta_Parent_slot  = 1 << 0
+	fieldBit__SlotMeta_Blocktime    = 1 << 1
+	fieldBit__SlotMeta_Block_height = 1 << 2
+	fieldBits__SlotMeta_sufficient  = 0 + 1<<0 + 1<<1
 )
 
 func (na *_SlotMeta__Assembler) BeginMap(int64) (datamodel.MapAssembler, error) {
@@ -8617,6 +8643,17 @@ func (ma *_SlotMeta__Assembler) valueFinishTidy() bool {
 		default:
 			return false
 		}
+	case 2:
+		switch ma.w.block_height.m {
+		case schema.Maybe_Null:
+			ma.state = maState_initial
+			return true
+		case schema.Maybe_Value:
+			ma.state = maState_initial
+			return true
+		default:
+			return false
+		}
 	default:
 		panic("unreachable")
 	}
@@ -8657,6 +8694,17 @@ func (ma *_SlotMeta__Assembler) AssembleEntry(k string) (datamodel.NodeAssembler
 		ma.ca_blocktime.w = &ma.w.blocktime
 		ma.ca_blocktime.m = &ma.cm
 		return &ma.ca_blocktime, nil
+	case "block_height":
+		if ma.s&fieldBit__SlotMeta_Block_height != 0 {
+			return nil, datamodel.ErrRepeatedMapKey{Key: &fieldName__SlotMeta_Block_height}
+		}
+		ma.s += fieldBit__SlotMeta_Block_height
+		ma.state = maState_midValue
+		ma.f = 2
+		ma.ca_block_height.w = &ma.w.block_height.v
+		ma.ca_block_height.m = &ma.w.block_height.m
+		ma.w.block_height.m = allowNull
+		return &ma.ca_block_height, nil
 	}
 	return nil, schema.ErrInvalidKey{TypeName: "ipldsch.SlotMeta", Key: &_String{k}}
 }
@@ -8701,6 +8749,11 @@ func (ma *_SlotMeta__Assembler) AssembleValue() datamodel.NodeAssembler {
 		ma.ca_blocktime.w = &ma.w.blocktime
 		ma.ca_blocktime.m = &ma.cm
 		return &ma.ca_blocktime
+	case 2:
+		ma.ca_block_height.w = &ma.w.block_height.v
+		ma.ca_block_height.m = &ma.w.block_height.m
+		ma.w.block_height.m = allowNull
+		return &ma.ca_block_height
 	default:
 		panic("unreachable")
 	}
@@ -8782,6 +8835,14 @@ func (ka *_SlotMeta__KeyAssembler) AssignString(k string) error {
 		ka.state = maState_expectValue
 		ka.f = 1
 		return nil
+	case "block_height":
+		if ka.s&fieldBit__SlotMeta_Block_height != 0 {
+			return datamodel.ErrRepeatedMapKey{Key: &fieldName__SlotMeta_Block_height}
+		}
+		ka.s += fieldBit__SlotMeta_Block_height
+		ka.state = maState_expectValue
+		ka.f = 2
+		return nil
 	default:
 		return schema.ErrInvalidKey{TypeName: "ipldsch.SlotMeta", Key: &_String{k}}
 	}
@@ -8832,6 +8893,14 @@ func (n *_SlotMeta__Repr) LookupByIndex(idx int64) (datamodel.Node, error) {
 		return n.parent_slot.Representation(), nil
 	case 1:
 		return n.blocktime.Representation(), nil
+	case 2:
+		if n.block_height.m == schema.Maybe_Absent {
+			return datamodel.Absent, datamodel.ErrNotExists{Segment: datamodel.PathSegmentOfInt(idx)}
+		}
+		if n.block_height.m == schema.Maybe_Null {
+			return datamodel.Null, nil
+		}
+		return n.block_height.v.Representation(), nil
 	default:
 		return nil, schema.ErrNoSuchField{Type: nil /*TODO*/, Field: datamodel.PathSegmentOfInt(idx)}
 	}
@@ -8847,16 +8916,24 @@ func (_SlotMeta__Repr) MapIterator() datamodel.MapIterator {
 	return nil
 }
 func (n *_SlotMeta__Repr) ListIterator() datamodel.ListIterator {
-	return &_SlotMeta__ReprListItr{n, 0}
+	end := 3
+	if n.block_height.m == schema.Maybe_Absent {
+		end = 2
+	} else {
+		goto done
+	}
+done:
+	return &_SlotMeta__ReprListItr{n, 0, end}
 }
 
 type _SlotMeta__ReprListItr struct {
 	n   *_SlotMeta__Repr
 	idx int
+	end int
 }
 
 func (itr *_SlotMeta__ReprListItr) Next() (idx int64, v datamodel.Node, err error) {
-	if itr.idx >= 2 {
+	if itr.idx >= 3 {
 		return -1, nil, datamodel.ErrIteratorOverread{}
 	}
 	switch itr.idx {
@@ -8866,6 +8943,16 @@ func (itr *_SlotMeta__ReprListItr) Next() (idx int64, v datamodel.Node, err erro
 	case 1:
 		idx = int64(itr.idx)
 		v = itr.n.blocktime.Representation()
+	case 2:
+		idx = int64(itr.idx)
+		if itr.n.block_height.m == schema.Maybe_Absent {
+			return -1, nil, datamodel.ErrIteratorOverread{}
+		}
+		if itr.n.block_height.m == schema.Maybe_Null {
+			v = datamodel.Null
+			break
+		}
+		v = itr.n.block_height.v.Representation()
 	default:
 		panic("unreachable")
 	}
@@ -8873,11 +8960,14 @@ func (itr *_SlotMeta__ReprListItr) Next() (idx int64, v datamodel.Node, err erro
 	return
 }
 func (itr *_SlotMeta__ReprListItr) Done() bool {
-	return itr.idx >= 2
+	return itr.idx >= itr.end
 }
 
 func (rn *_SlotMeta__Repr) Length() int64 {
-	l := 2
+	l := 3
+	if rn.block_height.m == schema.Maybe_Absent {
+		l--
+	}
 	return int64(l)
 }
 func (_SlotMeta__Repr) IsAbsent() bool {
@@ -8938,9 +9028,10 @@ type _SlotMeta__ReprAssembler struct {
 	state laState
 	f     int
 
-	cm             schema.Maybe
-	ca_parent_slot _Int__ReprAssembler
-	ca_blocktime   _Int__ReprAssembler
+	cm              schema.Maybe
+	ca_parent_slot  _Int__ReprAssembler
+	ca_blocktime    _Int__ReprAssembler
+	ca_block_height _Int__ReprAssembler
 }
 
 func (na *_SlotMeta__ReprAssembler) reset() {
@@ -8948,6 +9039,7 @@ func (na *_SlotMeta__ReprAssembler) reset() {
 	na.f = 0
 	na.ca_parent_slot.reset()
 	na.ca_blocktime.reset()
+	na.ca_block_height.reset()
 }
 func (_SlotMeta__ReprAssembler) BeginMap(sizeHint int64) (datamodel.MapAssembler, error) {
 	return mixins.ListAssembler{TypeName: "ipldsch.SlotMeta.Repr"}.BeginMap(0)
@@ -9057,6 +9149,19 @@ func (la *_SlotMeta__ReprAssembler) valueFinishTidy() bool {
 		default:
 			return false
 		}
+	case 2:
+		switch la.w.block_height.m {
+		case schema.Maybe_Value:
+			la.state = laState_initial
+			la.f++
+			return true
+		case schema.Maybe_Null:
+			la.state = laState_initial
+			la.f++
+			return true
+		default:
+			return false
+		}
 	default:
 		panic("unreachable")
 	}
@@ -9072,8 +9177,8 @@ func (la *_SlotMeta__ReprAssembler) AssembleValue() datamodel.NodeAssembler {
 	case laState_finished:
 		panic("invalid state: AssembleValue cannot be called on an assembler that's already finished")
 	}
-	if la.f >= 2 {
-		return _ErrorThunkAssembler{schema.ErrNoSuchField{Type: nil /*TODO*/, Field: datamodel.PathSegmentOfInt(2)}}
+	if la.f >= 3 {
+		return _ErrorThunkAssembler{schema.ErrNoSuchField{Type: nil /*TODO*/, Field: datamodel.PathSegmentOfInt(3)}}
 	}
 	la.state = laState_midValue
 	switch la.f {
@@ -9085,6 +9190,11 @@ func (la *_SlotMeta__ReprAssembler) AssembleValue() datamodel.NodeAssembler {
 		la.ca_blocktime.w = &la.w.blocktime
 		la.ca_blocktime.m = &la.cm
 		return &la.ca_blocktime
+	case 2:
+		la.ca_block_height.w = &la.w.block_height.v
+		la.ca_block_height.m = &la.w.block_height.m
+		la.w.block_height.m = allowNull
+		return &la.ca_block_height
 	default:
 		panic("unreachable")
 	}

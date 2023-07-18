@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -82,20 +81,10 @@ func CreateIndex_sig2cid(ctx context.Context, tmpDir string, carPath string, ind
 		ctx,
 		dr,
 		func(c cid.Cid, txNode *ipldbindcode.Transaction) error {
-			var tx solana.Transaction
-			txBuffer := new(bytes.Buffer)
-			txBuffer.Write(txNode.Data.Bytes())
-			if total, ok := txNode.Data.GetTotal(); ok && total > 1 {
-				// TODO: handle this case
-				klog.Infof("skipping transaction with %d partials", total)
-				return nil
+			sig, err := readFirstSignature(txNode.Data.Bytes())
+			if err != nil {
+				return fmt.Errorf("failed to read signature: %w", err)
 			}
-			if err := bin.UnmarshalBin(&tx, txBuffer.Bytes()); err != nil {
-				return fmt.Errorf("failed to unmarshal transaction: %w", err)
-			} else if len(tx.Signatures) == 0 {
-				panic("no signatures")
-			}
-			sig := tx.Signatures[0]
 
 			var buf [36]byte
 			copy(buf[:], c.Bytes()[:36])
@@ -193,20 +182,10 @@ func VerifyIndex_sig2cid(ctx context.Context, carPath string, indexFilePath stri
 		ctx,
 		dr,
 		func(c cid.Cid, txNode *ipldbindcode.Transaction) error {
-			var tx solana.Transaction
-			txBuffer := new(bytes.Buffer)
-			txBuffer.Write(txNode.Data.Bytes())
-			if total, ok := txNode.Data.GetTotal(); ok && total > 1 {
-				// TODO: handle this case
-				klog.Infof("skipping transaction with %d partials", total)
-				return nil
+			sig, err := readFirstSignature(txNode.Data.Bytes())
+			if err != nil {
+				return fmt.Errorf("failed to read signature: %w", err)
 			}
-			if err := bin.UnmarshalBin(&tx, txBuffer.Bytes()); err != nil {
-				return fmt.Errorf("failed to unmarshal transaction: %w", err)
-			} else if len(tx.Signatures) == 0 {
-				panic("no signatures")
-			}
-			sig := tx.Signatures[0]
 
 			got, err := findCidFromSignature(c2o, sig)
 			if err != nil {
@@ -247,4 +226,26 @@ func findCidFromSignature(db *compactindex36.DB, sig solana.Signature) (cid.Cid,
 		return cid.Cid{}, fmt.Errorf("unexpected cid length %d", l)
 	}
 	return c, nil
+}
+
+func readFirstSignature(buf []byte) (solana.Signature, error) {
+	decoder := bin.NewCompactU16Decoder(buf)
+	numSigs, err := decoder.ReadCompactU16()
+	if err != nil {
+		return solana.Signature{}, err
+	}
+	if numSigs == 0 {
+		return solana.Signature{}, fmt.Errorf("no signatures")
+	}
+
+	// Read the first signature:
+	var sig solana.Signature
+	numRead, err := decoder.Read(sig[:])
+	if err != nil {
+		return solana.Signature{}, err
+	}
+	if numRead != 64 {
+		return solana.Signature{}, fmt.Errorf("unexpected signature length %d", numRead)
+	}
+	return sig, nil
 }

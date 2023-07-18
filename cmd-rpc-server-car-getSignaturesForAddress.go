@@ -207,7 +207,7 @@ func (ser *rpcServer) handleGetSignaturesForAddress(ctx context.Context, conn *r
 				slot := uint64(transactionNode.Slot)
 				response[ii]["slot"] = slot
 				response[ii]["blockTime"] = getBlockTime(slot)
-				response[ii]["confirmationStatus"] = "finalized" // TODO: is this correct?
+				response[ii]["confirmationStatus"] = "finalized"
 			}
 			return nil
 		})

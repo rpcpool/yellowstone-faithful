@@ -109,3 +109,13 @@ func (n Transaction) GetPositionIndex() (int, bool) {
 	}
 	return **n.Index, true
 }
+
+// GetBlockHeight returns the 'block_height' field, which indicates
+// the height of the block, and
+// a flag indicating whether the field has a value.
+func (n Block) GetBlockHeight() (uint64, bool) {
+	if n.Meta.Block_height == nil || *n.Meta.Block_height == nil {
+		return 0, false
+	}
+	return uint64(**n.Meta.Block_height), true
+}
