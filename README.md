@@ -2,17 +2,46 @@
 
 Project Yellowstone: Old Faithful is the project to make all of Solana's history accessible, content addressable and available via a variety of means. The goal of this project is to completely replace the Bigtable dependency for Solana history access with a self-hostable, decentralized history archive that is usable for infrastructure providers, individual Solana users, explorers, indexers, and anyone else in need of historical access.
 
-This is currently in RFC stage, which means that it is not intended for production use and that there may be breaking changes to the format, the CLI utilities or any other details related to the project. 
+This is currently in RFC stage, which means that it is not intended for production use and that there may be breaking changes to the format, the CLI utilities or any other details related to the project.
+
+> ❗ **Request for comment**: We are currently looking for feedback and comments on the new archival format and the RPC server setup. We invite all interested parties to test the archival access and open issues on this repo with questions/comments/requests for improvements.
 
 ## Usage
 
-This repo provides the `faithful-cli` command line interface. This tool allows you to interact with the Old Faithful archive as stored on disk (if you have made a local copy) or directly from Filecoin. The CLI provides an RPC server that supports;
+This repo provides the `faithful-cli` command line interface. This tool allows you to interact with the Old Faithful archive as stored on disk (if you have made a local copy), from old-faithful.net or directly from Filecoin. The CLI provides an RPC server that supports:
 
   - getBlock
-  - getTransaction 
+  - getTransaction
   - getSignaturesForAddress
 
-### Local RPC server
+### RPC server from old-faithful.net
+
+We are hosting data on old-faithful.net for testing and cloning purposes. This allows you to run a sample test server without downloading any data. You can run a fully remote server like this:
+
+```
+$ ./tools/run-rpc-server-remote.sh 0
+```
+
+This will create a server that hosts epoch 0.
+
+### RPC server with local indexes
+
+For ongoing testing, we strongly recommend that you download at least the indexes for best performance. If you have local indexes downloaded you can use the following helper script:
+
+```
+$ ./tools/run-rpc-server-local-indexes.sh 0 ./epoch0
+```
+
+There is a utility script in the `tools` folder that will download the indexes hosted on old-faithful.net. The indexes will also be available on Filecoin.
+
+```
+$ mkdir epoch0
+$ cd epoch0
+$ ../tools/download-indexes.sh 0 ./epoch0
+$ ../tools/download-gsfa.sh 0 ./epoch0
+```
+
+### RPC server running fully locally
 
 If you have a local copy of a CAR archive and the indexes and run a RPC server servicing data from them. For example:
 
@@ -26,7 +55,22 @@ If you have a local copy of a CAR archive and the indexes and run a RPC server s
     epoch-455.car-*-gsfa-index
 ```
 
-To get URLs for downloading the local files, please open a data cloning request as an issue on this repo with your contact details and we will help organise a cloning setup for you. 
+You can download the CAR files either via Filecoin or via the bucket provided by Triton. There are helper scripts in the `tools` folder. To download the full epoch data:
+
+```
+$ mkdir epoch0
+$ cd epoch0
+$ ../tools/download-epoch.sh 0
+$ ../tools/download-indexes.sh 0
+$ ../tools/download-gsfa.sh 0
+```
+
+Once files are downloaded there are also utility scripts to run the server:
+```
+$ ./tools/run-rpc-server-local.sh 0 ./epoch0
+```
+
+This will host epoch 0 from the data available in the folder epoch0.
 
 ### Filecoin RPC server
 
@@ -46,7 +90,7 @@ indexes:
   gsfa: './epoch-455.car.gsfa.index'
 ```
 
-Due to latency in fetching signatures, typically the getSignaturesForAddress index needs to be stored in a local directory, but the other indexes can be fetched via HTTP or via local file system access. If you provide a URL, you need to make sure that the url supports HTTP Range requests. S3 or similar APIs will support this. 
+Due to latency in fetching signatures, typically the getSignaturesForAddress index needs to be stored in a local directory, but the other indexes can be fetched via HTTP or via local file system access. If you provide a URL, you need to make sure that the url supports HTTP Range requests. S3 or similar APIs will support this.
 
 There is a mode in which you can use a remote gSFA index, which limits it to only return signatures and not additional transaction meta data. In this mode, you can use a remote gSFA index. To enable this mode run faithful-cli in the following way:
 
@@ -60,13 +104,13 @@ If you already know the CID of the data you are looking for you can fetch it via
 
 ### Limitations
 
-Currently the CLI is only designed to service one epoch at a time. Support for multiple epochs is incoming. We will also soon support fetching indexes from Filecoin as well, currently those are available via S3 together with the raw car files. For full access, please contact help@triton.one. 
+Currently the CLI is only designed to service one epoch at a time. Support for multiple epochs is incoming. We will also soon support fetching indexes from Filecoin as well, currently those are available via S3 together with the raw car files. For full access, please contact help@triton.one.
 
-Filecoin retrievals without a CDN can also be slow. We are working on integration with Filecoin CDNs and other caching solutions. Fastest retrievals will happen if you service from local disk. 
+Filecoin retrievals without a CDN can also be slow. We are working on integration with Filecoin CDNs and other caching solutions. Fastest retrievals will happen if you service from local disk.
 
 ## Technical overview
 
-The core of the project is history archives in Content Addressable format ([overview](https://web3.storage/docs/how-tos/work-with-car-files/), [specs](https://ipld.io/specs/transport/car/carv1/)). These represent a verifiable, immutable view of the Solana history. The CAR files that this project generates follows a [schema](https://github.com/rpcpool/yellowstone-faithful/blob/main/ledger.ipldsch) specifically developed for Solana's historical archives. 
+The core of the project is history archives in Content Addressable format ([overview](https://web3.storage/docs/how-tos/work-with-car-files/), [specs](https://ipld.io/specs/transport/car/carv1/)). These represent a verifiable, immutable view of the Solana history. The CAR files that this project generates follows a [schema](https://github.com/rpcpool/yellowstone-faithful/blob/main/ledger.ipldsch) specifically developed for Solana's historical archives.
 
 The content addressable nature means that each epoch, block, transaction and shredding is uniquely identified by a content hash. By knowing this content hash a user will be able to retreive a specific object of interest in a trustless manner, i.e. retrieve an object verifiably from a non-trusted source. Retrievals can be made via IPFS, the Filecoin network, or even by hosting the CAR files yourself on disk, a ceph cluster, S3, you name it.
 
@@ -94,16 +138,15 @@ The data that you will need to be able to run a local RPC server is:
   4) the cid-to-offset index for that epoch car file
   5) Optionally (if you want to support getSignaturesForAddress): the gsfa index
 
-The epoch car file can be generated from a rocksdb snapshot from a running validator or from one of the archives provided by the Solana foundation or third parties like Triton. You can also download a pre-generated Epoch car file either from Filecoin itself or via the download URLs provided by Triton. 
+The epoch car file can be generated from a rocksdb snapshot from a running validator or from one of the archives provided by the Solana foundation or third parties like Triton. You can also download a pre-generated Epoch car file either from Filecoin itself or via the download URLs provided by Triton.
 
 If you have an epoch car file you can generate all the other indexes, see below notes about index generation. You can also download indexes from a third party source or (soon) retrieve them via Filecoin.
-
 
 ### Data tooling
 
 The primary data preparation tooling used in this project is based in the `radiance` tool developed by Jump's Firedancer team. It is rapidely developing, and active development for this project is currently based out of this repository and branch: [Radiance Triton](https://github.com/gagliardetto/radiance-triton/).
 
-The radiance tool utilises the rocksdb snapshots that have been generated by [Warehouse](https://github.com/solana-labs/solana-bigtable) nodes. From these snapshots a CAR file per epoch is generated. This CAR file then needs to be processed by Filecoin tools such as [split-and-commp](https://github.com/anjor/go-fil-dataprep/) which generates the details needed for making a Filecoin deal. 
+The radiance tool utilises the rocksdb snapshots that have been generated by [Warehouse](https://github.com/solana-labs/solana-bigtable) nodes. From these snapshots a CAR file per epoch is generated. This CAR file then needs to be processed by Filecoin tools such as [split-and-commp](https://github.com/anjor/go-fil-dataprep/) which generates the details needed for making a Filecoin deal.
 
 Currently, this tool is being tested from the following warehouse archives:
   - Solana Foundation (public)
@@ -116,7 +159,7 @@ If you have warehouse nodes generating rocksdb archive snapshots, please contact
 
 ## Data preparation
 
-Using the rocksdb archives, the Radiance tool can be used to generate one CAR file per epoch. This CAR file is then made available via storage providers such as Filecoin and private storage buckets. 
+Using the rocksdb archives, the Radiance tool can be used to generate one CAR file per epoch. This CAR file is then made available via storage providers such as Filecoin and private storage buckets.
 
 CAR file generation produces a CAR containing a DAG. This DAG is reproducible and follows the structure of Epoch -> Block -> Transaction see [schema](https://github.com/rpcpool/yellowstone-faithful/blob/main/ledger.ipldsch). The CAR file generation is deterministic, so even if you use different rocksdb source snapshots you should end up with the same CAR output. This allows comparison between different providers.
 
@@ -149,11 +192,11 @@ DESCRIPTION:
    Create various kinds of indexes for CAR files.
 
 COMMANDS:
-   cid-to-offset  
-   slot-to-cid    
-   sig-to-cid     
-   all            
-   gsfa           
+   cid-to-offset
+   slot-to-cid
+   sig-to-cid
+   all
+   gsfa
    help, h        Shows a list of commands or help for one command
 
 OPTIONS:
@@ -172,22 +215,22 @@ This would generate the indexes in the current dir for epoch-107.
 
 ## Contributing
 
-We are currently requesting contributions from the community in testing this tool for retrievals and for generating data. We also request input on the IPLD Schema and data format. Proposals, bug reports, questions, help requests etc. can be reported via issues on this repo. 
+We are currently requesting contributions from the community in testing this tool for retrievals and for generating data. We also request input on the IPLD Schema and data format. Proposals, bug reports, questions, help requests etc. can be reported via issues on this repo.
 
 ## Contact
 
-This project is currently managed by [Triton One](https://triton.one/). If you want more information contact us via [Telegram](https://t.me/+K0ONdq7fE4s0Mjdl). 
+This project is currently managed by [Triton One](https://triton.one/). If you want more information contact us via [Telegram](https://t.me/+K0ONdq7fE4s0Mjdl).
 
 ## Acknowledgements
 
-The originator of this project was [Richard Patel](https://github.com/terorie) ([Twitter](https://twitter.com/fd_ripatel)). 
+The originator of this project was [Richard Patel](https://github.com/terorie) ([Twitter](https://twitter.com/fd_ripatel)).
 
-[@immaterial.ink](https://github.com/gagliardetto) ([Twitter](https://twitter.com/immaterial_ink)) is currently the lead dev on this project at Triton One. 
+[@immaterial.ink](https://github.com/gagliardetto) ([Twitter](https://twitter.com/immaterial_ink)) is currently the lead dev on this project at Triton One.
 
 This work has been supported greatly by Protocol Labs (special shout out to [anjor](https://github.com/anjor) ([Twitter](https://twitter.com/__anjor)) for all the guidance in Filecoin land to us Solana locals).
 
-The Solana Foundation is funding this effort through a project grant. 
+The Solana Foundation is funding this effort through a project grant.
 
-[Solana.fm](https://solana.fm/) was, alongside Richard and Triton, one of the initiators of this project. 
+[Solana.fm](https://solana.fm/) was, alongside Richard and Triton, one of the initiators of this project.
 
-Also thanks to all RPC providers and others who have (and are) providing input to and support for this process. 
+Also thanks to all RPC providers and others who have (and are) providing input to and support for this process.
