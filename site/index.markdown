@@ -14,4 +14,4 @@ Old Faithful is the project to make all of Solana's history accessible, content 
 >
 > This is currently in RFC stage, which means that it is not intended for production use and that there may be breaking changes to the format, the CLI utilities or any other details related to the project.
 >
-> We appreciate all and any testing, questions, feedback, code submissions as issues via [github.com/rpcpool/faithful-cli](https://github.com/rpcpool/yellowstone-faithful/issues). We can also be found on the [Solana tech discord](https://discord.com/invite/kBbATFA7PW) (e.g. @linuskendall).
+> We appreciate all and any testing, questions, feedback, code submissions as issues via [github.com/rpcpool/yellowstone-faithful](https://github.com/rpcpool/yellowstone-faithful/issues). We can also be found on the [Solana tech discord](https://discord.com/invite/kBbATFA7PW) (e.g. @linuskendall).
