@@ -37,8 +37,8 @@ There is a utility script in the `tools` folder that will download the indexes h
 ```
 $ mkdir epoch0
 $ cd epoch0
-$ ./download-indexes.sh 0 ./epoch0
-$ ./download-gsfa.sh 0 ./epoch0
+$ ../tools/download-indexes.sh 0 ./epoch0
+$ ../tools/download-gsfa.sh 0 ./epoch0
 ```
 
 ### RPC server running fully locally
@@ -60,9 +60,9 @@ You can download the CAR files either via Filecoin or via the bucket provided by
 ```
 $ mkdir epoch0
 $ cd epoch0
-$ ./tools/download-epoch.sh 0
-$ ./tools/download-indexes.sh 0
-$ ./tools/download-gsfa.sh 0
+$ ../tools/download-epoch.sh 0
+$ ../tools/download-indexes.sh 0
+$ ../tools/download-gsfa.sh 0
 ```
 
 Once files are downloaded there are also utility scripts to run the server:
