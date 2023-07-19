@@ -30,3 +30,12 @@ $ ./tools/run-rpc-server-remote.sh 0
 ```
 
 This will create a server that hosts epoch 0.
+
+If you want to test a recent epoch you can run:
+```
+$ ./tools/run-rpc-server-remote.sh 475
+```
+
+New epochs are being added continuously, but the upload cadence is currently a little irregular due to pipeline development work.
+
+
