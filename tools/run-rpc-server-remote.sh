@@ -25,8 +25,6 @@ if [ $EPOCH -lt 0 ]; then
     exit 1
 fi
 
-INDEX_DIR=${2:-.}
-
 # Check if wget is available
 DOWNLOAD_COMMAND="wget"
 READ_COMMAND="wget -qO-"
@@ -43,11 +41,14 @@ if ! [ -x "$(command -v wget)" ]; then
     exit 1
 fi
 
+CID_URL=https://files.old-faithful.net/${EPOCH}/epoch-${EPOCH}.cid
+EPOCH_CID=$($READ_COMMAND $CID_URL)
+
 EPOCH_URL=https://files.old-faithful.net/${EPOCH}/epoch-${EPOCH}.car
 
 set -x
 faithful-cli rpc-server-car --listen ":7999" \
      ${EPOCH_URL} \
-     ${INDEX_DIR}/epoch-${EPOCH}.car.*.cid-to-offset.index \
-     ${INDEX_DIR}/epoch-${EPOCH}.car.*.slot-to-cid.index \
-     ${INDEX_DIR}/epoch-${EPOCH}.car.*.sig-to-cid.index
+     https://files.old-faithful.net/${EPOCH}/epoch-${EPOCH}.car.${EPOCH_CID}.cid-to-offset.index \
+     https://files.old-faithful.net/${EPOCH}/epoch-${EPOCH}.car.${EPOCH_CID}.slot-to-cid.index \
+     https://files.old-faithful.net/${EPOCH}/epoch-${EPOCH}.car.${EPOCH_CID}.sig-to-cid.index
