@@ -1,16 +1,21 @@
 package main
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"runtime"
 	"sort"
 	"sync"
 	"time"
 
 	"github.com/gagliardetto/solana-go"
+	"github.com/ipfs/go-cid"
+	"github.com/ipld/go-car/util"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/rpcpool/yellowstone-faithful/compactindex36"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
@@ -102,6 +107,97 @@ func (ser *rpcServer) handleGetBlock(ctx context.Context, conn *requestContext, 
 		return
 	}
 	tim.time("GetBlock")
+	{
+		prefetcherFromCar := func() error {
+			var blockCid, parentCid cid.Cid
+			wg := new(errgroup.Group)
+			wg.Go(func() (err error) {
+				blockCid, err = ser.FindCidFromSlot(ctx, slot)
+				if err != nil {
+					return err
+				}
+				return nil
+			})
+			wg.Go(func() (err error) {
+				parentCid, err = ser.FindCidFromSlot(ctx, uint64(block.Meta.Parent_slot))
+				if err != nil {
+					return err
+				}
+				return nil
+			})
+			err = wg.Wait()
+			if err != nil {
+				return err
+			}
+			{
+				var blockOffset, parentOffset uint64
+				wg := new(errgroup.Group)
+				wg.Go(func() (err error) {
+					blockOffset, err = ser.FindOffsetFromCid(ctx, blockCid)
+					if err != nil {
+						return err
+					}
+					return nil
+				})
+				wg.Go(func() (err error) {
+					parentOffset, err = ser.FindOffsetFromCid(ctx, parentCid)
+					if err != nil {
+						// If the parent is not found, it (probably) means that it's outside of the car file.
+						parentOffset = 0
+					}
+					return nil
+				})
+				err = wg.Wait()
+				if err != nil {
+					return err
+				}
+
+				length := blockOffset - parentOffset
+				// cap the length to 1GB
+				GiB := uint64(1024 * 1024 * 1024)
+				if length > GiB {
+					length = GiB
+				}
+				carSection, err := ser.ReadAtFromCar(ctx, parentOffset, length)
+				if err != nil {
+					return err
+				}
+				dr := bytes.NewReader(carSection)
+
+				br := bufio.NewReader(dr)
+
+				gotCid, data, err := util.ReadNode(br)
+				if err != nil {
+					return err
+				}
+				if !gotCid.Equals(parentCid) {
+					return fmt.Errorf("CID mismatch: expected %s, got %s", parentCid, gotCid)
+				}
+				ser.putNodeInCache(gotCid, data)
+
+				for {
+					gotCid, data, err = util.ReadNode(br)
+					if err != nil {
+						if errors.Is(err, io.EOF) {
+							break
+						}
+						return err
+					}
+					if gotCid.Equals(blockCid) {
+						break
+					}
+					ser.putNodeInCache(gotCid, data)
+				}
+			}
+			return nil
+		}
+		if ser.lassieFetcher == nil {
+			err := prefetcherFromCar()
+			if err != nil {
+				klog.Errorf("failed to prefetch from car: %v", err)
+			}
+		}
+	}
 	blocktime := uint64(block.Meta.Blocktime)
 
 	allTransactionNodes := make([]*ipldbindcode.Transaction, 0)
