@@ -152,6 +152,8 @@ func (ser *rpcServer) handleGetBlock(ctx context.Context, conn *requestContext, 
 					return err
 				}
 
+				parentIsInPreviousEpoch := CalcEpochForSlot(uint64(block.Meta.Parent_slot)) != CalcEpochForSlot(slot)
+
 				length := blockOffset - parentOffset
 				// cap the length to 1GB
 				GiB := uint64(1024 * 1024 * 1024)
@@ -170,7 +172,7 @@ func (ser *rpcServer) handleGetBlock(ctx context.Context, conn *requestContext, 
 				if err != nil {
 					return err
 				}
-				if !gotCid.Equals(parentCid) {
+				if !parentIsInPreviousEpoch && !gotCid.Equals(parentCid) {
 					return fmt.Errorf("CID mismatch: expected %s, got %s", parentCid, gotCid)
 				}
 				ser.putNodeInCache(gotCid, data)
