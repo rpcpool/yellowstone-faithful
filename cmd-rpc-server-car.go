@@ -391,14 +391,14 @@ func getCidCacheKey(off int64, p []byte) string {
 	return fmt.Sprintf("%d-%d", off, len(p))
 }
 
-func (r *rpcServer) getFromCache(c cid.Cid) (v []byte, err error, has bool) {
+func (r *rpcServer) getNodeFromCache(c cid.Cid) (v []byte, err error, has bool) {
 	if v, ok := r.cidToBlockCache.Get(c.String()); ok {
 		return v.([]byte), nil, true
 	}
 	return nil, nil, false
 }
 
-func (r *rpcServer) putInCache(c cid.Cid, data []byte) {
+func (r *rpcServer) putNodeInCache(c cid.Cid, data []byte) {
 	r.cidToBlockCache.Set(c.String(), data, cache.DefaultExpiration)
 }
 
@@ -519,7 +519,7 @@ func (s *rpcServer) prefetchSubgraph(ctx context.Context, wantedCid cid.Cid) err
 		if err == nil {
 			// put in cache
 			return sub.Each(ctx, func(c cid.Cid, data []byte) error {
-				s.putInCache(c, data)
+				s.putNodeInCache(c, data)
 				return nil
 			})
 		}
@@ -532,7 +532,7 @@ func (s *rpcServer) prefetchSubgraph(ctx context.Context, wantedCid cid.Cid) err
 func (s *rpcServer) GetNodeByCid(ctx context.Context, wantedCid cid.Cid) ([]byte, error) {
 	{
 		// try from cache
-		data, err, has := s.getFromCache(wantedCid)
+		data, err, has := s.getNodeFromCache(wantedCid)
 		if err != nil {
 			return nil, err
 		}
@@ -545,7 +545,7 @@ func (s *rpcServer) GetNodeByCid(ctx context.Context, wantedCid cid.Cid) ([]byte
 		data, err := s.lassieFetcher.GetNodeByCid(ctx, wantedCid)
 		if err == nil {
 			// put in cache
-			s.putInCache(wantedCid, data)
+			s.putNodeInCache(wantedCid, data)
 			return data, nil
 		}
 		klog.Errorf("failed to get node from lassie: %v", err)
@@ -559,6 +559,15 @@ func (s *rpcServer) GetNodeByCid(ctx context.Context, wantedCid cid.Cid) ([]byte
 		return nil, err
 	}
 	return s.GetNodeByOffset(ctx, wantedCid, offset)
+}
+
+func readSectionFromReaderAt(reader ReaderAtCloser, offset uint64, length uint64) ([]byte, error) {
+	data := make([]byte, length)
+	_, err := reader.ReadAt(data, int64(offset))
+	if err != nil {
+		return nil, err
+	}
+	return data, nil
 }
 
 func readNodeFromReaderAt(reader ReaderAtCloser, wantedCid cid.Cid, offset uint64) ([]byte, error) {
@@ -589,6 +598,30 @@ func readNodeFromReaderAt(reader ReaderAtCloser, wantedCid cid.Cid, offset uint6
 		return nil, fmt.Errorf("CID mismatch: expected %s, got %s", wantedCid, gotCid)
 	}
 	return data[n:], nil
+}
+
+func (s *rpcServer) ReadAtFromCar(ctx context.Context, offset uint64, length uint64) ([]byte, error) {
+	if s.localCarReader == nil {
+		// try remote reader
+		if s.remoteCarReader == nil {
+			return nil, fmt.Errorf("no CAR reader available")
+		}
+		return readSectionFromReaderAt(s.remoteCarReader, offset, length)
+	}
+	// Get reader and seek to offset, then read node.
+	dr, err := s.localCarReader.DataReader()
+	if err != nil {
+		klog.Errorf("failed to get data reader: %v", err)
+		return nil, err
+	}
+	dr.Seek(int64(offset), io.SeekStart)
+	data := make([]byte, length)
+	_, err = io.ReadFull(dr, data)
+	if err != nil {
+		klog.Errorf("failed to read node: %v", err)
+		return nil, err
+	}
+	return data, nil
 }
 
 func (s *rpcServer) GetNodeByOffset(ctx context.Context, wantedCid cid.Cid, offset uint64) ([]byte, error) {
