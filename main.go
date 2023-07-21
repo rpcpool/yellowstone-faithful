@@ -58,6 +58,7 @@ func main() {
 			newCmd_rpcServerCar(),
 			newCmd_rpcServerFilecoin(),
 			newCmd_Version(),
+			newCmd_rpc(),
 		},
 	}
 

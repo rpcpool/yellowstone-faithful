@@ -85,7 +85,7 @@ func newCmd_Index_gsfa() *cli.Command {
 			}
 
 			indexDir := c.Args().Get(1)
-			if ok, err := IsDir(indexDir); err != nil {
+			if ok, err := isDirectory(indexDir); err != nil {
 				return err
 			} else if !ok {
 				return fmt.Errorf("index-dir is not a directory")

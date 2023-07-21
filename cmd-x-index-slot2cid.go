@@ -36,7 +36,7 @@ func newCmd_Index_slot2cid() *cli.Command {
 			indexDir := c.Args().Get(1)
 			tmpDir := c.String("tmp-dir")
 
-			if ok, err := IsDir(indexDir); err != nil {
+			if ok, err := isDirectory(indexDir); err != nil {
 				return err
 			} else if !ok {
 				return fmt.Errorf("index-dir is not a directory")

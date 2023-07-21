@@ -62,6 +62,7 @@ require (
 	github.com/mr-tron/base58 v1.2.0
 	github.com/patrickmn/go-cache v2.1.0+incompatible
 	github.com/ronanh/intcomp v1.1.0
+	github.com/ryanuber/go-glob v1.0.0
 	github.com/tejzpr/ordered-concurrently/v3 v3.0.1
 	github.com/valyala/fasthttp v1.47.0
 	gopkg.in/yaml.v3 v3.0.1
