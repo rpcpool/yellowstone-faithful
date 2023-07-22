@@ -406,7 +406,7 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 	)
 	tim.time("reply")
 	if err != nil {
-		klog.Errorf("failed to reply: %v", err)
+		return nil, fmt.Errorf("failed to reply: %w", err)
 	}
 	return nil, nil
 }
