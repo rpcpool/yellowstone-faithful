@@ -162,6 +162,10 @@ func adaptTransactionMetaToExpectedOutput(m map[string]any) map[string]any {
 		if _, ok := meta["postTokenBalances"]; !ok {
 			meta["postTokenBalances"] = []any{}
 		}
+		if _, ok := meta["returnDataNone"]; !ok {
+			// TODO: what is this?
+			meta["returnDataNone"] = nil
+		}
 		if _, ok := meta["preTokenBalances"]; !ok {
 			meta["preTokenBalances"] = []any{}
 		}
