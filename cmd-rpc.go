@@ -44,8 +44,7 @@ func newCmd_rpc() *cli.Command {
 			klog.Infof("Found %d config files", len(configFiles))
 			spew.Dump(configFiles)
 
-			// TODO:
-			// - load config files and validate them
+			// Load configs:
 			configs := make(ConfigSlice, 0)
 			for _, configFile := range configFiles {
 				config, err := loadConfig(configFile)
@@ -54,11 +53,13 @@ func newCmd_rpc() *cli.Command {
 				}
 				configs = append(configs, config)
 			}
+			// Validate configs:
 			if err := configs.Validate(); err != nil {
 				return cli.Exit(fmt.Sprintf("error validating configs: %s", err.Error()), 1)
 			}
 			configs.SortByEpoch()
 			klog.Infof("Loaded %d epoch configs", len(configs))
+			klog.Info("Initializing epochs...")
 
 			epochs := make([]*Epoch, 0)
 			for _, config := range configs {
