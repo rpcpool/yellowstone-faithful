@@ -16,8 +16,8 @@ func newCmd_rpc() *cli.Command {
 	var gsfaOnlySignatures bool
 	return &cli.Command{
 		Name:        "rpc",
-		Description: "Start a Solana JSON RPC that exposes getTransaction, getBlock, and (optionally) getSignaturesForAddress",
-		ArgsUsage:   "<one or more config files or directories>",
+		Description: "Provide multiple epoch config files, and start a Solana JSON RPC that exposes getTransaction, getBlock, and (optionally) getSignaturesForAddress",
+		ArgsUsage:   "<one or more config files or directories containing config files (nested is fine)>",
 		Before: func(c *cli.Context) error {
 			return nil
 		},
