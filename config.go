@@ -20,15 +20,15 @@ func (u URI) IsValid() bool {
 	if u.IsZero() {
 		return false
 	}
-	return u.IsLocalFile() || u.IsRemoteWeb() || u.IsCID() || u.IsIPFS() || u.IsFilecoin()
+	return u.IsLocal() || u.IsRemoteWeb() || u.IsCID() || u.IsIPFS() || u.IsFilecoin()
 }
 
-// IsLocalFile returns true if the URI is a local file.
-func (u URI) IsLocalFile() bool {
+// IsLocal returns true if the URI is a local file or directory.
+func (u URI) IsLocal() bool {
 	return (len(u) > 7 && u[:7] == "file://") || (len(u) > 1 && u[0] == '/')
 }
 
-// IsRemoteWeb returns true if the URI is a remote web URI.
+// IsRemoteWeb returns true if the URI is a remote web URI (HTTP or HTTPS).
 func (u URI) IsRemoteWeb() bool {
 	// http:// or https://
 	return len(u) > 7 && u[:7] == "http://" || len(u) > 8 && u[:8] == "https://"
@@ -146,12 +146,15 @@ func (c *Config) Validate() error {
 	// In Filecoin-mode, the data is fetched from Filecoin directly (by CID via Lassie).
 	isFilecoinMode := c.Data.FilecoinMode
 	isCarMode := !isFilecoinMode
-	if isCarMode && c.Data.URI.IsZero() {
-		return fmt.Errorf("data.uri must be set")
+	if isCarMode {
+		if c.Data.URI.IsZero() {
+			return fmt.Errorf("data.uri must be set")
+		}
+		if c.Indexes.CidToOffset.URI.IsZero() {
+			return fmt.Errorf("indexes.cid_to_offset.uri must be set")
+		}
 	}
-	if isCarMode && c.Indexes.CidToOffset.URI.IsZero() {
-		return fmt.Errorf("indexes.cid_to_offset.uri must be set")
-	}
+
 	if c.Indexes.SlotToCid.URI.IsZero() {
 		return fmt.Errorf("indexes.slot_to_cid.uri must be set")
 	}
@@ -164,11 +167,13 @@ func (c *Config) Validate() error {
 	// }
 	{
 		// check that the URIs are valid
-		if isCarMode && !c.Data.URI.IsValid() {
-			return fmt.Errorf("data.uri is invalid")
-		}
-		if isCarMode && !c.Indexes.CidToOffset.URI.IsValid() {
-			return fmt.Errorf("indexes.cid_to_offset.uri is invalid")
+		if isCarMode {
+			if !c.Data.URI.IsValid() {
+				return fmt.Errorf("data.uri is invalid")
+			}
+			if !c.Indexes.CidToOffset.URI.IsValid() {
+				return fmt.Errorf("indexes.cid_to_offset.uri is invalid")
+			}
 		}
 		if !c.Indexes.SlotToCid.URI.IsValid() {
 			return fmt.Errorf("indexes.slot_to_cid.uri is invalid")
@@ -178,6 +183,10 @@ func (c *Config) Validate() error {
 		}
 		if !c.Indexes.Gsfa.URI.IsZero() && !c.Indexes.Gsfa.URI.IsValid() {
 			return fmt.Errorf("indexes.gsfa.uri is invalid")
+		}
+		// gsfa, if set, must be a local directory:
+		if !c.Indexes.Gsfa.URI.IsZero() && !c.Indexes.Gsfa.URI.IsLocal() {
+			return fmt.Errorf("indexes.gsfa.uri must be a local directory")
 		}
 	}
 	return nil

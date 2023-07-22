@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -86,11 +88,20 @@ func (m *MultiEpoch) ListenAndServe(listenOn string) error {
 	return fasthttp.ListenAndServe(listenOn, h)
 }
 
+func randomRequestID() string {
+	b := make([]byte, 4)
+	if _, err := rand.Read(b); err != nil {
+		panic(err)
+	}
+	return strings.ToUpper(fmt.Sprintf("%x", b))
+}
+
 func newMultiEpochHandler(handler *MultiEpoch) func(ctx *fasthttp.RequestCtx) {
 	return func(c *fasthttp.RequestCtx) {
 		startedAt := time.Now()
+		reqID := randomRequestID()
 		defer func() {
-			klog.Infof("Request took %s", time.Since(startedAt))
+			klog.Infof("[%s] request took %s", reqID, time.Since(startedAt))
 		}()
 		{
 			// make sure the method is POST
@@ -121,7 +132,7 @@ func newMultiEpochHandler(handler *MultiEpoch) func(ctx *fasthttp.RequestCtx) {
 		// parse request
 		var rpcRequest jsonrpc2.Request
 		if err := json.Unmarshal(body, &rpcRequest); err != nil {
-			klog.Errorf("failed to unmarshal request: %v", err)
+			klog.Errorf("[%s] failed to parse request body: %v", err)
 			replyJSON(c, http.StatusBadRequest, jsonrpc2.Response{
 				Error: &jsonrpc2.Error{
 					Code:    jsonrpc2.CodeParseError,
@@ -131,14 +142,15 @@ func newMultiEpochHandler(handler *MultiEpoch) func(ctx *fasthttp.RequestCtx) {
 			return
 		}
 
-		klog.Infof("Received request: %q", string(body))
+		klog.Infof("[%s] received request: %q", reqID, strings.TrimSpace(string(body)))
 
 		rqCtx := &requestContext{ctx: c}
+		method := rpcRequest.Method
 
 		// errorResp is the error response to be sent to the client.
 		errorResp, err := handler.handleRequest(c, rqCtx, &rpcRequest)
 		if err != nil {
-			klog.Errorf("failed to handle request: %v", err)
+			klog.Errorf("[%s] failed to handle %s: %v", reqID, sanitizeMethod(method), err)
 		}
 		if errorResp != nil {
 			rqCtx.ReplyWithError(
@@ -148,6 +160,22 @@ func newMultiEpochHandler(handler *MultiEpoch) func(ctx *fasthttp.RequestCtx) {
 			)
 			return
 		}
+	}
+}
+
+func sanitizeMethod(method string) string {
+	if isValidMethod(method) {
+		return method
+	}
+	return "<unknown>"
+}
+
+func isValidMethod(method string) bool {
+	switch method {
+	case "getBlock", "getTransaction", "getSignaturesForAddress":
+		return true
+	default:
+		return false
 	}
 }
 
@@ -164,6 +192,6 @@ func (ser *MultiEpoch) handleRequest(ctx context.Context, conn *requestContext, 
 		return &jsonrpc2.Error{
 			Code:    jsonrpc2.CodeMethodNotFound,
 			Message: "Method not found",
-		}, nil
+		}, fmt.Errorf("method not found")
 	}
 }
