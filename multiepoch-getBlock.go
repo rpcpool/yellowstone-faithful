@@ -158,7 +158,7 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 	}
 	blocktime := uint64(block.Meta.Blocktime)
 
-	allTransactionNodes := make([]*ipldbindcode.Transaction, 0)
+	allTransactionNodes := make([][]*ipldbindcode.Transaction, len(block.Entries))
 	mu := &sync.Mutex{}
 	var lastEntryHash solana.Hash
 	{
@@ -183,6 +183,7 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 				twg := new(errgroup.Group)
 				twg.SetLimit(runtime.NumCPU())
 				// get the transactions from the entry
+				allTransactionNodes[entryIndex] = make([]*ipldbindcode.Transaction, len(entryNode.Transactions))
 				for txI := range entryNode.Transactions {
 					txI := txI
 					tx := entryNode.Transactions[txI]
@@ -197,7 +198,7 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 						// NOTE: this messes up the order of transactions,
 						// but we sort them later anyway.
 						mu.Lock()
-						allTransactionNodes = append(allTransactionNodes, txNode)
+						allTransactionNodes[entryIndex][txI] = txNode
 						mu.Unlock()
 						return nil
 					})
@@ -296,7 +297,7 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 	}
 	tim.time("get rewards")
 	{
-		for _, transactionNode := range allTransactionNodes {
+		for _, transactionNode := range mergeTxNodeSlices(allTransactionNodes) {
 			var txResp GetTransactionResponse
 
 			// response.Slot = uint64(transactionNode.Slot)
@@ -408,4 +409,12 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 		klog.Errorf("failed to reply: %v", err)
 	}
 	return nil, nil
+}
+
+func mergeTxNodeSlices(slices [][]*ipldbindcode.Transaction) []*ipldbindcode.Transaction {
+	var out []*ipldbindcode.Transaction
+	for _, slice := range slices {
+		out = append(out, slice...)
+	}
+	return out
 }
