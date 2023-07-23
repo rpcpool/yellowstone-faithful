@@ -65,7 +65,7 @@ func NewEpochFromConfig(config *Config, c *cli.Context) (*Epoch, error) {
 	if config == nil {
 		return nil, fmt.Errorf("config must not be nil")
 	}
-	isLassieMode := config.Data.FilecoinMode
+	isLassieMode := config.IsFilecoinMode()
 	isCarMode := !isLassieMode
 
 	ep := &Epoch{
@@ -137,7 +137,7 @@ func NewEpochFromConfig(config *Config, c *cli.Context) (*Epoch, error) {
 	}
 
 	if isCarMode {
-		localCarReader, remoteCarReader, err := openCarStorage(string(config.Data.URI))
+		localCarReader, remoteCarReader, err := openCarStorage(string(config.Data.Car.URI))
 		if err != nil {
 			return nil, fmt.Errorf("failed to open CAR file: %w", err)
 		}

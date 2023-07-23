@@ -74,8 +74,12 @@ type Config struct {
 	originalFilepath string
 	Epoch            *uint64 `json:"epoch" yaml:"epoch"`
 	Data             struct {
-		FilecoinMode bool `json:"filecoin_mode" yaml:"filecoin_mode"`
-		URI          URI  `json:"uri" yaml:"uri"`
+		Car *struct {
+			URI URI `json:"uri" yaml:"uri"`
+		} `json:"car" yaml:"car"`
+		Filecoin *struct {
+			Mode bool `json:"mode" yaml:"mode"`
+		} `json:"filecoin" yaml:"filecoin"`
 	} `json:"data" yaml:"data"`
 	Indexes struct {
 		CidToOffset struct {
@@ -100,7 +104,7 @@ func (c *Config) ConfigFilepath() string {
 // IsFilecoinMode returns true if the config is in Filecoin mode.
 // This means that the data is going to be fetched from Filecoin directly (by CID).
 func (c *Config) IsFilecoinMode() bool {
-	return c.Data.FilecoinMode
+	return c.Data.Filecoin != nil && c.Data.Filecoin.Mode
 }
 
 type ConfigSlice []*Config
@@ -144,11 +148,14 @@ func (c *Config) Validate() error {
 	// Distinguish between CAR-mode and Filecoin-mode.
 	// In CAR-mode, the data is fetched from a CAR file (local or remote).
 	// In Filecoin-mode, the data is fetched from Filecoin directly (by CID via Lassie).
-	isFilecoinMode := c.Data.FilecoinMode
+	isFilecoinMode := c.IsFilecoinMode()
 	isCarMode := !isFilecoinMode
 	if isCarMode {
-		if c.Data.URI.IsZero() {
-			return fmt.Errorf("data.uri must be set")
+		if c.Data.Car == nil {
+			return fmt.Errorf("car-mode=true; data.car must be set")
+		}
+		if c.Data.Car.URI.IsZero() {
+			return fmt.Errorf("data.car.uri must be set")
 		}
 		if c.Indexes.CidToOffset.URI.IsZero() {
 			return fmt.Errorf("indexes.cid_to_offset.uri must be set")
@@ -168,8 +175,8 @@ func (c *Config) Validate() error {
 	{
 		// check that the URIs are valid
 		if isCarMode {
-			if !c.Data.URI.IsValid() {
-				return fmt.Errorf("data.uri is invalid")
+			if !c.Data.Car.URI.IsValid() {
+				return fmt.Errorf("data.car.uri is invalid")
 			}
 			if !c.Indexes.CidToOffset.URI.IsValid() {
 				return fmt.Errorf("indexes.cid_to_offset.uri is invalid")
