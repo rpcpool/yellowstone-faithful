@@ -140,6 +140,14 @@ func (c ConfigSlice) SortByEpoch() {
 	})
 }
 
+func isSupportedURI(uri URI, path string) error {
+	isSupported := uri.IsLocal() || uri.IsRemoteWeb()
+	if !isSupported {
+		return fmt.Errorf("%s must be a local file or a remote web URI", path)
+	}
+	return nil
+}
+
 // Validate checks the config for errors.
 func (c *Config) Validate() error {
 	if c.Epoch == nil {
@@ -157,21 +165,29 @@ func (c *Config) Validate() error {
 		if c.Data.Car.URI.IsZero() {
 			return fmt.Errorf("data.car.uri must be set")
 		}
+		if err := isSupportedURI(c.Data.Car.URI, "data.car.uri"); err != nil {
+			return err
+		}
 		if c.Indexes.CidToOffset.URI.IsZero() {
 			return fmt.Errorf("indexes.cid_to_offset.uri must be set")
+		}
+		if err := isSupportedURI(c.Indexes.CidToOffset.URI, "indexes.cid_to_offset.uri"); err != nil {
+			return err
 		}
 	}
 
 	if c.Indexes.SlotToCid.URI.IsZero() {
 		return fmt.Errorf("indexes.slot_to_cid.uri must be set")
 	}
+	if err := isSupportedURI(c.Indexes.SlotToCid.URI, "indexes.slot_to_cid.uri"); err != nil {
+		return err
+	}
 	if c.Indexes.SigToCid.URI.IsZero() {
 		return fmt.Errorf("indexes.sig_to_cid.uri must be set")
 	}
-	// The GSFA index is optional.
-	// if c.Indexes.Gsfa.URI.IsZero() {
-	// 	return fmt.Errorf("indexes.gsfa.uri must be set")
-	// }
+	if err := isSupportedURI(c.Indexes.SigToCid.URI, "indexes.sig_to_cid.uri"); err != nil {
+		return err
+	}
 	{
 		// check that the URIs are valid
 		if isCarMode {
@@ -191,7 +207,7 @@ func (c *Config) Validate() error {
 		if !c.Indexes.Gsfa.URI.IsZero() && !c.Indexes.Gsfa.URI.IsValid() {
 			return fmt.Errorf("indexes.gsfa.uri is invalid")
 		}
-		// gsfa, if set, must be a local directory:
+		// gsfa index (optional), if set, must be a local directory:
 		if !c.Indexes.Gsfa.URI.IsZero() && !c.Indexes.Gsfa.URI.IsLocal() {
 			return fmt.Errorf("indexes.gsfa.uri must be a local directory")
 		}
