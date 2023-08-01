@@ -117,7 +117,7 @@ func newCmd_Index_sigToEpoch() *cli.Command {
 				if err != nil {
 					return fmt.Errorf("error while getting epochs: %w", err)
 				}
-				klog.Infof("Index contains %d epochs", len(epochs))
+				klog.Infof("Index (currently) contains %d epochs", len(epochs))
 				for _, epoch := range epochs {
 					klog.Infof("- Epoch #%d", epoch)
 				}
