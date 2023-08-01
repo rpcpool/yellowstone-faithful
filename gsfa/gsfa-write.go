@@ -14,7 +14,7 @@ import (
 	"github.com/rpcpool/yellowstone-faithful/gsfa/manifest"
 	"github.com/rpcpool/yellowstone-faithful/gsfa/offsetstore"
 	"github.com/rpcpool/yellowstone-faithful/gsfa/sff"
-	"github.com/rpcpool/yellowstone-faithful/gsfa/store"
+	"github.com/rpcpool/yellowstone-faithful/store"
 	"k8s.io/klog"
 )
 
@@ -62,7 +62,7 @@ func NewGsfaWriter(
 		if err := os.MkdirAll(offsetsIndexDir, 0o755); err != nil {
 			return nil, err
 		}
-		offsets, err := offsetstore.OpenOffsetStore(
+		offsets, err := offsetstore.Open(
 			context.Background(),
 			filepath.Join(offsetsIndexDir, "index"),
 			filepath.Join(offsetsIndexDir, "data"),

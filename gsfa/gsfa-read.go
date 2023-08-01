@@ -13,7 +13,7 @@ import (
 	"github.com/rpcpool/yellowstone-faithful/gsfa/manifest"
 	"github.com/rpcpool/yellowstone-faithful/gsfa/offsetstore"
 	"github.com/rpcpool/yellowstone-faithful/gsfa/sff"
-	"github.com/rpcpool/yellowstone-faithful/gsfa/store"
+	"github.com/rpcpool/yellowstone-faithful/store"
 )
 
 type GsfaReader struct {
@@ -41,7 +41,7 @@ func NewGsfaReader(indexRootDir string) (*GsfaReader, error) {
 	index := &GsfaReader{}
 	{
 		offsetsIndexDir := filepath.Join(indexRootDir, "offsets-index")
-		offsets, err := offsetstore.OpenOffsetStore(
+		offsets, err := offsetstore.Open(
 			context.Background(),
 			filepath.Join(offsetsIndexDir, "index"),
 			filepath.Join(offsetsIndexDir, "data"),

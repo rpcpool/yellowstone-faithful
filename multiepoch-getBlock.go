@@ -38,7 +38,7 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 
 	// find the epoch that contains the requested slot
 	epochNumber := CalcEpochForSlot(slot)
-	epoch, err := multi.GetEpoch(epochNumber)
+	epochHandler, err := multi.GetEpoch(epochNumber)
 	if err != nil {
 		return &jsonrpc2.Error{
 			Code:    CodeNotFound,
@@ -46,9 +46,7 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 		}, fmt.Errorf("failed to get epoch %d: %w", epochNumber, err)
 	}
 
-	ser := epoch
-
-	block, err := ser.GetBlock(WithSubrapghPrefetch(ctx, true), slot)
+	block, err := epochHandler.GetBlock(WithSubrapghPrefetch(ctx, true), slot)
 	if err != nil {
 		if errors.Is(err, compactindex36.ErrNotFound) {
 			return &jsonrpc2.Error{
@@ -68,14 +66,14 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 			var blockCid, parentCid cid.Cid
 			wg := new(errgroup.Group)
 			wg.Go(func() (err error) {
-				blockCid, err = ser.FindCidFromSlot(ctx, slot)
+				blockCid, err = epochHandler.FindCidFromSlot(ctx, slot)
 				if err != nil {
 					return err
 				}
 				return nil
 			})
 			wg.Go(func() (err error) {
-				parentCid, err = ser.FindCidFromSlot(ctx, uint64(block.Meta.Parent_slot))
+				parentCid, err = epochHandler.FindCidFromSlot(ctx, uint64(block.Meta.Parent_slot))
 				if err != nil {
 					return err
 				}
@@ -89,14 +87,14 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 				var blockOffset, parentOffset uint64
 				wg := new(errgroup.Group)
 				wg.Go(func() (err error) {
-					blockOffset, err = ser.FindOffsetFromCid(ctx, blockCid)
+					blockOffset, err = epochHandler.FindOffsetFromCid(ctx, blockCid)
 					if err != nil {
 						return err
 					}
 					return nil
 				})
 				wg.Go(func() (err error) {
-					parentOffset, err = ser.FindOffsetFromCid(ctx, parentCid)
+					parentOffset, err = epochHandler.FindOffsetFromCid(ctx, parentCid)
 					if err != nil {
 						// If the parent is not found, it (probably) means that it's outside of the car file.
 						parentOffset = 0
@@ -116,7 +114,7 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 				if length > GiB {
 					length = GiB
 				}
-				carSection, err := ser.ReadAtFromCar(ctx, parentOffset, length)
+				carSection, err := epochHandler.ReadAtFromCar(ctx, parentOffset, length)
 				if err != nil {
 					return err
 				}
@@ -131,7 +129,7 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 				if !parentIsInPreviousEpoch && !gotCid.Equals(parentCid) {
 					return fmt.Errorf("CID mismatch: expected %s, got %s", parentCid, gotCid)
 				}
-				ser.putNodeInCache(gotCid, data)
+				epochHandler.putNodeInCache(gotCid, data)
 
 				for {
 					gotCid, data, err = util.ReadNode(br)
@@ -144,12 +142,12 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 					if gotCid.Equals(blockCid) {
 						break
 					}
-					ser.putNodeInCache(gotCid, data)
+					epochHandler.putNodeInCache(gotCid, data)
 				}
 			}
 			return nil
 		}
-		if ser.lassieFetcher == nil {
+		if epochHandler.lassieFetcher == nil {
 			err := prefetcherFromCar()
 			if err != nil {
 				klog.Errorf("failed to prefetch from car: %v", err)
@@ -170,7 +168,7 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 			entryCid := entry.(cidlink.Link).Cid
 			wg.Go(func() error {
 				// get the entry by CID
-				entryNode, err := ser.GetEntryByCid(ctx, entryCid)
+				entryNode, err := epochHandler.GetEntryByCid(ctx, entryCid)
 				if err != nil {
 					klog.Errorf("failed to decode Entry: %v", err)
 					return err
@@ -190,7 +188,7 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 					twg.Go(func() error {
 						// get the transaction by CID
 						tcid := tx.(cidlink.Link).Cid
-						txNode, err := ser.GetTransactionByCid(ctx, tcid)
+						txNode, err := epochHandler.GetTransactionByCid(ctx, tcid)
 						if err != nil {
 							klog.Errorf("failed to decode Transaction %s: %v", tcid, err)
 							return nil
@@ -220,14 +218,14 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 	var rewards any
 	hasRewards := !block.Rewards.(cidlink.Link).Cid.Equals(DummyCID)
 	if hasRewards {
-		rewardsNode, err := ser.GetRewardsByCid(ctx, block.Rewards.(cidlink.Link).Cid)
+		rewardsNode, err := epochHandler.GetRewardsByCid(ctx, block.Rewards.(cidlink.Link).Cid)
 		if err != nil {
 			return &jsonrpc2.Error{
 				Code:    jsonrpc2.CodeInternalError,
 				Message: "Internal error",
 			}, fmt.Errorf("failed to decode Rewards: %v", err)
 		}
-		rewardsBuf, err := loadDataFromDataFrames(&rewardsNode.Data, ser.GetDataFrameByCid)
+		rewardsBuf, err := loadDataFromDataFrames(&rewardsNode.Data, epochHandler.GetDataFrameByCid)
 		if err != nil {
 			return &jsonrpc2.Error{
 				Code:    jsonrpc2.CodeInternalError,
@@ -310,7 +308,7 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 				if ok {
 					txResp.Position = uint64(pos)
 				}
-				tx, meta, err := parseTransactionAndMetaFromNode(transactionNode, ser.GetDataFrameByCid)
+				tx, meta, err := parseTransactionAndMetaFromNode(transactionNode, epochHandler.GetDataFrameByCid)
 				if err != nil {
 					return &jsonrpc2.Error{
 						Code:    jsonrpc2.CodeInternalError,
@@ -360,7 +358,7 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 		// get parent slot
 		parentSlot := uint64(block.Meta.Parent_slot)
 		if parentSlot != 0 {
-			parentBlock, err := ser.GetBlock(WithSubrapghPrefetch(ctx, false), parentSlot)
+			parentBlock, err := epochHandler.GetBlock(WithSubrapghPrefetch(ctx, false), parentSlot)
 			if err != nil {
 				return &jsonrpc2.Error{
 					Code:    jsonrpc2.CodeInternalError,
@@ -370,7 +368,7 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 
 			if len(parentBlock.Entries) > 0 {
 				lastEntryCidOfParent := parentBlock.Entries[len(parentBlock.Entries)-1]
-				parentEntryNode, err := ser.GetEntryByCid(ctx, lastEntryCidOfParent.(cidlink.Link).Cid)
+				parentEntryNode, err := epochHandler.GetEntryByCid(ctx, lastEntryCidOfParent.(cidlink.Link).Cid)
 				if err != nil {
 					return &jsonrpc2.Error{
 						Code:    jsonrpc2.CodeInternalError,

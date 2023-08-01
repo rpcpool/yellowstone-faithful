@@ -14,6 +14,7 @@ import (
 func newCmd_rpc() *cli.Command {
 	var listenOn string
 	var gsfaOnlySignatures bool
+	var sigToEpochIndexDir string
 	return &cli.Command{
 		Name:        "rpc",
 		Description: "Provide multiple epoch config files, and start a Solana JSON RPC that exposes getTransaction, getBlock, and (optionally) getSignaturesForAddress",
@@ -33,6 +34,12 @@ func newCmd_rpc() *cli.Command {
 				Usage:       "gSFA: only return signatures",
 				Value:       false,
 				Destination: &gsfaOnlySignatures,
+			},
+			&cli.StringFlag{
+				Name:        "sig-to-epoch-index",
+				Usage:       "Path to the sig-to-epoch index directory",
+				Value:       "",
+				Destination: &sigToEpochIndexDir,
 			},
 		),
 		Action: func(c *cli.Context) error {
@@ -72,6 +79,7 @@ func newCmd_rpc() *cli.Command {
 
 			multi := NewMultiEpoch(&Options{
 				GsfaOnlySignatures: gsfaOnlySignatures,
+				PathToSigToEpoch:   sigToEpochIndexDir,
 			})
 
 			for _, epoch := range epochs {
