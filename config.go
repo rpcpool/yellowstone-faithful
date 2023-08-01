@@ -78,7 +78,8 @@ type Config struct {
 			URI URI `json:"uri" yaml:"uri"`
 		} `json:"car" yaml:"car"`
 		Filecoin *struct {
-			Mode bool `json:"mode" yaml:"mode"`
+			// Enable enables Filecoin mode. If false, or if this section is not present, CAR mode is used.
+			Enable bool `json:"enable" yaml:"enable"`
 		} `json:"filecoin" yaml:"filecoin"`
 	} `json:"data" yaml:"data"`
 	Indexes struct {
@@ -104,7 +105,7 @@ func (c *Config) ConfigFilepath() string {
 // IsFilecoinMode returns true if the config is in Filecoin mode.
 // This means that the data is going to be fetched from Filecoin directly (by CID).
 func (c *Config) IsFilecoinMode() bool {
-	return c.Data.Filecoin != nil && c.Data.Filecoin.Mode
+	return c.Data.Filecoin != nil && c.Data.Filecoin.Enable
 }
 
 type ConfigSlice []*Config
