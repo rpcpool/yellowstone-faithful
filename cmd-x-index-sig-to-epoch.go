@@ -209,7 +209,20 @@ func newCmd_Index_sigToEpoch() *cli.Command {
 				waitResultsReceived.Wait()
 				klog.Infof("All results received")
 			}
-			klog.Infof("Success: sig-to-epoch index created at %s", sigToEpochIndexDir)
+
+			if existed {
+				klog.Infof("Success: sig-to-epoch index appended at %s", sigToEpochIndexDir)
+				epochs, err := index.Epochs()
+				if err != nil {
+					return fmt.Errorf("error while getting epochs: %w", err)
+				}
+				klog.Infof("Index (now) contains %d epochs", len(epochs))
+				for _, epoch := range epochs {
+					klog.Infof("- Epoch #%d", epoch)
+				}
+			} else {
+				klog.Infof("Success: sig-to-epoch index created at %s", sigToEpochIndexDir)
+			}
 			return nil
 		},
 	}
