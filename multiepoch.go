@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -80,6 +81,35 @@ func (m *MultiEpoch) ReplaceEpoch(epoch uint64, ep *Epoch) error {
 	}
 	m.epochs[epoch] = ep
 	return nil
+}
+
+func (m *MultiEpoch) CountEpochs() int {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return len(m.epochs)
+}
+
+func (m *MultiEpoch) EpochNumbers() []uint64 {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	var epochNumbers []uint64
+	for epochNumber := range m.epochs {
+		epochNumbers = append(epochNumbers, epochNumber)
+	}
+	sort.Slice(epochNumbers, func(i, j int) bool {
+		return epochNumbers[i] > epochNumbers[j]
+	})
+	return epochNumbers
+}
+
+func (m *MultiEpoch) GetFirstAvailableEpoch() (*Epoch, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	numbers := m.EpochNumbers()
+	if len(numbers) > 0 {
+		return m.epochs[numbers[0]], nil
+	}
+	return nil, fmt.Errorf("no epochs available")
 }
 
 // ListeAndServe starts listening on the configured address and serves the RPC API.

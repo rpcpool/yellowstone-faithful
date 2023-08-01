@@ -11,7 +11,8 @@ import (
 )
 
 func (ser *MultiEpoch) handleGetTransaction(ctx context.Context, conn *requestContext, req *jsonrpc2.Request) (*jsonrpc2.Error, error) {
-	if ser.sigToEpoch == nil {
+	if ser.sigToEpoch == nil && ser.CountEpochs() > 1 {
+		// The sig-to-epoch index is required when there's more than one epoch.
 		return &jsonrpc2.Error{
 			Code:    jsonrpc2.CodeInternalError,
 			Message: "getTransaction method is not enabled",
@@ -28,23 +29,35 @@ func (ser *MultiEpoch) handleGetTransaction(ctx context.Context, conn *requestCo
 
 	sig := params.Signature
 
-	epochNumber, err := ser.sigToEpoch.Get(ctx, sig)
-	if err != nil {
-		if sigtoepoch.IsNotFound(err) {
-			return nil, fmt.Errorf("not found epoch for signature %s", sig)
+	var epochHandler *Epoch
+	if ser.sigToEpoch != nil {
+		epochNumber, err := ser.sigToEpoch.Get(ctx, sig)
+		if err != nil {
+			if sigtoepoch.IsNotFound(err) {
+				return nil, fmt.Errorf("not found epoch for signature %s", sig)
+			}
+			return &jsonrpc2.Error{
+				Code:    jsonrpc2.CodeInternalError,
+				Message: "Internal error",
+			}, fmt.Errorf("failed to get epoch for signature %s: %v", sig, err)
 		}
-		return &jsonrpc2.Error{
-			Code:    jsonrpc2.CodeInternalError,
-			Message: "Internal error",
-		}, fmt.Errorf("failed to get epoch for signature %s: %v", sig, err)
-	}
 
-	epochHandler, err := ser.GetEpoch(uint64(epochNumber))
-	if err != nil {
-		return &jsonrpc2.Error{
-			Code:    CodeNotFound,
-			Message: fmt.Sprintf("Epoch %d is not available from this RPC", epochNumber),
-		}, fmt.Errorf("failed to get handler for epoch %d: %w", epochNumber, err)
+		epochHandler, err = ser.GetEpoch(uint64(epochNumber))
+		if err != nil {
+			return &jsonrpc2.Error{
+				Code:    CodeNotFound,
+				Message: fmt.Sprintf("Epoch %d is not available from this RPC", epochNumber),
+			}, fmt.Errorf("failed to get handler for epoch %d: %w", epochNumber, err)
+		}
+	} else {
+		// When there's only one epoch, we can just use the first available epoch:
+		epochHandler, err = ser.GetFirstAvailableEpoch()
+		if err != nil {
+			return &jsonrpc2.Error{
+				Code:    CodeNotFound,
+				Message: fmt.Sprintf("Epoch %d is not available from this RPC", 0),
+			}, fmt.Errorf("failed to get handler for epoch %d: %w", 0, err)
+		}
 	}
 
 	transactionNode, err := epochHandler.GetTransaction(WithSubrapghPrefetch(ctx, true), sig)
