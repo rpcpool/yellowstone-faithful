@@ -12,6 +12,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/dustin/go-humanize"
 	"github.com/gagliardetto/solana-go"
 	"github.com/ipfs/go-libipfs/blocks"
@@ -157,9 +158,12 @@ func newCmd_Index_sigToEpoch() *cli.Command {
 					case SignatureAndSlot:
 						slot := resValue.Slot
 						sig := resValue.Signature
-						err = index.Push(c.Context, sig, uint16(CalcEpochForSlot(slot)))
-						if err != nil {
-							klog.Exitf("Error while pushing to sig-to-epoch index: %s", err)
+						{
+							err = index.Push(c.Context, sig, uint16(CalcEpochForSlot(slot)))
+							if err != nil {
+								classicSpewConfig.Dump(err)
+								klog.Exitf("Error while pushing to sig-to-epoch index: %s", err)
+							}
 						}
 						waitResultsReceived.Done()
 						numReceivedAtomic.Add(-1)
@@ -182,6 +186,9 @@ func newCmd_Index_sigToEpoch() *cli.Command {
 					numTransactionsSeen++
 					if numTransactionsSeen%dotEvery == 0 {
 						fmt.Print(".")
+					}
+					if numTransactionsSeen%10_000_000 == 0 {
+						fmt.Println(humanize.Comma(int64(numTransactionsSeen)))
 					}
 					{
 						waitExecuted.Add(1)
@@ -226,6 +233,13 @@ func newCmd_Index_sigToEpoch() *cli.Command {
 			return nil
 		},
 	}
+}
+
+var classicSpewConfig = spew.ConfigState{
+	Indent:                  " ",
+	DisableMethods:          true,
+	DisablePointerMethods:   true,
+	DisablePointerAddresses: true,
 }
 
 type SignatureAndSlot struct {

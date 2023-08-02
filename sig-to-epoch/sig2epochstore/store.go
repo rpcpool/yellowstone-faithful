@@ -7,7 +7,6 @@ import (
 
 	"github.com/gagliardetto/solana-go"
 	store "github.com/rpcpool/yellowstone-faithful/store"
-	storetypes "github.com/rpcpool/yellowstone-faithful/store/types"
 )
 
 type Store struct {
@@ -30,6 +29,7 @@ func Open(ctx context.Context, indexPath string, dataPath string, options ...sto
 	if err != nil {
 		return nil, err
 	}
+	store.SetReturnErrorOnDuplicatePut(true)
 	return &Store{store}, nil
 }
 
@@ -115,13 +115,7 @@ func (as *Store) Put(ctx context.Context, sig solana.Signature, loc Epoch) error
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
-	err := as.store.Put(sig[:], loc.Bytes())
-	// suppress key exist error because this is not expected behavior for a blockstore
-	if err == storetypes.ErrKeyExists {
-		// TODO: can we make the store mutable?
-		return nil
-	}
-	return err
+	return as.store.Put(sig[:], loc.Bytes())
 }
 
 func (as *Store) Flush() error {

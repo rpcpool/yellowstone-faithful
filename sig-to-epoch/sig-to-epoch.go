@@ -47,21 +47,24 @@ func NewIndex(
 	}
 	index := &Index{}
 	{
-		offsetsIndexDir := indexRootDir
-		if err := os.MkdirAll(offsetsIndexDir, 0o755); err != nil {
+		indexDir := indexRootDir
+		if err := os.MkdirAll(indexDir, 0o755); err != nil {
 			return nil, err
 		}
-		offsets, err := sig2epochstore.Open(
+		indexStore, err := sig2epochstore.Open(
 			context.Background(),
-			filepath.Join(offsetsIndexDir, "index"),
-			filepath.Join(offsetsIndexDir, "data"),
-			store.IndexBitSize(22),
+			filepath.Join(indexDir, "index"),
+			filepath.Join(indexDir, "data"),
+			store.IndexBitSize(28),
+			// 26 bits,         , 30m (15  GB per 144 million signatures)
+			// 28 bits,  5GB ram, 11m (15.4GB per 144 million signatures)
+			// 30 bits, 19GB ram, 14m (21.4GB per 144 million signatures)
 			store.GCInterval(time.Hour),
 		)
 		if err != nil {
 			return nil, fmt.Errorf("error while opening offset index: %w", err)
 		}
-		index.index = offsets
+		index.index = indexStore
 		index.index.Start()
 	}
 	{

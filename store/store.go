@@ -55,6 +55,13 @@ type Store struct {
 	flushNow     chan struct{}
 	syncInterval time.Duration
 	syncOnFlush  bool
+	immutable    bool
+}
+
+// SetReturnErrorOnDuplicatePut sets whether to return an error when a duplicate key is
+// inserted.
+func (s *Store) SetReturnErrorOnDuplicatePut(yes bool) {
+	s.immutable = yes
 }
 
 // OpenStore opens the index and returns a Store with the specified primary type.
@@ -343,6 +350,23 @@ func (s *Store) setErr(err error) {
 	s.stateLk.Unlock()
 }
 
+type ErrDuplicate struct {
+	Key         []byte
+	StoredKey   []byte
+	Value       []byte
+	StoredValue []byte
+}
+
+func (e *ErrDuplicate) Error() string {
+	return fmt.Sprintf("duplicate key: %x", e.Key)
+}
+
+// Is returns true if the error is an ErrDuplicate.
+func (e *ErrDuplicate) Is(err error) bool {
+	_, ok := err.(*ErrDuplicate)
+	return ok
+}
+
 func (s *Store) Put(key []byte, newValue []byte) error {
 	err := s.Err()
 	if err != nil {
@@ -376,6 +400,15 @@ func (s *Store) Put(key []byte, newValue []byte) error {
 		if storedKey != nil {
 			// if we're not accepting updates, this is the point we bail --
 			// the identical key is in primary storage, we don't do update operations
+
+			if s.immutable {
+				return &ErrDuplicate{
+					Key:         key,
+					StoredKey:   storedKey,
+					Value:       newValue,
+					StoredValue: storedVal,
+				}
+			}
 			cmpKey = true
 		}
 		// TODO: the key-value that we got here might be from the cache of primary storage,
@@ -385,15 +418,17 @@ func (s *Store) Put(key []byte, newValue []byte) error {
 			// directly return.
 			return nil
 		}
-		// overwrite in primary storage:
-		err = s.index.Primary.Overwrite(prevOffset, key, newValue)
-		if err != nil {
-			return err
-		}
-		// TODO: remove?
-		s.flushTick()
+		if storedKey != nil && bytes.Equal(indexKey, storedKey) {
+			// overwrite in primary storage:
+			err = s.index.Primary.Overwrite(prevOffset, key, newValue)
+			if err != nil {
+				return err
+			}
+			// TODO: remove?
+			s.flushTick()
 
-		return nil
+			return nil
+		}
 	}
 
 	// We are ready now to start putting/updating the value in the key.
