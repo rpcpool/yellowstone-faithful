@@ -17,6 +17,7 @@ import (
 )
 
 type GsfaReader struct {
+	epoch   *uint64
 	offsets *offsetstore.OffsetStore
 	ll      *linkedlog.LinkedLog
 	sff     *sff.SignaturesFlatFile
@@ -78,6 +79,17 @@ func NewGsfaReader(indexRootDir string) (*GsfaReader, error) {
 	return index, nil
 }
 
+func (index *GsfaReader) SetEpoch(epoch uint64) {
+	index.epoch = &epoch
+}
+
+func (index *GsfaReader) GetEpoch() (uint64, bool) {
+	if index.epoch == nil {
+		return 0, false
+	}
+	return *index.epoch, true
+}
+
 func (index *GsfaReader) Close() error {
 	return errors.Join(
 		index.offsets.Close(),
@@ -92,7 +104,7 @@ func (index *GsfaReader) Get(
 	limit int,
 ) ([]solana.Signature, error) {
 	if limit < 0 {
-		return nil, nil
+		return []solana.Signature{}, nil
 	}
 	locs, err := index.offsets.Get(context.Background(), pk)
 	if err != nil {
@@ -141,7 +153,7 @@ func (index *GsfaReader) GetBeforeUntil(
 	until *solana.Signature, // Until this signature, inclusive (i.e. stop at this signature, including it).
 ) ([]solana.Signature, error) {
 	if limit < 0 {
-		return nil, nil
+		return []solana.Signature{}, nil
 	}
 	locs, err := index.offsets.Get(context.Background(), pk)
 	if err != nil {

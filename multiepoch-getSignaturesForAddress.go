@@ -17,8 +17,8 @@ import (
 	"k8s.io/klog/v2"
 )
 
-// getGsfaReadersInEpochOrder returns a list of gsfa readers in epoch order (from most recent to oldest).
-func (ser *MultiEpoch) getGsfaReadersInEpochOrder() ([]*gsfa.GsfaReader, []uint64) {
+// getGsfaReadersInEpochDescendingOrder returns a list of gsfa readers in epoch order (from most recent to oldest).
+func (ser *MultiEpoch) getGsfaReadersInEpochDescendingOrder() ([]*gsfa.GsfaReader, []uint64) {
 	ser.mu.RLock()
 	defer ser.mu.RUnlock()
 
@@ -36,6 +36,7 @@ func (ser *MultiEpoch) getGsfaReadersInEpochOrder() ([]*gsfa.GsfaReader, []uint6
 	epochNums := make([]uint64, 0, len(epochs))
 	for _, epoch := range epochs {
 		if epoch.gsfaReader != nil {
+			epoch.gsfaReader.SetEpoch(epoch.Epoch())
 			gsfaReaders = append(gsfaReaders, epoch.gsfaReader)
 			epochNums = append(epochNums, epoch.Epoch())
 		}
@@ -69,7 +70,7 @@ func (multi *MultiEpoch) handleGetSignaturesForAddress(ctx context.Context, conn
 	pk := params.Address
 	limit := params.Limit
 
-	gsfaIndexes, epochNums := multi.getGsfaReadersInEpochOrder()
+	gsfaIndexes, _ := multi.getGsfaReadersInEpochDescendingOrder()
 	if len(gsfaIndexes) == 0 {
 		return &jsonrpc2.Error{
 			Code:    jsonrpc2.CodeInternalError,
@@ -77,27 +78,27 @@ func (multi *MultiEpoch) handleGetSignaturesForAddress(ctx context.Context, conn
 		}, fmt.Errorf("no gsfa indexes found")
 	}
 
-	foundSignatures := make(map[uint64][]solana.Signature)
-	for gi, gsfaReader := range gsfaIndexes {
-		sigs, err := gsfaReader.GetBeforeUntil(
-			ctx,
-			pk,
-			limit,
-			params.Before,
-			params.Until,
-		)
-		if err != nil {
-			continue
-		}
-		if len(sigs) == 0 {
-			continue
-		}
-		epoch := epochNums[gi]
-		foundSignatures[epoch] = append(foundSignatures[epoch], sigs...)
-		if len(foundSignatures) >= limit {
-			break
-		}
-		limit -= len(sigs)
+	gsfaMulti, err := gsfa.NewGsfaReaderMultiepoch(gsfaIndexes)
+	if err != nil {
+		return &jsonrpc2.Error{
+			Code:    jsonrpc2.CodeInternalError,
+			Message: "Internal error",
+		}, fmt.Errorf("failed to create gsfa multiepoch reader: %w", err)
+	}
+
+	// Get the signatures:
+	foundSignatures, err := gsfaMulti.GetBeforeUntil(
+		ctx,
+		pk,
+		limit,
+		params.Before,
+		params.Until,
+	)
+	if err != nil {
+		return &jsonrpc2.Error{
+			Code:    jsonrpc2.CodeInternalError,
+			Message: "Internal error",
+		}, fmt.Errorf("failed to get signatures: %w", err)
 	}
 
 	if len(foundSignatures) == 0 {
