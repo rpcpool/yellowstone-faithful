@@ -31,6 +31,11 @@ type GsfaWriter struct {
 	firstSlotOfCurrentBatch   uint64
 }
 
+var offsetstoreOptions = []store.Option{
+	store.IndexBitSize(22),
+	store.GCInterval(time.Hour),
+}
+
 // NewGsfaWriter creates or opens an existing index in WRITE mode.
 func NewGsfaWriter(
 	indexRootDir string,
@@ -66,8 +71,7 @@ func NewGsfaWriter(
 			context.Background(),
 			filepath.Join(offsetsIndexDir, "index"),
 			filepath.Join(offsetsIndexDir, "data"),
-			store.IndexBitSize(22),
-			store.GCInterval(time.Hour),
+			offsetstoreOptions...,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("error while opening offset index: %w", err)

@@ -6,14 +6,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"time"
 
 	"github.com/gagliardetto/solana-go"
 	"github.com/rpcpool/yellowstone-faithful/gsfa/linkedlog"
 	"github.com/rpcpool/yellowstone-faithful/gsfa/manifest"
 	"github.com/rpcpool/yellowstone-faithful/gsfa/offsetstore"
 	"github.com/rpcpool/yellowstone-faithful/gsfa/sff"
-	"github.com/rpcpool/yellowstone-faithful/store"
 )
 
 type GsfaReader struct {
@@ -46,8 +44,7 @@ func NewGsfaReader(indexRootDir string) (*GsfaReader, error) {
 			context.Background(),
 			filepath.Join(offsetsIndexDir, "index"),
 			filepath.Join(offsetsIndexDir, "data"),
-			store.IndexBitSize(22), // NOTE: if you don't specify this, the final size is smaller.
-			store.GCInterval(time.Hour),
+			offsetstoreOptions...,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("error while opening index: %w", err)
