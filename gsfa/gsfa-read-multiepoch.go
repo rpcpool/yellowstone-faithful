@@ -47,7 +47,7 @@ func (gsfa *GsfaReaderMultiepoch) Get(
 	pk solana.PublicKey,
 	limit int,
 ) (EpochToSignatures, error) {
-	if limit < 0 {
+	if limit <= 0 {
 		return nil, nil
 	}
 	sigs := make(EpochToSignatures)
@@ -94,7 +94,7 @@ func (multi *GsfaReaderMultiepoch) GetBeforeUntil(
 	before *solana.Signature, // Before this signature, exclusive (i.e. get signatures older than this signature, excluding it).
 	until *solana.Signature, // Until this signature, inclusive (i.e. stop at this signature, including it).
 ) (EpochToSignatures, error) {
-	if limit < 0 {
+	if limit <= 0 {
 		return make(EpochToSignatures), nil
 	}
 	return multi.iterBeforeUntil(ctx, pk, limit, before, until)
@@ -109,7 +109,7 @@ func (multi *GsfaReaderMultiepoch) iterBeforeUntil(
 	before *solana.Signature, // Before this signature, exclusive (i.e. get signatures older than this signature, excluding it).
 	until *solana.Signature, // Until this signature, inclusive (i.e. stop at this signature, including it).
 ) (EpochToSignatures, error) {
-	if limit < 0 {
+	if limit <= 0 {
 		return make(EpochToSignatures), nil
 	}
 

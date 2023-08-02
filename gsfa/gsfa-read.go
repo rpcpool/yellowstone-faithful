@@ -103,7 +103,7 @@ func (index *GsfaReader) Get(
 	pk solana.PublicKey,
 	limit int,
 ) ([]solana.Signature, error) {
-	if limit < 0 {
+	if limit <= 0 {
 		return []solana.Signature{}, nil
 	}
 	locs, err := index.offsets.Get(context.Background(), pk)
@@ -152,7 +152,7 @@ func (index *GsfaReader) GetBeforeUntil(
 	before *solana.Signature, // Before this signature, exclusive (i.e. get signatures older than this signature, excluding it).
 	until *solana.Signature, // Until this signature, inclusive (i.e. stop at this signature, including it).
 ) ([]solana.Signature, error) {
-	if limit < 0 {
+	if limit <= 0 {
 		return []solana.Signature{}, nil
 	}
 	locs, err := index.offsets.Get(context.Background(), pk)
