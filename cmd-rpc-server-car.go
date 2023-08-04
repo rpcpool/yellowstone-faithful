@@ -150,11 +150,34 @@ func newCmd_rpcServerCar() *cli.Command {
 func openIndexStorage(where string) (ReaderAtCloser, error) {
 	where = strings.TrimSpace(where)
 	if strings.HasPrefix(where, "http://") || strings.HasPrefix(where, "https://") {
-		return remoteHTTPFileAsIoReaderAt(where)
+		rac, err := remoteHTTPFileAsIoReaderAt(where)
+		if err != nil {
+			return nil, fmt.Errorf("failed to open index file: %w", err)
+		}
+		return &readCloserWrapper{rac}, nil
 	}
 	// TODO: add support for IPFS gateways.
 	// TODO: add support for Filecoin gateways.
-	return os.Open(where)
+	rac, err := os.Open(where)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open index file: %w", err)
+	}
+	return &readCloserWrapper{rac}, nil
+}
+
+type readCloserWrapper struct {
+	ReaderAtCloser
+}
+
+// when reading print a dot
+func (r *readCloserWrapper) ReadAt(p []byte, off int64) (n int, err error) {
+	fmt.Print("·")
+	return r.ReaderAtCloser.ReadAt(p, off)
+}
+
+// when closing print a newline
+func (r *readCloserWrapper) Close() error {
+	return r.ReaderAtCloser.Close()
 }
 
 func openCarStorage(where string) (*carv2.Reader, ReaderAtCloser, error) {
@@ -222,7 +245,7 @@ type HTTPSingleFileRemoteReaderAt struct {
 	url           string
 	contentLength int64
 	client        *http.Client
-	ca            *cache.Cache
+	ca            *cache.Cache // TODO: replace with range cache.
 }
 
 func getHttpCacheKey(off int64, p []byte) string {
@@ -274,7 +297,6 @@ func (r *HTTPSingleFileRemoteReaderAt) ReadAt(p []byte, off int64) (n int, err e
 	if off >= r.contentLength {
 		return 0, io.EOF
 	}
-	fmt.Print(".")
 	if n, err, has := r.getFromCache(off, p); has {
 		return n, err
 	}
