@@ -194,13 +194,28 @@ func remoteHTTPFileAsIoReaderAt(url string) (ReaderAtCloser, error) {
 	// Create a cache with a default expiration time of 5 minutes, and which
 	// purges expired items every 10 minutes
 	ca := cache.New(5*time.Minute, 10*time.Minute)
-
-	return &HTTPSingleFileRemoteReaderAt{
+	rr := &HTTPSingleFileRemoteReaderAt{
 		url:           url,
 		contentLength: contentLength,
 		client:        newHTTPClient(),
 		ca:            ca,
-	}, nil
+	}
+
+	// try prefetching the first n MiB:
+	{
+		MiB := int64(1024 * 1024)
+		prefetchSize := MiB
+		if prefetchSize > contentLength {
+			prefetchSize = contentLength
+		}
+		prefetchBuf := make([]byte, prefetchSize)
+		_, err := rr.ReadAt(prefetchBuf, 0)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return rr, nil
 }
 
 type HTTPSingleFileRemoteReaderAt struct {
