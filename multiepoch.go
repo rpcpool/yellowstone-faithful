@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/mr-tron/base58"
 	sigtoepoch "github.com/rpcpool/yellowstone-faithful/sig-to-epoch"
 	"github.com/sourcegraph/jsonrpc2"
 	"github.com/valyala/fasthttp"
@@ -152,7 +153,7 @@ func randomRequestID() string {
 	if _, err := rand.Read(b); err != nil {
 		panic(err)
 	}
-	return strings.ToUpper(fmt.Sprintf("%x", b))
+	return strings.ToUpper(base58.Encode(b))
 }
 
 func newMultiEpochHandler(handler *MultiEpoch) func(ctx *fasthttp.RequestCtx) {

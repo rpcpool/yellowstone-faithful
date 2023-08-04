@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -154,7 +155,7 @@ func openIndexStorage(where string) (ReaderAtCloser, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to open index file: %w", err)
 		}
-		return &readCloserWrapper{rac}, nil
+		return &readCloserWrapper{rac, where}, nil
 	}
 	// TODO: add support for IPFS gateways.
 	// TODO: add support for Filecoin gateways.
@@ -162,16 +163,18 @@ func openIndexStorage(where string) (ReaderAtCloser, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to open index file: %w", err)
 	}
-	return &readCloserWrapper{rac}, nil
+	return &readCloserWrapper{rac, where}, nil
 }
 
 type readCloserWrapper struct {
 	ReaderAtCloser
+	name string
 }
 
 // when reading print a dot
 func (r *readCloserWrapper) ReadAt(p []byte, off int64) (n int, err error) {
 	fmt.Print("·")
+	fmt.Printf("%s:%d-%d\n", filepath.Base(r.name), off, len(p))
 	return r.ReaderAtCloser.ReadAt(p, off)
 }
 
