@@ -162,21 +162,7 @@ var Empty [36]byte
 func (b *Bucket) binarySearch(target uint64) ([36]byte, error) {
 	low := 0
 	high := int(b.NumEntries)
-	for low <= high {
-		median := (low + high) / 2
-		entry, err := b.loadEntry(median)
-		if err != nil {
-			return Empty, err
-		}
-		if entry.Hash == target {
-			return entry.Value, nil
-		} else if entry.Hash < target {
-			low = median + 1
-		} else {
-			high = median - 1
-		}
-	}
-	return Empty, ErrNotFound
+	return searchEytzinger(low, high, target, b.loadEntry)
 }
 
 func (b *Bucket) loadEntry(i int) (Entry, error) {
@@ -191,3 +177,21 @@ func (b *Bucket) loadEntry(i int) (Entry, error) {
 
 // ErrNotFound marks a missing entry.
 var ErrNotFound = errors.New("not found")
+
+func searchEytzinger(min int, max int, x uint64, getter func(int) (Entry, error)) ([36]byte, error) {
+	var index int
+	for index < max {
+		k, err := getter(index)
+		if err != nil {
+			return Empty, err
+		}
+		if k.Hash == x {
+			return k.Value, nil
+		}
+		index = index<<1 | 1
+		if k.Hash < x {
+			index++
+		}
+	}
+	return Empty, ErrNotFound
+}

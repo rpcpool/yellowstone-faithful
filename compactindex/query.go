@@ -155,18 +155,22 @@ func (b *Bucket) Lookup(key []byte) (uint64, error) {
 func (b *Bucket) binarySearch(target uint64) (uint64, error) {
 	low := 0
 	high := int(b.NumEntries)
-	for low <= high {
-		median := (low + high) / 2
-		entry, err := b.loadEntry(median)
+	return searchEytzinger(low, high, target, b.loadEntry)
+}
+
+func searchEytzinger(min int, max int, x uint64, getter func(int) (Entry, error)) (uint64, error) {
+	var index int
+	for index < max {
+		k, err := getter(index)
 		if err != nil {
 			return 0, err
 		}
-		if entry.Hash == target {
-			return entry.Value, nil
-		} else if entry.Hash < target {
-			low = median + 1
-		} else {
-			high = median - 1
+		if k.Hash == x {
+			return k.Value, nil
+		}
+		index = index<<1 | 1
+		if k.Hash < x {
+			index++
 		}
 	}
 	return 0, ErrNotFound
