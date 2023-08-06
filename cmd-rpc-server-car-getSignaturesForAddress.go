@@ -85,7 +85,7 @@ func parseGetSignaturesForAddressParams(raw *json.RawMessage) (*GetSignaturesFor
 	return out, nil
 }
 
-func (ser *rpcServer) handleGetSignaturesForAddress(ctx context.Context, conn *requestContext, req *jsonrpc2.Request) {
+func (ser *deprecatedRPCServer) handleGetSignaturesForAddress(ctx context.Context, conn *requestContext, req *jsonrpc2.Request) {
 	if ser.gsfaReader == nil {
 		klog.Errorf("gsfaReader is nil")
 		conn.ReplyWithError(

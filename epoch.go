@@ -33,8 +33,32 @@ type Epoch struct {
 	slotToCidIndex   *compactindex36.DB
 	sigToCidIndex    *compactindex36.DB
 	gsfaReader       *gsfa.GsfaReader
-	cidToBlockCache  *cache.Cache // TODO: prevent OOM
+	cidToNodeCache   *cache.Cache // TODO: prevent OOM
 	onClose          []func() error
+	slotToCidCache   *cache.Cache
+	cidToOffsetCache *cache.Cache
+}
+
+func (r *Epoch) getSlotToCidFromCache(slot uint64) (cid.Cid, error, bool) {
+	if v, ok := r.slotToCidCache.Get(fmt.Sprint(slot)); ok {
+		return v.(cid.Cid), nil, true
+	}
+	return cid.Undef, nil, false
+}
+
+func (r *Epoch) putSlotToCidInCache(slot uint64, c cid.Cid) {
+	r.slotToCidCache.Set(fmt.Sprint(slot), c, cache.DefaultExpiration)
+}
+
+func (r *Epoch) getCidToOffsetFromCache(c cid.Cid) (uint64, error, bool) {
+	if v, ok := r.cidToOffsetCache.Get(c.String()); ok {
+		return v.(uint64), nil, true
+	}
+	return 0, nil, false
+}
+
+func (r *Epoch) putCidToOffsetInCache(c cid.Cid, offset uint64) {
+	r.cidToOffsetCache.Set(c.String(), offset, cache.DefaultExpiration)
 }
 
 func (e *Epoch) Epoch() uint64 {
@@ -76,7 +100,7 @@ func NewEpochFromConfig(config *Config, c *cli.Context) (*Epoch, error) {
 
 	if isCarMode {
 		// The CAR-mode requires a cid-to-offset index.
-		cidToOffsetIndexFile, err := openIndexStorage(string(config.Indexes.CidToOffset.URI))
+		cidToOffsetIndexFile, err := openIndexStorage(c.Context, string(config.Indexes.CidToOffset.URI))
 		if err != nil {
 			return nil, fmt.Errorf("failed to open cid-to-offset index file: %w", err)
 		}
@@ -86,11 +110,14 @@ func NewEpochFromConfig(config *Config, c *cli.Context) (*Epoch, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to open cid-to-offset index: %w", err)
 		}
+		if config.Indexes.CidToOffset.URI.IsRemoteWeb() {
+			cidToOffsetIndex.Prefetch(true)
+		}
 		ep.cidToOffsetIndex = cidToOffsetIndex
 	}
 
 	{
-		slotToCidIndexFile, err := openIndexStorage(string(config.Indexes.SlotToCid.URI))
+		slotToCidIndexFile, err := openIndexStorage(c.Context, string(config.Indexes.SlotToCid.URI))
 		if err != nil {
 			return nil, fmt.Errorf("failed to open slot-to-cid index file: %w", err)
 		}
@@ -100,11 +127,14 @@ func NewEpochFromConfig(config *Config, c *cli.Context) (*Epoch, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to open slot-to-cid index: %w", err)
 		}
+		if config.Indexes.SlotToCid.URI.IsRemoteWeb() {
+			slotToCidIndex.Prefetch(true)
+		}
 		ep.slotToCidIndex = slotToCidIndex
 	}
 
 	{
-		sigToCidIndexFile, err := openIndexStorage(string(config.Indexes.SigToCid.URI))
+		sigToCidIndexFile, err := openIndexStorage(c.Context, string(config.Indexes.SigToCid.URI))
 		if err != nil {
 			return nil, fmt.Errorf("failed to open sig-to-cid index file: %w", err)
 		}
@@ -113,6 +143,9 @@ func NewEpochFromConfig(config *Config, c *cli.Context) (*Epoch, error) {
 		sigToCidIndex, err := compactindex36.Open(sigToCidIndexFile)
 		if err != nil {
 			return nil, fmt.Errorf("failed to open sig-to-cid index: %w", err)
+		}
+		if config.Indexes.SigToCid.URI.IsRemoteWeb() {
+			sigToCidIndex.Prefetch(true)
 		}
 		ep.sigToCidIndex = sigToCidIndex
 	}
@@ -137,7 +170,7 @@ func NewEpochFromConfig(config *Config, c *cli.Context) (*Epoch, error) {
 	}
 
 	if isCarMode {
-		localCarReader, remoteCarReader, err := openCarStorage(string(config.Data.Car.URI))
+		localCarReader, remoteCarReader, err := openCarStorage(c.Context, string(config.Data.Car.URI))
 		if err != nil {
 			return nil, fmt.Errorf("failed to open CAR file: %w", err)
 		}
@@ -153,21 +186,29 @@ func NewEpochFromConfig(config *Config, c *cli.Context) (*Epoch, error) {
 
 	{
 		ca := cache.New(30*time.Second, 1*time.Minute)
-		ep.cidToBlockCache = ca
+		ep.cidToNodeCache = ca
+	}
+	{
+		ca := cache.New(30*time.Second, 1*time.Minute)
+		ep.slotToCidCache = ca
+	}
+	{
+		ca := cache.New(30*time.Second, 1*time.Minute)
+		ep.cidToOffsetCache = ca
 	}
 
 	return ep, nil
 }
 
 func (r *Epoch) getNodeFromCache(c cid.Cid) (v []byte, err error, has bool) {
-	if v, ok := r.cidToBlockCache.Get(c.String()); ok {
+	if v, ok := r.cidToNodeCache.Get(c.String()); ok {
 		return v.([]byte), nil, true
 	}
 	return nil, nil, false
 }
 
 func (r *Epoch) putNodeInCache(c cid.Cid, data []byte) {
-	r.cidToBlockCache.Set(c.String(), data, cache.DefaultExpiration)
+	r.cidToNodeCache.Set(c.String(), data, cache.DefaultExpiration)
 }
 
 func (s *Epoch) prefetchSubgraph(ctx context.Context, wantedCid cid.Cid) error {
@@ -274,7 +315,18 @@ func (s *Epoch) GetNodeByOffset(ctx context.Context, wantedCid cid.Cid, offset u
 }
 
 func (ser *Epoch) FindCidFromSlot(ctx context.Context, slot uint64) (cid.Cid, error) {
-	return findCidFromSlot(ser.slotToCidIndex, slot)
+	// try from cache
+	if c, err, has := ser.getSlotToCidFromCache(slot); err != nil {
+		return cid.Undef, err
+	} else if has {
+		return c, nil
+	}
+	found, err := findCidFromSlot(ser.slotToCidIndex, slot)
+	if err != nil {
+		return cid.Undef, err
+	}
+	ser.putSlotToCidInCache(slot, found)
+	return found, nil
 }
 
 func (ser *Epoch) FindCidFromSignature(ctx context.Context, sig solana.Signature) (cid.Cid, error) {
@@ -282,7 +334,18 @@ func (ser *Epoch) FindCidFromSignature(ctx context.Context, sig solana.Signature
 }
 
 func (ser *Epoch) FindOffsetFromCid(ctx context.Context, cid cid.Cid) (uint64, error) {
-	return findOffsetFromCid(ser.cidToOffsetIndex, cid)
+	// try from cache
+	if offset, err, has := ser.getCidToOffsetFromCache(cid); err != nil {
+		return 0, err
+	} else if has {
+		return offset, nil
+	}
+	found, err := findOffsetFromCid(ser.cidToOffsetIndex, cid)
+	if err != nil {
+		return 0, err
+	}
+	ser.putCidToOffsetInCache(cid, found)
+	return found, nil
 }
 
 func (ser *Epoch) GetBlock(ctx context.Context, slot uint64) (*ipldbindcode.Block, error) {

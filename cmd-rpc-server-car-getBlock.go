@@ -67,7 +67,7 @@ func (t *timer) time(name string) {
 	t.prev = time.Now()
 }
 
-func (ser *rpcServer) handleGetBlock(ctx context.Context, conn *requestContext, req *jsonrpc2.Request) {
+func (ser *deprecatedRPCServer) handleGetBlock(ctx context.Context, conn *requestContext, req *jsonrpc2.Request) {
 	tim := newTimer()
 	params, err := parseGetBlockRequest(req.Params)
 	if err != nil {

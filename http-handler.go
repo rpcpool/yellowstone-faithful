@@ -12,7 +12,7 @@ import (
 	"k8s.io/klog/v2"
 )
 
-func newRPCHandler_fast(handler *rpcServer) func(ctx *fasthttp.RequestCtx) {
+func newRPCHandler_fast(handler *deprecatedRPCServer) func(ctx *fasthttp.RequestCtx) {
 	return func(c *fasthttp.RequestCtx) {
 		startedAt := time.Now()
 		defer func() {

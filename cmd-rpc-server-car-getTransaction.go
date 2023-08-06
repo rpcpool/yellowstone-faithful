@@ -15,7 +15,7 @@ func ptrToUint64(v uint64) *uint64 {
 	return &v
 }
 
-func (ser *rpcServer) handleGetTransaction(ctx context.Context, conn *requestContext, req *jsonrpc2.Request) {
+func (ser *deprecatedRPCServer) handleGetTransaction(ctx context.Context, conn *requestContext, req *jsonrpc2.Request) {
 	params, err := parseGetTransactionRequest(req.Params)
 	if err != nil {
 		klog.Errorf("failed to parse params: %v", err)

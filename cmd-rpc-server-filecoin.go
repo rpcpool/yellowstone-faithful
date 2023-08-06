@@ -51,7 +51,7 @@ func newCmd_rpcServerFilecoin() *cli.Command {
 				return cli.Exit("Must provide a signature-to-CID index filepath/url", 1)
 			}
 
-			slotToCidIndexFile, err := openIndexStorage(config.Indexes.SlotToCid)
+			slotToCidIndexFile, err := openIndexStorage(c.Context, config.Indexes.SlotToCid)
 			if err != nil {
 				return fmt.Errorf("failed to open slot-to-cid index file: %w", err)
 			}
@@ -62,7 +62,7 @@ func newCmd_rpcServerFilecoin() *cli.Command {
 				return fmt.Errorf("failed to open slot-to-cid index: %w", err)
 			}
 
-			sigToCidIndexFile, err := openIndexStorage(config.Indexes.SigToCid)
+			sigToCidIndexFile, err := openIndexStorage(c.Context, config.Indexes.SigToCid)
 			if err != nil {
 				return fmt.Errorf("failed to open sig-to-cid index file: %w", err)
 			}
