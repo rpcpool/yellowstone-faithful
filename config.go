@@ -113,7 +113,7 @@ type ConfigSlice []*Config
 func (c ConfigSlice) Validate() error {
 	for _, config := range c {
 		if err := config.Validate(); err != nil {
-			return err
+			return fmt.Errorf("config file %q: %s", config.ConfigFilepath(), err.Error())
 		}
 	}
 	{

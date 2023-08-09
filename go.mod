@@ -58,6 +58,7 @@ require (
 )
 
 require (
+	github.com/fsnotify/fsnotify v1.5.4
 	github.com/ipld/go-car v0.5.0
 	github.com/mr-tron/base58 v1.2.0
 	github.com/patrickmn/go-cache v2.1.0+incompatible
