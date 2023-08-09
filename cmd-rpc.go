@@ -41,6 +41,12 @@ func newCmd_rpc() *cli.Command {
 				Value:       "",
 				Destination: &sigToEpochIndexDir,
 			},
+			&cli.BoolFlag{
+				Name:        "debug",
+				Usage:       "Enable debug logging",
+				Value:       false,
+				Destination: &DebugMode,
+			},
 		),
 		Action: func(c *cli.Context) error {
 			src := c.Args().Slice()
