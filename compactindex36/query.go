@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"sync"
 )
 
 // DB is a compactindex handle.
@@ -81,35 +80,18 @@ func (db *DB) GetBucket(i uint) (*Bucket, error) {
 	bucket.Entries = io.NewSectionReader(db.Stream, int64(bucket.FileOffset), int64(bucket.NumEntries)*int64(bucket.Stride))
 	if db.prefetch {
 		// TODO: remove logs.
+		prefetchSize := (36 + 3) * minInt64(3_000, int64(bucket.NumEntries))
 		fmt.Println(
 			"prefetching bucket@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@",
-			int64(bucket.FileOffset)+prefetchSize,
+			int64(bucket.FileOffset), int64(bucket.FileOffset)+prefetchSize, prefetchSize,
 		)
-		buf := getByteSlice()
-		defer putByteSlice(buf)
-		_, err := bucket.Entries.ReadAt(*buf, 0)
+		buf := make([]byte, prefetchSize)
+		_, err := bucket.Entries.ReadAt(buf, 0)
 		if err != nil && !errors.Is(err, io.EOF) {
 			return nil, err
 		}
 	}
 	return bucket, nil
-}
-
-const prefetchSize = (36 + 3) * 290
-
-var byteSlicePool = sync.Pool{
-	New: func() interface{} {
-		b := make([]byte, prefetchSize)
-		return &b
-	},
-}
-
-func getByteSlice() *[]byte {
-	return byteSlicePool.Get().(*[]byte)
-}
-
-func putByteSlice(b *[]byte) {
-	byteSlicePool.Put(b)
 }
 
 func minInt64(a, b int64) int64 {
