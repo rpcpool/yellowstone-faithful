@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"sort"
 
@@ -328,13 +329,17 @@ func getDeepFilesFromDirectory(dir string, filter func(string) bool, patterns ..
 func walkDirectoryMatchingFiles(dir string, filter func(string) bool, patterns ...string) ([]string, error) {
 	var matching []string
 
-	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+	err := fs.WalkDir(os.DirFS(dir), ".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			klog.Errorf("error walking path %q: %v", path, err)
 			return err
 		}
 		if d.IsDir() {
 			return nil
+		}
+		path, err = filepath.Abs(filepath.Join(dir, path))
+		if err != nil {
+			return err
 		}
 		matches := itemMatchesAnyPattern(path, patterns...) && filter(path)
 		if matches {
@@ -352,13 +357,17 @@ func walkDirectoryMatchingFiles(dir string, filter func(string) bool, patterns .
 func walkDirectoryMatchingSubdirectories(dir string, includePatterns []string, excludePatterns []string) ([]string, error) {
 	var matching []string
 
-	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+	err := fs.WalkDir(os.DirFS(dir), ".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			klog.Errorf("error walking path %q: %v", path, err)
 			return err
 		}
 		if !d.IsDir() {
 			return nil
+		}
+		path, err = filepath.Abs(filepath.Join(dir, path))
+		if err != nil {
+			return err
 		}
 		{
 			// if matches `.git` then exclude it
@@ -368,10 +377,6 @@ func walkDirectoryMatchingSubdirectories(dir string, includePatterns []string, e
 		}
 		matches := matchesWithIncludeExcludePatterns(path, includePatterns, excludePatterns)
 		if matches {
-			path, err = filepath.Abs(path)
-			if err != nil {
-				return err
-			}
 			matching = append(matching, path)
 		}
 		return nil
