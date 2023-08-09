@@ -291,22 +291,13 @@ func getListOfConfigFiles(src []string, includePatterns []string, excludePattern
 			}
 			allFiles = append(allFiles, files...)
 		} else {
-			if matchesWithIncludeExcludePatterns(srcItem, includePatterns, excludePatterns) {
+			if itemMatchesAnyPattern(srcItem, fileExtensionPatterns...) && matchesWithIncludeExcludePatterns(srcItem, includePatterns, excludePatterns) {
 				allFiles = append(allFiles, srcItem)
 			}
 		}
 	}
 
-	allFiles = deduplicate(allFiles)
-	allFiles = selectMatching(allFiles, fileExtensionPatterns...)
-	if len(includePatterns) > 0 {
-		allFiles = selectMatching(allFiles, includePatterns...)
-	}
-	if len(excludePatterns) > 0 {
-		allFiles = selectNotMatching(allFiles, excludePatterns...)
-	}
-
-	return allFiles, nil
+	return deduplicate(allFiles), nil
 }
 
 // getDeepFilesFromDirectory returns a list of all the files in the given directory and its subdirectories
