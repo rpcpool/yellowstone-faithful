@@ -284,8 +284,8 @@ func getListOfConfigFiles(src []string, includePatterns []string, excludePattern
 		}
 		if isDir {
 			files, err := getDeepFilesFromDirectory(srcItem, func(entry string) bool {
-				return matchesWithIncludeExcludePatterns(entry, includePatterns, excludePatterns)
-			}, fileExtensionPatterns...)
+				return itemMatchesAnyPattern(entry, fileExtensionPatterns...) && matchesWithIncludeExcludePatterns(entry, includePatterns, excludePatterns)
+			})
 			if err != nil {
 				return nil, err
 			}
@@ -302,7 +302,7 @@ func getListOfConfigFiles(src []string, includePatterns []string, excludePattern
 
 // getDeepFilesFromDirectory returns a list of all the files in the given directory and its subdirectories
 // that match one of the given patterns.
-func getDeepFilesFromDirectory(dir string, filter func(string) bool, patterns ...string) ([]string, error) {
+func getDeepFilesFromDirectory(dir string, filter func(string) bool) ([]string, error) {
 	ok, err := exists(dir)
 	if err != nil {
 		return nil, fmt.Errorf("error checking if path %q exists: %w", dir, err)
@@ -319,7 +319,7 @@ func getDeepFilesFromDirectory(dir string, filter func(string) bool, patterns ..
 		return nil, fmt.Errorf("path %q is not a directory", dir)
 	}
 
-	files, err := walkDirectoryMatchingFiles(dir, filter, patterns...)
+	files, err := walkDirectoryMatchingFiles(dir, filter)
 	if err != nil {
 		return nil, fmt.Errorf("error walking directory %q: %w", dir, err)
 	}
@@ -328,7 +328,7 @@ func getDeepFilesFromDirectory(dir string, filter func(string) bool, patterns ..
 }
 
 // wallk a given directory and return a list of all the files that match the given patterns
-func walkDirectoryMatchingFiles(dir string, filter func(string) bool, patterns ...string) ([]string, error) {
+func walkDirectoryMatchingFiles(dir string, filter func(string) bool) ([]string, error) {
 	var matching []string
 
 	err := fs.WalkDir(os.DirFS(dir), ".", func(path string, d fs.DirEntry, err error) error {
@@ -343,7 +343,7 @@ func walkDirectoryMatchingFiles(dir string, filter func(string) bool, patterns .
 		if err != nil {
 			return err
 		}
-		matches := itemMatchesAnyPattern(path, patterns...) && filter(path)
+		matches := filter(path)
 		if matches {
 			matching = append(matching, path)
 		}
