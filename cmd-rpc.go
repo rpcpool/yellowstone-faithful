@@ -193,6 +193,12 @@ func onFileChanged(ctx context.Context, dirs []string, callback func(fsnotify.Ev
 	return nil
 }
 
+// getListOfDirectories returns a list of all the directories in the given directories and subdirectories
+// that match one of the given patterns.
+// The directories are first matched against the include patterns, and then against the exclude patterns.
+// If no include patterns are provided, then all directories are included.
+// If no exclude patterns are provided, then no directories are excluded.
+// The `.git` directory is always excluded.
 func getListOfDirectories(src []string, includePatterns []string, excludePatterns []string) ([]string, error) {
 	var allDirs []string
 
@@ -262,9 +268,14 @@ func getDeepDirectories(dir string, includePatterns []string, excludePatterns []
 	return dirs, nil
 }
 
+// getListOfConfigFiles returns a list of all the config files in the given directories and subdirectories
+// that match one of the given patterns.
+// The files are first matched against the file extension patterns, then against the include patterns,
+// and finally against the exclude patterns.
 func getListOfConfigFiles(src []string, includePatterns []string, excludePatterns []string) ([]string, error) {
-	var allFiles []string
 	fileExtensionPatterns := []string{"*.yaml", "*.yml", "*.json"}
+
+	var allFiles []string
 
 	for _, srcItem := range src {
 		isDir, err := isDirectory(srcItem)
