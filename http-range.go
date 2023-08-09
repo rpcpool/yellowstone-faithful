@@ -149,8 +149,10 @@ type readCloserWrapper struct {
 
 // when reading print a dot
 func (r *readCloserWrapper) ReadAt(p []byte, off int64) (n int, err error) {
-	fmt.Print("·")
-	fmt.Printf("%s:%d-%d\n", filepath.Base(r.name), off, len(p))
+	if DebugMode {
+		fmt.Print("·")
+		fmt.Printf("%s:%d-%d\n", filepath.Base(r.name), off, len(p))
+	}
 	return r.rac.ReadAt(p, off)
 }
 

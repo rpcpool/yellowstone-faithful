@@ -79,12 +79,9 @@ func (db *DB) GetBucket(i uint) (*Bucket, error) {
 	}
 	bucket.Entries = io.NewSectionReader(db.Stream, int64(bucket.FileOffset), int64(bucket.NumEntries)*int64(bucket.Stride))
 	if db.prefetch {
-		// TODO: remove logs.
-		prefetchSize := (36 + 3) * minInt64(3_000, int64(bucket.NumEntries))
-		fmt.Println(
-			"prefetching bucket@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@",
-			int64(bucket.FileOffset), int64(bucket.FileOffset)+prefetchSize, prefetchSize,
-		)
+		// TODO: find good value for numEntriesToPrefetch
+		numEntriesToPrefetch := minInt64(3_000, int64(bucket.NumEntries))
+		prefetchSize := (36 + 3) * numEntriesToPrefetch
 		buf := make([]byte, prefetchSize)
 		_, err := bucket.Entries.ReadAt(buf, 0)
 		if err != nil && !errors.Is(err, io.EOF) {
