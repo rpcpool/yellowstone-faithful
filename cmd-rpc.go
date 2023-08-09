@@ -157,7 +157,6 @@ func onFileChanged(ctx context.Context, dirs []string, callback func(fsnotify.Ev
 	if err != nil {
 		return fmt.Errorf("failed to create watcher: %w", err)
 	}
-	defer watcher.Close()
 
 	// start watching the directories
 	for _, path := range dirs {
@@ -169,6 +168,7 @@ func onFileChanged(ctx context.Context, dirs []string, callback func(fsnotify.Ev
 
 	// start a goroutine to handle events
 	go func() {
+		defer watcher.Close()
 		for {
 			select {
 			case <-ctx.Done():
