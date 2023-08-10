@@ -21,6 +21,7 @@ func newCmd_rpc() *cli.Command {
 	var sigToEpochIndexDir string
 	var includePatterns cli.StringSlice
 	var excludePatterns cli.StringSlice
+	var watch bool
 	return &cli.Command{
 		Name:        "rpc",
 		Description: "Provide multiple epoch config files, and start a Solana JSON RPC that exposes getTransaction, getBlock, and (optionally) getSignaturesForAddress",
@@ -65,6 +66,12 @@ func newCmd_rpc() *cli.Command {
 				Value:       cli.NewStringSlice(".git"),
 				Destination: &excludePatterns,
 			},
+			&cli.BoolFlag{
+				Name:        "watch",
+				Usage:       "Watch the config files and directories for changes, and live-(re)load them",
+				Value:       false,
+				Destination: &watch,
+			},
 		),
 		Action: func(c *cli.Context) error {
 			src := c.Args().Slice()
@@ -78,29 +85,6 @@ func newCmd_rpc() *cli.Command {
 			}
 			klog.Infof("Found %d config files", len(configFiles))
 			spew.Dump(configFiles)
-			{
-				dirs, err := getListOfDirectories(
-					src,
-					includePatterns.Value(),
-					excludePatterns.Value(),
-				)
-				if err != nil {
-					return cli.Exit(err.Error(), 1)
-				}
-				klog.Infof("Found %d directories; will start watching them for changes ...", len(dirs))
-				spew.Dump(dirs)
-
-				ctx, cancel := context.WithCancel(context.Background())
-				defer cancel()
-
-				err = onFileChanged(ctx, dirs, func(event fsnotify.Event) {
-					klog.Infof("File changed: %s", spew.Sdump(event))
-					// TODO: reload the config file, etc.
-				})
-				if err != nil {
-					return cli.Exit(err.Error(), 1)
-				}
-			}
 
 			// Load configs:
 			configs := make(ConfigSlice, 0)
@@ -136,6 +120,85 @@ func newCmd_rpc() *cli.Command {
 			for _, epoch := range epochs {
 				if err := multi.AddEpoch(epoch.Epoch(), epoch); err != nil {
 					return cli.Exit(fmt.Sprintf("failed to add epoch %d: %s", epoch.Epoch(), err.Error()), 1)
+				}
+			}
+
+			if watch {
+				dirs, err := getListOfDirectories(
+					src,
+					includePatterns.Value(),
+					excludePatterns.Value(),
+				)
+				if err != nil {
+					return cli.Exit(err.Error(), 1)
+				}
+				klog.Infof("Found %d directories; will start watching them for changes ...", len(dirs))
+				spew.Dump(dirs)
+
+				ctx, cancel := context.WithCancel(context.Background())
+				defer cancel()
+
+				err = onFileChanged(ctx, dirs, func(event fsnotify.Event) {
+					klog.Infof("File event: %s", spew.Sdump(event))
+
+					switch event.Op {
+					case fsnotify.Write:
+						{
+							klog.Infof("File %q was modified", event.Name)
+							// find the config file, load it, and update the epoch (replace)
+							config, err := loadConfig(event.Name)
+							if err != nil {
+								klog.Errorf("error loading config file %q: %s", event.Name, err.Error())
+								return
+							}
+							epoch, err := NewEpochFromConfig(config, c)
+							if err != nil {
+								klog.Errorf("error creating epoch from config file %q: %s", event.Name, err.Error())
+								return
+							}
+							err = multi.ReplaceOrAddEpoch(epoch.Epoch(), epoch)
+							if err != nil {
+								klog.Errorf("error replacing epoch %d: %s", epoch.Epoch(), err.Error())
+								return
+							}
+						}
+					case fsnotify.Create:
+						{
+							klog.Infof("File %q was created", event.Name)
+							// find the config file, load it, and add it to the multi-epoch (if not already added)
+							config, err := loadConfig(event.Name)
+							if err != nil {
+								klog.Errorf("error loading config file %q: %s", event.Name, err.Error())
+								return
+							}
+							epoch, err := NewEpochFromConfig(config, c)
+							if err != nil {
+								klog.Errorf("error creating epoch from config file %q: %s", event.Name, err.Error())
+								return
+							}
+							err = multi.AddEpoch(epoch.Epoch(), epoch)
+							if err != nil {
+								klog.Errorf("error adding epoch %d: %s", epoch.Epoch(), err.Error())
+								return
+							}
+						}
+					case fsnotify.Remove:
+						{
+							klog.Infof("File %q was removed", event.Name)
+							// find the epoch that corresponds to this file, and remove it (if any)
+							err := multi.RemoveEpochByConfigFilepath(event.Name)
+							if err != nil {
+								klog.Errorf("error removing epoch for config file %q: %s", event.Name, err.Error())
+							}
+						}
+					case fsnotify.Rename:
+						klog.Infof("File %q was renamed; do nothing", event.Name)
+					case fsnotify.Chmod:
+						klog.Infof("File %q had its permissions changed; do nothing", event.Name)
+					}
+				})
+				if err != nil {
+					return cli.Exit(err.Error(), 1)
 				}
 			}
 

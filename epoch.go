@@ -25,6 +25,7 @@ import (
 type Epoch struct {
 	epoch          uint64
 	isFilecoinMode bool // true if the epoch is in Filecoin mode (i.e. Lassie mode)
+	config         *Config
 	// contains indexes and block data for the epoch
 	lassieFetcher    *lassieWrapper
 	localCarReader   *carv2.Reader
@@ -95,6 +96,7 @@ func NewEpochFromConfig(config *Config, c *cli.Context) (*Epoch, error) {
 	ep := &Epoch{
 		epoch:          *config.Epoch,
 		isFilecoinMode: isLassieMode,
+		config:         config,
 		onClose:        make([]func() error, 0),
 	}
 
@@ -209,6 +211,10 @@ func (r *Epoch) getNodeFromCache(c cid.Cid) (v []byte, err error, has bool) {
 
 func (r *Epoch) putNodeInCache(c cid.Cid, data []byte) {
 	r.cidToNodeCache.Set(c.String(), data, cache.DefaultExpiration)
+}
+
+func (r *Epoch) Config() *Config {
+	return r.config
 }
 
 func (s *Epoch) prefetchSubgraph(ctx context.Context, wantedCid cid.Cid) error {
