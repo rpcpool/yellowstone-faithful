@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/goware/urlx"
 	"github.com/mr-tron/base58"
 	sigtoepoch "github.com/rpcpool/yellowstone-faithful/sig-to-epoch"
 	"github.com/sourcegraph/jsonrpc2"
@@ -143,10 +144,35 @@ func (m *MultiEpoch) GetFirstAvailableEpoch() (*Epoch, error) {
 	return nil, fmt.Errorf("no epochs available")
 }
 
+type ListenerConfig struct {
+	ProxyConfig *ProxyConfig
+}
+
+type ProxyConfig struct {
+	Target  string            `json:"target" yaml:"target"`
+	Headers map[string]string `json:"headers" yaml:"headers"`
+}
+
+func LoadProxyConfig(configFilepath string) (*ProxyConfig, error) {
+	var proxyConfig ProxyConfig
+	if isJSONFile(configFilepath) {
+		if err := loadFromJSON(configFilepath, &proxyConfig); err != nil {
+			return nil, err
+		}
+	} else if isYAMLFile(configFilepath) {
+		if err := loadFromYAML(configFilepath, &proxyConfig); err != nil {
+			return nil, err
+		}
+	} else {
+		return nil, fmt.Errorf("config file %q must be JSON or YAML", configFilepath)
+	}
+	return &proxyConfig, nil
+}
+
 // ListeAndServe starts listening on the configured address and serves the RPC API.
-func (m *MultiEpoch) ListenAndServe(listenOn string) error {
-	h := newMultiEpochHandler(m)
-	h = fasthttp.CompressHandler(h)
+func (m *MultiEpoch) ListenAndServe(listenOn string, lsConf *ListenerConfig) error {
+	handler := newMultiEpochHandler(m, lsConf)
+	handler = fasthttp.CompressHandler(handler)
 
 	if sigToEpochIndexDir := m.options.PathToSigToEpoch; sigToEpochIndexDir != "" {
 		klog.Infof("Opening sig-to-epoch index from %s", sigToEpochIndexDir)
@@ -175,7 +201,7 @@ func (m *MultiEpoch) ListenAndServe(listenOn string) error {
 	}
 
 	klog.Infof("RPC server listening on %s", listenOn)
-	return fasthttp.ListenAndServe(listenOn, h)
+	return fasthttp.ListenAndServe(listenOn, handler)
 }
 
 func randomRequestID() string {
@@ -186,7 +212,25 @@ func randomRequestID() string {
 	return strings.ToUpper(base58.Encode(b))
 }
 
-func newMultiEpochHandler(handler *MultiEpoch) func(ctx *fasthttp.RequestCtx) {
+func newMultiEpochHandler(handler *MultiEpoch, lsConf *ListenerConfig) func(ctx *fasthttp.RequestCtx) {
+	// create a transparent reverse proxy
+	var proxy *fasthttp.HostClient
+	if lsConf != nil && lsConf.ProxyConfig != nil && lsConf.ProxyConfig.Target != "" {
+		target := lsConf.ProxyConfig.Target
+		parsedTargetURL, err := urlx.Parse(target)
+		if err != nil {
+			panic(fmt.Errorf("invalid proxy target URL %q: %w", target, err))
+		}
+		addr := parsedTargetURL.Hostname()
+		if parsedTargetURL.Port() != "" {
+			addr += ":" + parsedTargetURL.Port()
+		}
+		proxy = &fasthttp.HostClient{
+			Addr:  addr,
+			IsTLS: parsedTargetURL.Scheme == "https",
+		}
+		klog.Infof("Will proxy unhandled RPC methods to %q", target)
+	}
 	return func(c *fasthttp.RequestCtx) {
 		startedAt := time.Now()
 		reqID := randomRequestID()
@@ -233,6 +277,39 @@ func newMultiEpochHandler(handler *MultiEpoch) func(ctx *fasthttp.RequestCtx) {
 		}
 
 		klog.Infof("[%s] received request: %q", reqID, strings.TrimSpace(string(body)))
+
+		if proxy != nil && !isValidMethod(rpcRequest.Method) {
+			klog.Infof("[%s] Unhandled method %q, proxying to %q", reqID, rpcRequest.Method, lsConf.ProxyConfig.Target)
+			// proxy the request to the target
+			proxyReq := fasthttp.AcquireRequest()
+			defer fasthttp.ReleaseRequest(proxyReq)
+			{
+				for k, v := range lsConf.ProxyConfig.Headers {
+					proxyReq.Header.Set(k, v)
+				}
+			}
+			proxyReq.Header.SetMethod("POST")
+			proxyReq.Header.SetContentType("application/json")
+			proxyReq.SetRequestURI(lsConf.ProxyConfig.Target)
+			proxyReq.SetBody(body)
+			proxyResp := fasthttp.AcquireResponse()
+			defer fasthttp.ReleaseResponse(proxyResp)
+			if err := proxy.Do(proxyReq, proxyResp); err != nil {
+				klog.Errorf("[%s] failed to proxy request: %v", reqID, err)
+				replyJSON(c, http.StatusInternalServerError, jsonrpc2.Response{
+					Error: &jsonrpc2.Error{
+						Code:    jsonrpc2.CodeInternalError,
+						Message: "Internal error",
+					},
+				})
+				return
+			}
+			c.Response.Header.Set("Content-Type", "application/json")
+			c.Response.SetStatusCode(proxyResp.StatusCode())
+			c.Response.SetBody(proxyResp.Body())
+			// TODO: handle compression.
+			return
+		}
 
 		rqCtx := &requestContext{ctx: c}
 		method := rpcRequest.Method

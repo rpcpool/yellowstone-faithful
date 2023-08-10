@@ -59,6 +59,7 @@ require (
 
 require (
 	github.com/fsnotify/fsnotify v1.5.4
+	github.com/goware/urlx v0.3.2
 	github.com/ipld/go-car v0.5.0
 	github.com/mr-tron/base58 v1.2.0
 	github.com/patrickmn/go-cache v2.1.0+incompatible
@@ -74,6 +75,8 @@ require (
 require (
 	contrib.go.opencensus.io/exporter/stackdriver v0.13.14 // indirect
 	filippo.io/edwards25519 v1.0.0 // indirect
+	github.com/PuerkitoBio/purell v1.1.1 // indirect
+	github.com/PuerkitoBio/urlesc v0.0.0-20170810143723-de5bf2ad4578 // indirect
 	github.com/VividCortex/ewma v1.2.0 // indirect
 	github.com/acarl005/stripansi v0.0.0-20180116102854-5a71ef0e047d // indirect
 	github.com/andybalholm/brotli v1.0.5 // indirect

@@ -22,6 +22,7 @@ func newCmd_rpc() *cli.Command {
 	var includePatterns cli.StringSlice
 	var excludePatterns cli.StringSlice
 	var watch bool
+	var pathForProxyForUnknownRpcMethods string
 	return &cli.Command{
 		Name:        "rpc",
 		Description: "Provide multiple epoch config files, and start a Solana JSON RPC that exposes getTransaction, getBlock, and (optionally) getSignaturesForAddress",
@@ -71,6 +72,12 @@ func newCmd_rpc() *cli.Command {
 				Usage:       "Watch the config files and directories for changes, and live-(re)load them",
 				Value:       false,
 				Destination: &watch,
+			},
+			&cli.StringFlag{
+				Name:        "proxy",
+				Usage:       "Path to a config file that will be used to proxy unknown RPC methods",
+				Value:       "",
+				Destination: &pathForProxyForUnknownRpcMethods,
 			},
 		),
 		Action: func(c *cli.Context) error {
@@ -209,7 +216,18 @@ func newCmd_rpc() *cli.Command {
 				}
 			}
 
-			return multi.ListenAndServe(listenOn)
+			var listenerConfig *ListenerConfig
+			if pathForProxyForUnknownRpcMethods != "" {
+				proxyConfig, err := LoadProxyConfig(pathForProxyForUnknownRpcMethods)
+				if err != nil {
+					return cli.Exit(fmt.Sprintf("failed to load proxy config file %q: %s", pathForProxyForUnknownRpcMethods, err.Error()), 1)
+				}
+				listenerConfig = &ListenerConfig{
+					ProxyConfig: proxyConfig,
+				}
+			}
+
+			return multi.ListenAndServe(listenOn, listenerConfig)
 		},
 	}
 }
