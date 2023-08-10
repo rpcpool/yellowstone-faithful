@@ -103,6 +103,17 @@ func (m *MultiEpoch) ReplaceOrAddEpoch(epoch uint64, ep *Epoch) error {
 	return nil
 }
 
+func (m *MultiEpoch) HasEpochWithSameHashAsFile(filepath string) bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	for _, ep := range m.epochs {
+		if ep.config.IsSameHashAsFile(filepath) {
+			return true
+		}
+	}
+	return false
+}
+
 func (m *MultiEpoch) CountEpochs() int {
 	m.mu.RLock()
 	defer m.mu.RUnlock()

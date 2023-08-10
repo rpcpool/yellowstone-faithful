@@ -1,8 +1,11 @@
 package main
 
 import (
+	"crypto/sha256"
 	"errors"
 	"fmt"
+	"io"
+	"os"
 	"sort"
 
 	"github.com/ipfs/go-cid"
@@ -53,7 +56,7 @@ func (u URI) IsFilecoin() bool {
 	return len(u) > 10 && u[:10] == "filecoin://"
 }
 
-func loadConfig(configFilepath string) (*Config, error) {
+func LoadConfig(configFilepath string) (*Config, error) {
 	var config Config
 	if isJSONFile(configFilepath) {
 		if err := loadFromJSON(configFilepath, &config); err != nil {
@@ -67,11 +70,31 @@ func loadConfig(configFilepath string) (*Config, error) {
 		return nil, fmt.Errorf("config file %q must be JSON or YAML", configFilepath)
 	}
 	config.originalFilepath = configFilepath
+	sum, err := hashFileSha256(configFilepath)
+	if err != nil {
+		return nil, fmt.Errorf("config file %q: %s", configFilepath, err.Error())
+	}
+	config.hashOfConfigFile = sum
 	return &config, nil
+}
+
+func hashFileSha256(filePath string) (string, error) {
+	f, err := os.Open(filePath)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%x", h.Sum(nil)), nil
 }
 
 type Config struct {
 	originalFilepath string
+	hashOfConfigFile string
 	Epoch            *uint64 `json:"epoch" yaml:"epoch"`
 	Data             struct {
 		Car *struct {
@@ -100,6 +123,22 @@ type Config struct {
 
 func (c *Config) ConfigFilepath() string {
 	return c.originalFilepath
+}
+
+func (c *Config) HashOfConfigFile() string {
+	return c.hashOfConfigFile
+}
+
+func (c *Config) IsSameHash(other *Config) bool {
+	return c.hashOfConfigFile == other.hashOfConfigFile
+}
+
+func (c *Config) IsSameHashAsFile(filepath string) bool {
+	sum, err := hashFileSha256(filepath)
+	if err != nil {
+		return false
+	}
+	return c.hashOfConfigFile == sum
 }
 
 // IsFilecoinMode returns true if the config is in Filecoin mode.

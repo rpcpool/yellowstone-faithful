@@ -75,7 +75,7 @@ func newCmd_rpc() *cli.Command {
 		),
 		Action: func(c *cli.Context) error {
 			src := c.Args().Slice()
-			configFiles, err := getListOfConfigFiles(
+			configFiles, err := GetListOfConfigFiles(
 				src,
 				includePatterns.Value(),
 				excludePatterns.Value(),
@@ -89,7 +89,7 @@ func newCmd_rpc() *cli.Command {
 			// Load configs:
 			configs := make(ConfigSlice, 0)
 			for _, configFile := range configFiles {
-				config, err := loadConfig(configFile)
+				config, err := LoadConfig(configFile)
 				if err != nil {
 					return cli.Exit(fmt.Sprintf("failed to load config file %q: %s", configFile, err.Error()), 1)
 				}
@@ -124,7 +124,7 @@ func newCmd_rpc() *cli.Command {
 			}
 
 			if watch {
-				dirs, err := getListOfDirectories(
+				dirs, err := GetListOfDirectories(
 					src,
 					includePatterns.Value(),
 					excludePatterns.Value(),
@@ -141,12 +141,17 @@ func newCmd_rpc() *cli.Command {
 				err = onFileChanged(ctx, dirs, func(event fsnotify.Event) {
 					klog.Infof("File event: %s", spew.Sdump(event))
 
+					if event.Op != fsnotify.Remove && multi.HasEpochWithSameHashAsFile(event.Name) {
+						klog.Infof("Epoch with same hash as file %q is already loaded; do nothing", event.Name)
+						return
+					}
+
 					switch event.Op {
 					case fsnotify.Write:
 						{
 							klog.Infof("File %q was modified", event.Name)
 							// find the config file, load it, and update the epoch (replace)
-							config, err := loadConfig(event.Name)
+							config, err := LoadConfig(event.Name)
 							if err != nil {
 								klog.Errorf("error loading config file %q: %s", event.Name, err.Error())
 								return
@@ -166,7 +171,7 @@ func newCmd_rpc() *cli.Command {
 						{
 							klog.Infof("File %q was created", event.Name)
 							// find the config file, load it, and add it to the multi-epoch (if not already added)
-							config, err := loadConfig(event.Name)
+							config, err := LoadConfig(event.Name)
 							if err != nil {
 								klog.Errorf("error loading config file %q: %s", event.Name, err.Error())
 								return
@@ -195,6 +200,8 @@ func newCmd_rpc() *cli.Command {
 						klog.Infof("File %q was renamed; do nothing", event.Name)
 					case fsnotify.Chmod:
 						klog.Infof("File %q had its permissions changed; do nothing", event.Name)
+					default:
+						klog.Infof("File %q had an unknown event %q; do nothing", event.Name, event.Op)
 					}
 				})
 				if err != nil {
@@ -256,13 +263,13 @@ func onFileChanged(ctx context.Context, dirs []string, callback func(fsnotify.Ev
 	return nil
 }
 
-// getListOfDirectories returns a list of all the directories in the given directories and subdirectories
+// GetListOfDirectories returns a list of all the directories in the given directories and subdirectories
 // that match one of the given patterns.
 // The directories are first matched against the include patterns, and then against the exclude patterns.
 // If no include patterns are provided, then all directories are included.
 // If no exclude patterns are provided, then no directories are excluded.
 // The `.git` directory is always excluded.
-func getListOfDirectories(src []string, includePatterns []string, excludePatterns []string) ([]string, error) {
+func GetListOfDirectories(src []string, includePatterns []string, excludePatterns []string) ([]string, error) {
 	var allDirs []string
 
 	for _, srcItem := range src {
@@ -331,11 +338,11 @@ func getDeepDirectories(dir string, includePatterns []string, excludePatterns []
 	return dirs, nil
 }
 
-// getListOfConfigFiles returns a list of all the config files in the given directories and subdirectories
+// GetListOfConfigFiles returns a list of all the config files in the given directories and subdirectories
 // that match one of the given patterns.
 // The files are first matched against the file extension patterns, then against the include patterns,
 // and finally against the exclude patterns.
-func getListOfConfigFiles(src []string, includePatterns []string, excludePatterns []string) ([]string, error) {
+func GetListOfConfigFiles(src []string, includePatterns []string, excludePatterns []string) ([]string, error) {
 	fileExtensionPatterns := []string{"*.yaml", "*.yml", "*.json"}
 
 	var allFiles []string
