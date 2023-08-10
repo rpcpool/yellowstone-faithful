@@ -159,6 +159,39 @@ func adaptTransactionMetaToExpectedOutput(m map[string]any) map[string]any {
 				"writable": []any{},
 			}
 		}
+		{
+			// if has loadedReadonlyAddresses and is []string, then use that for loadedAddresses.readonly
+			if loadedReadonlyAddresses, ok := meta["loadedReadonlyAddresses"].([]any); ok {
+				// the address list is base64 encoded; decode and encode to base58
+				for i, addr := range loadedReadonlyAddresses {
+					addrStr, ok := addr.(string)
+					if ok {
+						decoded, err := base64.StdEncoding.DecodeString(addrStr)
+						if err == nil {
+							loadedReadonlyAddresses[i] = base58.Encode(decoded)
+						}
+					}
+				}
+				meta["loadedAddresses"].(map[string]any)["readonly"] = loadedReadonlyAddresses
+				delete(meta, "loadedReadonlyAddresses")
+			}
+			// if has loadedWritableAddresses and is []string, then use that for loadedAddresses.writable
+			if loadedWritableAddresses, ok := meta["loadedWritableAddresses"].([]any); ok {
+				// the address list is base64 encoded; decode and encode to base58
+				for i, addr := range loadedWritableAddresses {
+					addrStr, ok := addr.(string)
+					if ok {
+						decoded, err := base64.StdEncoding.DecodeString(addrStr)
+						if err == nil {
+							loadedWritableAddresses[i] = base58.Encode(decoded)
+						}
+					}
+				}
+				meta["loadedAddresses"].(map[string]any)["writable"] = loadedWritableAddresses
+				delete(meta, "loadedWritableAddresses")
+			}
+			// remove loadedReadonlyAddresses and loadedWritableAddresses
+		}
 		if _, ok := meta["postTokenBalances"]; !ok {
 			meta["postTokenBalances"] = []any{}
 		}
