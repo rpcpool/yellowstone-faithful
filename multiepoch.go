@@ -229,7 +229,7 @@ func newMultiEpochHandler(handler *MultiEpoch, lsConf *ListenerConfig) func(ctx 
 			Addr:  addr,
 			IsTLS: parsedTargetURL.Scheme == "https",
 		}
-		klog.Infof("Will proxy unhandled RPC methods to %q", target)
+		klog.Infof("Will proxy unhandled RPC methods to %q", addr)
 	}
 	return func(c *fasthttp.RequestCtx) {
 		startedAt := time.Now()
@@ -279,7 +279,7 @@ func newMultiEpochHandler(handler *MultiEpoch, lsConf *ListenerConfig) func(ctx 
 		klog.Infof("[%s] received request: %q", reqID, strings.TrimSpace(string(body)))
 
 		if proxy != nil && !isValidMethod(rpcRequest.Method) {
-			klog.Infof("[%s] Unhandled method %q, proxying to %q", reqID, rpcRequest.Method, lsConf.ProxyConfig.Target)
+			klog.Infof("[%s] Unhandled method %q, proxying to %q", reqID, rpcRequest.Method, proxy.Addr)
 			// proxy the request to the target
 			proxyReq := fasthttp.AcquireRequest()
 			defer fasthttp.ReleaseRequest(proxyReq)
