@@ -2,6 +2,7 @@
 
 set -o pipefail
 set -e
+set -x
 
 # Check if there is an epoch number provided
 if [ $# -eq 0 ]; then
@@ -35,8 +36,6 @@ if ! [ -x "$(command -v wget)" ]; then
         DOWNLOAD_COMMAND="curl -O"
         READ_COMMAND="curl -s"
     fi
-    echo "wget is not installed"
-    exit 1
 fi
 
 CID_URL=https://files.old-faithful.net/${EPOCH}/epoch-${EPOCH}.cid
