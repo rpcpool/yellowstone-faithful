@@ -58,6 +58,9 @@ func remoteHTTPFileAsIoReaderAt(ctx context.Context, url string) (ReaderAtCloser
 	if err != nil {
 		return nil, err
 	}
+	if contentLength == 0 {
+		return nil, fmt.Errorf("missing Content-Length/Content-Range header, or file is empty")
+	}
 
 	// Create a cache with a default expiration time of 5 minutes, and which
 	// purges expired items every 10 minutes
