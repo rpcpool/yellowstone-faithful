@@ -14,18 +14,50 @@ type ReaderAtCloser interface {
 	io.Closer
 }
 
+func getContentSizeWithHeadOrZeroRange(url string) (int64, error) {
+	// try sending a HEAD request to the server to get the file size:
+	resp, err := http.Head(url)
+	if err != nil {
+		return 0, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		// try sending a GET request with a zero range to the server to get the file size:
+		req := &http.Request{
+			Method: "GET",
+			URL:    resp.Request.URL,
+			Header: make(http.Header),
+		}
+		req.Header.Set("Range", "bytes=0-0")
+		resp, err = http.DefaultClient.Do(req)
+		if err != nil {
+			return 0, err
+		}
+		if resp.StatusCode != http.StatusPartialContent {
+			return 0, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+		}
+		// now find the content length:
+		contentRange := resp.Header.Get("Content-Range")
+		if contentRange == "" {
+			return 0, fmt.Errorf("missing Content-Range header")
+		}
+		var contentLength int64
+		_, err := fmt.Sscanf(contentRange, "bytes 0-0/%d", &contentLength)
+		if err != nil {
+			return 0, err
+		}
+		return contentLength, nil
+	}
+	return resp.ContentLength, nil
+}
+
 // remoteHTTPFileAsIoReaderAt returns a ReaderAtCloser for a remote file.
 // The returned ReaderAtCloser is backed by a http.Client.
 func remoteHTTPFileAsIoReaderAt(ctx context.Context, url string) (ReaderAtCloser, error) {
 	// send a request to the server to get the file size:
-	resp, err := http.Head(url)
+	contentLength, err := getContentSizeWithHeadOrZeroRange(url)
 	if err != nil {
 		return nil, err
 	}
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
-	}
-	contentLength := resp.ContentLength
 
 	// Create a cache with a default expiration time of 5 minutes, and which
 	// purges expired items every 10 minutes
