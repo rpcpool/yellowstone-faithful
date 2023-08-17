@@ -854,6 +854,8 @@ func (ser *rpcServer) Handle(ctx context.Context, conn *requestContext, req *jso
 	switch req.Method {
 	case "getBlock":
 		ser.handleGetBlock(ctx, conn, req)
+	case "getVersion":
+		ser.handleGetVersion(ctx, conn, req)
 	case "getTransaction":
 		ser.handleGetTransaction(ctx, conn, req)
 	case "getSignaturesForAddress":
@@ -877,6 +879,11 @@ type GetBlockResponse struct {
 	PreviousBlockhash string                   `json:"previousBlockhash"`
 	Rewards           any                      `json:"rewards"` // TODO: use same format as solana
 	Transactions      []GetTransactionResponse `json:"transactions"`
+}
+
+type GetVersionResponse struct {
+	FeatureSet uint64 `json:"feature-set"`
+	SolanaCore string `json:"solana-core"`
 }
 
 type GetTransactionResponse struct {
