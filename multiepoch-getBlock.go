@@ -100,12 +100,14 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 				})
 				wg.Go(func() (err error) {
 					if parentIsInPreviousEpoch {
+						// get car file header size
+						parentOffset = epochHandler.remoteCarHeaderSize
 						return nil
 					}
 					parentOffset, err = epochHandler.FindOffsetFromCid(ctx, parentCid)
 					if err != nil {
 						// If the parent is not found, it (probably) means that it's outside of the car file.
-						parentOffset = 0
+						parentOffset = epochHandler.remoteCarHeaderSize
 					}
 					return nil
 				})
