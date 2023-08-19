@@ -125,6 +125,11 @@ type GetTransactionResponse struct {
 	Signatures  []solana.Signature `json:"-"` // TODO: enable this
 }
 
+type GetVersionResponse struct {
+  FeatureSet uint64 `json:"feature-set"`
+  SolanaCore string `json:"solana-core"`
+}
+
 func loadDataFromDataFrames(
 	firstDataFrame *ipldbindcode.DataFrame,
 	dataFrameGetter func(ctx context.Context, wantedCid cid.Cid) (*ipldbindcode.DataFrame, error),

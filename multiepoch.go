@@ -355,6 +355,8 @@ func (ser *MultiEpoch) handleRequest(ctx context.Context, conn *requestContext, 
 		return ser.handleGetTransaction(ctx, conn, req)
 	case "getSignaturesForAddress":
 		return ser.handleGetSignaturesForAddress(ctx, conn, req)
+  case "getVersion":
+    return ser.handleGetVersion(ctx, conn, req)
 	default:
 		return &jsonrpc2.Error{
 			Code:    jsonrpc2.CodeMethodNotFound,
