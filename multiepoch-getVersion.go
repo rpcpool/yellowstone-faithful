@@ -21,11 +21,7 @@ func (ser *MultiEpoch) tryEnrichGetVersion(body []byte) ([]byte, error) {
 		return nil, fmt.Errorf("failed to decode result: %w", err)
 	}
 	// enrich the result:
-	faithfulVersion := make(map[string]any)
-	faithfulVersion["version"] = GitTag
-	faithfulVersion["commit"] = GitCommit
-	faithfulVersion["epochs"] = ser.GetEpochNumbers()
-	// merge the result:
+	faithfulVersion := ser.GetFaithfulVersionInfo()
 	decodedResult["faithful"] = faithfulVersion
 
 	// re-encode the result:
@@ -41,4 +37,12 @@ func (ser *MultiEpoch) tryEnrichGetVersion(body []byte) ([]byte, error) {
 	}
 	// return the response:
 	return encodedResponse, nil
+}
+
+func (ser *MultiEpoch) GetFaithfulVersionInfo() map[string]any {
+	faithfulVersion := make(map[string]any)
+	faithfulVersion["version"] = GitTag
+	faithfulVersion["commit"] = GitCommit
+	faithfulVersion["epochs"] = ser.GetEpochNumbers()
+	return faithfulVersion
 }

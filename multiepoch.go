@@ -343,6 +343,21 @@ func newMultiEpochHandler(handler *MultiEpoch, lsConf *ListenerConfig) func(ctx 
 		rqCtx := &requestContext{ctx: c}
 		method := rpcRequest.Method
 
+		if method == "getVersion" {
+			faithfulVersion := handler.GetFaithfulVersionInfo()
+			err := rqCtx.ReplyNoMod(
+				c,
+				rpcRequest.ID,
+				map[string]any{
+					"faithful": faithfulVersion,
+				},
+			)
+			if err != nil {
+				klog.Errorf("[%s] failed to reply to getVersion: %v", reqID, err)
+			}
+			return
+		}
+
 		// errorResp is the error response to be sent to the client.
 		errorResp, err := handler.handleRequest(c, rqCtx, &rpcRequest)
 		if err != nil {
