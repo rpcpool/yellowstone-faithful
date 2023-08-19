@@ -63,6 +63,8 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 	tim.time("GetBlock")
 	{
 		prefetcherFromCar := func() error {
+			parentIsInPreviousEpoch := CalcEpochForSlot(uint64(block.Meta.Parent_slot)) != CalcEpochForSlot(slot)
+
 			var blockCid, parentCid cid.Cid
 			wg := new(errgroup.Group)
 			wg.Go(func() (err error) {
@@ -73,6 +75,9 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 				return nil
 			})
 			wg.Go(func() (err error) {
+				if parentIsInPreviousEpoch {
+					return nil
+				}
 				parentCid, err = epochHandler.FindCidFromSlot(ctx, uint64(block.Meta.Parent_slot))
 				if err != nil {
 					return err
@@ -94,6 +99,9 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 					return nil
 				})
 				wg.Go(func() (err error) {
+					if parentIsInPreviousEpoch {
+						return nil
+					}
 					parentOffset, err = epochHandler.FindOffsetFromCid(ctx, parentCid)
 					if err != nil {
 						// If the parent is not found, it (probably) means that it's outside of the car file.
@@ -105,8 +113,6 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 				if err != nil {
 					return err
 				}
-
-				parentIsInPreviousEpoch := CalcEpochForSlot(uint64(block.Meta.Parent_slot)) != CalcEpochForSlot(slot)
 
 				length := blockOffset - parentOffset
 				// cap the length to 1GB
@@ -363,7 +369,7 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 				return &jsonrpc2.Error{
 					Code:    jsonrpc2.CodeInternalError,
 					Message: "Internal error",
-				}, fmt.Errorf("failed to decode block: %v", err)
+				}, fmt.Errorf("failed to get/decode block: %v", err)
 			}
 
 			if len(parentBlock.Entries) > 0 {
