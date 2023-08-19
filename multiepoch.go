@@ -126,7 +126,7 @@ func (m *MultiEpoch) CountEpochs() int {
 	return len(m.epochs)
 }
 
-func (m *MultiEpoch) EpochNumbers() []uint64 {
+func (m *MultiEpoch) GetEpochNumbers() []uint64 {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	var epochNumbers []uint64
@@ -142,7 +142,7 @@ func (m *MultiEpoch) EpochNumbers() []uint64 {
 func (m *MultiEpoch) GetFirstAvailableEpoch() (*Epoch, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	numbers := m.EpochNumbers()
+	numbers := m.GetEpochNumbers()
 	if len(numbers) > 0 {
 		return m.epochs[numbers[0]], nil
 	}
@@ -325,7 +325,17 @@ func newMultiEpochHandler(handler *MultiEpoch, lsConf *ListenerConfig) func(ctx 
 			}
 			c.Response.Header.Set("Content-Type", "application/json")
 			c.Response.SetStatusCode(proxyResp.StatusCode())
-			c.Response.SetBody(proxyResp.Body())
+			if rpcRequest.Method == "getVersion" {
+				enriched, err := handler.tryEnrichGetVersion(proxyResp.Body())
+				if err != nil {
+					klog.Errorf("[%s] failed to enrich getVersion response: %v", reqID, err)
+					c.Response.SetBody(proxyResp.Body())
+				} else {
+					c.Response.SetBody(enriched)
+				}
+			} else {
+				c.Response.SetBody(proxyResp.Body())
+			}
 			// TODO: handle compression.
 			return
 		}
