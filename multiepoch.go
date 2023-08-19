@@ -75,16 +75,17 @@ func (m *MultiEpoch) RemoveEpoch(epoch uint64) error {
 	return nil
 }
 
-func (m *MultiEpoch) RemoveEpochByConfigFilepath(configFilepath string) error {
+func (m *MultiEpoch) RemoveEpochByConfigFilepath(configFilepath string) (uint64, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for epoch, ep := range m.epochs {
 		if ep.config.ConfigFilepath() == configFilepath {
+			ep.Close()
 			delete(m.epochs, epoch)
-			return nil
+			return epoch, nil
 		}
 	}
-	return fmt.Errorf("epoch not found for config file %q", configFilepath)
+	return 0, fmt.Errorf("epoch not found for config file %q", configFilepath)
 }
 
 func (m *MultiEpoch) ReplaceEpoch(epoch uint64, ep *Epoch) error {
@@ -100,6 +101,10 @@ func (m *MultiEpoch) ReplaceEpoch(epoch uint64, ep *Epoch) error {
 func (m *MultiEpoch) ReplaceOrAddEpoch(epoch uint64, ep *Epoch) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	// if the epoch already exists, close it
+	if oldEp, ok := m.epochs[epoch]; ok {
+		oldEp.Close()
+	}
 	m.epochs[epoch] = ep
 	return nil
 }

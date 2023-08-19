@@ -146,6 +146,10 @@ func newCmd_rpc() *cli.Command {
 				defer cancel()
 
 				err = onFileChanged(ctx, dirs, func(event fsnotify.Event) {
+					if !isJSONFile(event.Name) && !isYAMLFile(event.Name) {
+						klog.Infof("File %q is not a JSON or YAML file; do nothing", event.Name)
+						return
+					}
 					klog.Infof("File event: %s", spew.Sdump(event))
 
 					if event.Op != fsnotify.Remove && multi.HasEpochWithSameHashAsFile(event.Name) {
@@ -173,6 +177,7 @@ func newCmd_rpc() *cli.Command {
 								klog.Errorf("error replacing epoch %d: %s", epoch.Epoch(), err.Error())
 								return
 							}
+							klog.Infof("Epoch %d replaced", epoch.Epoch())
 						}
 					case fsnotify.Create:
 						{
@@ -193,15 +198,17 @@ func newCmd_rpc() *cli.Command {
 								klog.Errorf("error adding epoch %d: %s", epoch.Epoch(), err.Error())
 								return
 							}
+							klog.Infof("Epoch %d added", epoch.Epoch())
 						}
 					case fsnotify.Remove:
 						{
 							klog.Infof("File %q was removed", event.Name)
 							// find the epoch that corresponds to this file, and remove it (if any)
-							err := multi.RemoveEpochByConfigFilepath(event.Name)
+							epNumber, err := multi.RemoveEpochByConfigFilepath(event.Name)
 							if err != nil {
 								klog.Errorf("error removing epoch for config file %q: %s", event.Name, err.Error())
 							}
+							klog.Infof("Epoch %d removed", epNumber)
 						}
 					case fsnotify.Rename:
 						klog.Infof("File %q was renamed; do nothing", event.Name)
