@@ -80,6 +80,7 @@ func (m *MultiEpoch) RemoveEpochByConfigFilepath(configFilepath string) (uint64,
 	defer m.mu.Unlock()
 	for epoch, ep := range m.epochs {
 		if ep.config.ConfigFilepath() == configFilepath {
+			ep.Close()
 			delete(m.epochs, epoch)
 			return epoch, nil
 		}
@@ -100,6 +101,10 @@ func (m *MultiEpoch) ReplaceEpoch(epoch uint64, ep *Epoch) error {
 func (m *MultiEpoch) ReplaceOrAddEpoch(epoch uint64, ep *Epoch) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	// if the epoch already exists, close it
+	if oldEp, ok := m.epochs[epoch]; ok {
+		oldEp.Close()
+	}
 	m.epochs[epoch] = ep
 	return nil
 }
