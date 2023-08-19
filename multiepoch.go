@@ -175,7 +175,7 @@ func LoadProxyConfig(configFilepath string) (*ProxyConfig, error) {
 }
 
 // ListeAndServe starts listening on the configured address and serves the RPC API.
-func (m *MultiEpoch) ListenAndServe(listenOn string, lsConf *ListenerConfig) error {
+func (m *MultiEpoch) ListenAndServe(ctx context.Context, listenOn string, lsConf *ListenerConfig) error {
 	handler := newMultiEpochHandler(m, lsConf)
 	handler = fasthttp.CompressHandler(handler)
 
@@ -206,7 +206,21 @@ func (m *MultiEpoch) ListenAndServe(listenOn string, lsConf *ListenerConfig) err
 	}
 
 	klog.Infof("RPC server listening on %s", listenOn)
-	return fasthttp.ListenAndServe(listenOn, handler)
+
+	s := &fasthttp.Server{
+		Handler:            handler,
+		MaxRequestBodySize: 1024 * 1024,
+	}
+	go func() {
+		// listen for context cancellation
+		<-ctx.Done()
+		klog.Info("RPC server shutting down...")
+		defer klog.Info("RPC server shut down")
+		if err := s.ShutdownWithContext(ctx); err != nil {
+			klog.Errorf("Error while shutting down RPC server: %s", err)
+		}
+	}()
+	return s.ListenAndServe(listenOn)
 }
 
 func randomRequestID() string {

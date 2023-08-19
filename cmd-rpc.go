@@ -142,7 +142,7 @@ func newCmd_rpc() *cli.Command {
 				klog.Infof("Found %d directories; will start watching them for changes ...", len(dirs))
 				spew.Dump(dirs)
 
-				ctx, cancel := context.WithCancel(context.Background())
+				ctx, cancel := context.WithCancel(c.Context)
 				defer cancel()
 
 				err = onFileChanged(ctx, dirs, func(event fsnotify.Event) {
@@ -234,7 +234,7 @@ func newCmd_rpc() *cli.Command {
 				}
 			}
 
-			return multi.ListenAndServe(listenOn, listenerConfig)
+			return multi.ListenAndServe(c.Context, listenOn, listenerConfig)
 		},
 	}
 }
