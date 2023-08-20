@@ -470,8 +470,8 @@ func (ser *deprecatedRPCServer) handleGetBlock(ctx context.Context, conn *reques
 						})
 					return
 				}
-				parentEntryHash := solana.HashFromBytes(parentEntryNode.Hash)
-				blockResp.PreviousBlockhash = parentEntryHash.String()
+				parentEntryHash := solana.HashFromBytes(parentEntryNode.Hash).String()
+				blockResp.PreviousBlockhash = &parentEntryHash
 			}
 		}
 	}
