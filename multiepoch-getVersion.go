@@ -24,6 +24,11 @@ func (ser *MultiEpoch) tryEnrichGetVersion(body []byte) ([]byte, error) {
 	faithfulVersion := ser.GetFaithfulVersionInfo()
 	decodedResult["faithful"] = faithfulVersion
 
+  solanaVersion := ser.GetSolanaVersionInfo()
+  for k,v := range solanaVersion {
+    decodedResult[k] = v
+  }
+
 	// re-encode the result:
 	encodedResult, err := json.Marshal(decodedResult)
 	if err != nil {
@@ -37,6 +42,14 @@ func (ser *MultiEpoch) tryEnrichGetVersion(body []byte) ([]byte, error) {
 	}
 	// return the response:
 	return encodedResponse, nil
+}
+
+// This function should return the solana version we are compatible with
+func (ser *MultiEpoch) GetSolanaVersionInfo() map[string]any {
+  solanaVersion := make(map[string]any)
+  solanaVersion["feature-set"] = 1879391783
+  solanaVersion["solana-core"] = "1.16.7"
+  return solanaVersion 
 }
 
 func (ser *MultiEpoch) GetFaithfulVersionInfo() map[string]any {
