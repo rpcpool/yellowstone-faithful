@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -27,17 +28,18 @@ type Epoch struct {
 	isFilecoinMode bool // true if the epoch is in Filecoin mode (i.e. Lassie mode)
 	config         *Config
 	// contains indexes and block data for the epoch
-	lassieFetcher    *lassieWrapper
-	localCarReader   *carv2.Reader
-	remoteCarReader  ReaderAtCloser
-	cidToOffsetIndex *compactindex.DB
-	slotToCidIndex   *compactindex36.DB
-	sigToCidIndex    *compactindex36.DB
-	gsfaReader       *gsfa.GsfaReader
-	cidToNodeCache   *cache.Cache // TODO: prevent OOM
-	onClose          []func() error
-	slotToCidCache   *cache.Cache
-	cidToOffsetCache *cache.Cache
+	lassieFetcher       *lassieWrapper
+	localCarReader      *carv2.Reader
+	remoteCarReader     ReaderAtCloser
+	remoteCarHeaderSize uint64
+	cidToOffsetIndex    *compactindex.DB
+	slotToCidIndex      *compactindex36.DB
+	sigToCidIndex       *compactindex36.DB
+	gsfaReader          *gsfa.GsfaReader
+	cidToNodeCache      *cache.Cache // TODO: prevent OOM
+	onClose             []func() error
+	slotToCidCache      *cache.Cache
+	cidToOffsetCache    *cache.Cache
 }
 
 func (r *Epoch) getSlotToCidFromCache(slot uint64) (cid.Cid, error, bool) {
@@ -184,6 +186,19 @@ func NewEpochFromConfig(config *Config, c *cli.Context) (*Epoch, error) {
 		}
 		ep.localCarReader = localCarReader
 		ep.remoteCarReader = remoteCarReader
+		if remoteCarReader != nil {
+			// read 10 bytes from the CAR file to get the header size
+			headerSizeBuf, err := readSectionFromReaderAt(remoteCarReader, 0, 10)
+			if err != nil {
+				return nil, fmt.Errorf("failed to read CAR header: %w", err)
+			}
+			// decode as uvarint
+			headerSize, n := binary.Uvarint(headerSizeBuf)
+			if n <= 0 {
+				return nil, fmt.Errorf("failed to decode CAR header size")
+			}
+			ep.remoteCarHeaderSize = uint64(n) + headerSize
+		}
 	}
 
 	{
