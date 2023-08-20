@@ -256,7 +256,7 @@ func createAllIndexes(
 		}
 		if numIndexedOffsets%10_000_000 == 0 {
 			timeFor10_000_000 := time.Since(lastCheckpoint)
-			howMany10_000_000 := (numTotalItems - numIndexedOffsets) / 10_000_000
+			howMany10_000_000 := ((numTotalItems - numIndexedOffsets) / 10_000_000) + 1
 			eta := timeFor10_000_000 * time.Duration(howMany10_000_000)
 
 			printToStderr(
