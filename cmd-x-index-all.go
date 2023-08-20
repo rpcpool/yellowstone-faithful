@@ -71,8 +71,8 @@ func newCmd_Index_all() *cli.Command {
 				if err != nil {
 					return err
 				}
-				spew.Dump(indexPaths)
-				klog.Info("Indexes created.")
+				klog.Info("Indexes created:")
+				veryPlainSdumpConfig.Dump(indexPaths)
 				if verify {
 					return verifyAllIndexes(context.Background(), carPath, indexPaths)
 				}
@@ -81,6 +81,16 @@ func newCmd_Index_all() *cli.Command {
 			return nil
 		},
 	}
+}
+
+var veryPlainSdumpConfig = spew.ConfigState{
+	Indent:                  "  ",
+	DisablePointerAddresses: true,
+	DisableCapacities:       true,
+	DisableMethods:          true,
+	DisablePointerMethods:   true,
+	ContinueOnMethod:        true,
+	SortKeys:                true,
 }
 
 func createAllIndexes(
@@ -111,6 +121,10 @@ func createAllIndexes(
 	// check it has 1 root
 	if len(rd.header.Roots) != 1 {
 		return nil, fmt.Errorf("car file must have exactly 1 root, but has %d", len(rd.header.Roots))
+	}
+	// print roots:
+	for _, root := range rd.header.Roots {
+		klog.Infof("- Root: %s", root)
 	}
 
 	klog.Infof("Getting car file size")
