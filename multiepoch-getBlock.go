@@ -122,6 +122,7 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 				if length > GiB {
 					length = GiB
 				}
+				klog.Infof("prefetching %d bytes from %d", length, parentOffset)
 				carSection, err := epochHandler.ReadAtFromCar(ctx, parentOffset, length)
 				if err != nil {
 					return err
@@ -132,7 +133,7 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 
 				gotCid, data, err := util.ReadNode(br)
 				if err != nil {
-					return err
+					return fmt.Errorf("failed to read first node: %w", err)
 				}
 				if !parentIsInPreviousEpoch && !gotCid.Equals(parentCid) {
 					return fmt.Errorf("CID mismatch: expected %s, got %s", parentCid, gotCid)
@@ -294,12 +295,15 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 							}
 						}
 					}
-					rewards = m["rewards"]
+					rewards = rewardsAsArray
 				} else {
 					klog.Errorf("did not find rewards field in rewards")
+					rewards = make([]any, 0)
 				}
 			}
 		}
+	} else {
+		rewards = make([]any, 0)
 	}
 	tim.time("get rewards")
 	{
@@ -385,8 +389,8 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 						Message: "Internal error",
 					}, fmt.Errorf("failed to decode Entry: %v", err)
 				}
-				parentEntryHash := solana.HashFromBytes(parentEntryNode.Hash)
-				blockResp.PreviousBlockhash = parentEntryHash.String()
+				parentEntryHash := solana.HashFromBytes(parentEntryNode.Hash).String()
+				blockResp.PreviousBlockhash = &parentEntryHash
 			}
 		} else {
 			klog.Infof("parent slot is in a different epoch, not implemented yet")

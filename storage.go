@@ -109,7 +109,7 @@ type GetBlockResponse struct {
 	BlockTime         *uint64                  `json:"blockTime"`
 	Blockhash         string                   `json:"blockhash"`
 	ParentSlot        uint64                   `json:"parentSlot"`
-	PreviousBlockhash string                   `json:"previousBlockhash"`
+	PreviousBlockhash *string                  `json:"previousBlockhash"`
 	Rewards           any                      `json:"rewards"` // TODO: use same format as solana
 	Transactions      []GetTransactionResponse `json:"transactions"`
 }

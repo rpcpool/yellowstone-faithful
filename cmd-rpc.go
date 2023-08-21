@@ -90,8 +90,10 @@ func newCmd_rpc() *cli.Command {
 			if err != nil {
 				return cli.Exit(err.Error(), 1)
 			}
-			klog.Infof("Found %d config files", len(configFiles))
-			spew.Dump(configFiles)
+			klog.Infof("Found %d config files:", len(configFiles))
+			for _, configFile := range configFiles {
+				fmt.Printf("  - %s\n", configFile)
+			}
 
 			// Load configs:
 			configs := make(ConfigSlice, 0)

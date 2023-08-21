@@ -192,15 +192,55 @@ func adaptTransactionMetaToExpectedOutput(m map[string]any) map[string]any {
 			}
 			// remove loadedReadonlyAddresses and loadedWritableAddresses
 		}
-		if _, ok := meta["postTokenBalances"]; !ok {
+		if preTokenBalances, ok := meta["preTokenBalances"]; !ok {
+			meta["preTokenBalances"] = []any{}
+		} else {
+			// in preTokenBalances.[].uiTokenAmount.decimals if not present, set to 0
+			preTokenBalances, ok := preTokenBalances.([]any)
+			if ok {
+				for _, preTokenBalanceAny := range preTokenBalances {
+					preTokenBalance, ok := preTokenBalanceAny.(map[string]any)
+					if ok {
+						uiTokenAmountAny, ok := preTokenBalance["uiTokenAmount"]
+						if ok {
+							uiTokenAmount, ok := uiTokenAmountAny.(map[string]any)
+							if ok {
+								_, ok := uiTokenAmount["decimals"]
+								if !ok {
+									uiTokenAmount["decimals"] = 0
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+		if postTokenBalances, ok := meta["postTokenBalances"]; !ok {
 			meta["postTokenBalances"] = []any{}
+		} else {
+			// in postTokenBalances.[].uiTokenAmount.decimals if not present, set to 0
+			postTokenBalances, ok := postTokenBalances.([]any)
+			if ok {
+				for _, postTokenBalanceAny := range postTokenBalances {
+					postTokenBalance, ok := postTokenBalanceAny.(map[string]any)
+					if ok {
+						uiTokenAmountAny, ok := postTokenBalance["uiTokenAmount"]
+						if ok {
+							uiTokenAmount, ok := uiTokenAmountAny.(map[string]any)
+							if ok {
+								_, ok := uiTokenAmount["decimals"]
+								if !ok {
+									uiTokenAmount["decimals"] = 0
+								}
+							}
+						}
+					}
+				}
+			}
 		}
 		if _, ok := meta["returnDataNone"]; !ok {
 			// TODO: what is this?
 			meta["returnDataNone"] = nil
-		}
-		if _, ok := meta["preTokenBalances"]; !ok {
-			meta["preTokenBalances"] = []any{}
 		}
 		if _, ok := meta["rewards"]; !ok {
 			meta["rewards"] = []any{}
@@ -215,6 +255,19 @@ func adaptTransactionMetaToExpectedOutput(m map[string]any) map[string]any {
 				} else {
 					meta["status"] = map[string]any{
 						"Err": eee,
+					}
+				}
+			}
+		}
+		{
+			// TODO: is this correct?
+			// if doesn't have err, but has status and it is empty, then set status to Ok
+			if _, ok := meta["err"]; !ok || meta["err"] == nil {
+				if status, ok := meta["status"].(map[string]any); ok {
+					if len(status) == 0 {
+						meta["status"] = map[string]any{
+							"Ok": nil,
+						}
 					}
 				}
 			}
