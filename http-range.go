@@ -184,7 +184,7 @@ func (r *readCloserWrapper) ReadAt(p []byte, off int64) (n int, err error) {
 			if strings.HasSuffix(r.name, ".car") {
 				prefix = purpleBG("[READ-CAR]")
 			}
-			fmt.Fprintf(os.Stderr, prefix+" %s:%d-%d (%s)\n", filepath.Base(r.name), off, len(p), time.Since(startedAt))
+			fmt.Fprintf(os.Stderr, prefix+" %s:%d+%d (%s)\n", filepath.Base(r.name), off, len(p), time.Since(startedAt))
 		}
 	}()
 	return r.rac.ReadAt(p, off)
