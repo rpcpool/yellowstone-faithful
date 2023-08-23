@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"path/filepath"
 	"time"
 )
@@ -184,10 +185,12 @@ type readCloserWrapper struct {
 
 // when reading print a dot
 func (r *readCloserWrapper) ReadAt(p []byte, off int64) (n int, err error) {
-	if DebugMode {
-		fmt.Print("·")
-		fmt.Printf("%s:%d-%d\n", filepath.Base(r.name), off, len(p))
-	}
+	startedAt := time.Now()
+	defer func() {
+		if DebugMode {
+			fmt.Fprintf(os.Stderr, "read %s:%d-%d (%s)\n", filepath.Base(r.name), off, len(p), time.Since(startedAt))
+		}
+	}()
 	return r.rac.ReadAt(p, off)
 }
 
