@@ -301,6 +301,10 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 						if asString, ok := rewardAsMap["commission"].(string); ok {
 							rewardAsMap["commission"] = asFloat(asString)
 						}
+						// if no lamports field, add it and set it to 0
+						if _, ok := rewardAsMap["lamports"]; !ok {
+							rewardAsMap["lamports"] = uint64(0)
+						}
 
 						// if it has a post_balance field, convert it to postBalance
 						if _, ok := rewardAsMap["post_balance"]; ok {
