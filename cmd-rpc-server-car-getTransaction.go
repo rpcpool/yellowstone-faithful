@@ -277,6 +277,20 @@ func adaptTransactionMetaToExpectedOutput(m map[string]any) map[string]any {
 		}
 	}
 	{
+		if returnData, ok := meta["returnData"].(map[string]any); ok {
+			if data, ok := returnData["data"].(string); ok {
+				returnData["data"] = []any{data, "base64"}
+			}
+
+			if programId, ok := returnData["programId"].(string); ok {
+				decoded, err := base64.StdEncoding.DecodeString(programId)
+				if err == nil {
+					returnData["programId"] = base58.Encode(decoded)
+				}
+			}
+		}
+	}
+	{
 		innerInstructionsAny, ok := meta["innerInstructions"]
 		if !ok {
 			meta["innerInstructions"] = []any{}
@@ -318,6 +332,8 @@ func adaptTransactionMetaToExpectedOutput(m map[string]any) map[string]any {
 								instruction["accounts"] = byteSliceAsIntegerSlice(decoded)
 							}
 						}
+					} else {
+						instruction["accounts"] = []any{}
 					}
 					if data, ok := instruction["data"]; ok {
 						// as string
