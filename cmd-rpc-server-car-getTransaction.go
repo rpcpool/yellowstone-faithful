@@ -209,6 +209,10 @@ func adaptTransactionMetaToExpectedOutput(m map[string]any) map[string]any {
 								if !ok {
 									uiTokenAmount["decimals"] = 0
 								}
+								_, ok = uiTokenAmount["uiAmount"]
+								if !ok {
+									uiTokenAmount["uiAmount"] = nil
+								}
 							}
 						}
 					}
@@ -238,10 +242,9 @@ func adaptTransactionMetaToExpectedOutput(m map[string]any) map[string]any {
 				}
 			}
 		}
-		if _, ok := meta["returnDataNone"]; !ok {
-			// TODO: what is this?
-			meta["returnDataNone"] = nil
-		}
+
+		delete(meta, "returnDataNone")
+
 		if _, ok := meta["rewards"]; !ok {
 			meta["rewards"] = []any{}
 		}
