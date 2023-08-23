@@ -27,10 +27,10 @@ import (
 func openIndexStorage(ctx context.Context, where string) (ReaderAtCloser, error) {
 	where = strings.TrimSpace(where)
 	if strings.HasPrefix(where, "http://") || strings.HasPrefix(where, "https://") {
-		klog.Infof("opening file from %q as HTTP remote file", where)
+		klog.Infof("opening index file from %q as HTTP remote file", where)
 		rac, err := remoteHTTPFileAsIoReaderAt(ctx, where)
 		if err != nil {
-			return nil, fmt.Errorf("failed to open index file: %w", err)
+			return nil, fmt.Errorf("failed to open remote index file: %w", err)
 		}
 		return &readCloserWrapper{
 			rac:  rac,
@@ -41,7 +41,7 @@ func openIndexStorage(ctx context.Context, where string) (ReaderAtCloser, error)
 	// TODO: add support for Filecoin gateways.
 	rac, err := mmap.Open(where)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open index file: %w", err)
+		return nil, fmt.Errorf("failed to open local index file: %w", err)
 	}
 	return &readCloserWrapper{
 		rac:  rac,
@@ -52,8 +52,15 @@ func openIndexStorage(ctx context.Context, where string) (ReaderAtCloser, error)
 func openCarStorage(ctx context.Context, where string) (*carv2.Reader, ReaderAtCloser, error) {
 	where = strings.TrimSpace(where)
 	if strings.HasPrefix(where, "http://") || strings.HasPrefix(where, "https://") {
+		klog.Infof("opening CAR file from %q as HTTP remote file", where)
 		rem, err := remoteHTTPFileAsIoReaderAt(ctx, where)
-		return nil, rem, err
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to open remote CAR file: %w", err)
+		}
+		return nil, &readCloserWrapper{
+			rac:  rem,
+			name: where,
+		}, nil
 	}
 	// TODO: add support for IPFS gateways.
 	// TODO: add support for Filecoin gateways.

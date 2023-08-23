@@ -88,6 +88,7 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 			if err != nil {
 				return err
 			}
+			klog.Infof("%s -> %s", parentCid, blockCid)
 			{
 				var blockOffset, parentOffset uint64
 				wg := new(errgroup.Group)
@@ -117,18 +118,25 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 				}
 
 				length := blockOffset - parentOffset
-				// cap the length to 1GB
-				GiB := uint64(1024 * 1024 * 1024)
-				if length > GiB {
-					length = GiB
+				MiB := uint64(1024 * 1024)
+				maxSize := MiB * 100
+				if length > maxSize {
+					length = maxSize
 				}
-				klog.Infof("prefetching %d bytes from %d", length, parentOffset)
-				carSection, err := epochHandler.ReadAtFromCar(ctx, parentOffset, length)
+
+				idealEntrySize := uint64(36190)
+				maybeOffsetOfLastEntry := parentOffset - idealEntrySize
+				length += idealEntrySize
+
+				klog.Infof("prefetching CAR: start=%d length=%d (parent_offset=%d)", maybeOffsetOfLastEntry, length, parentOffset)
+				carSection, err := epochHandler.ReadAtFromCar(ctx, maybeOffsetOfLastEntry, length)
 				if err != nil {
 					return err
 				}
 				dr := bytes.NewReader(carSection)
-
+				{
+					dr.Seek(int64(idealEntrySize), io.SeekStart)
+				}
 				br := bufio.NewReader(dr)
 
 				gotCid, data, err := util.ReadNode(br)
@@ -393,7 +401,7 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 				blockResp.PreviousBlockhash = &parentEntryHash
 			}
 		} else {
-			klog.Infof("parent slot is in a different epoch, not implemented yet")
+			klog.Infof("parent slot is in a different epoch, not implemented yet (can't get previousBlockhash)")
 		}
 	}
 	tim.time("get parent block")

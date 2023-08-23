@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
 	"sync"
 	"time"
 )
@@ -11,6 +12,7 @@ type RangeCache struct {
 	mu sync.RWMutex
 	// the size of the file.
 	size int64
+	name string
 
 	occupiedSpace uint64
 	remoteFetcher func(p []byte, off int64) (n int, err error)
@@ -39,12 +41,17 @@ func (r Range) isValidFor(size int64) bool {
 }
 
 // NewRangeCache creates a new RangeCache.
-func NewRangeCache(size int64, fetcher func(p []byte, off int64) (n int, err error)) *RangeCache {
+func NewRangeCache(
+	size int64,
+	name string,
+	fetcher func(p []byte, off int64) (n int, err error),
+) *RangeCache {
 	if fetcher == nil {
 		panic("fetcher must not be nil")
 	}
 	return &RangeCache{
 		size:          size,
+		name:          name,
 		cache:         make(map[Range]RangeCacheEntry),
 		remoteFetcher: fetcher,
 	}
@@ -141,7 +148,13 @@ func (rc *RangeCache) GetRange(ctx context.Context, start, ln int64) ([]byte, er
 	end := start + ln
 	got, err := rc.getRange(ctx, start, end, func() ([]byte, error) {
 		v := make([]byte, end-start)
-		debugLn(orange("cache MISS; reading from reader"), start, end, end-start)
+		debugf(
+			orange("[cache-MISS] reading from source %s: start=%d end=%d len=%d\n"),
+			rc.name,
+			start,
+			end,
+			end-start,
+		)
 		_, err := rc.remoteFetcher(v, start)
 		if err == nil {
 			cloned := clone(v)
@@ -160,7 +173,13 @@ func (rc *RangeCache) GetRange(ctx context.Context, start, ln int64) ([]byte, er
 
 func debugLn(a ...interface{}) {
 	if DebugMode {
-		fmt.Println(a...)
+		fmt.Fprintln(os.Stderr, a...)
+	}
+}
+
+func debugf(format string, a ...interface{}) {
+	if DebugMode {
+		fmt.Fprintf(os.Stderr, format, a...)
 	}
 }
 
@@ -202,7 +221,13 @@ func (rc *RangeCache) getRangeFromCache(ctx context.Context, start, end int64) (
 		return nil, false, nil
 	}
 	if v, ok := rc.cache[Range{start, end}]; ok {
-		debugLn(lime("exact cache HIT"), start, end, end-start)
+		debugf(
+			lime("[exact-cache-HIT] for %s: start=%d end=%d len=%d\n"),
+			rc.name,
+			start,
+			end,
+			end-start,
+		)
 		return clone(v.Value), true, nil
 	}
 	{
@@ -212,7 +237,13 @@ func (rc *RangeCache) getRangeFromCache(ctx context.Context, start, end int64) (
 				return nil, false, ctx.Err()
 			}
 			if r.contains(Range{start, end}) {
-				debugLn(lime("cache HIT for a superset of this range"), start, end, end-start)
+				debugf(
+					lime("[cache-HIT] range superset in %s: start=%d end=%d len=%d\n"),
+					rc.name,
+					start,
+					end,
+					end-start,
+				)
 				return clone(rc.cache[r].Value[start-r[0] : end-r[0]]), true, nil
 			}
 		}
