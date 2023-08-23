@@ -294,7 +294,13 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 					rewardsAsArray := m["rewards"].([]any)
 					for _, reward := range rewardsAsArray {
 						rewardAsMap := reward.(map[string]any)
-						rewardAsMap["commission"] = nil
+						if _, ok := rewardAsMap["commission"]; !ok {
+							rewardAsMap["commission"] = nil
+						}
+						// if the commission field is a string, convert it to a float
+						if asString, ok := rewardAsMap["commission"].(string); ok {
+							rewardAsMap["commission"] = asFloat(asString)
+						}
 
 						// if it has a post_balance field, convert it to postBalance
 						if _, ok := rewardAsMap["post_balance"]; ok {
@@ -440,6 +446,15 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 		return nil, fmt.Errorf("failed to reply: %w", err)
 	}
 	return nil, nil
+}
+
+func asFloat(s string) float64 {
+	var f float64
+	_, err := fmt.Sscanf(s, "%f", &f)
+	if err != nil {
+		panic(err)
+	}
+	return f
 }
 
 func mergeTxNodeSlices(slices [][]*ipldbindcode.Transaction) []*ipldbindcode.Transaction {
