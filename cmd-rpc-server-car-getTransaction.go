@@ -288,6 +288,10 @@ func adaptTransactionMetaToExpectedOutput(m map[string]any) map[string]any {
 			if !ok {
 				continue
 			}
+			// If doesn't have `index`, then set it to 0
+			if _, ok := innerInstruction["index"]; !ok {
+				innerInstruction["index"] = 0
+			}
 			instructionsAny, ok := innerInstruction["instructions"]
 			if !ok {
 				continue
