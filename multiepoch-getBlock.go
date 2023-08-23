@@ -125,16 +125,25 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 				}
 
 				idealEntrySize := uint64(36190)
-				maybeOffsetOfLastEntry := parentOffset - idealEntrySize
-				length += idealEntrySize
+				var start uint64
+				if parentIsInPreviousEpoch {
+					start = parentOffset
+				} else {
+					if parentOffset > idealEntrySize {
+						start = parentOffset - idealEntrySize
+					} else {
+						start = parentOffset
+					}
+					length += idealEntrySize
+				}
 
-				klog.Infof("prefetching CAR: start=%d length=%d (parent_offset=%d)", maybeOffsetOfLastEntry, length, parentOffset)
-				carSection, err := epochHandler.ReadAtFromCar(ctx, maybeOffsetOfLastEntry, length)
+				klog.Infof("prefetching CAR: start=%d length=%d (parent_offset=%d)", start, length, parentOffset)
+				carSection, err := epochHandler.ReadAtFromCar(ctx, start, length)
 				if err != nil {
 					return err
 				}
 				dr := bytes.NewReader(carSection)
-				{
+				if !parentIsInPreviousEpoch {
 					dr.Seek(int64(idealEntrySize), io.SeekStart)
 				}
 				br := bufio.NewReader(dr)
@@ -154,7 +163,7 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 						if errors.Is(err, io.EOF) {
 							break
 						}
-						return err
+						return fmt.Errorf("failed to read node: %w", err)
 					}
 					if gotCid.Equals(blockCid) {
 						break
