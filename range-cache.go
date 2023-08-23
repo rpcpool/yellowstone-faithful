@@ -12,6 +12,7 @@ type RangeCache struct {
 	mu sync.RWMutex
 	// the size of the file.
 	size int64
+	name string
 
 	occupiedSpace uint64
 	remoteFetcher func(p []byte, off int64) (n int, err error)
@@ -40,12 +41,17 @@ func (r Range) isValidFor(size int64) bool {
 }
 
 // NewRangeCache creates a new RangeCache.
-func NewRangeCache(size int64, fetcher func(p []byte, off int64) (n int, err error)) *RangeCache {
+func NewRangeCache(
+	size int64,
+	name string,
+	fetcher func(p []byte, off int64) (n int, err error),
+) *RangeCache {
 	if fetcher == nil {
 		panic("fetcher must not be nil")
 	}
 	return &RangeCache{
 		size:          size,
+		name:          name,
 		cache:         make(map[Range]RangeCacheEntry),
 		remoteFetcher: fetcher,
 	}
@@ -143,7 +149,8 @@ func (rc *RangeCache) GetRange(ctx context.Context, start, ln int64) ([]byte, er
 	got, err := rc.getRange(ctx, start, end, func() ([]byte, error) {
 		v := make([]byte, end-start)
 		debugf(
-			orange("[cache-MISS] going to read from original reader: start=%d end=%d len=%d\n"),
+			orange("[cache-MISS] reading from source %s: start=%d end=%d len=%d\n"),
+			rc.name,
 			start,
 			end,
 			end-start,
@@ -215,7 +222,8 @@ func (rc *RangeCache) getRangeFromCache(ctx context.Context, start, end int64) (
 	}
 	if v, ok := rc.cache[Range{start, end}]; ok {
 		debugf(
-			lime("exact cache HIT: start=%d end=%d len=%d\n"),
+			lime("[exact-cache-HIT] for %s: start=%d end=%d len=%d\n"),
+			rc.name,
 			start,
 			end,
 			end-start,
@@ -230,7 +238,8 @@ func (rc *RangeCache) getRangeFromCache(ctx context.Context, start, end int64) (
 			}
 			if r.contains(Range{start, end}) {
 				debugf(
-					lime("[cache-HIT] for a superset of this range: start=%d end=%d len=%d\n"),
+					lime("[cache-HIT] range superset in %s: start=%d end=%d len=%d\n"),
+					rc.name,
 					start,
 					end,
 					end-start,

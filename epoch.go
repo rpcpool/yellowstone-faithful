@@ -365,6 +365,7 @@ func (ser *Epoch) FindOffsetFromCid(ctx context.Context, cid cid.Cid) (uint64, e
 	if err != nil {
 		return 0, err
 	}
+	klog.Infof("found offset for CID %s: %d", cid, found)
 	ser.putCidToOffsetInCache(cid, found)
 	return found, nil
 }

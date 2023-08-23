@@ -72,9 +72,12 @@ func remoteHTTPFileAsIoReaderAt(ctx context.Context, url string) (ReaderAtCloser
 		client:        newHTTPClient(),
 	}
 
-	rc := NewRangeCache(contentLength, func(p []byte, off int64) (n int, err error) {
-		return remoteReadAt(rr.client, rr.url, p, off)
-	})
+	rc := NewRangeCache(
+		contentLength,
+		filepath.Base(url),
+		func(p []byte, off int64) (n int, err error) {
+			return remoteReadAt(rr.client, rr.url, p, off)
+		})
 	rc.StartCacheGC(ctx, 1*time.Minute)
 	rr.ca = rc
 
