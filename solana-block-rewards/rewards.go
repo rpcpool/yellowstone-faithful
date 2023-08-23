@@ -1,8 +1,8 @@
 package solanablockrewards
 
 import (
-	"github.com/golang/protobuf/proto"
 	"github.com/rpcpool/yellowstone-faithful/third_party/solana_proto/confirmed_block"
+	"google.golang.org/protobuf/proto"
 )
 
 func ParseRewards(buf []byte) (*confirmed_block.Rewards, error) {
