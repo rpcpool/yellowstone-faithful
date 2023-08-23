@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -76,20 +77,6 @@ func remoteHTTPFileAsIoReaderAt(ctx context.Context, url string) (ReaderAtCloser
 	})
 	rc.StartCacheGC(ctx, 1*time.Minute)
 	rr.ca = rc
-
-	// try prefetching the first n MiB:
-	{
-		MiB := int64(1024 * 1024)
-		prefetchSize := MiB
-		if prefetchSize > contentLength {
-			prefetchSize = contentLength
-		}
-		prefetchBuf := make([]byte, prefetchSize)
-		_, err := rr.ReadAt(prefetchBuf, 0)
-		if err != nil {
-			return nil, err
-		}
-	}
 
 	return rr, nil
 }
@@ -188,10 +175,29 @@ func (r *readCloserWrapper) ReadAt(p []byte, off int64) (n int, err error) {
 	startedAt := time.Now()
 	defer func() {
 		if DebugMode {
-			fmt.Fprintf(os.Stderr, "read %s:%d-%d (%s)\n", filepath.Base(r.name), off, len(p), time.Since(startedAt))
+			prefix := "[READ-UNKNOWN]"
+			// if has suffix .index, then it's an index file
+			if strings.HasSuffix(r.name, ".index") {
+				prefix = azureBG("[READ-INDEX]")
+			}
+			// if has suffix .car, then it's a car file
+			if strings.HasSuffix(r.name, ".car") {
+				prefix = purpleBG("[READ-CAR]")
+			}
+			fmt.Fprintf(os.Stderr, prefix+" %s:%d-%d (%s)\n", filepath.Base(r.name), off, len(p), time.Since(startedAt))
 		}
 	}()
 	return r.rac.ReadAt(p, off)
+}
+
+func purpleBG(s string) string {
+	// blue bg, black fg
+	return "\033[48;5;4m\033[38;5;0m" + s + "\033[0m"
+}
+
+func azureBG(s string) string {
+	// azure bg, black fg
+	return "\033[48;5;6m\033[38;5;0m" + s + "\033[0m"
 }
 
 // when closing print a newline

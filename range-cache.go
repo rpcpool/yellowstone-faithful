@@ -141,7 +141,7 @@ func (rc *RangeCache) GetRange(ctx context.Context, start, ln int64) ([]byte, er
 	end := start + ln
 	got, err := rc.getRange(ctx, start, end, func() ([]byte, error) {
 		v := make([]byte, end-start)
-		debugLn(orange("cache MISS; reading from reader"), start, end, end-start)
+		debugLn(orange("[cache-MISS] going to read from original reader"), start, end, end-start)
 		_, err := rc.remoteFetcher(v, start)
 		if err == nil {
 			cloned := clone(v)
@@ -212,7 +212,7 @@ func (rc *RangeCache) getRangeFromCache(ctx context.Context, start, end int64) (
 				return nil, false, ctx.Err()
 			}
 			if r.contains(Range{start, end}) {
-				debugLn(lime("cache HIT for a superset of this range"), start, end, end-start)
+				debugLn(lime("[cache-HIT] for a superset of this range"), start, end, end-start)
 				return clone(rc.cache[r].Value[start-r[0] : end-r[0]]), true, nil
 			}
 		}
