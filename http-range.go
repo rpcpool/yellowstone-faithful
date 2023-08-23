@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/goware/urlx"
 )
 
 type ReaderAtCloser interface {
@@ -71,10 +73,15 @@ func remoteHTTPFileAsIoReaderAt(ctx context.Context, url string) (ReaderAtCloser
 		contentLength: contentLength,
 		client:        newHTTPClient(),
 	}
+	parsedURL, err := urlx.Parse(url)
+	if err != nil {
+		return nil, err
+	}
+	name := filepath.Base(parsedURL.Path)
 
 	rc := NewRangeCache(
 		contentLength,
-		filepath.Base(url),
+		name,
 		func(p []byte, off int64) (n int, err error) {
 			return remoteReadAt(rr.client, rr.url, p, off)
 		})
