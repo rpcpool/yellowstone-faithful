@@ -13,9 +13,12 @@ func TestCache(t *testing.T) {
 		v := []byte("hello")
 		full := append(v, []byte(" world")...)
 		rd := bytes.NewReader(full)
-		rc := NewRangeCache(int64(len(full)), func(p []byte, off int64) (n int, err error) {
-			return rd.ReadAt(p, off)
-		})
+		rc := NewRangeCache(
+			int64(len(full)),
+			"test",
+			func(p []byte, off int64) (n int, err error) {
+				return rd.ReadAt(p, off)
+			})
 
 		{
 			{
