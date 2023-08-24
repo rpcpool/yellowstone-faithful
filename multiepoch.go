@@ -345,7 +345,7 @@ func newMultiEpochHandler(handler *MultiEpoch, lsConf *ListenerConfig) func(ctx 
 
 		if method == "getVersion" {
 			faithfulVersion := handler.GetFaithfulVersionInfo()
-			err := rqCtx.ReplyNoMod(
+			err := rqCtx.ReplyRaw(
 				c,
 				rpcRequest.ID,
 				map[string]any{

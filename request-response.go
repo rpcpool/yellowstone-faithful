@@ -76,7 +76,9 @@ func toLowerCamelCase(v string) string {
 	return strings.ToLower(pascal[:1]) + pascal[1:]
 }
 
-// Reply(ctx context.Context, id ID, result interface{}) error {
+// Reply sends a response to the client with the given result.
+// The result fields keys are converted to camelCase.
+// If remapCallback is not nil, it is called with the result map[string]interface{}.
 func (c *requestContext) Reply(
 	ctx context.Context,
 	id jsonrpc2.ID,
@@ -106,7 +108,8 @@ func (c *requestContext) Reply(
 	return err
 }
 
-func (c *requestContext) ReplyNoMod(
+// ReplyRaw sends a raw response without any processing (no camelCase conversion, etc).
+func (c *requestContext) ReplyRaw(
 	ctx context.Context,
 	id jsonrpc2.ID,
 	result interface{},

@@ -28,7 +28,7 @@ func (ser *deprecatedRPCServer) handleGetTransaction(ctx context.Context, conn *
 	transactionNode, err := ser.GetTransaction(WithSubrapghPrefetch(ctx, true), sig)
 	if err != nil {
 		if errors.Is(err, compactindex36.ErrNotFound) {
-			conn.ReplyNoMod(
+			conn.ReplyRaw(
 				ctx,
 				req.ID,
 				nil, // NOTE: solana just returns null here in case of transaction not found
