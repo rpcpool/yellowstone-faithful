@@ -4,19 +4,76 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
+	"time"
 
+	"github.com/gagliardetto/solana-go"
 	"github.com/rpcpool/yellowstone-faithful/compactindex36"
-	sigtoepoch "github.com/rpcpool/yellowstone-faithful/sig-to-epoch"
 	"github.com/sourcegraph/jsonrpc2"
+	"k8s.io/klog/v2"
 )
 
-func (ser *MultiEpoch) handleGetTransaction(ctx context.Context, conn *requestContext, req *jsonrpc2.Request) (*jsonrpc2.Error, error) {
-	if ser.sigToEpoch == nil && ser.CountEpochs() > 1 {
-		// The sig-to-epoch index is required when there's more than one epoch.
+func (multi *MultiEpoch) findEpochNumberFromSignature(ctx context.Context, sig solana.Signature) (uint64, error) {
+	// FLOW:
+	// - if one epoch, just return that epoch
+	// - if multiple epochs, use sigToEpoch to find the epoch number
+	// - if sigToEpoch is not available, linear search through all epochs
+
+	if epochs := multi.GetEpochNumbers(); len(epochs) == 1 {
+		return epochs[0], nil
+	}
+
+	if multi.sigToEpoch != nil {
+		epochNumber, err := multi.sigToEpoch.Get(ctx, sig)
+		if err != nil {
+			return 0, fmt.Errorf("failed to get epoch for signature %s: %v", sig, err)
+		}
+		return uint64(epochNumber), nil
+	}
+
+	// Linear search:
+	numbers := multi.GetEpochNumbers()
+	// sort from highest to lowest:
+	sort.Slice(numbers, func(i, j int) bool {
+		return numbers[i] > numbers[j]
+	})
+	// Search all epochs in parallel:
+	wg := NewFirstResponse(ctx, multi.options.EpochSearchConcurrency)
+	for i := range numbers {
+		epochNumber := numbers[i]
+		wg.Spawn(func() (any, error) {
+			epoch, err := multi.GetEpoch(epochNumber)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get epoch %d: %v", epochNumber, err)
+			}
+			if _, err := epoch.FindCidFromSignature(ctx, sig); err == nil {
+				return epochNumber, nil
+			}
+			// Not found in this epoch.
+			return nil, nil
+		})
+	}
+	switch result := wg.Wait().(type) {
+	case nil:
+		// All epochs were searched, but the signature was not found.
+		return 0, ErrNotFound
+	case error:
+		// An error occurred while searching one of the epochs.
+		return 0, result
+	case uint64:
+		// The signature was found in one of the epochs.
+		return result, nil
+	default:
+		return 0, fmt.Errorf("unexpected result: (%T) %v", result, result)
+	}
+}
+
+func (multi *MultiEpoch) handleGetTransaction(ctx context.Context, conn *requestContext, req *jsonrpc2.Request) (*jsonrpc2.Error, error) {
+	if multi.CountEpochs() == 0 {
 		return &jsonrpc2.Error{
 			Code:    jsonrpc2.CodeInternalError,
-			Message: "getTransaction method is not enabled",
-		}, fmt.Errorf("the sig-to-epoch index was not provided")
+			Message: "no epochs available",
+		}, fmt.Errorf("no epochs available")
 	}
 
 	params, err := parseGetTransactionRequest(req.Params)
@@ -29,35 +86,28 @@ func (ser *MultiEpoch) handleGetTransaction(ctx context.Context, conn *requestCo
 
 	sig := params.Signature
 
-	var epochHandler *Epoch
-	if ser.sigToEpoch != nil {
-		epochNumber, err := ser.sigToEpoch.Get(ctx, sig)
-		if err != nil {
-			if sigtoepoch.IsNotFound(err) {
-				return nil, fmt.Errorf("not found epoch for signature %s", sig)
-			}
-			return &jsonrpc2.Error{
-				Code:    jsonrpc2.CodeInternalError,
-				Message: "Internal error",
-			}, fmt.Errorf("failed to get epoch for signature %s: %v", sig, err)
-		}
-
-		epochHandler, err = ser.GetEpoch(uint64(epochNumber))
-		if err != nil {
+	startedEpochLookupAt := time.Now()
+	epochNumber, err := multi.findEpochNumberFromSignature(ctx, sig)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
 			return &jsonrpc2.Error{
 				Code:    CodeNotFound,
 				Message: fmt.Sprintf("Epoch %d is not available from this RPC", epochNumber),
-			}, fmt.Errorf("failed to get handler for epoch %d: %w", epochNumber, err)
+			}, fmt.Errorf("failed to find epoch number from signature %s: %v", sig, err)
 		}
-	} else {
-		// When there's only one epoch, we can just use the first available epoch:
-		epochHandler, err = ser.GetFirstAvailableEpoch()
-		if err != nil {
-			return &jsonrpc2.Error{
-				Code:    CodeNotFound,
-				Message: fmt.Sprintf("Epoch %d is not available from this RPC", 0),
-			}, fmt.Errorf("failed to get handler for epoch %d: %w", 0, err)
-		}
+		return &jsonrpc2.Error{
+			Code:    jsonrpc2.CodeInternalError,
+			Message: "Internal error",
+		}, fmt.Errorf("failed to get epoch for signature %s: %v", sig, err)
+	}
+	klog.Infof("Found signature %s in epoch %d in %s", sig, epochNumber, time.Since(startedEpochLookupAt))
+
+	epochHandler, err := multi.GetEpoch(uint64(epochNumber))
+	if err != nil {
+		return &jsonrpc2.Error{
+			Code:    CodeNotFound,
+			Message: fmt.Sprintf("Epoch %d is not available from this RPC", epochNumber),
+		}, fmt.Errorf("failed to get handler for epoch %d: %w", epochNumber, err)
 	}
 
 	transactionNode, err := epochHandler.GetTransaction(WithSubrapghPrefetch(ctx, true), sig)
