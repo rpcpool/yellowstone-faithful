@@ -20,8 +20,9 @@ import (
 )
 
 type Options struct {
-	GsfaOnlySignatures bool
-	PathToSigToEpoch   string // path to the sig-to-epoch index directory
+	GsfaOnlySignatures     bool
+	PathToSigToEpoch       string // path to the sig-to-epoch index directory
+	EpochSearchConcurrency int
 }
 
 type MultiEpoch struct {
@@ -147,6 +148,14 @@ func (m *MultiEpoch) GetFirstAvailableEpoch() (*Epoch, error) {
 		return m.epochs[numbers[0]], nil
 	}
 	return nil, fmt.Errorf("no epochs available")
+}
+
+func (m *MultiEpoch) GetFirstAvailableEpochNumber() (uint64, error) {
+	numbers := m.GetEpochNumbers()
+	if len(numbers) > 0 {
+		return numbers[0], nil
+	}
+	return 0, fmt.Errorf("no epochs available")
 }
 
 type ListenerConfig struct {
@@ -353,7 +362,7 @@ func newMultiEpochHandler(handler *MultiEpoch, lsConf *ListenerConfig) func(ctx 
         versionInfo[k] = v
       }
 
-			err := rqCtx.ReplyNoMod(
+			err := rqCtx.ReplyRaw(
 				c,
 				rpcRequest.ID,
         versionInfo,

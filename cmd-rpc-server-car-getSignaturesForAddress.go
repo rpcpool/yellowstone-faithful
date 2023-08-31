@@ -225,7 +225,7 @@ func (ser *deprecatedRPCServer) handleGetSignaturesForAddress(ctx context.Contex
 	}
 
 	// reply with the data
-	err = conn.ReplyNoMod(
+	err = conn.ReplyRaw(
 		ctx,
 		req.ID,
 		response,

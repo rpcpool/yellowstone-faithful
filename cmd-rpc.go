@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 
 	"github.com/davecgh/go-spew/spew"
@@ -23,6 +24,7 @@ func newCmd_rpc() *cli.Command {
 	var excludePatterns cli.StringSlice
 	var watch bool
 	var pathForProxyForUnknownRpcMethods string
+	var epochSearchConcurrency int
 	return &cli.Command{
 		Name:        "rpc",
 		Description: "Provide multiple epoch config files, and start a Solana JSON RPC that exposes getTransaction, getBlock, and (optionally) getSignaturesForAddress",
@@ -79,6 +81,12 @@ func newCmd_rpc() *cli.Command {
 				Value:       "",
 				Destination: &pathForProxyForUnknownRpcMethods,
 			},
+			&cli.IntFlag{
+				Name:        "epoch-search-concurrency",
+				Usage:       "How many epochs to search in parallel when searching for a signature",
+				Value:       runtime.NumCPU(),
+				Destination: &epochSearchConcurrency,
+			},
 		),
 		Action: func(c *cli.Context) error {
 			src := c.Args().Slice()
@@ -122,8 +130,9 @@ func newCmd_rpc() *cli.Command {
 			}
 
 			multi := NewMultiEpoch(&Options{
-				GsfaOnlySignatures: gsfaOnlySignatures,
-				PathToSigToEpoch:   sigToEpochIndexDir,
+				GsfaOnlySignatures:     gsfaOnlySignatures,
+				PathToSigToEpoch:       sigToEpochIndexDir,
+				EpochSearchConcurrency: epochSearchConcurrency,
 			})
 
 			for _, epoch := range epochs {

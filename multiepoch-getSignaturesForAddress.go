@@ -207,7 +207,7 @@ func (multi *MultiEpoch) handleGetSignaturesForAddress(ctx context.Context, conn
 	}
 
 	// reply with the data
-	err = conn.ReplyNoMod(
+	err = conn.ReplyRaw(
 		ctx,
 		req.ID,
 		response,
