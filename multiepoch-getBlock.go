@@ -318,11 +318,18 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 
 							// if it's a float, convert to int and use rentTypeToString
 							if asFloat, ok := rewardAsMap["rewardType"].(float64); ok {
-								rewardAsMap["rewardType"] = rentTypeToString(int(asFloat))
+								rewardAsMap["rewardType"] = rewardTypeToString(int(asFloat))
 							}
 						}
 					}
 					rewards = rewardsAsArray
+					// sort.Slice(rewardsAsArray, func(i, j int) bool {
+					// 	// sort by rewardType, then by pubkey
+					// 	if rewardTypeStringToInt(rewardsAsArray[i].(map[string]any)["rewardType"].(string)) != rewardTypeStringToInt(rewardsAsArray[j].(map[string]any)["rewardType"].(string)) {
+					// 		return rewardTypeStringToInt(rewardsAsArray[i].(map[string]any)["rewardType"].(string)) > rewardTypeStringToInt(rewardsAsArray[j].(map[string]any)["rewardType"].(string))
+					// 	}
+					// 	return bytes.Compare(solana.MPK(rewardsAsArray[i].(map[string]any)["pubkey"].(string)).Bytes(), solana.MPK(rewardsAsArray[j].(map[string]any)["pubkey"].(string)).Bytes()) < 0
+					// })
 				} else {
 					klog.Errorf("did not find rewards field in rewards")
 					rewards = make([]any, 0)
