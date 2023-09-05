@@ -140,7 +140,7 @@ func newCmd_Index_sigExists() *cli.Command {
 					case SignatureAndSlot:
 						sig := resValue.Signature
 						{
-							index.Push(sig)
+							index.Put(sig)
 						}
 						waitResultsReceived.Done()
 						numReceivedAtomic.Add(-1)

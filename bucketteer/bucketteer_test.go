@@ -15,7 +15,7 @@ func TestBucketteer(t *testing.T) {
 	wr, err := NewWriter(path)
 	require.NoError(t, err)
 	firstSig := [64]byte{1, 2, 3, 4}
-	wr.Push(firstSig)
+	wr.Put(firstSig)
 
 	if !wr.Has(firstSig) {
 		t.Fatal("expected to have firstSig")
@@ -23,25 +23,25 @@ func TestBucketteer(t *testing.T) {
 	{
 		sig := [64]byte{1, 2, 3, 5}
 		require.False(t, wr.Has(sig))
-		wr.Push(sig)
+		wr.Put(sig)
 		require.True(t, wr.Has(sig))
 	}
 	{
 		sig := [64]byte{1, 2, 3, 6}
 		require.False(t, wr.Has(sig))
-		wr.Push(sig)
+		wr.Put(sig)
 		require.True(t, wr.Has(sig))
 	}
 	{
 		sig := [64]byte{22, 2, 3, 6}
 		require.False(t, wr.Has(sig))
-		wr.Push(sig)
+		wr.Put(sig)
 		require.True(t, wr.Has(sig))
 	}
 	{
 		sig := [64]byte{99, 2, 3, 6}
 		require.False(t, wr.Has(sig))
-		wr.Push(sig)
+		wr.Put(sig)
 		require.True(t, wr.Has(sig))
 	}
 	require.Equal(t, 3, len(wr.prefixToHashes))

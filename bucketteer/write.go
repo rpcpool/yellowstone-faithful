@@ -44,9 +44,9 @@ func NewWriter(path string) (*Writer, error) {
 	}, nil
 }
 
-// Push adds the given signature to the Bucketteer.
+// Put adds the given signature to the Bucketteer.
 // Cannot be called concurrently.
-func (b *Writer) Push(sig [64]byte) {
+func (b *Writer) Put(sig [64]byte) {
 	var prefix [2]byte
 	copy(prefix[:], sig[:2])
 	b.prefixToHashes[prefix] = append(b.prefixToHashes[prefix], Hash(sig))

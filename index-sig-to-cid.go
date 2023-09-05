@@ -244,7 +244,7 @@ func VerifyIndex_sigExists(ctx context.Context, carPath string, indexFilePath st
 		return fmt.Errorf("CAR file has %d roots, expected 1", len(roots))
 	}
 
-	sigExists, err := bucketteer.OpenFile(indexFilePath)
+	sigExists, err := bucketteer.Open(indexFilePath)
 	if err != nil {
 		return fmt.Errorf("failed to open index: %w", err)
 	}

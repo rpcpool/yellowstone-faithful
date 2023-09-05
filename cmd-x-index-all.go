@@ -257,7 +257,7 @@ func createAllIndexes(
 					return nil, fmt.Errorf("failed to index signature to cid: %w", err)
 				}
 
-				sig_exists.Push(sig)
+				sig_exists.Put(sig)
 
 				numIndexedTransactions++
 			}
@@ -585,7 +585,7 @@ func verifyAllIndexes(
 
 	var sig_exists *bucketteer.Reader
 	if indexes.SignatureExists != "" {
-		sig_exists, err = bucketteer.OpenFile(
+		sig_exists, err = bucketteer.Open(
 			indexes.SignatureExists,
 		)
 		if err != nil {

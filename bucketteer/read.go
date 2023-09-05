@@ -16,7 +16,9 @@ type Reader struct {
 	prefixToOffset map[[2]byte]uint64
 }
 
-func OpenFile(path string) (*Reader, error) {
+// Open opens a Bucketteer file in read-only mode,
+// using memory-mapped IO.
+func Open(path string) (*Reader, error) {
 	file, err := mmap.Open(path)
 	if err != nil {
 		return nil, err
