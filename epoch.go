@@ -368,7 +368,12 @@ func (s *Epoch) GetNodeByOffset(ctx context.Context, wantedCid cid.Cid, offset u
 	return data, nil
 }
 
-func (ser *Epoch) FindCidFromSlot(ctx context.Context, slot uint64) (cid.Cid, error) {
+func (ser *Epoch) FindCidFromSlot(ctx context.Context, slot uint64) (o cid.Cid, e error) {
+	startedAt := time.Now()
+	defer func() {
+		klog.Infof("Found CID for slot %d in %s: %s", slot, time.Since(startedAt), o)
+	}()
+
 	// try from cache
 	if c, err, has := ser.getSlotToCidFromCache(slot); err != nil {
 		return cid.Undef, err
@@ -383,11 +388,20 @@ func (ser *Epoch) FindCidFromSlot(ctx context.Context, slot uint64) (cid.Cid, er
 	return found, nil
 }
 
-func (ser *Epoch) FindCidFromSignature(ctx context.Context, sig solana.Signature) (cid.Cid, error) {
+func (ser *Epoch) FindCidFromSignature(ctx context.Context, sig solana.Signature) (o cid.Cid, e error) {
+	startedAt := time.Now()
+	defer func() {
+		klog.Infof("Found CID for signature %s in %s: %s", sig, time.Since(startedAt), o)
+	}()
 	return findCidFromSignature(ser.sigToCidIndex, sig)
 }
 
-func (ser *Epoch) FindOffsetFromCid(ctx context.Context, cid cid.Cid) (uint64, error) {
+func (ser *Epoch) FindOffsetFromCid(ctx context.Context, cid cid.Cid) (o uint64, e error) {
+	startedAt := time.Now()
+	defer func() {
+		klog.Infof("Found offset for CID %s in %s: %d", cid, time.Since(startedAt), o)
+	}()
+
 	// try from cache
 	if offset, err, has := ser.getCidToOffsetFromCache(cid); err != nil {
 		return 0, err
@@ -398,7 +412,6 @@ func (ser *Epoch) FindOffsetFromCid(ctx context.Context, cid cid.Cid) (uint64, e
 	if err != nil {
 		return 0, err
 	}
-	klog.Infof("found offset for CID %s: %d", cid, found)
 	ser.putCidToOffsetInCache(cid, found)
 	return found, nil
 }
@@ -410,7 +423,6 @@ func (ser *Epoch) GetBlock(ctx context.Context, slot uint64) (*ipldbindcode.Bloc
 		klog.Errorf("failed to find CID for slot %d: %v", slot, err)
 		return nil, err
 	}
-	klog.Infof("found CID for slot %d: %s", slot, wantedCid)
 	{
 		doPrefetch := getValueFromContext(ctx, "prefetch")
 		if doPrefetch != nil && doPrefetch.(bool) {
@@ -500,7 +512,6 @@ func (ser *Epoch) GetTransaction(ctx context.Context, sig solana.Signature) (*ip
 		klog.Errorf("failed to find CID for signature %s: %v", sig, err)
 		return nil, err
 	}
-	klog.Infof("found CID for signature %s: %s", sig, wantedCid)
 	{
 		doPrefetch := getValueFromContext(ctx, "prefetch")
 		if doPrefetch != nil && doPrefetch.(bool) {

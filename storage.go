@@ -40,8 +40,9 @@ func openIndexStorage(
 			return rac, nil
 		}
 		return &readCloserWrapper{
-			rac:  rac,
-			name: where,
+			rac:      rac,
+			name:     where,
+			isRemote: true,
 		}, nil
 	}
 	// TODO: add support for IPFS gateways.
@@ -54,8 +55,9 @@ func openIndexStorage(
 		return rac, nil
 	}
 	return &readCloserWrapper{
-		rac:  rac,
-		name: where,
+		rac:      rac,
+		name:     where,
+		isRemote: false,
 	}, nil
 }
 
