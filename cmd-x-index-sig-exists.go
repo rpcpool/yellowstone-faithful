@@ -26,6 +26,7 @@ import (
 )
 
 func newCmd_Index_sigExists() *cli.Command {
+	var verify bool
 	return &cli.Command{
 		Name:        "sig-exists",
 		Description: "Create sig-exists index from a CAR file",
@@ -45,6 +46,11 @@ func newCmd_Index_sigExists() *cli.Command {
 				Name:  "w",
 				Usage: "number of workers",
 				Value: uint(runtime.NumCPU()) * 3,
+			},
+			&cli.BoolFlag{
+				Name:        "verify",
+				Usage:       "verify the index after creating it",
+				Destination: &verify,
 			},
 		},
 		Action: func(c *cli.Context) error {
@@ -201,6 +207,20 @@ func newCmd_Index_sigExists() *cli.Command {
 			klog.Infof("Sealed index in %s", time.Since(sealingStartedAt))
 
 			klog.Infof("Success: sig-exists index created at %s", indexFilePath)
+
+			if verify {
+				klog.Infof("Verifying index for %s located at %s", carPath, indexFilePath)
+				startedAt := time.Now()
+				defer func() {
+					klog.Infof("Finished in %s", time.Since(startedAt))
+				}()
+				err := VerifyIndex_sigExists(context.TODO(), carPath, indexFilePath)
+				if err != nil {
+					return cli.Exit(err, 1)
+				}
+				klog.Info("Index verified")
+				return nil
+			}
 			return nil
 		},
 	}
