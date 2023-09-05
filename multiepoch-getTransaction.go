@@ -8,10 +8,23 @@ import (
 	"time"
 
 	"github.com/gagliardetto/solana-go"
+	"github.com/rpcpool/yellowstone-faithful/bucketteer"
 	"github.com/rpcpool/yellowstone-faithful/compactindex36"
 	"github.com/sourcegraph/jsonrpc2"
 	"k8s.io/klog/v2"
 )
+
+func (multi *MultiEpoch) getAllBucketteers() map[uint64]*bucketteer.Reader {
+	multi.mu.RLock()
+	defer multi.mu.RUnlock()
+	bucketteers := make(map[uint64]*bucketteer.Reader)
+	for _, epoch := range multi.epochs {
+		if epoch.sigExists != nil {
+			bucketteers[epoch.Epoch()] = epoch.sigExists
+		}
+	}
+	return bucketteers
+}
 
 func (multi *MultiEpoch) findEpochNumberFromSignature(ctx context.Context, sig solana.Signature) (uint64, error) {
 	// FLOW:
@@ -29,6 +42,37 @@ func (multi *MultiEpoch) findEpochNumberFromSignature(ctx context.Context, sig s
 	sort.Slice(numbers, func(i, j int) bool {
 		return numbers[i] > numbers[j]
 	})
+
+	buckets := multi.getAllBucketteers()
+
+	found := make([]uint64, 0)
+	for _, epochNumber := range numbers {
+		bucket, ok := buckets[epochNumber]
+		if !ok {
+			continue
+		}
+		if has, err := bucket.Has(sig); err != nil {
+			return 0, fmt.Errorf("failed to check if signature exists in bucket: %v", err)
+		} else if has {
+			found = append(found, epochNumber)
+		}
+	}
+
+	if len(found) == 0 {
+		return 0, ErrNotFound
+	}
+
+	for _, epochNumber := range found {
+		epoch, err := multi.GetEpoch(epochNumber)
+		if err != nil {
+			return 0, fmt.Errorf("failed to get epoch %d: %v", epochNumber, err)
+		}
+		if _, err := epoch.FindCidFromSignature(ctx, sig); err == nil {
+			return epochNumber, nil
+		}
+	}
+	return 0, ErrNotFound
+
 	// Search all epochs in parallel:
 	wg := NewFirstResponse(ctx, multi.options.EpochSearchConcurrency)
 	for i := range numbers {
