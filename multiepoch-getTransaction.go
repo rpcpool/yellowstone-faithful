@@ -59,10 +59,11 @@ func (multi *MultiEpoch) findEpochNumberFromSignature(ctx context.Context, sig s
 		}
 	}
 	klog.Infof(
-		"Searched %d epochs in %s, and found %d candidates: %v",
+		"Searched %d epochs in %s, and found %d candidate epochs for %s: %v",
 		len(numbers),
 		time.Since(startedSearchingCandidatesAt),
 		len(found),
+		sig,
 		found,
 	)
 
