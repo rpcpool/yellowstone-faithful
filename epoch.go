@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"crypto/rand"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -231,6 +232,13 @@ func NewEpochFromConfig(config *Config, c *cli.Context) (*Epoch, error) {
 		}
 		ep.onClose = append(ep.onClose, sigExists.Close)
 
+		{
+			// warm up the cache
+			for i := 0; i < 100_000; i++ {
+				sigExists.Has(newRandomSignature())
+			}
+		}
+
 		ep.sigExists = sigExists
 	}
 
@@ -248,6 +256,12 @@ func NewEpochFromConfig(config *Config, c *cli.Context) (*Epoch, error) {
 	}
 
 	return ep, nil
+}
+
+func newRandomSignature() [64]byte {
+	var sig [64]byte
+	rand.Read(sig[:])
+	return sig
 }
 
 func (r *Epoch) getNodeFromCache(c cid.Cid) (v []byte, err error, has bool) {
