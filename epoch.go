@@ -106,7 +106,11 @@ func NewEpochFromConfig(config *Config, c *cli.Context) (*Epoch, error) {
 
 	if isCarMode {
 		// The CAR-mode requires a cid-to-offset index.
-		cidToOffsetIndexFile, err := openIndexStorage(c.Context, string(config.Indexes.CidToOffset.URI))
+		cidToOffsetIndexFile, err := openIndexStorage(
+			c.Context,
+			string(config.Indexes.CidToOffset.URI),
+			DebugMode,
+		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to open cid-to-offset index file: %w", err)
 		}
@@ -123,7 +127,11 @@ func NewEpochFromConfig(config *Config, c *cli.Context) (*Epoch, error) {
 	}
 
 	{
-		slotToCidIndexFile, err := openIndexStorage(c.Context, string(config.Indexes.SlotToCid.URI))
+		slotToCidIndexFile, err := openIndexStorage(
+			c.Context,
+			string(config.Indexes.SlotToCid.URI),
+			DebugMode,
+		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to open slot-to-cid index file: %w", err)
 		}
@@ -140,7 +148,11 @@ func NewEpochFromConfig(config *Config, c *cli.Context) (*Epoch, error) {
 	}
 
 	{
-		sigToCidIndexFile, err := openIndexStorage(c.Context, string(config.Indexes.SigToCid.URI))
+		sigToCidIndexFile, err := openIndexStorage(
+			c.Context,
+			string(config.Indexes.SigToCid.URI),
+			DebugMode,
+		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to open sig-to-cid index file: %w", err)
 		}
@@ -203,7 +215,11 @@ func NewEpochFromConfig(config *Config, c *cli.Context) (*Epoch, error) {
 		}
 	}
 	{
-		sigExistsFile, err := openIndexStorage(c.Context, string(config.Indexes.SigExists.URI))
+		sigExistsFile, err := openIndexStorage(
+			c.Context,
+			string(config.Indexes.SigExists.URI),
+			DebugMode,
+		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to open sig-exists index file: %w", err)
 		}

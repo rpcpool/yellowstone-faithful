@@ -24,13 +24,20 @@ import (
 // Supported protocols are:
 // - http://
 // - https://
-func openIndexStorage(ctx context.Context, where string) (ReaderAtCloser, error) {
+func openIndexStorage(
+	ctx context.Context,
+	where string,
+	debug bool,
+) (ReaderAtCloser, error) {
 	where = strings.TrimSpace(where)
 	if strings.HasPrefix(where, "http://") || strings.HasPrefix(where, "https://") {
 		klog.Infof("opening index file from %q as HTTP remote file", where)
 		rac, err := remoteHTTPFileAsIoReaderAt(ctx, where)
 		if err != nil {
 			return nil, fmt.Errorf("failed to open remote index file: %w", err)
+		}
+		if !debug {
+			return rac, nil
 		}
 		return &readCloserWrapper{
 			rac:  rac,
@@ -42,6 +49,9 @@ func openIndexStorage(ctx context.Context, where string) (ReaderAtCloser, error)
 	rac, err := mmap.Open(where)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open local index file: %w", err)
+	}
+	if !debug {
+		return rac, nil
 	}
 	return &readCloserWrapper{
 		rac:  rac,

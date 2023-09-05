@@ -65,7 +65,11 @@ func newCmd_rpcServerCar() *cli.Command {
 				return cli.Exit("Must provide a signature-to-CID index filepath/url", 1)
 			}
 
-			cidToOffsetIndexFile, err := openIndexStorage(c.Context, cidToOffsetIndexFilepath)
+			cidToOffsetIndexFile, err := openIndexStorage(
+				c.Context,
+				cidToOffsetIndexFilepath,
+				DebugMode,
+			)
 			if err != nil {
 				return fmt.Errorf("failed to open index file: %w", err)
 			}
@@ -76,7 +80,11 @@ func newCmd_rpcServerCar() *cli.Command {
 				return fmt.Errorf("failed to open index: %w", err)
 			}
 
-			slotToCidIndexFile, err := openIndexStorage(c.Context, slotToCidIndexFilepath)
+			slotToCidIndexFile, err := openIndexStorage(
+				c.Context,
+				slotToCidIndexFilepath,
+				DebugMode,
+			)
 			if err != nil {
 				return fmt.Errorf("failed to open index file: %w", err)
 			}
@@ -87,7 +95,11 @@ func newCmd_rpcServerCar() *cli.Command {
 				return fmt.Errorf("failed to open index: %w", err)
 			}
 
-			sigToCidIndexFile, err := openIndexStorage(c.Context, sigToCidIndexFilepath)
+			sigToCidIndexFile, err := openIndexStorage(
+				c.Context,
+				sigToCidIndexFilepath,
+				DebugMode,
+			)
 			if err != nil {
 				return fmt.Errorf("failed to open index file: %w", err)
 			}

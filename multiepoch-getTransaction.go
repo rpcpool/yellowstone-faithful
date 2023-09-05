@@ -46,6 +46,7 @@ func (multi *MultiEpoch) findEpochNumberFromSignature(ctx context.Context, sig s
 	buckets := multi.getAllBucketteers()
 
 	found := make([]uint64, 0)
+	startedSearchingCandidatesAt := time.Now()
 	for _, epochNumber := range numbers {
 		bucket, ok := buckets[epochNumber]
 		if !ok {
@@ -57,6 +58,13 @@ func (multi *MultiEpoch) findEpochNumberFromSignature(ctx context.Context, sig s
 			found = append(found, epochNumber)
 		}
 	}
+	klog.Infof(
+		"Searched %d epochs in %s, and found %d candidates: %v",
+		len(numbers),
+		time.Since(startedSearchingCandidatesAt),
+		len(found),
+		found,
+	)
 
 	if len(found) == 0 {
 		return 0, ErrNotFound
