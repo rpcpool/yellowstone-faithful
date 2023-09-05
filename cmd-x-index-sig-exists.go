@@ -92,7 +92,7 @@ func newCmd_Index_sigExists() *cli.Command {
 				indexFilePath,
 			)
 			if err != nil {
-				return fmt.Errorf("error while opening sig-to-epoch index writer: %w", err)
+				return fmt.Errorf("error while opening sig-exists index writer: %w", err)
 			}
 			defer func() {
 				if err := index.Close(); err != nil {

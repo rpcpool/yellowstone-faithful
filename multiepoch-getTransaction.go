@@ -23,14 +23,6 @@ func (multi *MultiEpoch) findEpochNumberFromSignature(ctx context.Context, sig s
 		return epochs[0], nil
 	}
 
-	if multi.sigToEpoch != nil {
-		epochNumber, err := multi.sigToEpoch.Get(ctx, sig)
-		if err != nil {
-			return 0, fmt.Errorf("failed to get epoch for signature %s: %v", sig, err)
-		}
-		return uint64(epochNumber), nil
-	}
-
 	// Linear search:
 	numbers := multi.GetEpochNumbers()
 	// sort from highest to lowest:

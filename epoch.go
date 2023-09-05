@@ -14,6 +14,7 @@ import (
 	"github.com/ipld/go-car/util"
 	carv2 "github.com/ipld/go-car/v2"
 	"github.com/patrickmn/go-cache"
+	"github.com/rpcpool/yellowstone-faithful/bucketteer"
 	"github.com/rpcpool/yellowstone-faithful/compactindex"
 	"github.com/rpcpool/yellowstone-faithful/compactindex36"
 	"github.com/rpcpool/yellowstone-faithful/gsfa"
@@ -35,6 +36,7 @@ type Epoch struct {
 	cidToOffsetIndex    *compactindex.DB
 	slotToCidIndex      *compactindex36.DB
 	sigToCidIndex       *compactindex36.DB
+	sigExists           *bucketteer.Reader
 	gsfaReader          *gsfa.GsfaReader
 	cidToNodeCache      *cache.Cache // TODO: prevent OOM
 	onClose             []func() error
@@ -199,6 +201,21 @@ func NewEpochFromConfig(config *Config, c *cli.Context) (*Epoch, error) {
 			}
 			ep.remoteCarHeaderSize = uint64(n) + headerSize
 		}
+	}
+	{
+		sigExistsFile, err := openIndexStorage(c.Context, string(config.Indexes.SigExists.URI))
+		if err != nil {
+			return nil, fmt.Errorf("failed to open sig-exists index file: %w", err)
+		}
+		ep.onClose = append(ep.onClose, sigExistsFile.Close)
+
+		sigExists, err := bucketteer.NewReader(sigExistsFile)
+		if err != nil {
+			return nil, fmt.Errorf("failed to open sig-exists index: %w", err)
+		}
+		ep.onClose = append(ep.onClose, sigExists.Close)
+
+		ep.sigExists = sigExists
 	}
 
 	{
