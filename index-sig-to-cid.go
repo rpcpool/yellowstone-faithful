@@ -12,6 +12,7 @@ import (
 	"github.com/gagliardetto/solana-go"
 	"github.com/ipfs/go-cid"
 	carv2 "github.com/ipld/go-car/v2"
+	"github.com/rpcpool/yellowstone-faithful/bucketteer"
 	"github.com/rpcpool/yellowstone-faithful/compactindex36"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"k8s.io/klog/v2"
@@ -189,11 +190,100 @@ func VerifyIndex_sig2cid(ctx context.Context, carPath string, indexFilePath stri
 
 			got, err := findCidFromSignature(c2o, sig)
 			if err != nil {
-				return fmt.Errorf("failed to put cid to offset: %w", err)
+				return fmt.Errorf("failed to find cid from signature: %w", err)
 			}
 
 			if !got.Equals(c) {
 				return fmt.Errorf("sig %s: expected cid %s, got %s", sig, c, got)
+			}
+
+			numItems++
+			if numItems%100_000 == 0 {
+				printToStderr(".")
+			}
+
+			return nil
+		})
+	if err != nil {
+		return fmt.Errorf("failed to verify index; error while iterating over blocks: %w", err)
+	}
+	return nil
+}
+
+func VerifyIndex_sigExists(ctx context.Context, carPath string, indexFilePath string) error {
+	// Check if the CAR file exists:
+	exists, err := fileExists(carPath)
+	if err != nil {
+		return fmt.Errorf("failed to check if CAR file exists: %w", err)
+	}
+	if !exists {
+		return fmt.Errorf("CAR file %s does not exist", carPath)
+	}
+
+	// Check if the index file exists:
+	exists, err = fileExists(indexFilePath)
+	if err != nil {
+		return fmt.Errorf("failed to check if index file exists: %w", err)
+	}
+	if !exists {
+		return fmt.Errorf("index file %s does not exist", indexFilePath)
+	}
+
+	cr, err := carv2.OpenReader(carPath)
+	if err != nil {
+		return fmt.Errorf("failed to open CAR file: %w", err)
+	}
+
+	// check it has 1 root
+	roots, err := cr.Roots()
+	if err != nil {
+		return fmt.Errorf("failed to get roots: %w", err)
+	}
+	// There should be only one root CID in the CAR file.
+	if len(roots) != 1 {
+		return fmt.Errorf("CAR file has %d roots, expected 1", len(roots))
+	}
+
+	sigExists, err := bucketteer.OpenFile(indexFilePath)
+	if err != nil {
+		return fmt.Errorf("failed to open index: %w", err)
+	}
+
+	// check root_cid matches
+	rootCID := roots[0]
+	storedRootCidString := sigExists.GetMeta("root_cid")
+	if storedRootCidString == "" {
+		return fmt.Errorf("index file does not have a root_cid meta")
+	}
+	storedRootCid, err := cid.Parse(storedRootCidString)
+	if err != nil {
+		return fmt.Errorf("failed to parse stored root cid: %w", err)
+	}
+	if !rootCID.Equals(storedRootCid) {
+		return fmt.Errorf("root CID mismatch: expected %s, got %s", rootCID, storedRootCid)
+	}
+
+	dr, err := cr.DataReader()
+	if err != nil {
+		return fmt.Errorf("failed to get data reader: %w", err)
+	}
+
+	numItems := uint64(0)
+	err = FindTransactions(
+		ctx,
+		dr,
+		func(c cid.Cid, txNode *ipldbindcode.Transaction) error {
+			sig, err := readFirstSignature(txNode.Data.Bytes())
+			if err != nil {
+				return fmt.Errorf("failed to read signature: %w", err)
+			}
+
+			got, err := sigExists.Has(sig)
+			if err != nil {
+				return fmt.Errorf("failed to check if sig exists: %w", err)
+			}
+			if !got {
+				return fmt.Errorf("sig %s: expected to exist, but it does not", sig)
 			}
 
 			numItems++

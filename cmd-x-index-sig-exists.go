@@ -188,6 +188,18 @@ func newCmd_Index_sigExists() *cli.Command {
 				klog.Infof("All results received")
 			}
 
+			klog.Info("Sealing index...")
+			sealingStartedAt := time.Now()
+			_, err = index.Seal(
+				map[string]string{
+					"root_cid": rootCID.String(),
+				},
+			)
+			if err != nil {
+				return fmt.Errorf("error while sealing index: %w", err)
+			}
+			klog.Infof("Sealed index in %s", time.Since(sealingStartedAt))
+
 			klog.Infof("Success: sig-exists index created at %s", indexFilePath)
 			return nil
 		},
