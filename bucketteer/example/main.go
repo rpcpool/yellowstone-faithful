@@ -40,7 +40,7 @@ func main() {
 		for i := 1; i <= numItemsToInsert; i++ {
 			sig := newRandomSignature()
 			startedSet := time.Now()
-			buWr.Push(sig)
+			buWr.Put(sig)
 			tookBatch += time.Since(startedSet)
 			if i%100_000 == 0 {
 				fmt.Print(".")
