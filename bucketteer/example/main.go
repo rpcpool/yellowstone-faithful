@@ -7,6 +7,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/dustin/go-humanize"
 	"github.com/rpcpool/yellowstone-faithful/bucketteer"
 	"golang.org/x/exp/mmap"
@@ -75,6 +76,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	spew.Dump(buRd.Meta())
 	if len(samples) > 0 {
 		fmt.Println("testing search with samples from the inserted signatures...")
 		tookBatch := time.Duration(0)
