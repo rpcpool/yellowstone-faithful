@@ -34,9 +34,9 @@ func NewFirstResponse(ctx context.Context, concurrency int) *FirstResponse {
 }
 
 // Spawn spawns a goroutine that executes the given function.
-func (w *FirstResponse) Spawn(f func() (any, error)) {
+func (w *FirstResponse) Spawn(f func() (any, error)) (ok bool) {
 	if w.gotResult.Load() {
-		return
+		return false
 	}
 	w.wg.Go(func() error {
 		result, err := f()
@@ -49,6 +49,7 @@ func (w *FirstResponse) Spawn(f func() (any, error)) {
 		}
 		return nil
 	})
+	return true
 }
 
 var errGotFirstResult = errors.New("got first result")
