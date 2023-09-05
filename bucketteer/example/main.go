@@ -31,7 +31,11 @@ func main() {
 		fmt.Println("File does not exist or is empty, creating it...")
 		fmt.Println("Items to insert:", humanize.Comma(int64(numItemsToInsert)))
 		totalWriteStartedAt := time.Now()
-		buWr := bucketteer.NewWriter()
+		buWr, err := bucketteer.NewWriter(file)
+		if err != nil {
+			panic(err)
+		}
+		defer buWr.Close()
 		tookBatch := time.Duration(0)
 		for i := 1; i <= numItemsToInsert; i++ {
 			sig := newRandomSignature()
@@ -52,17 +56,13 @@ func main() {
 				tookBatch = 0
 			}
 		}
-		f, err := os.Create(file)
-		if err != nil {
-			panic(err)
-		}
+
 		fmt.Println("writing to file...")
 		writeStartedAt := time.Now()
-		_, err = buWr.WriteTo(f)
+		_, err = buWr.Seal()
 		if err != nil {
 			panic(err)
 		}
-		f.Close()
 		fmt.Println("writing to file took:", time.Since(writeStartedAt))
 		fmt.Println("total write took:", time.Since(totalWriteStartedAt))
 	}

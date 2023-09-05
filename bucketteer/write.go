@@ -1,23 +1,47 @@
 package bucketteer
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"io"
+	"os"
 	"sort"
 
 	bin "github.com/gagliardetto/binary"
 )
 
 type Writer struct {
+	destination    *os.File
+	writer         *bufio.Writer
 	prefixToHashes map[[2]byte][]uint64 // prefix -> hashes
 }
 
-func NewWriter() *Writer {
-	return &Writer{
-		prefixToHashes: make(map[[2]byte][]uint64),
+const (
+	_MiB         = 1024 * 1024
+	writeBufSize = _MiB * 10
+)
+
+func NewWriter(path string) (*Writer, error) {
+	if ok, err := isDir(path); err != nil {
+		return nil, err
+	} else if ok {
+		return nil, fmt.Errorf("path is a directory")
 	}
+	if ok, err := fileIsBlank(path); err != nil {
+		return nil, err
+	} else if !ok {
+		return nil, fmt.Errorf("file is not blank")
+	}
+	file, err := os.Create(path)
+	if err != nil {
+		return nil, err
+	}
+	return &Writer{
+		writer:         bufio.NewWriterSize(file, writeBufSize),
+		destination:    file,
+		prefixToHashes: make(map[[2]byte][]uint64),
+	}, nil
 }
 
 // Push adds the given signature to the Bucketteer.
@@ -41,86 +65,108 @@ func (b *Writer) Has(sig [64]byte) bool {
 	return false
 }
 
-type WriterWriterAt interface {
-	io.Writer
-	io.WriterAt
+func (b *Writer) Close() error {
+	return b.destination.Close()
 }
 
-func writeHeader(
-	out WriterWriterAt,
+// Seal writes the Bucketteer's state to the given writer.
+func (b *Writer) Seal() (int64, error) {
+	// truncate file and seek to beginning:
+	if err := b.destination.Truncate(0); err != nil {
+		return 0, err
+	}
+	if _, err := b.destination.Seek(0, 0); err != nil {
+		return 0, err
+	}
+	newHeader, size, err := seal(b.writer, b.prefixToHashes)
+	if err != nil {
+		return 0, err
+	}
+	return size, overwriteFileContentAt(b.destination, 0, newHeader)
+}
+
+func createHeader(
 	magic [8]byte,
 	version uint64,
 	headerSizeIn uint32,
 	numBuckets uint64,
 	prefixToOffset map[[2]byte]uint64,
-) (int64, error) {
+) ([]byte, error) {
 	tmpHeaderBuf := new(bytes.Buffer)
 	headerWriter := bin.NewBorshEncoder(tmpHeaderBuf)
-	// write header size
-	{
-		// write empty header size
-		if err := headerWriter.WriteUint32(headerSizeIn, binary.LittleEndian); err != nil {
-			return 0, err
-		}
+
+	// write header size:
+	if err := headerWriter.WriteUint32(headerSizeIn, binary.LittleEndian); err != nil {
+		return nil, err
 	}
-	headerSize := 0
-	// write magic
+	// write magic:
 	if n, err := headerWriter.Write(magic[:]); err != nil {
-		return 0, err
+		return nil, err
 	} else {
-		headerSize += n
+		if n != 8 {
+			return nil, fmt.Errorf("invalid number of bytes written for magic: %d", n)
+		}
 	}
 	// write version uint64
 	if err := headerWriter.WriteUint64(version, binary.LittleEndian); err != nil {
-		return 0, err
-	} else {
-		headerSize += 8
+		return nil, err
 	}
 	// write num buckets
 	if err := headerWriter.WriteUint64(numBuckets, binary.LittleEndian); err != nil {
-		return 0, err
-	} else {
-		headerSize += 8
+		return nil, err
 	}
 
-	prefixes := make([][2]byte, 0, len(prefixToOffset))
-	for prefix := range prefixToOffset {
-		prefixes = append(prefixes, prefix)
-	}
-	sort.Slice(prefixes, func(i, j int) bool {
-		return bytes.Compare(prefixes[i][:], prefixes[j][:]) < 0
-	})
+	prefixes := getSortedPrefixes(prefixToOffset)
 	// write prefix+offset pairs
 	for _, prefix := range prefixes {
 		if _, err := headerWriter.Write(prefix[:]); err != nil {
-			return 0, err
+			return nil, err
 		}
 		offset := prefixToOffset[prefix]
 		if err := headerWriter.WriteUint64(offset, binary.LittleEndian); err != nil {
-			return 0, err
+			return nil, err
 		}
 	}
-	// write all the data to the writer
-	n, err := out.WriteAt(tmpHeaderBuf.Bytes(), 0)
-	// Return the header size without the header size itself.
-	return int64(n) - 4, err
+	return tmpHeaderBuf.Bytes(), nil
 }
 
-// WriteTo writes the Bucketteer's state to the given writer.
-func (b *Writer) WriteTo(out WriterWriterAt) (int64, error) {
-	prefixes := make([][2]byte, 0, len(b.prefixToHashes))
-	for prefix := range b.prefixToHashes {
+func overwriteFileContentAt(
+	file *os.File,
+	offset int64,
+	data []byte,
+) error {
+	wrote, err := file.WriteAt(data, offset)
+	if err != nil {
+		return err
+	}
+	if wrote != len(data) {
+		return fmt.Errorf("wrote %d bytes, expected to write %d bytes", wrote, len(data))
+	}
+	return err
+}
+
+func getSortedPrefixes[K any](prefixToHashes map[[2]byte]K) [][2]byte {
+	prefixes := make([][2]byte, 0, len(prefixToHashes))
+	for prefix := range prefixToHashes {
 		prefixes = append(prefixes, prefix)
 	}
 	sort.Slice(prefixes, func(i, j int) bool {
 		return bytes.Compare(prefixes[i][:], prefixes[j][:]) < 0
 	})
-	prefixToOffset := make(map[[2]byte]uint64)
+	return prefixes
+}
+
+func seal(out *bufio.Writer, prefixToHashes map[[2]byte][]uint64) ([]byte, int64, error) {
+	prefixes := getSortedPrefixes(prefixToHashes)
+	prefixToOffset := make(map[[2]byte]uint64, len(prefixes))
+	for _, prefix := range prefixes {
+		// initialize all offsets to 0:
+		prefixToOffset[prefix] = 0
+	}
 
 	totalWritten := int64(0)
-	// write draft header:
-	headerSize, err := writeHeader(
-		out,
+	// create and write draft header:
+	header, err := createHeader(
 		_Magic,
 		Version,
 		0, // header size
@@ -128,14 +174,18 @@ func (b *Writer) WriteTo(out WriterWriterAt) (int64, error) {
 		prefixToOffset,
 	)
 	if err != nil {
-		return 0, err
+		return nil, 0, err
 	}
-	totalWritten += headerSize + 4 // +4 because of the header size itself
+	headerSize, err := out.Write(header)
+	if err != nil {
+		return nil, 0, err
+	}
+	totalWritten += int64(headerSize)
 
 	previousOffset := uint64(0)
 	for _, prefix := range prefixes {
-		entries := getCleanSet(b.prefixToHashes[prefix])
-		if len(entries) != len(b.prefixToHashes[prefix]) {
+		entries := getCleanSet(prefixToHashes[prefix])
+		if len(entries) != len(prefixToHashes[prefix]) {
 			panic(fmt.Sprintf("duplicate hashes for prefix %v", prefix))
 		}
 		sortWithCompare(entries, func(i, j int) int {
@@ -150,11 +200,11 @@ func (b *Writer) WriteTo(out WriterWriterAt) (int64, error) {
 		thisSize := 4 + len(entries)*8
 		// write the clean set to the buckets buffer
 		if err := binary.Write(out, binary.LittleEndian, uint32(len(entries))); err != nil {
-			return 0, err
+			return nil, 0, err
 		}
 		for _, h := range entries {
 			if err := binary.Write(out, binary.LittleEndian, h); err != nil {
-				return 0, err
+				return nil, 0, err
 			}
 		}
 
@@ -163,19 +213,23 @@ func (b *Writer) WriteTo(out WriterWriterAt) (int64, error) {
 		totalWritten += int64(thisSize)
 	}
 
+	// flush the buckets buffer:
+	if err := out.Flush(); err != nil {
+		return nil, 0, err
+	}
+
 	// write final header by overwriting the draft header:
-	_, err = writeHeader(
-		out,
+	updatedHeader, err := createHeader(
 		_Magic,
 		Version,
-		uint32(headerSize),
+		uint32(headerSize-4), // -4 because we don't count the header size itself
 		uint64(len(prefixes)),
 		prefixToOffset,
 	)
 	if err != nil {
-		return 0, err
+		return nil, 0, err
 	}
-	return totalWritten, nil
+	return updatedHeader, totalWritten, err
 }
 
 // getCleanSet returns a sorted, deduplicated copy of getCleanSet.
@@ -193,4 +247,26 @@ func getCleanSet(entries []uint64) []uint64 {
 		out = append(out, entries[i])
 	}
 	return out
+}
+
+func fileIsBlank(path string) (bool, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return true, nil
+		}
+		return false, err
+	}
+	return info.Size() == 0, nil
+}
+
+func isDir(path string) (bool, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	return info.IsDir(), nil
 }

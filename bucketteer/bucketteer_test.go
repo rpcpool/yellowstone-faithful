@@ -1,7 +1,6 @@
 package bucketteer
 
 import (
-	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -12,7 +11,9 @@ import (
 )
 
 func TestBucketteer(t *testing.T) {
-	wr := NewWriter()
+	path := filepath.Join(t.TempDir(), "test-bucketteer")
+	wr, err := NewWriter(path)
+	require.NoError(t, err)
 	firstSig := [64]byte{1, 2, 3, 4}
 	wr.Push(firstSig)
 
@@ -45,15 +46,22 @@ func TestBucketteer(t *testing.T) {
 	}
 	require.Equal(t, 3, len(wr.prefixToHashes))
 	{
-		fileContent := NewWriterWriterAtBuffer()
-		_, err := wr.WriteTo(fileContent)
+		gotSize, err := wr.Seal()
 		require.NoError(t, err)
-		reader := bin.NewBorshDecoder(fileContent.Bytes())
+		require.NoError(t, wr.Close())
+		realSize, err := getFizeSize(path)
+		require.NoError(t, err)
+		require.Equal(t, realSize, gotSize)
+
+		fileContent, err := os.ReadFile(path)
+		require.NoError(t, err)
+
+		reader := bin.NewBorshDecoder(fileContent)
 
 		// read header size:
 		headerSize, err := reader.ReadUint32(bin.LE)
 		require.NoError(t, err)
-		_ = headerSize
+		require.Equal(t, uint32(8+8+8+(3*(2+8))), headerSize)
 
 		// magic:
 		{
@@ -94,6 +102,19 @@ func TestBucketteer(t *testing.T) {
 		}
 		contentBuf, err := reader.ReadNBytes(reader.Remaining())
 		require.NoError(t, err)
+		require.Equal(t,
+			[]byte{
+				0x3, 0x0, 0x0, 0x0, // num entries
+				0x49, 0xd7, 0xaf, 0x9e, 0x94, 0x4d, 0x9a, 0x6f,
+				0x2f, 0x12, 0xdb, 0x5b, 0x1, 0x62, 0xae, 0x1a,
+				0x3b, 0xb6, 0x71, 0x5f, 0x4, 0x4f, 0x36, 0xf2,
+				0x1, 0x0, 0x0, 0x0, // num entries
+				0x58, 0xe1, 0x9d, 0xde, 0x7c, 0xfb, 0xeb, 0x5a,
+				0x1, 0x0, 0x0, 0x0, // num entries
+				0x4c, 0xbd, 0xa3, 0xed, 0xd3, 0x8b, 0xa8, 0x44,
+			},
+			contentBuf,
+		)
 		contentReader := bin.NewBorshDecoder(contentBuf)
 		{
 			for prefix, offset := range prefixToOffset {
@@ -128,15 +149,6 @@ func TestBucketteer(t *testing.T) {
 			}
 		}
 		{
-			// create temp file:
-			path := filepath.Join(os.TempDir(), "test-bucketteer")
-			{
-				fWrite, err := os.Create(path)
-				require.NoError(t, err)
-				_, err = fileContent.WriteTo(fWrite)
-				require.NoError(t, err)
-				fWrite.Close()
-			}
 			// read temp file:
 			require.NoError(t, err)
 			mmr, err := mmap.Open(path)
@@ -151,38 +163,10 @@ func TestBucketteer(t *testing.T) {
 	}
 }
 
-type WriterWriterAtBuffer struct {
-	buf []byte
-}
-
-func NewWriterWriterAtBuffer() *WriterWriterAtBuffer {
-	return &WriterWriterAtBuffer{}
-}
-
-func (w *WriterWriterAtBuffer) WriteAt(p []byte, off int64) (n int, err error) {
-	if off+int64(len(p)) > int64(len(w.buf)) {
-		w.buf = append(w.buf, make([]byte, int(off)+len(p)-len(w.buf))...)
+func getFizeSize(path string) (int64, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return 0, err
 	}
-	copy(w.buf[off:], p)
-	return len(p), nil
-}
-
-// Write implements io.Writer.
-func (w *WriterWriterAtBuffer) Write(p []byte) (n int, err error) {
-	w.buf = append(w.buf, p...)
-	return len(p), nil
-}
-
-func (w *WriterWriterAtBuffer) Bytes() []byte {
-	return w.buf
-}
-
-func (w *WriterWriterAtBuffer) Close() error {
-	return nil
-}
-
-// WriteTo
-func (w *WriterWriterAtBuffer) WriteTo(out io.Writer) (int64, error) {
-	n, err := out.Write(w.buf)
-	return int64(n), err
+	return info.Size(), nil
 }

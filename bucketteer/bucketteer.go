@@ -1,6 +1,10 @@
 package bucketteer
 
-import "sort"
+import (
+	"sort"
+
+	"github.com/cespare/xxhash/v2"
+)
 
 var _Magic = [8]byte{'b', 'u', 'c', 'k', 'e', 't', 't', 'e'}
 
@@ -30,9 +34,5 @@ func eytzinger[T any](in, out []T, i, k int) int {
 }
 
 func Hash(sig [64]byte) uint64 {
-	var h uint64
-	for i := 0; i < 8; i++ {
-		h ^= uint64(sig[i]) << (i * 8)
-	}
-	return h
+	return xxhash.Sum64(sig[:])
 }
