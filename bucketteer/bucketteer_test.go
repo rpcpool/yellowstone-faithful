@@ -46,7 +46,9 @@ func TestBucketteer(t *testing.T) {
 	}
 	require.Equal(t, 3, len(wr.prefixToHashes))
 	{
-		gotSize, err := wr.Seal()
+		gotSize, err := wr.Seal(map[string]string{
+			"epoch": "test",
+		})
 		require.NoError(t, err)
 		require.NoError(t, wr.Close())
 		realSize, err := getFizeSize(path)
@@ -61,7 +63,7 @@ func TestBucketteer(t *testing.T) {
 		// read header size:
 		headerSize, err := reader.ReadUint32(bin.LE)
 		require.NoError(t, err)
-		require.Equal(t, uint32(8+8+8+(3*(2+8))), headerSize)
+		require.Equal(t, uint32(8+8+8+(8+(4+5)+(4+4))+(3*(2+8))), headerSize)
 
 		// magic:
 		{
@@ -75,6 +77,20 @@ func TestBucketteer(t *testing.T) {
 			got, err := reader.ReadUint64(bin.LE)
 			require.NoError(t, err)
 			require.Equal(t, Version, got)
+		}
+		{
+			// read meta:
+			numMeta, err := reader.ReadUint64(bin.LE)
+			require.NoError(t, err)
+			require.Equal(t, uint64(1), numMeta)
+
+			key, err := reader.ReadString()
+			require.NoError(t, err)
+			require.Equal(t, "epoch", key)
+
+			value, err := reader.ReadString()
+			require.NoError(t, err)
+			require.Equal(t, "test", value)
 		}
 		// numPrefixes:
 		numPrefixes, err := reader.ReadUint64(bin.LE)

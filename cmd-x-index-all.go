@@ -15,6 +15,7 @@ import (
 	"github.com/gagliardetto/solana-go"
 	"github.com/ipfs/go-cid"
 	carv1 "github.com/ipld/go-car"
+	"github.com/rpcpool/yellowstone-faithful/bucketteer"
 	"github.com/rpcpool/yellowstone-faithful/compactindex"
 	"github.com/rpcpool/yellowstone-faithful/compactindex36"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
@@ -126,6 +127,7 @@ func createAllIndexes(
 	for _, root := range rd.header.Roots {
 		klog.Infof("- Root: %s", root)
 	}
+	rootCID := rd.header.Roots[0]
 
 	klog.Infof("Getting car file size")
 	targetFileSize, err := getFileSize(carPath)
@@ -182,6 +184,15 @@ func createAllIndexes(
 		return nil, fmt.Errorf("failed to create sig_to_cid index: %w", err)
 	}
 	defer sig_to_cid.Close()
+
+	sigExistsFilepath := formatSigExistsIndexFilePath(indexDir, carPath, rootCID.String())
+	sig_exists, err := bucketteer.NewWriter(
+		sigExistsFilepath,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create sig_exists index: %w", err)
+	}
+	defer sig_exists.Close()
 
 	totalOffset := uint64(0)
 	{
@@ -245,6 +256,9 @@ func createAllIndexes(
 				if err != nil {
 					return nil, fmt.Errorf("failed to index signature to cid: %w", err)
 				}
+
+				sig_exists.Push(sig)
+
 				numIndexedTransactions++
 			}
 		}
@@ -280,33 +294,50 @@ func createAllIndexes(
 
 	klog.Infof("Preparing to seal indexes...")
 
-	rootCID := rd.header.Roots[0]
 	paths := &IndexPaths{}
+	paths.SignatureExists = sigExistsFilepath
 
 	klog.Infof("Root CID: %s", rootCID)
 
 	{
 		// seal the indexes
-		klog.Infof("Sealing cid_to_offset index...")
-		paths.CidToOffset, err = cid_to_offset.Seal(ctx, carPath, rootCID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to seal cid_to_offset index: %w", err)
+		{
+			klog.Infof("Sealing cid_to_offset index...")
+			paths.CidToOffset, err = cid_to_offset.Seal(ctx, carPath, rootCID)
+			if err != nil {
+				return nil, fmt.Errorf("failed to seal cid_to_offset index: %w", err)
+			}
+			klog.Infof("Successfully sealed cid_to_offset index: %s", paths.CidToOffset)
 		}
-		klog.Infof("Successfully sealed cid_to_offset index: %s", paths.CidToOffset)
 
-		klog.Infof("Sealing slot_to_cid index...")
-		paths.SlotToCid, err = slot_to_cid.Seal(ctx, carPath, rootCID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to seal slot_to_cid index: %w", err)
+		{
+			klog.Infof("Sealing slot_to_cid index...")
+			paths.SlotToCid, err = slot_to_cid.Seal(ctx, carPath, rootCID)
+			if err != nil {
+				return nil, fmt.Errorf("failed to seal slot_to_cid index: %w", err)
+			}
+			klog.Infof("Successfully sealed slot_to_cid index: %s", paths.SlotToCid)
 		}
-		klog.Infof("Successfully sealed slot_to_cid index: %s", paths.SlotToCid)
 
-		klog.Infof("Sealing sig_to_cid index...")
-		paths.SignatureToCid, err = sig_to_cid.Seal(ctx, carPath, rootCID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to seal sig_to_cid index: %w", err)
+		{
+			klog.Infof("Sealing sig_to_cid index...")
+			paths.SignatureToCid, err = sig_to_cid.Seal(ctx, carPath, rootCID)
+			if err != nil {
+				return nil, fmt.Errorf("failed to seal sig_to_cid index: %w", err)
+			}
+			klog.Infof("Successfully sealed sig_to_cid index: %s", paths.SignatureToCid)
 		}
-		klog.Infof("Successfully sealed sig_to_cid index: %s", paths.SignatureToCid)
+
+		{
+			klog.Infof("Sealing sig_exists index...")
+			meta := map[string]string{
+				"root_cid": rootCID.String(),
+			}
+			if _, err = sig_exists.Seal(meta); err != nil {
+				return nil, fmt.Errorf("failed to seal sig_exists index: %w", err)
+			}
+			klog.Infof("Successfully sealed sig_exists index: %s", paths.SignatureExists)
+		}
 	}
 
 	return paths, nil
@@ -321,9 +352,10 @@ func blackText(s string) string {
 }
 
 type IndexPaths struct {
-	CidToOffset    string
-	SlotToCid      string
-	SignatureToCid string
+	CidToOffset     string
+	SlotToCid       string
+	SignatureToCid  string
+	SignatureExists string
 }
 
 type Builder_CidToOffset struct {
@@ -551,6 +583,17 @@ func verifyAllIndexes(
 	}
 	defer sig_to_cid.Close()
 
+	var sig_exists *bucketteer.Reader
+	if indexes.SignatureExists != "" {
+		sig_exists, err = bucketteer.OpenFile(
+			indexes.SignatureExists,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to open sig_exists index: %w", err)
+		}
+		defer sig_exists.Close()
+	}
+
 	totalOffset := uint64(0)
 	{
 		var buf bytes.Buffer
@@ -622,6 +665,14 @@ func verifyAllIndexes(
 				}
 				if !got.Equals(_cid) {
 					return fmt.Errorf("sig to cid mismatch for sig %s: expected cid %s, got %s", sig, _cid, got)
+				}
+
+				if sig_exists != nil {
+					if has, err := sig_exists.Has(sig); err != nil {
+						return fmt.Errorf("failed to check if sig exists in sig_exists index: %w", err)
+					} else if !has {
+						return fmt.Errorf("sig %s does not exist in sig_exists index", sig)
+					}
 				}
 				numIndexedTransactions++
 			}

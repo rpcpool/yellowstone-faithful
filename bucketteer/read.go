@@ -11,8 +11,9 @@ import (
 )
 
 type Reader struct {
-	prefixToOffset map[[2]byte]uint64
 	contentReader  io.ReaderAt
+	meta           map[string]string
+	prefixToOffset map[[2]byte]uint64
 }
 
 func OpenFile(path string) (*Reader, error) {
@@ -27,13 +28,31 @@ func NewReader(reader io.ReaderAt) (*Reader, error) {
 	r := &Reader{
 		prefixToOffset: make(map[[2]byte]uint64),
 	}
-	prefixToOffset, headerTotalSize, err := readHeader(reader)
+	prefixToOffset, meta, headerTotalSize, err := readHeader(reader)
 	if err != nil {
 		return nil, err
 	}
+	r.meta = meta
 	r.prefixToOffset = prefixToOffset
 	r.contentReader = io.NewSectionReader(reader, headerTotalSize, 1<<63-1)
 	return r, nil
+}
+
+func (r *Reader) Close() error {
+	if closer, ok := r.contentReader.(io.Closer); ok {
+		return closer.Close()
+	}
+	return nil
+}
+
+func (r *Reader) Meta() map[string]string {
+	return r.meta
+}
+
+// GetMeta returns the value of the given key.
+// Returns an empty string if the key does not exist.
+func (r *Reader) GetMeta(key string) string {
+	return r.meta[key]
 }
 
 func readHeaderSize(reader io.ReaderAt) (int64, error) {
@@ -46,16 +65,16 @@ func readHeaderSize(reader io.ReaderAt) (int64, error) {
 	return headerSize, nil
 }
 
-func readHeader(reader io.ReaderAt) (map[[2]byte]uint64, int64, error) {
+func readHeader(reader io.ReaderAt) (map[[2]byte]uint64, map[string]string, int64, error) {
 	// read header size:
 	headerSize, err := readHeaderSize(reader)
 	if err != nil {
-		return nil, 0, err
+		return nil, nil, 0, err
 	}
 	// read header bytes:
 	headerBuf := make([]byte, headerSize)
 	if _, err := reader.ReadAt(headerBuf, 4); err != nil {
-		return nil, 0, err
+		return nil, nil, 0, err
 	}
 	// decode header:
 	decoder := bin.NewBorshDecoder(headerBuf)
@@ -65,26 +84,45 @@ func readHeader(reader io.ReaderAt) (map[[2]byte]uint64, int64, error) {
 		magicBuf := make([]byte, len(_Magic[:]))
 		_, err := decoder.Read(magicBuf)
 		if err != nil {
-			return nil, 0, err
+			return nil, nil, 0, err
 		}
 		if !bytes.Equal(magicBuf, _Magic[:]) {
-			return nil, 0, fmt.Errorf("invalid magic: %x", string(magicBuf))
+			return nil, nil, 0, fmt.Errorf("invalid magic: %x", string(magicBuf))
 		}
 	}
 	// version:
 	{
 		got, err := decoder.ReadUint64(bin.LE)
 		if err != nil {
-			return nil, 0, err
+			return nil, nil, 0, err
 		}
 		if got != Version {
-			return nil, 0, fmt.Errorf("expected version %d, got %d", Version, got)
+			return nil, nil, 0, fmt.Errorf("expected version %d, got %d", Version, got)
+		}
+	}
+	{
+		// read meta:
+		numMeta, err := decoder.ReadUint64(bin.LE)
+		if err != nil {
+			return nil, nil, 0, err
+		}
+		meta := make(map[string]string, numMeta)
+		for i := uint64(0); i < numMeta; i++ {
+			key, err := decoder.ReadString()
+			if err != nil {
+				return nil, nil, 0, err
+			}
+			value, err := decoder.ReadString()
+			if err != nil {
+				return nil, nil, 0, err
+			}
+			meta[key] = value
 		}
 	}
 	// numPrefixes:
 	numPrefixes, err := decoder.ReadUint64(bin.LE)
 	if err != nil {
-		return nil, 0, err
+		return nil, nil, 0, err
 	}
 	// prefix -> offset:
 	prefixToOffset := make(map[[2]byte]uint64, numPrefixes)
@@ -92,15 +130,15 @@ func readHeader(reader io.ReaderAt) (map[[2]byte]uint64, int64, error) {
 		var prefix [2]byte
 		_, err := decoder.Read(prefix[:])
 		if err != nil {
-			return nil, 0, err
+			return nil, nil, 0, err
 		}
 		offset, err := decoder.ReadUint64(bin.LE)
 		if err != nil {
-			return nil, 0, err
+			return nil, nil, 0, err
 		}
 		prefixToOffset[prefix] = offset
 	}
-	return prefixToOffset, headerSize + 4, nil
+	return prefixToOffset, nil, headerSize + 4, err
 }
 
 func (r *Reader) Has(sig [64]byte) (bool, error) {

@@ -70,7 +70,7 @@ func (b *Writer) Close() error {
 }
 
 // Seal writes the Bucketteer's state to the given writer.
-func (b *Writer) Seal() (int64, error) {
+func (b *Writer) Seal(meta map[string]string) (int64, error) {
 	// truncate file and seek to beginning:
 	if err := b.destination.Truncate(0); err != nil {
 		return 0, err
@@ -78,7 +78,7 @@ func (b *Writer) Seal() (int64, error) {
 	if _, err := b.destination.Seek(0, 0); err != nil {
 		return 0, err
 	}
-	newHeader, size, err := seal(b.writer, b.prefixToHashes)
+	newHeader, size, err := seal(b.writer, b.prefixToHashes, meta)
 	if err != nil {
 		return 0, err
 	}
@@ -89,7 +89,7 @@ func createHeader(
 	magic [8]byte,
 	version uint64,
 	headerSizeIn uint32,
-	numBuckets uint64,
+	meta map[string]string,
 	prefixToOffset map[[2]byte]uint64,
 ) ([]byte, error) {
 	tmpHeaderBuf := new(bytes.Buffer)
@@ -111,8 +111,24 @@ func createHeader(
 	if err := headerWriter.WriteUint64(version, binary.LittleEndian); err != nil {
 		return nil, err
 	}
+	// write meta
+	{
+		// write num meta entries
+		if err := headerWriter.WriteUint64(uint64(len(meta)), binary.LittleEndian); err != nil {
+			return nil, err
+		}
+		// write meta entries
+		for k, v := range meta {
+			if err := headerWriter.WriteString(k); err != nil {
+				return nil, err
+			}
+			if err := headerWriter.WriteString(v); err != nil {
+				return nil, err
+			}
+		}
+	}
 	// write num buckets
-	if err := headerWriter.WriteUint64(numBuckets, binary.LittleEndian); err != nil {
+	if err := headerWriter.WriteUint64(uint64(len(prefixToOffset)), binary.LittleEndian); err != nil {
 		return nil, err
 	}
 
@@ -156,7 +172,11 @@ func getSortedPrefixes[K any](prefixToHashes map[[2]byte]K) [][2]byte {
 	return prefixes
 }
 
-func seal(out *bufio.Writer, prefixToHashes map[[2]byte][]uint64) ([]byte, int64, error) {
+func seal(
+	out *bufio.Writer,
+	prefixToHashes map[[2]byte][]uint64,
+	meta map[string]string,
+) ([]byte, int64, error) {
 	prefixes := getSortedPrefixes(prefixToHashes)
 	prefixToOffset := make(map[[2]byte]uint64, len(prefixes))
 	for _, prefix := range prefixes {
@@ -170,7 +190,7 @@ func seal(out *bufio.Writer, prefixToHashes map[[2]byte][]uint64) ([]byte, int64
 		_Magic,
 		Version,
 		0, // header size
-		uint64(len(prefixes)),
+		meta,
 		prefixToOffset,
 	)
 	if err != nil {
@@ -223,7 +243,7 @@ func seal(out *bufio.Writer, prefixToHashes map[[2]byte][]uint64) ([]byte, int64
 		_Magic,
 		Version,
 		uint32(headerSize-4), // -4 because we don't count the header size itself
-		uint64(len(prefixes)),
+		meta,
 		prefixToOffset,
 	)
 	if err != nil {

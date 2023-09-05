@@ -59,7 +59,7 @@ func main() {
 
 		fmt.Println("writing to file...")
 		writeStartedAt := time.Now()
-		_, err = buWr.Seal()
+		_, err = buWr.Seal(nil)
 		if err != nil {
 			panic(err)
 		}

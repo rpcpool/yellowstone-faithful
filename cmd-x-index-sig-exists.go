@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -17,18 +18,18 @@ import (
 	"github.com/gagliardetto/solana-go"
 	"github.com/ipfs/go-libipfs/blocks"
 	"github.com/ipld/go-car"
+	"github.com/rpcpool/yellowstone-faithful/bucketteer"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
-	sigtoepoch "github.com/rpcpool/yellowstone-faithful/sig-to-epoch"
 	concurrently "github.com/tejzpr/ordered-concurrently/v3"
 	"github.com/urfave/cli/v2"
 	"k8s.io/klog/v2"
 )
 
-func newCmd_Index_sigToEpoch() *cli.Command {
+func newCmd_Index_sigExists() *cli.Command {
 	return &cli.Command{
-		Name:        "sig-to-epoch",
-		Description: "Create or append to a sig-to-epoch index from a CAR file.",
-		ArgsUsage:   "<car-path> <sig-to-epoch-index-dir>",
+		Name:        "sig-exists",
+		Description: "Create sig-exists index from a CAR file",
+		ArgsUsage:   "<car-path> <index-dir>",
 		Before: func(c *cli.Context) error {
 			return nil
 		},
@@ -64,6 +65,7 @@ func newCmd_Index_sigToEpoch() *cli.Command {
 			if err != nil {
 				klog.Exitf("Failed to open CAR: %s", err)
 			}
+			rootCID := rd.Header.Roots[0]
 			{
 				roots := rd.Header.Roots
 				klog.Infof("Roots: %d", len(roots))
@@ -77,52 +79,26 @@ func newCmd_Index_sigToEpoch() *cli.Command {
 			}
 
 			indexDir := c.Args().Get(1)
-			existed := true
+
 			if ok, err := isDirectory(indexDir); err != nil {
-				if errors.Is(err, os.ErrNotExist) {
-					existed = false
-					if err := os.MkdirAll(indexDir, 0o755); err != nil {
-						return fmt.Errorf("failed to create index-dir: %w", err)
-					} else {
-						klog.Infof("Created index-dir at %s", indexDir)
-					}
-				} else {
-					return err
-				}
+				return err
 			} else if !ok {
 				return fmt.Errorf("index-dir is not a directory")
 			}
 
-			sigToEpochIndexDir := indexDir
-			if !existed {
-				klog.Infof("Creating NEW sig-to-epoch index at %s", sigToEpochIndexDir)
-			} else {
-				klog.Infof("Will APPEND to existing sig-to-epoch index at %s", sigToEpochIndexDir)
-			}
-			index, err := sigtoepoch.NewIndex(
-				sigToEpochIndexDir,
+			klog.Infof("Creating sig-exists index for %s", carPath)
+			indexFilePath := formatSigExistsIndexFilePath(indexDir, carPath, rootCID.String())
+			index, err := bucketteer.NewWriter(
+				indexFilePath,
 			)
 			if err != nil {
 				return fmt.Errorf("error while opening sig-to-epoch index writer: %w", err)
 			}
 			defer func() {
-				if err := index.Flush(); err != nil {
-					klog.Errorf("Error while flushing: %s", err)
-				}
 				if err := index.Close(); err != nil {
 					klog.Errorf("Error while closing: %s", err)
 				}
 			}()
-			if existed {
-				epochs, err := index.Epochs()
-				if err != nil {
-					return fmt.Errorf("error while getting epochs: %w", err)
-				}
-				klog.Infof("Index (currently) contains %d epochs", len(epochs))
-				for _, epoch := range epochs {
-					klog.Infof("- Epoch #%d", epoch)
-				}
-			}
 
 			startedAt := time.Now()
 			numTransactionsSeen := 0
@@ -156,14 +132,9 @@ func newCmd_Index_sigToEpoch() *cli.Command {
 					case error:
 						panic(resValue)
 					case SignatureAndSlot:
-						slot := resValue.Slot
 						sig := resValue.Signature
 						{
-							err = index.Push(c.Context, sig, uint16(CalcEpochForSlot(slot)))
-							if err != nil {
-								classicSpewConfig.Dump(err)
-								klog.Exitf("Error while pushing to sig-to-epoch index: %s", err)
-							}
+							index.Push(sig)
 						}
 						waitResultsReceived.Done()
 						numReceivedAtomic.Add(-1)
@@ -217,22 +188,14 @@ func newCmd_Index_sigToEpoch() *cli.Command {
 				klog.Infof("All results received")
 			}
 
-			if existed {
-				klog.Infof("Success: sig-to-epoch index appended at %s", sigToEpochIndexDir)
-				epochs, err := index.Epochs()
-				if err != nil {
-					return fmt.Errorf("error while getting epochs: %w", err)
-				}
-				klog.Infof("Index (now) contains %d epochs", len(epochs))
-				for _, epoch := range epochs {
-					klog.Infof("- Epoch #%d", epoch)
-				}
-			} else {
-				klog.Infof("Success: sig-to-epoch index created at %s", sigToEpochIndexDir)
-			}
+			klog.Infof("Success: sig-exists index created at %s", indexFilePath)
 			return nil
 		},
 	}
+}
+
+func formatSigExistsIndexFilePath(indexDir string, carPath string, rootCID string) string {
+	return filepath.Join(indexDir, fmt.Sprintf("%s.%s.sig-exists.index", filepath.Base(carPath), rootCID))
 }
 
 var classicSpewConfig = spew.ConfigState{
