@@ -141,12 +141,12 @@ func (b *Builder) sealBucket(ctx context.Context, i int, f *os.File) error {
 			HashLen:    3, // TODO remove hardcoded constant
 			FileOffset: uint64(offset),
 		},
-		Stride:      3 + intWidth(b.FileSize), // TODO remove hardcoded constant
-		OffsetWidth: intWidth(b.FileSize),
+		Stride:      3 + valueLength(), // TODO remove hardcoded constant
+		OffsetWidth: valueLength(),
 	}
 	// Write entries to file.
 	wr := bufio.NewWriter(f)
-	entryBuf := make([]byte, desc.HashLen+intWidth(b.FileSize)) // TODO remove hardcoded constant
+	entryBuf := make([]byte, desc.HashLen+valueLength()) // TODO remove hardcoded constant
 	for _, entry := range entries {
 		desc.marshalEntry(entryBuf, entry)
 		if _, err := wr.Write(entryBuf[:]); err != nil {
