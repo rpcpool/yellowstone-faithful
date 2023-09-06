@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"time"
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/fsnotify/fsnotify"
@@ -163,7 +164,8 @@ func newCmd_rpc() *cli.Command {
 					switch event.Op {
 					case fsnotify.Write:
 						{
-							klog.Infof("File %q was modified", event.Name)
+							startedAt := time.Now()
+							klog.Infof("File %q was modified; processing...", event.Name)
 							// find the config file, load it, and update the epoch (replace)
 							config, err := LoadConfig(event.Name)
 							if err != nil {
@@ -180,11 +182,12 @@ func newCmd_rpc() *cli.Command {
 								klog.Errorf("error replacing epoch %d: %s", epoch.Epoch(), err.Error())
 								return
 							}
-							klog.Infof("Epoch %d replaced", epoch.Epoch())
+							klog.Infof("Epoch %d added/replaced in %s", epoch.Epoch(), time.Since(startedAt))
 						}
 					case fsnotify.Create:
 						{
-							klog.Infof("File %q was created", event.Name)
+							startedAt := time.Now()
+							klog.Infof("File %q was created; processing...", event.Name)
 							// find the config file, load it, and add it to the multi-epoch (if not already added)
 							config, err := LoadConfig(event.Name)
 							if err != nil {
@@ -201,17 +204,18 @@ func newCmd_rpc() *cli.Command {
 								klog.Errorf("error adding epoch %d: %s", epoch.Epoch(), err.Error())
 								return
 							}
-							klog.Infof("Epoch %d added", epoch.Epoch())
+							klog.Infof("Epoch %d added in %s", epoch.Epoch(), time.Since(startedAt))
 						}
 					case fsnotify.Remove:
 						{
-							klog.Infof("File %q was removed", event.Name)
+							startedAt := time.Now()
+							klog.Infof("File %q was removed; processing...", event.Name)
 							// find the epoch that corresponds to this file, and remove it (if any)
 							epNumber, err := multi.RemoveEpochByConfigFilepath(event.Name)
 							if err != nil {
 								klog.Errorf("error removing epoch for config file %q: %s", event.Name, err.Error())
 							}
-							klog.Infof("Epoch %d removed", epNumber)
+							klog.Infof("Epoch %d removed in %s", epNumber, time.Since(startedAt))
 						}
 					case fsnotify.Rename:
 						klog.Infof("File %q was renamed; do nothing", event.Name)
