@@ -161,7 +161,7 @@ func newCmd_rpc() *cli.Command {
 						klog.Infof("File %q is not a JSON or YAML file; do nothing", event.Name)
 						return
 					}
-					klog.Infof("File event: %s", spew.Sdump(event))
+					klog.Infof("File event: name=%q, op=%q", event.Name, event.Op)
 
 					if event.Op != fsnotify.Remove && multi.HasEpochWithSameHashAsFile(event.Name) {
 						klog.Infof("Epoch with same hash as file %q is already loaded; do nothing", event.Name)
