@@ -24,7 +24,11 @@ import (
 // Supported protocols are:
 // - http://
 // - https://
-func openIndexStorage(ctx context.Context, where string) (ReaderAtCloser, error) {
+func openIndexStorage(
+	ctx context.Context,
+	where string,
+	debug bool,
+) (ReaderAtCloser, error) {
 	where = strings.TrimSpace(where)
 	if strings.HasPrefix(where, "http://") || strings.HasPrefix(where, "https://") {
 		klog.Infof("opening index file from %q as HTTP remote file", where)
@@ -32,9 +36,13 @@ func openIndexStorage(ctx context.Context, where string) (ReaderAtCloser, error)
 		if err != nil {
 			return nil, fmt.Errorf("failed to open remote index file: %w", err)
 		}
+		if !debug {
+			return rac, nil
+		}
 		return &readCloserWrapper{
-			rac:  rac,
-			name: where,
+			rac:      rac,
+			name:     where,
+			isRemote: true,
 		}, nil
 	}
 	// TODO: add support for IPFS gateways.
@@ -43,9 +51,13 @@ func openIndexStorage(ctx context.Context, where string) (ReaderAtCloser, error)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open local index file: %w", err)
 	}
+	if !debug {
+		return rac, nil
+	}
 	return &readCloserWrapper{
-		rac:  rac,
-		name: where,
+		rac:      rac,
+		name:     where,
+		isRemote: false,
 	}, nil
 }
 

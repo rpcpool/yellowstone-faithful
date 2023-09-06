@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"crypto/rand"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -14,6 +15,7 @@ import (
 	"github.com/ipld/go-car/util"
 	carv2 "github.com/ipld/go-car/v2"
 	"github.com/patrickmn/go-cache"
+	"github.com/rpcpool/yellowstone-faithful/bucketteer"
 	"github.com/rpcpool/yellowstone-faithful/compactindex"
 	"github.com/rpcpool/yellowstone-faithful/compactindex36"
 	"github.com/rpcpool/yellowstone-faithful/gsfa"
@@ -35,6 +37,7 @@ type Epoch struct {
 	cidToOffsetIndex    *compactindex.DB
 	slotToCidIndex      *compactindex36.DB
 	sigToCidIndex       *compactindex36.DB
+	sigExists           *bucketteer.Reader
 	gsfaReader          *gsfa.GsfaReader
 	cidToNodeCache      *cache.Cache // TODO: prevent OOM
 	onClose             []func() error
@@ -104,7 +107,11 @@ func NewEpochFromConfig(config *Config, c *cli.Context) (*Epoch, error) {
 
 	if isCarMode {
 		// The CAR-mode requires a cid-to-offset index.
-		cidToOffsetIndexFile, err := openIndexStorage(c.Context, string(config.Indexes.CidToOffset.URI))
+		cidToOffsetIndexFile, err := openIndexStorage(
+			c.Context,
+			string(config.Indexes.CidToOffset.URI),
+			DebugMode,
+		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to open cid-to-offset index file: %w", err)
 		}
@@ -121,7 +128,11 @@ func NewEpochFromConfig(config *Config, c *cli.Context) (*Epoch, error) {
 	}
 
 	{
-		slotToCidIndexFile, err := openIndexStorage(c.Context, string(config.Indexes.SlotToCid.URI))
+		slotToCidIndexFile, err := openIndexStorage(
+			c.Context,
+			string(config.Indexes.SlotToCid.URI),
+			DebugMode,
+		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to open slot-to-cid index file: %w", err)
 		}
@@ -138,7 +149,11 @@ func NewEpochFromConfig(config *Config, c *cli.Context) (*Epoch, error) {
 	}
 
 	{
-		sigToCidIndexFile, err := openIndexStorage(c.Context, string(config.Indexes.SigToCid.URI))
+		sigToCidIndexFile, err := openIndexStorage(
+			c.Context,
+			string(config.Indexes.SigToCid.URI),
+			DebugMode,
+		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to open sig-to-cid index file: %w", err)
 		}
@@ -200,6 +215,32 @@ func NewEpochFromConfig(config *Config, c *cli.Context) (*Epoch, error) {
 			ep.remoteCarHeaderSize = uint64(n) + headerSize
 		}
 	}
+	{
+		sigExistsFile, err := openIndexStorage(
+			c.Context,
+			string(config.Indexes.SigExists.URI),
+			DebugMode,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to open sig-exists index file: %w", err)
+		}
+		ep.onClose = append(ep.onClose, sigExistsFile.Close)
+
+		sigExists, err := bucketteer.NewReader(sigExistsFile)
+		if err != nil {
+			return nil, fmt.Errorf("failed to open sig-exists index: %w", err)
+		}
+		ep.onClose = append(ep.onClose, sigExists.Close)
+
+		{
+			// warm up the cache
+			for i := 0; i < 100_000; i++ {
+				sigExists.Has(newRandomSignature())
+			}
+		}
+
+		ep.sigExists = sigExists
+	}
 
 	{
 		ca := cache.New(30*time.Second, 1*time.Minute)
@@ -215,6 +256,12 @@ func NewEpochFromConfig(config *Config, c *cli.Context) (*Epoch, error) {
 	}
 
 	return ep, nil
+}
+
+func newRandomSignature() [64]byte {
+	var sig [64]byte
+	rand.Read(sig[:])
+	return sig
 }
 
 func (r *Epoch) getNodeFromCache(c cid.Cid) (v []byte, err error, has bool) {
@@ -335,7 +382,12 @@ func (s *Epoch) GetNodeByOffset(ctx context.Context, wantedCid cid.Cid, offset u
 	return data, nil
 }
 
-func (ser *Epoch) FindCidFromSlot(ctx context.Context, slot uint64) (cid.Cid, error) {
+func (ser *Epoch) FindCidFromSlot(ctx context.Context, slot uint64) (o cid.Cid, e error) {
+	startedAt := time.Now()
+	defer func() {
+		klog.Infof("Found CID for slot %d in %s: %s", slot, time.Since(startedAt), o)
+	}()
+
 	// try from cache
 	if c, err, has := ser.getSlotToCidFromCache(slot); err != nil {
 		return cid.Undef, err
@@ -350,11 +402,20 @@ func (ser *Epoch) FindCidFromSlot(ctx context.Context, slot uint64) (cid.Cid, er
 	return found, nil
 }
 
-func (ser *Epoch) FindCidFromSignature(ctx context.Context, sig solana.Signature) (cid.Cid, error) {
+func (ser *Epoch) FindCidFromSignature(ctx context.Context, sig solana.Signature) (o cid.Cid, e error) {
+	startedAt := time.Now()
+	defer func() {
+		klog.Infof("Found CID for signature %s in %s: %s", sig, time.Since(startedAt), o)
+	}()
 	return findCidFromSignature(ser.sigToCidIndex, sig)
 }
 
-func (ser *Epoch) FindOffsetFromCid(ctx context.Context, cid cid.Cid) (uint64, error) {
+func (ser *Epoch) FindOffsetFromCid(ctx context.Context, cid cid.Cid) (o uint64, e error) {
+	startedAt := time.Now()
+	defer func() {
+		klog.Infof("Found offset for CID %s in %s: %d", cid, time.Since(startedAt), o)
+	}()
+
 	// try from cache
 	if offset, err, has := ser.getCidToOffsetFromCache(cid); err != nil {
 		return 0, err
@@ -365,7 +426,6 @@ func (ser *Epoch) FindOffsetFromCid(ctx context.Context, cid cid.Cid) (uint64, e
 	if err != nil {
 		return 0, err
 	}
-	klog.Infof("found offset for CID %s: %d", cid, found)
 	ser.putCidToOffsetInCache(cid, found)
 	return found, nil
 }
@@ -377,7 +437,6 @@ func (ser *Epoch) GetBlock(ctx context.Context, slot uint64) (*ipldbindcode.Bloc
 		klog.Errorf("failed to find CID for slot %d: %v", slot, err)
 		return nil, err
 	}
-	klog.Infof("found CID for slot %d: %s", slot, wantedCid)
 	{
 		doPrefetch := getValueFromContext(ctx, "prefetch")
 		if doPrefetch != nil && doPrefetch.(bool) {
@@ -467,7 +526,6 @@ func (ser *Epoch) GetTransaction(ctx context.Context, sig solana.Signature) (*ip
 		klog.Errorf("failed to find CID for signature %s: %v", sig, err)
 		return nil, err
 	}
-	klog.Infof("found CID for signature %s: %s", sig, wantedCid)
 	{
 		doPrefetch := getValueFromContext(ctx, "prefetch")
 		if doPrefetch != nil && doPrefetch.(bool) {

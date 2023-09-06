@@ -253,11 +253,8 @@ type Entry struct {
 	Value [36]byte
 }
 
-// intWidth returns the number of bytes minimally required to represent the given integer.
-func intWidth(n uint64) uint8 {
+func valueLength() uint8 {
 	return 36 // 36 is the length of the CIDs we use.
-	msb := 64 - bits.LeadingZeros64(n)
-	return uint8((msb + 7) / 8)
 }
 
 // maxCls64 returns the max integer that has the same amount of leading zeros as n.
@@ -279,5 +276,5 @@ func putUintLe(buf []byte, x uint64) bool {
 	var full [8]byte
 	binary.LittleEndian.PutUint64(full[:], x)
 	copy(buf, full[:])
-	return int(intWidth(x)) <= len(buf)
+	return int(valueLength()) <= len(buf)
 }

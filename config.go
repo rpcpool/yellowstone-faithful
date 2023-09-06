@@ -102,7 +102,8 @@ type Config struct {
 		} `json:"car" yaml:"car"`
 		Filecoin *struct {
 			// Enable enables Filecoin mode. If false, or if this section is not present, CAR mode is used.
-			Enable bool `json:"enable" yaml:"enable"`
+			Enable  bool    `json:"enable" yaml:"enable"`
+			RootCID cid.Cid `json:"root_cid" yaml:"root_cid"`
 		} `json:"filecoin" yaml:"filecoin"`
 	} `json:"data" yaml:"data"`
 	Indexes struct {
@@ -118,6 +119,9 @@ type Config struct {
 		Gsfa struct {
 			URI URI `json:"uri" yaml:"uri"`
 		} `json:"gsfa" yaml:"gsfa"`
+		SigExists struct {
+			URI URI `json:"uri" yaml:"uri"`
+		} `json:"sig_exists" yaml:"sig_exists"`
 	} `json:"indexes" yaml:"indexes"`
 }
 
@@ -214,19 +218,40 @@ func (c *Config) Validate() error {
 		if err := isSupportedURI(c.Indexes.CidToOffset.URI, "indexes.cid_to_offset.uri"); err != nil {
 			return err
 		}
+	} else {
+		if c.Data.Filecoin == nil {
+			return fmt.Errorf("car-mode=false; data.filecoin must be set")
+		}
+		if !c.Data.Filecoin.RootCID.Defined() {
+			return fmt.Errorf("data.filecoin.root_cid must be set")
+		}
 	}
 
-	if c.Indexes.SlotToCid.URI.IsZero() {
-		return fmt.Errorf("indexes.slot_to_cid.uri must be set")
-	}
-	if err := isSupportedURI(c.Indexes.SlotToCid.URI, "indexes.slot_to_cid.uri"); err != nil {
-		return err
-	}
-	if c.Indexes.SigToCid.URI.IsZero() {
-		return fmt.Errorf("indexes.sig_to_cid.uri must be set")
-	}
-	if err := isSupportedURI(c.Indexes.SigToCid.URI, "indexes.sig_to_cid.uri"); err != nil {
-		return err
+	{
+		{
+			if c.Indexes.SlotToCid.URI.IsZero() {
+				return fmt.Errorf("indexes.slot_to_cid.uri must be set")
+			}
+			if err := isSupportedURI(c.Indexes.SlotToCid.URI, "indexes.slot_to_cid.uri"); err != nil {
+				return err
+			}
+		}
+		{
+			if c.Indexes.SigToCid.URI.IsZero() {
+				return fmt.Errorf("indexes.sig_to_cid.uri must be set")
+			}
+			if err := isSupportedURI(c.Indexes.SigToCid.URI, "indexes.sig_to_cid.uri"); err != nil {
+				return err
+			}
+		}
+		{
+			if c.Indexes.SigExists.URI.IsZero() {
+				return fmt.Errorf("indexes.sig_exists.uri must be set")
+			}
+			if err := isSupportedURI(c.Indexes.SigExists.URI, "indexes.sig_exists.uri"); err != nil {
+				return err
+			}
+		}
 	}
 	{
 		// check that the URIs are valid
@@ -244,12 +269,17 @@ func (c *Config) Validate() error {
 		if !c.Indexes.SigToCid.URI.IsValid() {
 			return fmt.Errorf("indexes.sig_to_cid.uri is invalid")
 		}
-		if !c.Indexes.Gsfa.URI.IsZero() && !c.Indexes.Gsfa.URI.IsValid() {
-			return fmt.Errorf("indexes.gsfa.uri is invalid")
+		if !c.Indexes.SigExists.URI.IsValid() {
+			return fmt.Errorf("indexes.sig_exists.uri is invalid")
 		}
-		// gsfa index (optional), if set, must be a local directory:
-		if !c.Indexes.Gsfa.URI.IsZero() && !c.Indexes.Gsfa.URI.IsLocal() {
-			return fmt.Errorf("indexes.gsfa.uri must be a local directory")
+		{
+			if !c.Indexes.Gsfa.URI.IsZero() && !c.Indexes.Gsfa.URI.IsValid() {
+				return fmt.Errorf("indexes.gsfa.uri is invalid")
+			}
+			// gsfa index (optional), if set, must be a local directory:
+			if !c.Indexes.Gsfa.URI.IsZero() && !c.Indexes.Gsfa.URI.IsLocal() {
+				return fmt.Errorf("indexes.gsfa.uri must be a local directory")
+			}
 		}
 	}
 	return nil

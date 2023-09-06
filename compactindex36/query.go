@@ -69,7 +69,7 @@ func (db *DB) GetBucket(i uint) (*Bucket, error) {
 	bucket := &Bucket{
 		BucketDescriptor: BucketDescriptor{
 			Stride:      db.entryStride(),
-			OffsetWidth: intWidth(db.FileSize),
+			OffsetWidth: valueLength(),
 		},
 	}
 	// Read bucket header.
@@ -100,7 +100,7 @@ func minInt64(a, b int64) int64 {
 
 func (db *DB) entryStride() uint8 {
 	hashSize := 3 // TODO remove hardcoded constant
-	offsetSize := intWidth(db.FileSize)
+	offsetSize := valueLength()
 	return uint8(hashSize) + offsetSize
 }
 

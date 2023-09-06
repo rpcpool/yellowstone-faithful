@@ -13,7 +13,6 @@ import (
 
 	"github.com/goware/urlx"
 	"github.com/mr-tron/base58"
-	sigtoepoch "github.com/rpcpool/yellowstone-faithful/sig-to-epoch"
 	"github.com/sourcegraph/jsonrpc2"
 	"github.com/valyala/fasthttp"
 	"k8s.io/klog/v2"
@@ -21,15 +20,13 @@ import (
 
 type Options struct {
 	GsfaOnlySignatures     bool
-	PathToSigToEpoch       string // path to the sig-to-epoch index directory
 	EpochSearchConcurrency int
 }
 
 type MultiEpoch struct {
-	mu         sync.RWMutex
-	options    *Options
-	sigToEpoch *sigtoepoch.Index
-	epochs     map[uint64]*Epoch
+	mu      sync.RWMutex
+	options *Options
+	epochs  map[uint64]*Epoch
 }
 
 func NewMultiEpoch(options *Options) *MultiEpoch {
@@ -187,32 +184,6 @@ func LoadProxyConfig(configFilepath string) (*ProxyConfig, error) {
 func (m *MultiEpoch) ListenAndServe(ctx context.Context, listenOn string, lsConf *ListenerConfig) error {
 	handler := newMultiEpochHandler(m, lsConf)
 	handler = fasthttp.CompressHandler(handler)
-
-	if sigToEpochIndexDir := m.options.PathToSigToEpoch; sigToEpochIndexDir != "" {
-		klog.Infof("Opening sig-to-epoch index from %s", sigToEpochIndexDir)
-		index, err := sigtoepoch.NewIndex(
-			sigToEpochIndexDir,
-		)
-		if err != nil {
-			return fmt.Errorf("error while opening sig-to-epoch index: %w", err)
-		}
-		defer func() {
-			if err := index.Close(); err != nil {
-				klog.Errorf("Error while closing: %s", err)
-			}
-		}()
-		{
-			epochs, err := index.Epochs()
-			if err != nil {
-				return fmt.Errorf("error while getting epochs list from sig-to-epoch index: %w", err)
-			}
-			klog.Infof("sig-to-epoch index contains %d epochs", len(epochs))
-			for _, epoch := range epochs {
-				klog.Infof("- Epoch #%d", epoch)
-			}
-		}
-		m.sigToEpoch = index
-	}
 
 	klog.Infof("RPC server listening on %s", listenOn)
 

@@ -176,8 +176,9 @@ func remoteReadAt(client *http.Client, url string, p []byte, off int64) (n int, 
 }
 
 type readCloserWrapper struct {
-	rac  ReaderAtCloser
-	name string
+	rac      ReaderAtCloser
+	isRemote bool
+	name     string
 }
 
 // when reading print a dot
@@ -185,14 +186,22 @@ func (r *readCloserWrapper) ReadAt(p []byte, off int64) (n int, err error) {
 	startedAt := time.Now()
 	defer func() {
 		if DebugMode {
-			prefix := "[READ-UNKNOWN]"
+			var icon string
+			if r.isRemote {
+				// add internet icon
+				icon = "🌐 "
+			} else {
+				// add disk icon
+				icon = "💾 "
+			}
+			prefix := icon + "[READ-UNKNOWN]"
 			// if has suffix .index, then it's an index file
 			if strings.HasSuffix(r.name, ".index") {
-				prefix = azureBG("[READ-INDEX]")
+				prefix = icon + azureBG("[READ-INDEX]")
 			}
 			// if has suffix .car, then it's a car file
 			if strings.HasSuffix(r.name, ".car") {
-				prefix = purpleBG("[READ-CAR]")
+				prefix = icon + purpleBG("[READ-CAR]")
 			}
 			fmt.Fprintf(os.Stderr, prefix+" %s:%d+%d (%s)\n", filepath.Base(r.name), off, len(p), time.Since(startedAt))
 		}

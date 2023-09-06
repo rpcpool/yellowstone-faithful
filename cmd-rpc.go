@@ -19,7 +19,6 @@ import (
 func newCmd_rpc() *cli.Command {
 	var listenOn string
 	var gsfaOnlySignatures bool
-	var sigToEpochIndexDir string
 	var includePatterns cli.StringSlice
 	var excludePatterns cli.StringSlice
 	var watch bool
@@ -44,12 +43,6 @@ func newCmd_rpc() *cli.Command {
 				Usage:       "gSFA: only return signatures",
 				Value:       false,
 				Destination: &gsfaOnlySignatures,
-			},
-			&cli.StringFlag{
-				Name:        "sig-to-epoch-index",
-				Usage:       "Path to the sig-to-epoch index directory",
-				Value:       "",
-				Destination: &sigToEpochIndexDir,
 			},
 			&cli.BoolFlag{
 				Name:        "debug",
@@ -131,7 +124,6 @@ func newCmd_rpc() *cli.Command {
 
 			multi := NewMultiEpoch(&Options{
 				GsfaOnlySignatures:     gsfaOnlySignatures,
-				PathToSigToEpoch:       sigToEpochIndexDir,
 				EpochSearchConcurrency: epochSearchConcurrency,
 			})
 
