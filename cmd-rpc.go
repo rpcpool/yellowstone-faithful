@@ -284,7 +284,7 @@ func onFileChanged(ctx context.Context, dirs []string, callback func(fsnotify.Ev
 				if !ok {
 					return
 				}
-				klog.Errorf("error: %s", err)
+				klog.Errorf("error watching files: %v", err)
 			}
 		}
 	}()
