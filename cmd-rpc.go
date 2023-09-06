@@ -279,10 +279,7 @@ func onFileChanged(ctx context.Context, dirs []string, callback func(fsnotify.Ev
 				if !ok {
 					return
 				}
-				klog.Infof("event: %s", event)
-				if event.Op&fsnotify.Write == fsnotify.Write {
-					callback(event)
-				}
+				callback(event)
 			case err, ok := <-watcher.Errors:
 				if !ok {
 					return
