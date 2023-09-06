@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/davecgh/go-spew/spew"
@@ -149,6 +150,12 @@ func newCmd_rpc() *cli.Command {
 				ctx, cancel := context.WithCancel(c.Context)
 				defer cancel()
 
+				// create a map that tracks files that are already being processed because of an event:
+				// this is to avoid processing the same file multiple times
+				// (e.g. if a file is create and then modified, we don't want to process it twice)
+				fileProcessingTracker := make(map[string]struct{})
+				mu := &sync.Mutex{}
+
 				err = onFileChanged(ctx, dirs, func(event fsnotify.Event) {
 					if !isJSONFile(event.Name) && !isYAMLFile(event.Name) {
 						klog.Infof("File %q is not a JSON or YAML file; do nothing", event.Name)
@@ -160,6 +167,22 @@ func newCmd_rpc() *cli.Command {
 						klog.Infof("Epoch with same hash as file %q is already loaded; do nothing", event.Name)
 						return
 					}
+					// register the file as being processed
+					mu.Lock()
+					_, ok := fileProcessingTracker[event.Name]
+					if ok {
+						klog.Infof("File %q is already being processed; do nothing", event.Name)
+						mu.Unlock()
+						return
+					}
+					fileProcessingTracker[event.Name] = struct{}{}
+					mu.Unlock()
+					// remove the file from the tracker when we're done processing it
+					defer func() {
+						mu.Lock()
+						delete(fileProcessingTracker, event.Name)
+						mu.Unlock()
+					}()
 
 					switch event.Op {
 					case fsnotify.Write:
