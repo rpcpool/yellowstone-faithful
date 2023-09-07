@@ -128,6 +128,12 @@ func (multi *MultiEpoch) handleGetTransaction(ctx context.Context, conn *request
 			Message: "Invalid params",
 		}, fmt.Errorf("failed to parse params: %v", err)
 	}
+	if err := params.Validate(); err != nil {
+		return &jsonrpc2.Error{
+			Code:    jsonrpc2.CodeInvalidParams,
+			Message: err.Error(),
+		}, fmt.Errorf("failed to validate params: %w", err)
+	}
 
 	sig := params.Signature
 
@@ -207,15 +213,14 @@ func (multi *MultiEpoch) handleGetTransaction(ctx context.Context, conn *request
 		}
 		response.Meta = meta
 
-		b64Tx, err := tx.ToBase64()
+		encodedTx, err := encodeTransactionResponseBasedOnWantedEncoding(*params.Options.Encoding, tx)
 		if err != nil {
 			return &jsonrpc2.Error{
 				Code:    jsonrpc2.CodeInternalError,
 				Message: "Internal error",
 			}, fmt.Errorf("failed to encode transaction: %v", err)
 		}
-
-		response.Transaction = []any{b64Tx, "base64"}
+		response.Transaction = encodedTx
 	}
 
 	// reply with the data

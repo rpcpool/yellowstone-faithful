@@ -2,13 +2,18 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 
 	bin "github.com/gagliardetto/binary"
 	"github.com/gagliardetto/solana-go"
+	"github.com/gagliardetto/solana-go/rpc"
 	jsoniter "github.com/json-iterator/go"
+	"github.com/mostynb/zstdpool-freelist"
+	"github.com/mr-tron/base58"
 	"github.com/sourcegraph/jsonrpc2"
 	"github.com/valyala/fasthttp"
 	"k8s.io/klog/v2"
@@ -142,8 +147,29 @@ func WithSubrapghPrefetch(ctx context.Context, yesNo bool) context.Context {
 }
 
 type GetBlockRequest struct {
-	Slot uint64 `json:"slot"`
-	// TODO: add more params
+	Slot    uint64 `json:"slot"`
+	Options struct {
+		Commitment                     *rpc.CommitmentType  `json:"commitment,omitempty"` // default: "finalized"
+		Encoding                       *solana.EncodingType `json:"encoding,omitempty"`   // default: "json"
+		MaxSupportedTransactionVersion *uint64              `json:"maxSupportedTransactionVersion,omitempty"`
+		TransactionDetails             *string              `json:"transactionDetails,omitempty"` // default: "full"
+		Rewards                        *bool                `json:"rewards,omitempty"`
+	} `json:"options,omitempty"`
+}
+
+// Validate validates the request.
+func (req *GetBlockRequest) Validate() error {
+	if !isAnyEncodingOf(
+		*req.Options.Encoding,
+		solana.EncodingBase58,
+		solana.EncodingBase64,
+		solana.EncodingBase64Zstd,
+		solana.EncodingJSON,
+		// solana.EncodingJSONParsed, // TODO: add support for this
+	) {
+		return fmt.Errorf("unsupported encoding")
+	}
+	return nil
 }
 
 func parseGetBlockRequest(raw *json.RawMessage) (*GetBlockRequest, error) {
@@ -158,34 +184,202 @@ func parseGetBlockRequest(raw *json.RawMessage) (*GetBlockRequest, error) {
 		return nil, nil
 	}
 
-	return &GetBlockRequest{
+	out := &GetBlockRequest{
 		Slot: uint64(slotRaw),
-	}, nil
+	}
+
+	if len(params) > 1 {
+		optionsRaw, ok := params[1].(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("second argument must be an object, got %T", params[1])
+		}
+		if commitmentRaw, ok := optionsRaw["commitment"]; ok {
+			commitment, ok := commitmentRaw.(string)
+			if !ok {
+				return nil, fmt.Errorf("commitment must be a string, got %T", commitmentRaw)
+			}
+			commitmentType := rpc.CommitmentType(commitment)
+			out.Options.Commitment = &commitmentType
+		} else {
+			commitmentType := rpc.CommitmentType("finalized")
+			out.Options.Commitment = &commitmentType
+		}
+		if encodingRaw, ok := optionsRaw["encoding"]; ok {
+			encoding, ok := encodingRaw.(string)
+			if !ok {
+				return nil, fmt.Errorf("encoding must be a string, got %T", encodingRaw)
+			}
+			encodingType := solana.EncodingType(encoding)
+			out.Options.Encoding = &encodingType
+		} else {
+			encodingType := solana.EncodingType("json")
+			out.Options.Encoding = &encodingType
+		}
+		if maxSupportedTransactionVersionRaw, ok := optionsRaw["maxSupportedTransactionVersion"]; ok {
+			maxSupportedTransactionVersion, ok := maxSupportedTransactionVersionRaw.(float64)
+			if !ok {
+				return nil, fmt.Errorf("maxSupportedTransactionVersion must be a number, got %T", maxSupportedTransactionVersionRaw)
+			}
+			maxSupportedTransactionVersionUint64 := uint64(maxSupportedTransactionVersion)
+			out.Options.MaxSupportedTransactionVersion = &maxSupportedTransactionVersionUint64
+		}
+		if transactionDetailsRaw, ok := optionsRaw["transactionDetails"]; ok {
+			transactionDetails, ok := transactionDetailsRaw.(string)
+			if !ok {
+				return nil, fmt.Errorf("transactionDetails must be a string, got %T", transactionDetailsRaw)
+			}
+			out.Options.TransactionDetails = &transactionDetails
+		} else {
+			transactionDetails := "full"
+			out.Options.TransactionDetails = &transactionDetails
+		}
+		if rewardsRaw, ok := optionsRaw["rewards"]; ok {
+			rewards, ok := rewardsRaw.(bool)
+			if !ok {
+				return nil, fmt.Errorf("rewards must be a boolean, got %T", rewardsRaw)
+			}
+			out.Options.Rewards = &rewards
+		} else {
+			rewards := true
+			out.Options.Rewards = &rewards
+		}
+	}
+
+	return out, nil
 }
 
 type GetTransactionRequest struct {
 	Signature solana.Signature `json:"signature"`
-	// TODO: add more params
+	Options   struct {
+		Encoding                       *solana.EncodingType `json:"encoding,omitempty"` // default: "json"
+		MaxSupportedTransactionVersion *uint64              `json:"maxSupportedTransactionVersion,omitempty"`
+		Commitment                     *rpc.CommitmentType  `json:"commitment,omitempty"`
+	} `json:"options,omitempty"`
+}
+
+// Validate validates the request.
+func (req *GetTransactionRequest) Validate() error {
+	if req.Signature.IsZero() {
+		return fmt.Errorf("signature is required")
+	}
+	if !isAnyEncodingOf(
+		*req.Options.Encoding,
+		solana.EncodingBase58,
+		solana.EncodingBase64,
+		solana.EncodingBase64Zstd,
+		solana.EncodingJSON,
+		// solana.EncodingJSONParsed, // TODO: add support for this
+	) {
+		return fmt.Errorf("unsupported encoding")
+	}
+	return nil
+}
+
+func isAnyEncodingOf(s solana.EncodingType, anyOf ...solana.EncodingType) bool {
+	for _, v := range anyOf {
+		if s == v {
+			return true
+		}
+	}
+	return false
 }
 
 func parseGetTransactionRequest(raw *json.RawMessage) (*GetTransactionRequest, error) {
 	var params []any
 	if err := json.Unmarshal(*raw, &params); err != nil {
-		klog.Errorf("failed to unmarshal params: %v", err)
-		return nil, err
+		return nil, fmt.Errorf("failed to unmarshal params: %w", err)
 	}
 	sigRaw, ok := params[0].(string)
 	if !ok {
-		klog.Errorf("first argument must be a string")
-		return nil, nil
+		return nil, fmt.Errorf("first argument must be a string, got %T", params[0])
 	}
 
 	sig, err := solana.SignatureFromBase58(sigRaw)
 	if err != nil {
-		klog.Errorf("failed to convert signature from base58: %v", err)
-		return nil, err
+		return nil, fmt.Errorf("failed to parse signature from base58: %w", err)
 	}
-	return &GetTransactionRequest{
+
+	out := &GetTransactionRequest{
 		Signature: sig,
-	}, nil
+	}
+
+	if len(params) > 1 {
+		optionsRaw, ok := params[1].(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("second argument must be an object, got %T", params[1])
+		}
+		if encodingRaw, ok := optionsRaw["encoding"]; ok {
+			encoding, ok := encodingRaw.(string)
+			if !ok {
+				return nil, fmt.Errorf("encoding must be a string, got %T", encodingRaw)
+			}
+			encodingType := solana.EncodingType(encoding)
+			out.Options.Encoding = &encodingType
+		} else {
+			encodingType := solana.EncodingType("json")
+			out.Options.Encoding = &encodingType
+		}
+		if maxSupportedTransactionVersionRaw, ok := optionsRaw["maxSupportedTransactionVersion"]; ok {
+			maxSupportedTransactionVersion, ok := maxSupportedTransactionVersionRaw.(float64)
+			if !ok {
+				return nil, fmt.Errorf("maxSupportedTransactionVersion must be a number, got %T", maxSupportedTransactionVersionRaw)
+			}
+			maxSupportedTransactionVersionUint64 := uint64(maxSupportedTransactionVersion)
+			out.Options.MaxSupportedTransactionVersion = &maxSupportedTransactionVersionUint64
+		}
+		if commitmentRaw, ok := optionsRaw["commitment"]; ok {
+			commitment, ok := commitmentRaw.(string)
+			if !ok {
+				return nil, fmt.Errorf("commitment must be a string, got %T", commitmentRaw)
+			}
+			commitmentType := rpc.CommitmentType(commitment)
+			out.Options.Commitment = &commitmentType
+		}
+	}
+
+	return out, nil
+}
+
+var zstdEncoderPool = zstdpool.NewEncoderPool()
+
+func encodeTransactionResponseBasedOnWantedEncoding(
+	encoding solana.EncodingType,
+	tx solana.Transaction,
+) (any, error) {
+	switch encoding {
+	case solana.EncodingBase58, solana.EncodingBase64, solana.EncodingBase64Zstd:
+		txBuf, err := tx.MarshalBinary()
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal transaction: %w", err)
+		}
+		return encodeBytesResponseBasedOnWantedEncoding(encoding, txBuf)
+	case solana.EncodingJSONParsed:
+		return nil, fmt.Errorf("unsupported encoding")
+	case solana.EncodingJSON:
+		// TODO: add support for this
+		return tx, nil
+	default:
+		return nil, fmt.Errorf("unsupported encoding")
+	}
+}
+
+func encodeBytesResponseBasedOnWantedEncoding(
+	encoding solana.EncodingType,
+	buf []byte,
+) ([]any, error) {
+	switch encoding {
+	case solana.EncodingBase58:
+		return []any{base58.Encode(buf), encoding}, nil
+	case solana.EncodingBase64:
+		return []any{base64.StdEncoding.EncodeToString(buf), encoding}, nil
+	case solana.EncodingBase64Zstd:
+		enc, err := zstdEncoderPool.Get(nil)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get zstd encoder: %w", err)
+		}
+		defer zstdEncoderPool.Put(enc)
+		return []any{base64.StdEncoding.EncodeToString(enc.EncodeAll(buf, nil)), encoding}, nil
+	default:
+		return nil, fmt.Errorf("unsupported encoding %q", encoding)
+	}
 }
