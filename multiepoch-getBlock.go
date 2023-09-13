@@ -33,6 +33,12 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 			Message: "Invalid params",
 		}, fmt.Errorf("failed to parse params: %w", err)
 	}
+	if err := params.Validate(); err != nil {
+		return &jsonrpc2.Error{
+			Code:    jsonrpc2.CodeInvalidParams,
+			Message: err.Error(),
+		}, fmt.Errorf("failed to validate params: %w", err)
+	}
 	tim.time("parseGetBlockRequest")
 	slot := params.Slot
 
@@ -243,7 +249,7 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 	var allTransactions []GetTransactionResponse
 	var rewards any
 	hasRewards := !block.Rewards.(cidlink.Link).Cid.Equals(DummyCID)
-	if hasRewards {
+	if *params.Options.Rewards && hasRewards {
 		rewardsNode, err := epochHandler.GetRewardsByCid(ctx, block.Rewards.(cidlink.Link).Cid)
 		if err != nil {
 			return &jsonrpc2.Error{
@@ -369,15 +375,14 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 				}
 				txResp.Meta = meta
 
-				b64Tx, err := tx.ToBase64()
+				encodedTx, err := encodeTransactionResponseBasedOnWantedEncoding(*params.Options.Encoding, tx)
 				if err != nil {
 					return &jsonrpc2.Error{
 						Code:    jsonrpc2.CodeInternalError,
 						Message: "Internal error",
 					}, fmt.Errorf("failed to encode transaction: %v", err)
 				}
-
-				txResp.Transaction = []any{b64Tx, "base64"}
+				txResp.Transaction = encodedTx
 			}
 
 			allTransactions = append(allTransactions, txResp)

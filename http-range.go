@@ -185,6 +185,7 @@ type readCloserWrapper struct {
 func (r *readCloserWrapper) ReadAt(p []byte, off int64) (n int, err error) {
 	startedAt := time.Now()
 	defer func() {
+		took := time.Since(startedAt)
 		if DebugMode {
 			var icon string
 			if r.isRemote {
@@ -203,7 +204,7 @@ func (r *readCloserWrapper) ReadAt(p []byte, off int64) (n int, err error) {
 			if strings.HasSuffix(r.name, ".car") {
 				prefix = icon + purpleBG("[READ-CAR]")
 			}
-			fmt.Fprintf(os.Stderr, prefix+" %s:%d+%d (%s)\n", filepath.Base(r.name), off, len(p), time.Since(startedAt))
+			fmt.Fprintf(os.Stderr, prefix+" %s:%d+%d (%s)\n", filepath.Base(r.name), off, len(p), took)
 		}
 	}()
 	return r.rac.ReadAt(p, off)
