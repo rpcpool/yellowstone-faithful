@@ -36,6 +36,6 @@ If you want to test a recent epoch you can run:
 $ ./tools/run-rpc-server-remote.sh 475
 ```
 
-While this is a possible runtime scenario, for blocks this is very, very slow. We recommend downloading indexes locally but keeping the data remote for good performance. See this more as a demonstration that a fully remote use scenario is theoretically possible. More details about how to run with local indexes can be found [here](/rpc-server/old-faithful-ne/).
+While this is a possible runtime scenario, for blocks this is very, very slow. We recommend downloading indexes locally but keeping the data remote for good performance. See this more as a demonstration that a fully remote use scenario is theoretically possible. More details about how to run with local indexes can be found [here](/rpc-server/old-faithful-net/).
 
 New epochs are being added continuously, but the upload cadence is currently a little irregular due to pipeline development work.
