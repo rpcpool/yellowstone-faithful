@@ -159,7 +159,7 @@ type GetBlockRequest struct {
 
 // Validate validates the request.
 func (req *GetBlockRequest) Validate() error {
-	if !isAnyEncodingOf(
+	if req.Options.Encoding != nil && !isAnyEncodingOf(
 		*req.Options.Encoding,
 		solana.EncodingBase58,
 		solana.EncodingBase64,
@@ -201,7 +201,7 @@ func parseGetBlockRequest(raw *json.RawMessage) (*GetBlockRequest, error) {
 			commitmentType := rpc.CommitmentType(commitment)
 			out.Options.Commitment = &commitmentType
 		} else {
-			commitmentType := rpc.CommitmentType("finalized")
+			commitmentType := defaultCommitment()
 			out.Options.Commitment = &commitmentType
 		}
 		if encodingRaw, ok := optionsRaw["encoding"]; ok {
@@ -212,10 +212,11 @@ func parseGetBlockRequest(raw *json.RawMessage) (*GetBlockRequest, error) {
 			encodingType := solana.EncodingType(encoding)
 			out.Options.Encoding = &encodingType
 		} else {
-			encodingType := solana.EncodingType("json")
+			encodingType := defaultEncoding()
 			out.Options.Encoding = &encodingType
 		}
 		if maxSupportedTransactionVersionRaw, ok := optionsRaw["maxSupportedTransactionVersion"]; ok {
+			// TODO: add support for this, and validate the value.
 			maxSupportedTransactionVersion, ok := maxSupportedTransactionVersionRaw.(float64)
 			if !ok {
 				return nil, fmt.Errorf("maxSupportedTransactionVersion must be a number, got %T", maxSupportedTransactionVersionRaw)
@@ -224,13 +225,14 @@ func parseGetBlockRequest(raw *json.RawMessage) (*GetBlockRequest, error) {
 			out.Options.MaxSupportedTransactionVersion = &maxSupportedTransactionVersionUint64
 		}
 		if transactionDetailsRaw, ok := optionsRaw["transactionDetails"]; ok {
+			// TODO: add support for this, and validate the value.
 			transactionDetails, ok := transactionDetailsRaw.(string)
 			if !ok {
 				return nil, fmt.Errorf("transactionDetails must be a string, got %T", transactionDetailsRaw)
 			}
 			out.Options.TransactionDetails = &transactionDetails
 		} else {
-			transactionDetails := "full"
+			transactionDetails := defaultTransactionDetails()
 			out.Options.TransactionDetails = &transactionDetails
 		}
 		if rewardsRaw, ok := optionsRaw["rewards"]; ok {
@@ -243,9 +245,31 @@ func parseGetBlockRequest(raw *json.RawMessage) (*GetBlockRequest, error) {
 			rewards := true
 			out.Options.Rewards = &rewards
 		}
+	} else {
+		// set defaults:
+		commitmentType := defaultCommitment()
+		out.Options.Commitment = &commitmentType
+		encodingType := defaultEncoding()
+		out.Options.Encoding = &encodingType
+		transactionDetails := defaultTransactionDetails()
+		out.Options.TransactionDetails = &transactionDetails
+		rewards := true
+		out.Options.Rewards = &rewards
 	}
 
 	return out, nil
+}
+
+func defaultCommitment() rpc.CommitmentType {
+	return rpc.CommitmentFinalized
+}
+
+func defaultEncoding() solana.EncodingType {
+	return solana.EncodingJSON
+}
+
+func defaultTransactionDetails() string {
+	return "full"
 }
 
 type GetTransactionRequest struct {
@@ -262,7 +286,7 @@ func (req *GetTransactionRequest) Validate() error {
 	if req.Signature.IsZero() {
 		return fmt.Errorf("signature is required")
 	}
-	if !isAnyEncodingOf(
+	if req.Options.Encoding != nil && !isAnyEncodingOf(
 		*req.Options.Encoding,
 		solana.EncodingBase58,
 		solana.EncodingBase64,
@@ -316,10 +340,11 @@ func parseGetTransactionRequest(raw *json.RawMessage) (*GetTransactionRequest, e
 			encodingType := solana.EncodingType(encoding)
 			out.Options.Encoding = &encodingType
 		} else {
-			encodingType := solana.EncodingType("json")
+			encodingType := defaultEncoding()
 			out.Options.Encoding = &encodingType
 		}
 		if maxSupportedTransactionVersionRaw, ok := optionsRaw["maxSupportedTransactionVersion"]; ok {
+			// TODO: add support for this, and validate the value.
 			maxSupportedTransactionVersion, ok := maxSupportedTransactionVersionRaw.(float64)
 			if !ok {
 				return nil, fmt.Errorf("maxSupportedTransactionVersion must be a number, got %T", maxSupportedTransactionVersionRaw)
@@ -335,6 +360,10 @@ func parseGetTransactionRequest(raw *json.RawMessage) (*GetTransactionRequest, e
 			commitmentType := rpc.CommitmentType(commitment)
 			out.Options.Commitment = &commitmentType
 		}
+	} else {
+		// set defaults:
+		encodingType := defaultEncoding()
+		out.Options.Encoding = &encodingType
 	}
 
 	return out, nil
