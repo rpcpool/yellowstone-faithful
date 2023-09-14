@@ -117,6 +117,18 @@ func adaptTransactionMetaToExpectedOutput(m map[string]any) map[string]any {
 								if !ok {
 									uiTokenAmount["decimals"] = 0
 								}
+								_, ok = uiTokenAmount["uiAmount"]
+								if !ok {
+									uiTokenAmount["uiAmount"] = nil
+								}
+								_, ok = uiTokenAmount["amount"]
+								if !ok {
+									uiTokenAmount["amount"] = "0"
+								}
+								_, ok = uiTokenAmount["uiAmountString"]
+								if !ok {
+									uiTokenAmount["uiAmountString"] = "0"
+								}
 							}
 						}
 					}
