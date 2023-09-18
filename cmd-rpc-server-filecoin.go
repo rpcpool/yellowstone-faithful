@@ -81,7 +81,7 @@ func newCmd_rpcServerFilecoin() *cli.Command {
 				return fmt.Errorf("failed to open sig-to-cid index: %w", err)
 			}
 
-			ls, err := newLassieWrapper(c)
+			ls, err := newLassieWrapper(c, globalFetchProviderAddrInfos)
 			if err != nil {
 				return fmt.Errorf("newLassieWrapper: %w", err)
 			}

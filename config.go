@@ -9,6 +9,7 @@ import (
 	"sort"
 
 	"github.com/ipfs/go-cid"
+	"github.com/libp2p/go-libp2p/core/peer"
 )
 
 type URI string
@@ -102,8 +103,9 @@ type Config struct {
 		} `json:"car" yaml:"car"`
 		Filecoin *struct {
 			// Enable enables Filecoin mode. If false, or if this section is not present, CAR mode is used.
-			Enable  bool    `json:"enable" yaml:"enable"`
-			RootCID cid.Cid `json:"root_cid" yaml:"root_cid"`
+			Enable    bool     `json:"enable" yaml:"enable"`
+			RootCID   cid.Cid  `json:"root_cid" yaml:"root_cid"`
+			Providers []string `json:"providers" yaml:"providers"`
 		} `json:"filecoin" yaml:"filecoin"`
 	} `json:"data" yaml:"data"`
 	Indexes struct {
@@ -225,6 +227,18 @@ func (c *Config) Validate() error {
 		if !c.Data.Filecoin.RootCID.Defined() {
 			return fmt.Errorf("data.filecoin.root_cid must be set")
 		}
+		// validate providers:
+
+		for providerIndex, provider := range c.Data.Filecoin.Providers {
+			if provider == "" {
+				return fmt.Errorf("data.filecoin.providers must not be empty")
+			}
+			_, err := peer.AddrInfoFromString(provider)
+			if err != nil {
+				return fmt.Errorf("data.filecoin.providers[%d]: error parsing provider %q: %w", providerIndex, provider, err)
+			}
+		}
+
 	}
 
 	{

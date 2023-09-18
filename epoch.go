@@ -14,6 +14,7 @@ import (
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-car/util"
 	carv2 "github.com/ipld/go-car/v2"
+	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/patrickmn/go-cache"
 	"github.com/rpcpool/yellowstone-faithful/bucketteer"
 	"github.com/rpcpool/yellowstone-faithful/compactindex"
@@ -181,7 +182,11 @@ func NewEpochFromConfig(config *Config, c *cli.Context) (*Epoch, error) {
 	}
 
 	if isLassieMode {
-		ls, err := newLassieWrapper(c)
+		fetchProviderAddrInfos, err := ParseFilecoinProviders(config.Data.Filecoin.Providers...)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse Filecoin providers: %w", err)
+		}
+		ls, err := newLassieWrapper(c, fetchProviderAddrInfos)
 		if err != nil {
 			return nil, fmt.Errorf("newLassieWrapper: %w", err)
 		}
@@ -256,6 +261,19 @@ func NewEpochFromConfig(config *Config, c *cli.Context) (*Epoch, error) {
 	}
 
 	return ep, nil
+}
+
+func ParseFilecoinProviders(vs ...string) ([]peer.AddrInfo, error) {
+	providerAddrInfos := make([]peer.AddrInfo, 0, len(vs))
+
+	for _, v := range vs {
+		providerAddrInfo, err := peer.AddrInfoFromString(v)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse provider address %q: %w", v, err)
+		}
+		providerAddrInfos = append(providerAddrInfos, *providerAddrInfo)
+	}
+	return providerAddrInfos, nil
 }
 
 func newRandomSignature() [64]byte {
