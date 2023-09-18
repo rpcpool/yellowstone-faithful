@@ -277,7 +277,7 @@ func newMultiEpochHandler(handler *MultiEpoch, lsConf *ListenerConfig) func(ctx 
 
 		klog.Infof("[%s] received request: %q", reqID, strings.TrimSpace(string(body)))
 
-		if proxy != nil && !isValidMethod(rpcRequest.Method) {
+		if proxy != nil && !isValidLocalMethod(rpcRequest.Method) {
 			klog.Infof("[%s] Unhandled method %q, proxying to %q", reqID, rpcRequest.Method, proxy.Addr)
 			// proxy the request to the target
 			proxyReq := fasthttp.AcquireRequest()
@@ -355,15 +355,15 @@ func newMultiEpochHandler(handler *MultiEpoch, lsConf *ListenerConfig) func(ctx 
 }
 
 func sanitizeMethod(method string) string {
-	if isValidMethod(method) {
+	if isValidLocalMethod(method) {
 		return method
 	}
 	return "<unknown>"
 }
 
-func isValidMethod(method string) bool {
+func isValidLocalMethod(method string) bool {
 	switch method {
-	case "getBlock", "getTransaction", "getSignaturesForAddress":
+	case "getBlock", "getTransaction", "getSignaturesForAddress", "getBlockTime":
 		return true
 	default:
 		return false
@@ -379,6 +379,8 @@ func (ser *MultiEpoch) handleRequest(ctx context.Context, conn *requestContext, 
 		return ser.handleGetTransaction(ctx, conn, req)
 	case "getSignaturesForAddress":
 		return ser.handleGetSignaturesForAddress(ctx, conn, req)
+	case "getBlockTime":
+		return ser.handleGetBlockTime(ctx, conn, req)
 	default:
 		return &jsonrpc2.Error{
 			Code:    jsonrpc2.CodeMethodNotFound,

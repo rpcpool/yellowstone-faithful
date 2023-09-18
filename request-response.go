@@ -16,7 +16,6 @@ import (
 	"github.com/mr-tron/base58"
 	"github.com/sourcegraph/jsonrpc2"
 	"github.com/valyala/fasthttp"
-	"k8s.io/klog/v2"
 )
 
 type requestContext struct {
@@ -175,13 +174,14 @@ func (req *GetBlockRequest) Validate() error {
 func parseGetBlockRequest(raw *json.RawMessage) (*GetBlockRequest, error) {
 	var params []any
 	if err := json.Unmarshal(*raw, &params); err != nil {
-		klog.Errorf("failed to unmarshal params: %v", err)
-		return nil, err
+		return nil, fmt.Errorf("failed to unmarshal params: %w", err)
+	}
+	if len(params) < 1 {
+		return nil, fmt.Errorf("params must have at least one argument")
 	}
 	slotRaw, ok := params[0].(float64)
 	if !ok {
-		klog.Errorf("first argument must be a number, got %T", params[0])
-		return nil, nil
+		return nil, fmt.Errorf("first argument must be a number, got %T", params[0])
 	}
 
 	out := &GetBlockRequest{
@@ -313,6 +313,9 @@ func parseGetTransactionRequest(raw *json.RawMessage) (*GetTransactionRequest, e
 	if err := json.Unmarshal(*raw, &params); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal params: %w", err)
 	}
+	if len(params) < 1 {
+		return nil, fmt.Errorf("params must have at least one argument")
+	}
 	sigRaw, ok := params[0].(string)
 	if !ok {
 		return nil, fmt.Errorf("first argument must be a string, got %T", params[0])
@@ -411,4 +414,19 @@ func encodeBytesResponseBasedOnWantedEncoding(
 	default:
 		return nil, fmt.Errorf("unsupported encoding %q", encoding)
 	}
+}
+
+func parseGetBlockTimeRequest(raw *json.RawMessage) (uint64, error) {
+	var params []any
+	if err := json.Unmarshal(*raw, &params); err != nil {
+		return 0, fmt.Errorf("failed to unmarshal params: %w", err)
+	}
+	if len(params) < 1 {
+		return 0, fmt.Errorf("params must have at least one argument")
+	}
+	blockRaw, ok := params[0].(float64)
+	if !ok {
+		return 0, fmt.Errorf("first argument must be a number, got %T", params[0])
+	}
+	return uint64(blockRaw), nil
 }
