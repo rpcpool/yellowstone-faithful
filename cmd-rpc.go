@@ -15,6 +15,7 @@ import (
 	"github.com/fsnotify/fsnotify"
 	"github.com/ryanuber/go-glob"
 	"github.com/urfave/cli/v2"
+	"golang.org/x/sync/errgroup"
 	"k8s.io/klog/v2"
 )
 
@@ -26,6 +27,7 @@ func newCmd_rpc() *cli.Command {
 	var watch bool
 	var pathForProxyForUnknownRpcMethods string
 	var epochSearchConcurrency int
+	var epochLoadConcurrency int
 	return &cli.Command{
 		Name:        "rpc",
 		Description: "Provide multiple epoch config files, and start a Solana JSON RPC that exposes getTransaction, getBlock, and (optionally) getSignaturesForAddress",
@@ -82,6 +84,12 @@ func newCmd_rpc() *cli.Command {
 				Value:       runtime.NumCPU(),
 				Destination: &epochSearchConcurrency,
 			},
+			&cli.IntFlag{
+				Name:        "epoch-load-concurrency",
+				Usage:       "How many epochs to load in parallel when starting the RPC server",
+				Value:       runtime.NumCPU(),
+				Destination: &epochLoadConcurrency,
+			},
 		),
 		Action: func(c *cli.Context) error {
 			src := c.Args().Slice()
@@ -116,13 +124,29 @@ func newCmd_rpc() *cli.Command {
 			klog.Info("Initializing epochs...")
 
 			epochs := make([]*Epoch, 0)
-			for _, config := range configs {
-				epoch, err := NewEpochFromConfig(config, c)
-				if err != nil {
-					return cli.Exit(fmt.Sprintf("failed to create epoch from config %q: %s", config.ConfigFilepath(), err.Error()), 1)
-				}
-				epochs = append(epochs, epoch)
+			wg := new(errgroup.Group)
+			wg.SetLimit(epochLoadConcurrency)
+			mu := &sync.Mutex{}
+			for confIndex := range configs {
+				config := configs[confIndex]
+				wg.Go(func() error {
+					epoch, err := NewEpochFromConfig(config, c)
+					if err != nil {
+						return fmt.Errorf("failed to create epoch from config %q: %s", config.ConfigFilepath(), err.Error())
+					}
+					mu.Lock()
+					defer mu.Unlock()
+					epochs = append(epochs, epoch)
+					return nil
+				})
 			}
+			if err := wg.Wait(); err != nil {
+				return cli.Exit(fmt.Sprintf("failed to initialize epochs: %s", err.Error()), 1)
+			}
+			// Sort epochs by epoch number:
+			sort.Slice(epochs, func(i, j int) bool {
+				return epochs[i].Epoch() < epochs[j].Epoch()
+			})
 
 			multi := NewMultiEpoch(&Options{
 				GsfaOnlySignatures:     gsfaOnlySignatures,
