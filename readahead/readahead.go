@@ -57,7 +57,15 @@ func (cr *CachingReader) Read(p []byte) (int, error) {
 		if err != nil && err != io.EOF {
 			return 0, fmt.Errorf("failed to read from file: %w", err)
 		}
-		cr.buffer.Write(tmp[:n])
+		if n > 0 {
+			cr.buffer.Write(tmp[:n])
+		}
+		if err == io.EOF {
+			// If EOF is reached and buffer is empty, return EOF
+			if cr.buffer.Len() == 0 {
+				return 0, io.EOF
+			}
+		}
 	}
 
 	// Read and discard bytes from the buffer
