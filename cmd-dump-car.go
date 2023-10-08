@@ -18,6 +18,7 @@ import (
 	"github.com/ipld/go-car"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
+	"github.com/rpcpool/yellowstone-faithful/readahead"
 	solanablockrewards "github.com/rpcpool/yellowstone-faithful/solana-block-rewards"
 	solanatxmetaparsers "github.com/rpcpool/yellowstone-faithful/solana-tx-meta-parsers"
 	"github.com/urfave/cli/v2"
@@ -128,7 +129,12 @@ func newCmd_DumpCar() *cli.Command {
 				defer file.Close()
 			}
 
-			rd, err := car.NewCarReader(file)
+			cachingReader, err := readahead.NewCachingReaderFromReader(file, readahead.DefaultChunkSize)
+			if err != nil {
+				klog.Exitf("Failed to create caching reader: %s", err)
+			}
+
+			rd, err := car.NewCarReader(cachingReader)
 			if err != nil {
 				klog.Exitf("Failed to open CAR: %s", err)
 			}
@@ -171,9 +177,12 @@ func newCmd_DumpCar() *cli.Command {
 					return c.Context.Err()
 				}
 				block, err := rd.Next()
-				if errors.Is(err, io.EOF) {
-					fmt.Println("EOF")
-					break
+				if err != nil {
+					if errors.Is(err, io.EOF) {
+						fmt.Println("EOF")
+						break
+					}
+					panic(err)
 				}
 				numNodesSeen++
 				if numNodesSeen%dotEvery == 0 {

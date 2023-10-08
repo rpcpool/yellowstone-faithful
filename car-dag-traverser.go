@@ -316,8 +316,11 @@ func FindSubsets(
 	}
 	for {
 		block, err := rd.Next()
-		if errors.Is(err, io.EOF) {
-			break
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			return err
 		}
 		{
 			if block.RawData()[1] != byte(iplddecoders.KindSubset) {
@@ -365,8 +368,11 @@ func FindBlocks(
 	}
 	for {
 		block, err := rd.Next()
-		if errors.Is(err, io.EOF) {
-			break
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			return err
 		}
 		{
 			if block.RawData()[1] != byte(iplddecoders.KindBlock) {
@@ -411,8 +417,11 @@ func FindEntries(
 	}
 	for {
 		block, err := rd.Next()
-		if errors.Is(err, io.EOF) {
-			break
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			return err
 		}
 		{
 			if block.RawData()[1] != byte(iplddecoders.KindEntry) {
@@ -454,8 +463,11 @@ func FindTransactions(
 	}
 	for {
 		block, err := rd.Next()
-		if errors.Is(err, io.EOF) {
-			break
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			return err
 		}
 		{
 			if block.RawData()[1] != byte(iplddecoders.KindTransaction) {
@@ -497,8 +509,11 @@ func FindRewards(
 	}
 	for {
 		block, err := rd.Next()
-		if errors.Is(err, io.EOF) {
-			break
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			return err
 		}
 		{
 			if block.RawData()[1] != byte(iplddecoders.KindRewards) {
@@ -540,8 +555,11 @@ func FindDataFrames(
 	}
 	for {
 		block, err := rd.Next()
-		if errors.Is(err, io.EOF) {
-			break
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			return err
 		}
 		{
 			if block.RawData()[1] != byte(iplddecoders.KindDataFrame) {
@@ -571,8 +589,11 @@ func FindAny(
 	}
 	for {
 		block, err := rd.Next()
-		if errors.Is(err, io.EOF) {
-			break
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			return err
 		}
 		{
 			decoded, err := iplddecoders.DecodeAny(block.RawData())

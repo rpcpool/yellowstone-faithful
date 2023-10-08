@@ -13,6 +13,7 @@ import (
 	"github.com/ipfs/go-libipfs/blocks"
 	carv1 "github.com/ipld/go-car"
 	"github.com/ipld/go-car/util"
+	"github.com/rpcpool/yellowstone-faithful/readahead"
 )
 
 func readHeader(br io.Reader) (*carv1.CarHeader, error) {
@@ -34,8 +35,12 @@ type carReader struct {
 	header *carv1.CarHeader
 }
 
-func newCarReader(r io.Reader) (*carReader, error) {
-	br := bufio.NewReader(r)
+func newCarReader(r io.ReadCloser) (*carReader, error) {
+	cachingReader, err := readahead.NewCachingReaderFromReader(r, readahead.DefaultChunkSize)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create caching reader: %s", err)
+	}
+	br := bufio.NewReader(cachingReader)
 	ch, err := readHeader(br)
 	if err != nil {
 		return nil, err
@@ -81,12 +86,12 @@ func readNodeInfoWithoutData(br *bufio.Reader) (cid.Cid, uint64, error) {
 func readNodeInfoWithData(br *bufio.Reader) (cid.Cid, uint64, []byte, error) {
 	sectionLen, ll, err := readSectionLength(br)
 	if err != nil {
-		return cid.Cid{}, 0, nil, err
+		return cid.Cid{}, 0, nil, fmt.Errorf("failed to read section length: %w", err)
 	}
 
 	cidLen, c, err := cid.CidFromReader(br)
 	if err != nil {
-		return cid.Cid{}, 0, nil, err
+		return cid.Cid{}, 0, nil, fmt.Errorf("failed to read cid: %w", err)
 	}
 
 	// Seek to the next section by skipping the block.
@@ -96,7 +101,7 @@ func readNodeInfoWithData(br *bufio.Reader) (cid.Cid, uint64, []byte, error) {
 	buf := make([]byte, remainingSectionLen)
 	_, err = io.ReadFull(br, buf)
 	if err != nil {
-		return cid.Cid{}, 0, nil, err
+		return cid.Cid{}, 0, nil, fmt.Errorf("failed to read block: %w", err)
 	}
 
 	return c, sectionLen + ll, buf, nil
@@ -117,13 +122,16 @@ func (b *byteReaderWithCounter) ReadByte() (byte, error) {
 
 func readSectionLength(r *bufio.Reader) (uint64, uint64, error) {
 	if _, err := r.Peek(1); err != nil { // no more blocks, likely clean io.EOF
-		return 0, 0, err
+		if errors.Is(err, io.ErrNoProgress) {
+			return 0, 0, io.EOF
+		}
+		return 0, 0, fmt.Errorf("failed to peek: %w", err)
 	}
 
 	br := byteReaderWithCounter{r, 0}
 	l, err := binary.ReadUvarint(&br)
 	if err != nil {
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			return 0, 0, io.ErrUnexpectedEOF // don't silently pretend this is a clean EOF
 		}
 		return 0, 0, err
@@ -147,11 +155,11 @@ func (cr *carReader) NextInfo() (cid.Cid, uint64, error) {
 func (cr *carReader) NextNode() (cid.Cid, uint64, *blocks.BasicBlock, error) {
 	c, sectionLen, data, err := readNodeInfoWithData(cr.br)
 	if err != nil {
-		return c, 0, nil, err
+		return c, 0, nil, fmt.Errorf("failed to read node info: %w", err)
 	}
 	bl, err := blocks.NewBlockWithCid(data, c)
 	if err != nil {
-		return c, 0, nil, err
+		return c, 0, nil, fmt.Errorf("failed to create block: %w", err)
 	}
 	return c, sectionLen, bl, nil
 }

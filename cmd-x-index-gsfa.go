@@ -21,6 +21,7 @@ import (
 	"github.com/rpcpool/yellowstone-faithful/gsfa"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
+	"github.com/rpcpool/yellowstone-faithful/readahead"
 	concurrently "github.com/tejzpr/ordered-concurrently/v3"
 	"github.com/urfave/cli/v2"
 	"k8s.io/klog/v2"
@@ -67,7 +68,11 @@ func newCmd_Index_gsfa() *cli.Command {
 				defer file.Close()
 			}
 
-			rd, err := car.NewCarReader(file)
+			cachingReader, err := readahead.NewCachingReaderFromReader(file, readahead.DefaultChunkSize)
+			if err != nil {
+				klog.Exitf("Failed to create caching reader: %s", err)
+			}
+			rd, err := car.NewCarReader(cachingReader)
 			if err != nil {
 				klog.Exitf("Failed to open CAR: %s", err)
 			}
@@ -172,9 +177,12 @@ func newCmd_Index_gsfa() *cli.Command {
 
 			for {
 				block, err := rd.Next()
-				if errors.Is(err, io.EOF) {
-					fmt.Println("EOF")
-					break
+				if err != nil {
+					if errors.Is(err, io.EOF) {
+						fmt.Println("EOF")
+						break
+					}
+					return err
 				}
 				kind := iplddecoders.Kind(block.RawData()[1])
 
