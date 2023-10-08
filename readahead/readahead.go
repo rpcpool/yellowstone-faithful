@@ -58,9 +58,14 @@ func (cr *CachingReader) Read(p []byte) (int, error) {
 	}
 
 	if len(p) > cr.chunkSize {
-		cr.buffer.Reset() // clear buffer
-		// If the read is larger than the chunk size, read directly from the file
-		return cr.file.Read(p)
+		// read what we can from the buffer
+		n := copy(p, cr.buffer.Next(cr.chunkSize))
+		// read the rest directly from the file
+		n2, err := cr.file.Read(p[n:])
+		if err != nil && err != io.EOF {
+			return 0, fmt.Errorf("failed to read from file: %w", err)
+		}
+		return n + n2, nil
 	}
 
 	// Refill the buffer if needed
