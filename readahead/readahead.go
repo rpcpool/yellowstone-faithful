@@ -57,6 +57,12 @@ func (cr *CachingReader) Read(p []byte) (int, error) {
 		return 0, nil
 	}
 
+	if len(p) > cr.chunkSize {
+		cr.buffer.Reset() // clear buffer
+		// If the read is larger than the chunk size, read directly from the file
+		return cr.file.Read(p)
+	}
+
 	// Refill the buffer if needed
 	if cr.buffer.Len() < len(p) {
 		tmp := make([]byte, cr.chunkSize)
