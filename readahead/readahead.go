@@ -50,6 +50,13 @@ func alignValueToPageSize(value int) int {
 }
 
 func (cr *CachingReader) Read(p []byte) (int, error) {
+	if cr.file == nil {
+		return 0, fmt.Errorf("file not open")
+	}
+	if len(p) == 0 {
+		return 0, nil
+	}
+
 	// Refill the buffer if needed
 	if cr.buffer.Len() < len(p) {
 		tmp := make([]byte, cr.chunkSize)
@@ -60,11 +67,9 @@ func (cr *CachingReader) Read(p []byte) (int, error) {
 		if n > 0 {
 			cr.buffer.Write(tmp[:n])
 		}
-		if err == io.EOF {
+		if err == io.EOF && cr.buffer.Len() == 0 {
 			// If EOF is reached and buffer is empty, return EOF
-			if cr.buffer.Len() == 0 {
-				return 0, io.EOF
-			}
+			return 0, io.EOF
 		}
 	}
 
