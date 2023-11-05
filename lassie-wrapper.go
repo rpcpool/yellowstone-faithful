@@ -16,6 +16,7 @@ import (
 	"github.com/ipld/go-ipld-prime/storage"
 	"github.com/ipld/go-ipld-prime/storage/memstore"
 	"github.com/libp2p/go-libp2p"
+	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/urfave/cli/v2"
 	"k8s.io/klog/v2"
 )
@@ -92,7 +93,10 @@ func (l *lassieWrapper) Fetch(
 	return stats, nil
 }
 
-func newLassieWrapper(cctx *cli.Context) (*lassieWrapper, error) {
+func newLassieWrapper(
+	cctx *cli.Context,
+	fetchProviderAddrInfos []peer.AddrInfo,
+) (*lassieWrapper, error) {
 	ctx := cctx.Context
 
 	providerTimeout := cctx.Duration("provider-timeout")

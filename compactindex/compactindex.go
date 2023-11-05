@@ -91,6 +91,8 @@ import (
 // Magic are the first eight bytes of an index.
 var Magic = [8]byte{'r', 'd', 'c', 'e', 'c', 'i', 'd', 'x'}
 
+const Version = uint8(1)
+
 // Header occurs once at the beginning of the index.
 type Header struct {
 	FileSize   uint64
@@ -110,9 +112,13 @@ func (h *Header) Load(buf *[headerSize]byte) error {
 		FileSize:   binary.LittleEndian.Uint64(buf[8:16]),
 		NumBuckets: binary.LittleEndian.Uint32(buf[16:20]),
 	}
-	// 12 bytes to spare for now. Might use it in the future.
+	// Check version.
+	if buf[20] != Version {
+		return fmt.Errorf("unsupported index version: want %d, got %d", Version, buf[20])
+	}
+	// 11 bytes to spare for now. Might use it in the future.
 	// Force to zero for now.
-	for _, b := range buf[20:32] {
+	for _, b := range buf[21:32] {
 		if b != 0x00 {
 			return fmt.Errorf("unsupported index version")
 		}
@@ -124,7 +130,8 @@ func (h *Header) Store(buf *[headerSize]byte) {
 	copy(buf[0:8], Magic[:])
 	binary.LittleEndian.PutUint64(buf[8:16], h.FileSize)
 	binary.LittleEndian.PutUint32(buf[16:20], h.NumBuckets)
-	for i := 20; i < 32; i++ {
+	buf[20] = Version
+	for i := 21; i < 32; i++ {
 		buf[i] = 0
 	}
 }

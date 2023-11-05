@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/klauspost/compress/zstd"
@@ -17,11 +18,48 @@ import (
 	"github.com/ipld/go-car"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
+	"github.com/rpcpool/yellowstone-faithful/readahead"
 	solanablockrewards "github.com/rpcpool/yellowstone-faithful/solana-block-rewards"
 	solanatxmetaparsers "github.com/rpcpool/yellowstone-faithful/solana-tx-meta-parsers"
 	"github.com/urfave/cli/v2"
 	"k8s.io/klog/v2"
 )
+
+func isNumeric(s string) bool {
+	_, err := strconv.ParseInt(s, 10, 64)
+	return err == nil
+}
+
+func shortToKind(s string) (iplddecoders.Kind, error) {
+	if isNumeric(s) {
+		parsed, err := strconv.ParseInt(s, 10, 64)
+		if err != nil {
+			panic(err)
+		}
+		if parsed < 0 || parsed > int64(iplddecoders.KindDataFrame) {
+			return 0, fmt.Errorf("unknown kind: %d", parsed)
+		}
+		return iplddecoders.Kind(parsed), nil
+	}
+	switch s {
+	case "tx", "transaction":
+		return iplddecoders.KindTransaction, nil
+	case "entry":
+		return iplddecoders.KindEntry, nil
+	case "block":
+		return iplddecoders.KindBlock, nil
+	case "subset":
+		return iplddecoders.KindSubset, nil
+	case "epoch":
+		return iplddecoders.KindEpoch, nil
+	case "rewards":
+		return iplddecoders.KindRewards, nil
+	case "dataframe":
+		return iplddecoders.KindDataFrame, nil
+	default:
+		return 0, fmt.Errorf("unknown kind: %s", s)
+	}
+}
 
 func newCmd_DumpCar() *cli.Command {
 	var flagPrintFilter string
@@ -39,7 +77,7 @@ func newCmd_DumpCar() *cli.Command {
 			&cli.StringFlag{
 				Name:        "filter",
 				Aliases:     []string{"f", "print"},
-				Usage:       "print only nodes of these kinds (comma-separated); example: --filter 0,1,2",
+				Usage:       "print only nodes of these kinds (comma-separated); example: --filter epoch,block",
 				Destination: &flagPrintFilter,
 			},
 
@@ -64,16 +102,15 @@ func newCmd_DumpCar() *cli.Command {
 		Action: func(c *cli.Context) error {
 			filter := make(intSlice, 0)
 			if flagPrintFilter != "" {
-				for _, v := range flagPrintFilter {
-					if v == ',' {
+				for _, v := range strings.Split(flagPrintFilter, ",") {
+					v = strings.TrimSpace(v)
+					v = strings.ToLower(v)
+					if v == "" {
 						continue
 					}
-					parsed, err := strconv.ParseInt(string(v), 10, 64)
+					parsed, err := shortToKind(string(v))
 					if err != nil {
-						panic(err)
-					}
-					if parsed < 0 || parsed > int64(iplddecoders.KindEpoch) {
-						return fmt.Errorf("invalid filter value: %d", parsed)
+						return fmt.Errorf("error parsing filter: %w", err)
 					}
 					filter = append(filter, int(parsed))
 				}
@@ -92,7 +129,12 @@ func newCmd_DumpCar() *cli.Command {
 				defer file.Close()
 			}
 
-			rd, err := car.NewCarReader(file)
+			cachingReader, err := readahead.NewCachingReaderFromReader(file, readahead.DefaultChunkSize)
+			if err != nil {
+				klog.Exitf("Failed to create caching reader: %s", err)
+			}
+
+			rd, err := car.NewCarReader(cachingReader)
 			if err != nil {
 				klog.Exitf("Failed to open CAR: %s", err)
 			}
@@ -119,7 +161,7 @@ func newCmd_DumpCar() *cli.Command {
 			dotEvery := 100_000
 			klog.Infof("A dot is printed every %d nodes", dotEvery)
 			if filter.empty() {
-				klog.Info("Will print all nodes")
+				klog.Info("Will print all nodes of all kinds")
 			} else {
 				klog.Info("Will print only nodes of these kinds: ")
 				for _, v := range filter {
@@ -131,10 +173,16 @@ func newCmd_DumpCar() *cli.Command {
 			}
 
 			for {
+				if c.Context.Err() != nil {
+					return c.Context.Err()
+				}
 				block, err := rd.Next()
-				if errors.Is(err, io.EOF) {
-					fmt.Println("EOF")
-					break
+				if err != nil {
+					if errors.Is(err, io.EOF) {
+						fmt.Println("EOF")
+						break
+					}
+					panic(err)
 				}
 				numNodesSeen++
 				if numNodesSeen%dotEvery == 0 {

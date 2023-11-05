@@ -2,20 +2,14 @@ package main
 
 import (
 	"context"
-	"encoding/base64"
 	"errors"
 
-	"github.com/mr-tron/base58"
 	"github.com/rpcpool/yellowstone-faithful/compactindex36"
 	"github.com/sourcegraph/jsonrpc2"
 	"k8s.io/klog/v2"
 )
 
-func ptrToUint64(v uint64) *uint64 {
-	return &v
-}
-
-func (ser *rpcServer) handleGetTransaction(ctx context.Context, conn *requestContext, req *jsonrpc2.Request) {
+func (ser *deprecatedRPCServer) handleGetTransaction(ctx context.Context, conn *requestContext, req *jsonrpc2.Request) {
 	params, err := parseGetTransactionRequest(req.Params)
 	if err != nil {
 		klog.Errorf("failed to parse params: %v", err)
@@ -34,7 +28,7 @@ func (ser *rpcServer) handleGetTransaction(ctx context.Context, conn *requestCon
 	transactionNode, err := ser.GetTransaction(WithSubrapghPrefetch(ctx, true), sig)
 	if err != nil {
 		if errors.Is(err, compactindex36.ErrNotFound) {
-			conn.ReplyNoMod(
+			conn.ReplyRaw(
 				ctx,
 				req.ID,
 				nil, // NOTE: solana just returns null here in case of transaction not found
@@ -127,116 +121,4 @@ func (ser *rpcServer) handleGetTransaction(ctx context.Context, conn *requestCon
 	if err != nil {
 		klog.Errorf("failed to reply: %v", err)
 	}
-}
-
-// byteSliceAsIntegerSlice converts a byte slice to an integer slice.
-func byteSliceAsIntegerSlice(b []byte) []uint64 {
-	var ret []uint64
-	for i := 0; i < len(b); i++ {
-		ret = append(ret, uint64(b[i]))
-	}
-	return ret
-}
-
-// adaptTransactionMetaToExpectedOutput adapts the transaction meta to the expected output
-// as per what solana RPC server returns.
-func adaptTransactionMetaToExpectedOutput(m map[string]any) map[string]any {
-	meta, ok := m["meta"].(map[string]any)
-	if !ok {
-		return m
-	}
-	{
-		if _, ok := meta["err"]; ok {
-			meta["err"], _ = parseTransactionError(meta["err"])
-		} else {
-			meta["err"] = nil
-		}
-	}
-	{
-		if _, ok := meta["loadedAddresses"]; !ok {
-			meta["loadedAddresses"] = map[string]any{
-				"readonly": []any{},
-				"writable": []any{},
-			}
-		}
-		if _, ok := meta["postTokenBalances"]; !ok {
-			meta["postTokenBalances"] = []any{}
-		}
-		if _, ok := meta["preTokenBalances"]; !ok {
-			meta["preTokenBalances"] = []any{}
-		}
-		if _, ok := meta["rewards"]; !ok {
-			meta["rewards"] = []any{}
-		}
-		if _, ok := meta["status"]; !ok {
-			eee, ok := meta["err"]
-			if ok {
-				if eee == nil {
-					meta["status"] = map[string]any{
-						"Ok": nil,
-					}
-				} else {
-					meta["status"] = map[string]any{
-						"Err": eee,
-					}
-				}
-			}
-		}
-	}
-	{
-		innerInstructionsAny, ok := meta["innerInstructions"]
-		if !ok {
-			meta["innerInstructions"] = []any{}
-			return m
-		}
-		innerInstructions, ok := innerInstructionsAny.([]any)
-		if !ok {
-			return m
-		}
-		for i, innerInstructionAny := range innerInstructions {
-			innerInstruction, ok := innerInstructionAny.(map[string]any)
-			if !ok {
-				continue
-			}
-			instructionsAny, ok := innerInstruction["instructions"]
-			if !ok {
-				continue
-			}
-			instructions, ok := instructionsAny.([]any)
-			if !ok {
-				continue
-			}
-			for _, instructionAny := range instructions {
-				instruction, ok := instructionAny.(map[string]any)
-				if !ok {
-					continue
-				}
-				{
-					if accounts, ok := instruction["accounts"]; ok {
-						// as string
-						accountsStr, ok := accounts.(string)
-						if ok {
-							decoded, err := base64.StdEncoding.DecodeString(accountsStr)
-							if err == nil {
-								instruction["accounts"] = byteSliceAsIntegerSlice(decoded)
-							}
-						}
-					}
-					if data, ok := instruction["data"]; ok {
-						// as string
-						dataStr, ok := data.(string)
-						if ok {
-							decoded, err := base64.StdEncoding.DecodeString(dataStr)
-							if err == nil {
-								// TODO: the data in the `innerInstructions` is always base58 encoded (even if the transaction is base64 encoded)
-								instruction["data"] = base58.Encode(decoded)
-							}
-						}
-					}
-				}
-			}
-			meta["innerInstructions"].([]any)[i] = innerInstruction
-		}
-	}
-	return m
 }

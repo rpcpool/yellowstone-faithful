@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"time"
 
 	jsoniter "github.com/json-iterator/go"
@@ -11,7 +12,7 @@ import (
 	"k8s.io/klog/v2"
 )
 
-func newRPCHandler_fast(handler *rpcServer) func(ctx *fasthttp.RequestCtx) {
+func newRPCHandler_fast(handler *deprecatedRPCServer) func(ctx *fasthttp.RequestCtx) {
 	return func(c *fasthttp.RequestCtx) {
 		startedAt := time.Now()
 		defer func() {
@@ -56,7 +57,7 @@ func newRPCHandler_fast(handler *rpcServer) func(ctx *fasthttp.RequestCtx) {
 			return
 		}
 
-		klog.Infof("Received request: %q", string(body))
+		klog.Infof("Received request: %q", strings.TrimSpace(string(body)))
 
 		rqCtx := &requestContext{ctx: c}
 

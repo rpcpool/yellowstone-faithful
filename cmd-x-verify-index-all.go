@@ -12,7 +12,7 @@ func newCmd_VerifyIndex_all() *cli.Command {
 	return &cli.Command{
 		Name:        "all",
 		Description: "Verify all indexes.",
-		ArgsUsage:   "<car-path> <index-cid-to-offset> <index-slot-to-cid> <index-sig-to-cid>",
+		ArgsUsage:   "<car-path> <index-cid-to-offset> <index-slot-to-cid> <index-sig-to-cid> <index-sig-exists>",
 		Before: func(c *cli.Context) error {
 			return nil
 		},
@@ -22,6 +22,7 @@ func newCmd_VerifyIndex_all() *cli.Command {
 			indexFilePathCid2Offset := c.Args().Get(1)
 			indexFilePathSlot2Cid := c.Args().Get(2)
 			indexFilePathSig2Cid := c.Args().Get(3)
+			indexFilePathSigExists := c.Args().Get(4)
 
 			{
 				startedAt := time.Now()
@@ -33,9 +34,10 @@ func newCmd_VerifyIndex_all() *cli.Command {
 					context.TODO(),
 					carPath,
 					&IndexPaths{
-						CidToOffset:    indexFilePathCid2Offset,
-						SlotToCid:      indexFilePathSlot2Cid,
-						SignatureToCid: indexFilePathSig2Cid,
+						CidToOffset:     indexFilePathCid2Offset,
+						SlotToCid:       indexFilePathSlot2Cid,
+						SignatureToCid:  indexFilePathSig2Cid,
+						SignatureExists: indexFilePathSigExists,
 					},
 				)
 				if err != nil {

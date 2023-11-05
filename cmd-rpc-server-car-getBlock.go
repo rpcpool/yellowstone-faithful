@@ -67,7 +67,7 @@ func (t *timer) time(name string) {
 	t.prev = time.Now()
 }
 
-func (ser *rpcServer) handleGetBlock(ctx context.Context, conn *requestContext, req *jsonrpc2.Request) {
+func (ser *deprecatedRPCServer) handleGetBlock(ctx context.Context, conn *requestContext, req *jsonrpc2.Request) {
 	tim := newTimer()
 	params, err := parseGetBlockRequest(req.Params)
 	if err != nil {
@@ -357,7 +357,7 @@ func (ser *rpcServer) handleGetBlock(ctx context.Context, conn *requestContext, 
 
 							// if it's a float, convert to int and use rentTypeToString
 							if asFloat, ok := rewardAsMap["rewardType"].(float64); ok {
-								rewardAsMap["rewardType"] = rentTypeToString(int(asFloat))
+								rewardAsMap["rewardType"] = rewardTypeToString(int(asFloat))
 							}
 						}
 					}
@@ -470,8 +470,8 @@ func (ser *rpcServer) handleGetBlock(ctx context.Context, conn *requestContext, 
 						})
 					return
 				}
-				parentEntryHash := solana.HashFromBytes(parentEntryNode.Hash)
-				blockResp.PreviousBlockhash = parentEntryHash.String()
+				parentEntryHash := solana.HashFromBytes(parentEntryNode.Hash).String()
+				blockResp.PreviousBlockhash = &parentEntryHash
 			}
 		}
 	}
@@ -509,7 +509,7 @@ func (ser *rpcServer) handleGetBlock(ctx context.Context, conn *requestContext, 
 //	    Staking,
 //	    Voting,
 //	}
-func rentTypeToString(typ int) string {
+func rewardTypeToString(typ int) string {
 	switch typ {
 	case 1:
 		return "Fee"
@@ -521,6 +521,21 @@ func rentTypeToString(typ int) string {
 		return "Voting"
 	default:
 		return "Unknown"
+	}
+}
+
+func rewardTypeStringToInt(typ string) int {
+	switch typ {
+	case "Fee":
+		return 1
+	case "Rent":
+		return 2
+	case "Staking":
+		return 3
+	case "Voting":
+		return 4
+	default:
+		return 0
 	}
 }
 

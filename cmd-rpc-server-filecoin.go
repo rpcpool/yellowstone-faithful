@@ -1,15 +1,12 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/rpcpool/yellowstone-faithful/compactindex36"
 	"github.com/rpcpool/yellowstone-faithful/gsfa"
 	"github.com/urfave/cli/v2"
-	"gopkg.in/yaml.v3"
 )
 
 func newCmd_rpcServerFilecoin() *cli.Command {
@@ -54,7 +51,11 @@ func newCmd_rpcServerFilecoin() *cli.Command {
 				return cli.Exit("Must provide a signature-to-CID index filepath/url", 1)
 			}
 
-			slotToCidIndexFile, err := openIndexStorage(config.Indexes.SlotToCid)
+			slotToCidIndexFile, err := openIndexStorage(
+				c.Context,
+				config.Indexes.SlotToCid,
+				DebugMode,
+			)
 			if err != nil {
 				return fmt.Errorf("failed to open slot-to-cid index file: %w", err)
 			}
@@ -65,7 +66,11 @@ func newCmd_rpcServerFilecoin() *cli.Command {
 				return fmt.Errorf("failed to open slot-to-cid index: %w", err)
 			}
 
-			sigToCidIndexFile, err := openIndexStorage(config.Indexes.SigToCid)
+			sigToCidIndexFile, err := openIndexStorage(
+				c.Context,
+				config.Indexes.SigToCid,
+				DebugMode,
+			)
 			if err != nil {
 				return fmt.Errorf("failed to open sig-to-cid index file: %w", err)
 			}
@@ -76,7 +81,7 @@ func newCmd_rpcServerFilecoin() *cli.Command {
 				return fmt.Errorf("failed to open sig-to-cid index: %w", err)
 			}
 
-			ls, err := newLassieWrapper(c)
+			ls, err := newLassieWrapper(c, globalFetchProviderAddrInfos)
 			if err != nil {
 				return fmt.Errorf("newLassieWrapper: %w", err)
 			}
@@ -161,30 +166,11 @@ func (cfg *RpcServerFilecoinConfig) load(configFilepath string) error {
 }
 
 func (cfg *RpcServerFilecoinConfig) loadFromJSON(configFilepath string) error {
-	file, err := os.Open(configFilepath)
-	if err != nil {
-		return fmt.Errorf("failed to open config file: %w", err)
-	}
-	defer file.Close()
-	return json.NewDecoder(file).Decode(cfg)
+	return loadFromJSON(configFilepath, cfg)
 }
 
 func (cfg *RpcServerFilecoinConfig) loadFromYAML(configFilepath string) error {
-	file, err := os.Open(configFilepath)
-	if err != nil {
-		return fmt.Errorf("failed to open config file: %w", err)
-	}
-	defer file.Close()
-
-	return yaml.NewDecoder(file).Decode(cfg)
-}
-
-func isJSONFile(filepath string) bool {
-	return filepath[len(filepath)-5:] == ".json"
-}
-
-func isYAMLFile(filepath string) bool {
-	return filepath[len(filepath)-5:] == ".yaml" || filepath[len(filepath)-4:] == ".yml"
+	return loadFromYAML(configFilepath, cfg)
 }
 
 type RpcServerFilecoinConfig struct {

@@ -14,7 +14,7 @@ import (
 	"github.com/rpcpool/yellowstone-faithful/gsfa/manifest"
 	"github.com/rpcpool/yellowstone-faithful/gsfa/offsetstore"
 	"github.com/rpcpool/yellowstone-faithful/gsfa/sff"
-	"github.com/rpcpool/yellowstone-faithful/gsfa/store"
+	"github.com/rpcpool/yellowstone-faithful/store"
 	"k8s.io/klog"
 )
 
@@ -29,6 +29,11 @@ type GsfaWriter struct {
 	man                       *manifest.Manifest
 	lastSlot                  uint64
 	firstSlotOfCurrentBatch   uint64
+}
+
+var offsetstoreOptions = []store.Option{
+	store.IndexBitSize(22),
+	store.GCInterval(time.Hour),
 }
 
 // NewGsfaWriter creates or opens an existing index in WRITE mode.
@@ -62,12 +67,11 @@ func NewGsfaWriter(
 		if err := os.MkdirAll(offsetsIndexDir, 0o755); err != nil {
 			return nil, err
 		}
-		offsets, err := offsetstore.OpenOffsetStore(
+		offsets, err := offsetstore.Open(
 			context.Background(),
 			filepath.Join(offsetsIndexDir, "index"),
 			filepath.Join(offsetsIndexDir, "data"),
-			store.IndexBitSize(22),
-			store.GCInterval(time.Hour),
+			offsetstoreOptions...,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("error while opening offset index: %w", err)

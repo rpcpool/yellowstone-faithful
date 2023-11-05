@@ -14,7 +14,8 @@ import (
 // DB is a compactindex handle.
 type DB struct {
 	Header
-	Stream io.ReaderAt
+	Stream   io.ReaderAt
+	prefetch bool
 }
 
 // Open returns a handle to access a compactindex.
@@ -36,6 +37,10 @@ func Open(stream io.ReaderAt) (*DB, error) {
 	}
 	db.Stream = stream
 	return db, nil
+}
+
+func (db *DB) Prefetch(yes bool) {
+	db.prefetch = yes
 }
 
 // Lookup queries for a key in the index and returns the value (offset), if any.
@@ -64,7 +69,7 @@ func (db *DB) GetBucket(i uint) (*Bucket, error) {
 	bucket := &Bucket{
 		BucketDescriptor: BucketDescriptor{
 			Stride:      db.entryStride(),
-			OffsetWidth: intWidth(db.FileSize),
+			OffsetWidth: valueLength(),
 		},
 	}
 	// Read bucket header.
@@ -73,12 +78,29 @@ func (db *DB) GetBucket(i uint) (*Bucket, error) {
 		return nil, readErr
 	}
 	bucket.Entries = io.NewSectionReader(db.Stream, int64(bucket.FileOffset), int64(bucket.NumEntries)*int64(bucket.Stride))
+	if db.prefetch {
+		// TODO: find good value for numEntriesToPrefetch
+		numEntriesToPrefetch := minInt64(3_000, int64(bucket.NumEntries))
+		prefetchSize := (36 + 3) * numEntriesToPrefetch
+		buf := make([]byte, prefetchSize)
+		_, err := bucket.Entries.ReadAt(buf, 0)
+		if err != nil && !errors.Is(err, io.EOF) {
+			return nil, err
+		}
+	}
 	return bucket, nil
+}
+
+func minInt64(a, b int64) int64 {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 func (db *DB) entryStride() uint8 {
 	hashSize := 3 // TODO remove hardcoded constant
-	offsetSize := intWidth(db.FileSize)
+	offsetSize := valueLength()
 	return uint8(hashSize) + offsetSize
 }
 
@@ -162,21 +184,7 @@ var Empty [36]byte
 func (b *Bucket) binarySearch(target uint64) ([36]byte, error) {
 	low := 0
 	high := int(b.NumEntries)
-	for low <= high {
-		median := (low + high) / 2
-		entry, err := b.loadEntry(median)
-		if err != nil {
-			return Empty, err
-		}
-		if entry.Hash == target {
-			return entry.Value, nil
-		} else if entry.Hash < target {
-			low = median + 1
-		} else {
-			high = median - 1
-		}
-	}
-	return Empty, ErrNotFound
+	return searchEytzinger(low, high, target, b.loadEntry)
 }
 
 func (b *Bucket) loadEntry(i int) (Entry, error) {
@@ -191,3 +199,21 @@ func (b *Bucket) loadEntry(i int) (Entry, error) {
 
 // ErrNotFound marks a missing entry.
 var ErrNotFound = errors.New("not found")
+
+func searchEytzinger(min int, max int, x uint64, getter func(int) (Entry, error)) ([36]byte, error) {
+	var index int
+	for index < max {
+		k, err := getter(index)
+		if err != nil {
+			return Empty, err
+		}
+		if k.Hash == x {
+			return k.Value, nil
+		}
+		index = index<<1 | 1
+		if k.Hash < x {
+			index++
+		}
+	}
+	return Empty, ErrNotFound
+}

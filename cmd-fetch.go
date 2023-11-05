@@ -44,7 +44,7 @@ import (
 	"k8s.io/klog/v2"
 )
 
-var fetchProviderAddrInfos []peer.AddrInfo
+var globalFetchProviderAddrInfos []peer.AddrInfo
 
 var lassieFetchFlags = []cli.Flag{
 	&cli.StringFlag{
@@ -99,7 +99,7 @@ var lassieFetchFlags = []cli.Flag{
 			}
 
 			var err error
-			fetchProviderAddrInfos, err = types.ParseProviderStrings(v)
+			globalFetchProviderAddrInfos, err = types.ParseProviderStrings(v)
 			return err
 		},
 	},
@@ -161,8 +161,8 @@ func Fetch(cctx *cli.Context) error {
 	hostOpt := lassie.WithHost(host)
 	lassieOpts := []lassie.LassieOption{providerTimeoutOpt, hostOpt}
 
-	if len(fetchProviderAddrInfos) > 0 {
-		finderOpt := lassie.WithFinder(retriever.NewDirectCandidateFinder(host, fetchProviderAddrInfos))
+	if len(globalFetchProviderAddrInfos) > 0 {
+		finderOpt := lassie.WithFinder(retriever.NewDirectCandidateFinder(host, globalFetchProviderAddrInfos))
 		if cctx.IsSet("ipni-endpoint") {
 			klog.Warning("Ignoring ipni-endpoint flag since direct provider is specified")
 		}
@@ -213,10 +213,10 @@ func Fetch(cctx *cli.Context) error {
 	// create and subscribe an event recorder API if configured
 	setupLassieEventRecorder(ctx, eventRecorderURL, authToken, instanceID, lassie)
 
-	if len(fetchProviderAddrInfos) == 0 {
+	if len(globalFetchProviderAddrInfos) == 0 {
 		fmt.Fprintf(msgWriter, "Fetching %s", rootCid.String()+path)
 	} else {
-		fmt.Fprintf(msgWriter, "Fetching %s from %v", rootCid.String()+path, fetchProviderAddrInfos)
+		fmt.Fprintf(msgWriter, "Fetching %s from %v", rootCid.String()+path, globalFetchProviderAddrInfos)
 	}
 	if progress {
 		fmt.Fprintln(msgWriter)
@@ -333,7 +333,7 @@ func (pp *progressPrinter) subscriber(event types.RetrievalEvent) {
 		} else if pp.candidatesFound == 1 {
 			num = "it"
 		}
-		if len(fetchProviderAddrInfos) > 0 {
+		if len(globalFetchProviderAddrInfos) > 0 {
 			fmt.Fprintf(pp.writer, "Found %d storage providers candidates from the indexer, querying %s:\n", pp.candidatesFound, num)
 		} else {
 			fmt.Fprintf(pp.writer, "Using the explicitly specified storage provider(s), querying %s:\n", num)

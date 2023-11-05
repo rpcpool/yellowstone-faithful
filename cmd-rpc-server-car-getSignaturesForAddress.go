@@ -30,20 +30,20 @@ type GetSignaturesForAddressParams struct {
 func parseGetSignaturesForAddressParams(raw *json.RawMessage) (*GetSignaturesForAddressParams, error) {
 	var params []any
 	if err := json.Unmarshal(*raw, &params); err != nil {
-		klog.Errorf("failed to unmarshal params: %v", err)
-		return nil, err
+		return nil, fmt.Errorf("failed to unmarshal params: %w", err)
+	}
+	if len(params) < 1 {
+		return nil, fmt.Errorf("expected at least 1 param")
 	}
 	sigRaw, ok := params[0].(string)
 	if !ok {
-		klog.Errorf("first argument must be a string")
-		return nil, nil
+		return nil, fmt.Errorf("first argument must be a string")
 	}
 
 	out := &GetSignaturesForAddressParams{}
 	pk, err := solana.PublicKeyFromBase58(sigRaw)
 	if err != nil {
-		klog.Errorf("failed to parse pubkey from base58: %v", err)
-		return nil, err
+		return nil, fmt.Errorf("failed to parse pubkey from base58: %w", err)
 	}
 	out.Address = pk
 
@@ -60,8 +60,7 @@ func parseGetSignaturesForAddressParams(raw *json.RawMessage) (*GetSignaturesFor
 				if before, ok := before.(string); ok {
 					sig, err := solana.SignatureFromBase58(before)
 					if err != nil {
-						klog.Errorf("failed to parse signature from base58: %v", err)
-						return nil, err
+						return nil, fmt.Errorf("failed to parse signature from base58: %w", err)
 					}
 					out.Before = &sig
 				}
@@ -70,8 +69,7 @@ func parseGetSignaturesForAddressParams(raw *json.RawMessage) (*GetSignaturesFor
 				if after, ok := after.(string); ok {
 					sig, err := solana.SignatureFromBase58(after)
 					if err != nil {
-						klog.Errorf("failed to parse signature from base58: %v", err)
-						return nil, err
+						return nil, fmt.Errorf("failed to parse signature from base58: %w", err)
 					}
 					out.Until = &sig
 				}
@@ -85,7 +83,7 @@ func parseGetSignaturesForAddressParams(raw *json.RawMessage) (*GetSignaturesFor
 	return out, nil
 }
 
-func (ser *rpcServer) handleGetSignaturesForAddress(ctx context.Context, conn *requestContext, req *jsonrpc2.Request) {
+func (ser *deprecatedRPCServer) handleGetSignaturesForAddress(ctx context.Context, conn *requestContext, req *jsonrpc2.Request) {
 	if ser.gsfaReader == nil {
 		klog.Errorf("gsfaReader is nil")
 		conn.ReplyWithError(
@@ -225,7 +223,7 @@ func (ser *rpcServer) handleGetSignaturesForAddress(ctx context.Context, conn *r
 	}
 
 	// reply with the data
-	err = conn.ReplyNoMod(
+	err = conn.ReplyRaw(
 		ctx,
 		req.ID,
 		response,

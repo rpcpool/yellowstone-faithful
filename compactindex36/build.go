@@ -141,12 +141,12 @@ func (b *Builder) sealBucket(ctx context.Context, i int, f *os.File) error {
 			HashLen:    3, // TODO remove hardcoded constant
 			FileOffset: uint64(offset),
 		},
-		Stride:      3 + intWidth(b.FileSize), // TODO remove hardcoded constant
-		OffsetWidth: intWidth(b.FileSize),
+		Stride:      3 + valueLength(), // TODO remove hardcoded constant
+		OffsetWidth: valueLength(),
 	}
 	// Write entries to file.
 	wr := bufio.NewWriter(f)
-	entryBuf := make([]byte, desc.HashLen+intWidth(b.FileSize)) // TODO remove hardcoded constant
+	entryBuf := make([]byte, desc.HashLen+valueLength()) // TODO remove hardcoded constant
 	for _, entry := range entries {
 		desc.marshalEntry(entryBuf, entry)
 		if _, err := wr.Write(entryBuf[:]); err != nil {
@@ -273,11 +273,38 @@ func hashBucket(rd *bufio.Reader, entries []Entry, bitmap []byte, nonce uint32) 
 	}
 
 	// Sort entries.
-	sort.Slice(entries, func(i, j int) bool {
-		return entries[i].Hash < entries[j].Hash
+	// sort.Slice(entries, func(i, j int) bool {
+	// 	return entries[i].Hash < entries[j].Hash
+	// })
+	sortWithCompare(entries, func(i, j int) int {
+		if entries[i].Hash < entries[j].Hash {
+			return -1
+		} else if entries[i].Hash > entries[j].Hash {
+			return 1
+		}
+		return 0
 	})
 
 	return nil
 }
 
 var ErrCollision = errors.New("hash collision")
+
+func sortWithCompare[T any](a []T, compare func(i, j int) int) {
+	sort.Slice(a, func(i, j int) bool {
+		return compare(i, j) < 0
+	})
+	sorted := make([]T, len(a))
+	eytzinger(a, sorted, 0, 1)
+	copy(a, sorted)
+}
+
+func eytzinger[T any](in, out []T, i, k int) int {
+	if k <= len(in) {
+		i = eytzinger(in, out, i, 2*k)
+		out[k-1] = in[i]
+		i++
+		i = eytzinger(in, out, i, 2*k+1)
+	}
+	return i
+}

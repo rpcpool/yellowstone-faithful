@@ -6,17 +6,16 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"time"
 
 	"github.com/gagliardetto/solana-go"
 	"github.com/rpcpool/yellowstone-faithful/gsfa/linkedlog"
 	"github.com/rpcpool/yellowstone-faithful/gsfa/manifest"
 	"github.com/rpcpool/yellowstone-faithful/gsfa/offsetstore"
 	"github.com/rpcpool/yellowstone-faithful/gsfa/sff"
-	"github.com/rpcpool/yellowstone-faithful/gsfa/store"
 )
 
 type GsfaReader struct {
+	epoch   *uint64
 	offsets *offsetstore.OffsetStore
 	ll      *linkedlog.LinkedLog
 	sff     *sff.SignaturesFlatFile
@@ -41,12 +40,11 @@ func NewGsfaReader(indexRootDir string) (*GsfaReader, error) {
 	index := &GsfaReader{}
 	{
 		offsetsIndexDir := filepath.Join(indexRootDir, "offsets-index")
-		offsets, err := offsetstore.OpenOffsetStore(
+		offsets, err := offsetstore.Open(
 			context.Background(),
 			filepath.Join(offsetsIndexDir, "index"),
 			filepath.Join(offsetsIndexDir, "data"),
-			store.IndexBitSize(22), // NOTE: if you don't specify this, the final size is smaller.
-			store.GCInterval(time.Hour),
+			offsetstoreOptions...,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("error while opening index: %w", err)
@@ -78,6 +76,17 @@ func NewGsfaReader(indexRootDir string) (*GsfaReader, error) {
 	return index, nil
 }
 
+func (index *GsfaReader) SetEpoch(epoch uint64) {
+	index.epoch = &epoch
+}
+
+func (index *GsfaReader) GetEpoch() (uint64, bool) {
+	if index.epoch == nil {
+		return 0, false
+	}
+	return *index.epoch, true
+}
+
 func (index *GsfaReader) Close() error {
 	return errors.Join(
 		index.offsets.Close(),
@@ -91,6 +100,9 @@ func (index *GsfaReader) Get(
 	pk solana.PublicKey,
 	limit int,
 ) ([]solana.Signature, error) {
+	if limit <= 0 {
+		return []solana.Signature{}, nil
+	}
 	locs, err := index.offsets.Get(context.Background(), pk)
 	if err != nil {
 		if offsetstore.IsNotFound(err) {
@@ -137,6 +149,9 @@ func (index *GsfaReader) GetBeforeUntil(
 	before *solana.Signature, // Before this signature, exclusive (i.e. get signatures older than this signature, excluding it).
 	until *solana.Signature, // Until this signature, inclusive (i.e. stop at this signature, including it).
 ) ([]solana.Signature, error) {
+	if limit <= 0 {
+		return []solana.Signature{}, nil
+	}
 	locs, err := index.offsets.Get(context.Background(), pk)
 	if err != nil {
 		if offsetstore.IsNotFound(err) {
