@@ -7,7 +7,8 @@ nav_order: 6
 
 # Roadmap
 
-- Multi-epoch indexing and retrievals
-- Full archives on filecoin and old-faithful.net
-- Continuous uploads of new epochs to Filecoin and old-faithful.net
+For a full list of open issues, see our github - https://github.com/rpcpool/yellowstone-faithful/issues.
+
 - Root index/IPNS for all solana history
+- Support for jsonParsed
+

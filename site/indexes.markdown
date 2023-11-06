@@ -13,6 +13,7 @@ Indexes will be needed to map Solana's block numbers, transaction signatures and
  - slot-to-cid: Lookup a CID based on a slot number
  - tx-to-cid: Lookup a CID based on a transaction signature
  - cid-to-offset: Index for a specific CAR file, used by the local rpc server (see above) to find CIDs in a car file
+ - sig-exists: Index for quick checking whether a specific signature exists in an epoch or not.
 
 In addition to these Old Faithful supports an index called `gsfa` that maps Solana addresses to a list of transaction signatures.
 
@@ -36,16 +37,23 @@ COMMANDS:
    sig-to-cid
    all
    gsfa
+   sig-exists     
    help, h        Shows a list of commands or help for one command
 
 OPTIONS:
    --help, -h  show help
 ```
 
-For example, to generate the three indexes cid-to-offset, slot-to-cid, sig-to-cid you would run:
+For example, to generate the three indexes cid-to-offset, slot-to-cid, sig-to-cid, sig-exists you would run:
 
 ```
 faithful-cli index all epoch-107.car .
 ```
 
-This would generate the indexes in the current dir for epoch-107.
+This would generate the indexes in the current dir for epoch-107. 
+
+The optional GSFA index would need to be run separately as follows:
+
+```
+faithful-cli index gsfa epoch-107.car .
+```
