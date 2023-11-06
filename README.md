@@ -4,6 +4,8 @@
 
 This is currently in RFC stage, which means that it is not intended for production use and that there may be breaking changes to the format, the CLI utilities or any other details related to the project.
 
+For more documentation, please visit [https://old-faithful.net](https://old-faithful.net).
+
 > ❗ **Request for comment**: We are currently looking for feedback and comments on the new archival format and the RPC server setup. We invite all interested parties to test the archival access and open issues on this repo with questions/comments/requests for improvements.
 
 ## Usage
@@ -102,9 +104,13 @@ faithful-cli rpc-server-filecoin -config 455.yml -gsfa-only-signatures=true
 
 If you already know the CID of the data you are looking for you can fetch it via `faithful-cli fetch <cid>`. This requires no further indexes and can also be used to recursively fetch data for example for an epoch. To avoid fetching the full dataset for an epoch (100s of GB) you probably want to pass the parameter `--dag-scope=block` to fetch only the particular CID entity that you are interested in.
 
+### Production RPC server
+
+The production RPC server is accessible via `faithful-cli rpc`. More documentation on this can be found at [https://old-faithful.net](https://old-faithful.net).
+
 ### Limitations
 
-Currently the CLI is only designed to service one epoch at a time. Support for multiple epochs is incoming. We will also soon support fetching indexes from Filecoin as well, currently those are available via S3 together with the raw car files. For full access, please contact help@triton.one.
+The testing server (`rpc-server-car` and `rpc-server-filecoin`) only supports single Epoch access. The production server supports handling a full set of epochs.
 
 Filecoin retrievals without a CDN can also be slow. We are working on integration with Filecoin CDNs and other caching solutions. Fastest retrievals will happen if you service from local disk.
 
@@ -122,6 +128,7 @@ Indexes will be needed to map Solana's block numbers, transaction signatures and
  - tx-to-cid: Lookup a CID based on a transaction signature
  - gsfa: An index mapping Solana addresses to a list of singatures
  - cid-to-offset: Index for a specific CAR file, used by the local rpc server (see above) to find CIDs in a car file
+ - sig-exists: An index to speed up lookups for signatures when using multiepoch support in the production server
 
 ### Archive access
 
@@ -136,7 +143,8 @@ The data that you will need to be able to run a local RPC server is:
   2) the slot-to-cid index for that epoch
   3) the tx-to-cid index for that epoch
   4) the cid-to-offset index for that epoch car file
-  5) Optionally (if you want to support getSignaturesForAddress): the gsfa index
+  5) the sig-exists index for that epoch (optional, but important to speed up multiepoch fetches)
+  6) Optionally (if you want to support getSignaturesForAddress): the gsfa index
 
 The epoch car file can be generated from a rocksdb snapshot from a running validator or from one of the archives provided by the Solana foundation or third parties like Triton. You can also download a pre-generated Epoch car file either from Filecoin itself or via the download URLs provided by Triton.
 
@@ -197,21 +205,20 @@ COMMANDS:
    sig-to-cid
    all
    gsfa
+   sig-exists
    help, h        Shows a list of commands or help for one command
 
 OPTIONS:
    --help, -h  show help
 ```
 
-For example, to generate the three indexes cid-to-offset, slot-to-cid, sig-to-cid you would run:
+For example, to generate the three indexes cid-to-offset, slot-to-cid, sig-to-cid, sig-exists you would run:
 
 ```
 faithful-cli index all epoch-107.car .
 ```
 
 This would generate the indexes in the current dir for epoch-107.
-
-
 
 ## Contributing
 
