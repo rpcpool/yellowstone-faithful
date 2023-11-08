@@ -69,6 +69,9 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 	tim.time("GetBlock")
 	{
 		prefetcherFromCar := func() error {
+			if slot == 0 {
+				return nil
+			}
 			parentIsInPreviousEpoch := CalcEpochForSlot(uint64(block.Meta.Parent_slot)) != CalcEpochForSlot(slot)
 
 			var blockCid, parentCid cid.Cid
@@ -398,6 +401,25 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 	blockResp.Blockhash = lastEntryHash.String()
 	blockResp.ParentSlot = uint64(block.Meta.Parent_slot)
 	blockResp.Rewards = rewards
+	if slot == 0 {
+		// NOTE: we assume this is on mainnet.
+		blockZeroBlocktime := uint64(1584368940)
+		zeroBlockHeight := uint64(0)
+		blockZeroBlockHash := lastEntryHash.String()
+		var blockResp GetBlockResponse
+		blockResp.Transactions = make([]GetTransactionResponse, 0)
+		blockResp.BlockTime = &blockZeroBlocktime
+		blockResp.Blockhash = lastEntryHash.String()
+		blockResp.ParentSlot = uint64(0)
+		blockResp.Rewards = make([]any, 0)
+		blockResp.BlockHeight = &zeroBlockHeight
+		blockResp.PreviousBlockhash = &blockZeroBlockHash // NOTE: this is what solana RPC does. Should it be nil instead? Or should it be the genesis hash?
+		return nil, conn.ReplyRaw(
+			ctx,
+			req.ID,
+			blockResp,
+		)
+	}
 
 	{
 		blockHeight, ok := block.GetBlockHeight()
