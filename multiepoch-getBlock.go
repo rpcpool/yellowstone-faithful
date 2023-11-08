@@ -430,7 +430,7 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 	{
 		// get parent slot
 		parentSlot := uint64(block.Meta.Parent_slot)
-		if parentSlot != 0 && CalcEpochForSlot(parentSlot) == epochNumber {
+		if (parentSlot != 0 || slot == 1) && CalcEpochForSlot(parentSlot) == epochNumber {
 			// NOTE: if the parent is in the same epoch, we can get it from the same epoch handler as the block;
 			// otherwise, we need to get it from the previous epoch (TODO: implement this)
 			parentBlock, err := epochHandler.GetBlock(WithSubrapghPrefetch(ctx, false), parentSlot)
