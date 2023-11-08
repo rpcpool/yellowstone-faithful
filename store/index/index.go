@@ -10,6 +10,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -362,7 +363,7 @@ func scanIndexFile(ctx context.Context, basePath string, fileNum uint32, buckets
 	var i int
 	for {
 		if _, err = file.ReadAt(sizeBuffer, pos); err != nil {
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				// Finished reading entire index.
 				break
 			}
@@ -392,7 +393,7 @@ func scanIndexFile(ctx context.Context, basePath string, fileNum uint32, buckets
 		}
 		data := scratch[:size]
 		if _, err = file.ReadAt(data, pos); err != nil {
-			if err == io.ErrUnexpectedEOF || err == io.EOF {
+			if err == io.ErrUnexpectedEOF || errors.Is(err, io.EOF) {
 				// The file is corrupt since the expected data could not be
 				// read. Take the usable data and move on.
 				log.Errorw("Unexpected EOF scanning index record", "file", indexPath)
@@ -1059,7 +1060,7 @@ func (iter *RawIterator) Next() ([]byte, types.Position, bool, error) {
 		_, err := iter.file.ReadAt(sizeBuf, iter.pos)
 		if err != nil {
 			iter.file.Close()
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				iter.file = nil
 				iter.fileNum++
 				return iter.Next()
@@ -1488,7 +1489,7 @@ func MoveFiles(indexPath, newDir string) error {
 	for {
 		fileName, err := fileIter.next()
 		if err != nil {
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				break
 			}
 			return err

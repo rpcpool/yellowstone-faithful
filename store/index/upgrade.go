@@ -9,6 +9,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -91,7 +92,7 @@ func chunkOldIndex(ctx context.Context, file *os.File, name string, fileSizeLimi
 	for {
 		_, err = io.ReadFull(reader, sizeBuffer)
 		if err != nil {
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				break
 			}
 			return 0, err

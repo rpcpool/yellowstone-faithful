@@ -2,6 +2,7 @@ package store_test
 
 import (
 	"context"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -89,7 +90,7 @@ func TestUpdate(t *testing.T) {
 		var count int
 		for {
 			key, val, err := storeIter.Next()
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				break
 			}
 			require.Zero(t, count)

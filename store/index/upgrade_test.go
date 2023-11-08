@@ -104,7 +104,7 @@ func testScanIndexFile(file *os.File, fileNum uint32, buckets Buckets, prevSize 
 	for {
 		_, err := io.ReadFull(buffered, sizeBuffer)
 		if err != nil {
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				break
 			}
 			return err
@@ -119,7 +119,7 @@ func testScanIndexFile(file *os.File, fileNum uint32, buckets Buckets, prevSize 
 		data := scratch[:size]
 		_, err = io.ReadFull(buffered, data)
 		if err != nil {
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				return errors.New("unexpected EOF")
 			}
 			return err

@@ -2,6 +2,7 @@ package readahead
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -78,7 +79,7 @@ func (cr *CachingReader) Read(p []byte) (int, error) {
 		if n > 0 {
 			cr.buffer.Write(tmp[:n])
 		}
-		if err == io.EOF && cr.buffer.Len() == 0 {
+		if errors.Is(err, io.EOF) && cr.buffer.Len() == 0 {
 			// If EOF is reached and buffer is empty, return EOF
 			return 0, io.EOF
 		}

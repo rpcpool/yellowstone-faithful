@@ -172,7 +172,7 @@ func isDirEmpty(dir string) (bool, error) {
 	defer file.Close()
 
 	_, err = file.Readdir(1)
-	if err == io.EOF {
+	if errors.Is(err, io.EOF) {
 		return true, nil
 	}
 	return false, err
@@ -202,7 +202,7 @@ func carCountItems(carPath string) (uint64, error) {
 	for {
 		_, _, err := rd.NextInfo()
 		if err != nil {
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				break
 			}
 			return 0, err
@@ -230,7 +230,7 @@ func carCountItemsByFirstByte(carPath string) (map[byte]uint64, error) {
 	for {
 		_, _, block, err := rd.NextNode()
 		if err != nil {
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				break
 			}
 			return nil, err

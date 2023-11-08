@@ -2,6 +2,7 @@ package manifest
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -213,7 +214,7 @@ func (m *Manifest) readAllContent() (Values, error) {
 	values := make([][2]uint64, 0, currentContentSize/16)
 	for {
 		_, err := io.ReadFull(sectionReader, buf)
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
 		if err != nil {
