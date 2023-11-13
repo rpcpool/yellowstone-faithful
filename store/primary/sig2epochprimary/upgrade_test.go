@@ -130,7 +130,7 @@ func testScanPrimaryFile(file *os.File) ([][]byte, error) {
 	for {
 		_, err := io.ReadFull(buffered, sizeBuffer)
 		if err != nil {
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				break
 			}
 			return nil, err
@@ -143,7 +143,7 @@ func testScanPrimaryFile(file *os.File) ([][]byte, error) {
 		data := scratch[:size]
 		_, err = io.ReadFull(buffered, data)
 		if err != nil {
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				return nil, errors.New("unexpected EOF")
 			}
 			return nil, err

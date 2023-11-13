@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"math/rand"
@@ -211,7 +212,7 @@ func createAllIndexes(
 	for {
 		_cid, sectionLength, block, err := rd.NextNode()
 		if err != nil {
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				break
 			}
 			return nil, err
@@ -611,7 +612,7 @@ func verifyAllIndexes(
 	for {
 		_cid, sectionLength, block, err := rd.NextNode()
 		if err != nil {
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				break
 			}
 			return err

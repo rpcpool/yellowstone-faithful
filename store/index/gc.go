@@ -8,6 +8,7 @@ package index
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -308,7 +309,7 @@ func (index *Index) reapIndexRecords(ctx context.Context, fileNum uint32, indexP
 			return false, ctx.Err()
 		}
 		if _, err = file.ReadAt(sizeBuf, pos); err != nil {
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				// Finished reading entire index.
 				break
 			}
@@ -348,7 +349,7 @@ func (index *Index) reapIndexRecords(ctx context.Context, fileNum uint32, indexP
 		}
 		data := scratch[:size]
 		if _, err = file.ReadAt(data, pos+sizePrefixSize); err != nil {
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				// The data has not been written yet, or the file is corrupt.
 				// Take the data we are able to use and move on.
 				break

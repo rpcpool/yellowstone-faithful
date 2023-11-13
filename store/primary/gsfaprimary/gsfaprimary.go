@@ -496,7 +496,7 @@ func (iter *Iterator) Next() ([]byte, []byte, error) {
 	_, err := iter.file.ReadAt(data, pos)
 	if err != nil {
 		iter.file.Close()
-		// if err == io.EOF {
+		// if errors.Is(err, io.EOF) {
 		// 	err = io.ErrUnexpectedEOF
 		// }
 		return nil, nil, err

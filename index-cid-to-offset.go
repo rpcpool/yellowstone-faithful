@@ -89,7 +89,7 @@ func CreateIndex_cid2offset(ctx context.Context, tmpDir string, carPath string, 
 	for {
 		c, sectionLength, err := rd.NextInfo()
 		if err != nil {
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				break
 			}
 			return "", err
