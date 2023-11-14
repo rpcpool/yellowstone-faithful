@@ -19,7 +19,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/ipfs/go-cid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -171,12 +170,12 @@ func TestBuilder36(t *testing.T) {
 	for i, key := range keys {
 		require.NoError(t, builder.Insert([]byte(key), []byte(testCids[i].Bytes())))
 	}
-	{
-		// print test values
-		for _, tc := range testCids {
-			spew.Dump(FormatByteSlice(tc.Bytes()))
-		}
-	}
+	// {
+	// 	// print test values
+	// 	for _, tc := range testCids {
+	// 		spew.Dump(FormatByteSlice(tc.Bytes()))
+	// 	}
+	// }
 
 	// Create index file.
 	targetFile, err := os.CreateTemp("", "compactindex-final-")
