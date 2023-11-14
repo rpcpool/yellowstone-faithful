@@ -107,6 +107,10 @@ func (b *Builder) SetKind(kind []byte) error {
 	return nil
 }
 
+func (b *Builder) Metadata() *Meta {
+	return &b.Header.Meta
+}
+
 func (b *Builder) getValueSize() int {
 	return int(b.ValueSize)
 }

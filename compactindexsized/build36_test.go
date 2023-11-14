@@ -164,6 +164,7 @@ func TestBuilder36(t *testing.T) {
 
 	kindSomething := []byte("something")
 	require.NoError(t, builder.SetKind(kindSomething))
+	require.NoError(t, builder.Metadata().Add([]byte("hello"), []byte("world")))
 
 	// Insert a few entries.
 	keys := []string{"hello", "world", "blub", "foo"}
@@ -194,19 +195,24 @@ func TestBuilder36(t *testing.T) {
 		// magic
 		Magic[:],
 		// header size
-		i32tob(29),
+		i32tob(41),
 		// value size (36 bytes in this case)
 		[]byte{0x24, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
 
 		[]byte{0x03, 0x00, 0x00, 0x00}, // num buckets
 		[]byte{1},                      // version
 
-		[]byte{1}, // how many kv pairs
+		[]byte{2}, // how many kv pairs
 
 		[]byte{4},           // key size
 		[]byte("kind"),      // key
 		[]byte{9},           // value size
 		[]byte("something"), // value
+
+		[]byte{5},       // key size
+		[]byte("hello"), // key
+		[]byte{5},       // value size
+		[]byte("world"), // value
 
 		// --- Bucket header 0
 		// hash domain
@@ -218,7 +224,7 @@ func TestBuilder36(t *testing.T) {
 		// padding
 		[]byte{0x00},
 		// file offset
-		[]byte{89, 0x00, 0x00, 0x00, 0x00, 0x00},
+		[]byte{101, 0x00, 0x00, 0x00, 0x00, 0x00},
 
 		// --- Bucket header 1
 		// hash domain
@@ -230,7 +236,7 @@ func TestBuilder36(t *testing.T) {
 		// padding
 		[]byte{0x00},
 		// file offset
-		[]byte{128, 0x00, 0x00, 0x00, 0x00, 0x00},
+		[]byte{140, 0x00, 0x00, 0x00, 0x00, 0x00},
 
 		// --- Bucket header 2
 		// hash domain
@@ -242,7 +248,7 @@ func TestBuilder36(t *testing.T) {
 		// padding
 		[]byte{0x00},
 		// file offset
-		[]byte{167, 0x00, 0x00, 0x00, 0x00, 0x00},
+		[]byte{179, 0x00, 0x00, 0x00, 0x00, 0x00},
 
 		// --- Bucket 0
 		// hash
@@ -269,7 +275,7 @@ func TestBuilder36(t *testing.T) {
 	{
 		splitSizes := []int{
 			// --- File header
-			8, 4, 8, 4, 1, 1, 1, 4, 1, 9,
+			8, 4, 8, 4, 1, 1, 1, 4, 1, 9, 1, 5, 1, 5,
 			// --- Bucket header 0
 			4, 4, 1, 1, 6,
 			// --- Bucket header 1
@@ -314,6 +320,10 @@ func TestBuilder36(t *testing.T) {
 					Key:   KeyKind,
 					Value: kindSomething,
 				},
+				{
+					Key:   []byte("hello"),
+					Value: []byte("world"),
+				},
 			},
 		},
 	}, db.Header)
@@ -335,8 +345,8 @@ func TestBuilder36(t *testing.T) {
 			HashDomain: 0x00,
 			NumEntries: 1,
 			HashLen:    3,
-			FileOffset: 89,
-			headerSize: 41,
+			FileOffset: 101,
+			headerSize: 53,
 		},
 		Stride:      3 + valueSize, // 3 + 36
 		OffsetWidth: valueSize,
@@ -345,15 +355,15 @@ func TestBuilder36(t *testing.T) {
 		HashDomain: 0x00,
 		NumEntries: 1,
 		HashLen:    3,
-		FileOffset: 128,
-		headerSize: 41,
+		FileOffset: 140,
+		headerSize: 53,
 	}, buckets[1].BucketHeader)
 	assert.Equal(t, BucketHeader{
 		HashDomain: 0x00,
 		NumEntries: 2,
 		HashLen:    3,
-		FileOffset: 167,
-		headerSize: 41,
+		FileOffset: 179,
+		headerSize: 53,
 	}, buckets[2].BucketHeader)
 
 	assert.Equal(t, uint8(3+valueSize), buckets[2].Stride)
