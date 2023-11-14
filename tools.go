@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -68,4 +69,16 @@ func loadFromYAML(configFilepath string, dst any) error {
 	defer file.Close()
 
 	return yaml.NewDecoder(file).Decode(dst)
+}
+
+// btoi converts a byte slice of length 8 to a uint64.
+func btoi(b []byte) uint64 {
+	return binary.LittleEndian.Uint64(b)
+}
+
+// itob converts a uint64 to a byte slice of length 8.
+func itob(v uint64) []byte {
+	var buf [8]byte
+	binary.LittleEndian.PutUint64(buf[:], v)
+	return buf[:]
 }

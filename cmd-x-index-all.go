@@ -17,8 +17,8 @@ import (
 	"github.com/ipfs/go-cid"
 	carv1 "github.com/ipld/go-car"
 	"github.com/rpcpool/yellowstone-faithful/bucketteer"
-	"github.com/rpcpool/yellowstone-faithful/compactindex"
 	"github.com/rpcpool/yellowstone-faithful/compactindex36"
+	"github.com/rpcpool/yellowstone-faithful/compactindexsized"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
 	"github.com/urfave/cli/v2"
 	"k8s.io/klog/v2"
@@ -157,7 +157,6 @@ func createAllIndexes(
 		tmpDir,
 		indexDir,
 		numTotalItems,
-		targetFileSize,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create cid_to_offset index: %w", err)
@@ -363,23 +362,22 @@ type Builder_CidToOffset struct {
 	tmpDir   string
 	indexDir string
 	carPath  string
-	index    *compactindex.Builder
+	index    *compactindexsized.Builder
 }
 
 func NewBuilder_CidToOffset(
 	tmpDir string,
 	indexDir string,
 	numItems uint64,
-	targetFileSize uint64,
 ) (*Builder_CidToOffset, error) {
 	tmpDir = filepath.Join(tmpDir, "index-cid-to-offset-"+time.Now().Format("20060102-150405.000000000")+fmt.Sprintf("-%d", rand.Int63()))
 	if err := os.MkdirAll(tmpDir, 0o755); err != nil {
 		return nil, fmt.Errorf("failed to create cid_to_offset tmp dir: %w", err)
 	}
-	index, err := compactindex.NewBuilder(
+	index, err := compactindexsized.NewBuilderSized(
 		tmpDir,
 		uint(numItems),
-		(targetFileSize),
+		8,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create cid_to_offset index: %w", err)
@@ -392,7 +390,7 @@ func NewBuilder_CidToOffset(
 }
 
 func (b *Builder_CidToOffset) Put(c cid.Cid, offset uint64) error {
-	return b.index.Insert(c.Bytes(), offset)
+	return b.index.Insert(c.Bytes(), itob(offset))
 }
 
 func (b *Builder_CidToOffset) Close() error {
@@ -709,7 +707,7 @@ func verifyAllIndexes(
 
 type Index_CidToOffset struct {
 	file *os.File
-	db   *compactindex.DB
+	db   *compactindexsized.DB
 }
 
 func OpenIndex_CidToOffset(
@@ -720,7 +718,7 @@ func OpenIndex_CidToOffset(
 		return nil, fmt.Errorf("failed to open index file: %w", err)
 	}
 
-	index, err := compactindex.Open(indexFile)
+	index, err := compactindexsized.Open(indexFile)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open index: %w", err)
 	}

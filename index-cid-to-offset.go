@@ -17,7 +17,7 @@ import (
 	carv1 "github.com/ipld/go-car"
 	"github.com/ipld/go-car/util"
 	carv2 "github.com/ipld/go-car/v2"
-	"github.com/rpcpool/yellowstone-faithful/compactindex"
+	"github.com/rpcpool/yellowstone-faithful/compactindexsized"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
 	"k8s.io/klog/v2"
 )
@@ -67,10 +67,10 @@ func CreateIndex_cid2offset(ctx context.Context, tmpDir string, carPath string, 
 	}
 
 	klog.Infof("Creating builder with %d items and target file size %d", numItems, targetFileSize)
-	c2o, err := compactindex.NewBuilder(
+	c2o, err := compactindexsized.NewBuilderSized(
 		tmpDir,
 		uint(numItems),
-		(targetFileSize),
+		8,
 	)
 	if err != nil {
 		return "", fmt.Errorf("failed to open index store: %w", err)
@@ -97,7 +97,7 @@ func CreateIndex_cid2offset(ctx context.Context, tmpDir string, carPath string, 
 
 		// klog.Infof("key: %s, offset: %d", bin.FormatByteSlice(c.Bytes()), totalOffset)
 
-		err = c2o.Insert(c.Bytes(), uint64(totalOffset))
+		err = c2o.Insert(c.Bytes(), itob(uint64(totalOffset)))
 		if err != nil {
 			return "", fmt.Errorf("failed to put cid to offset: %w", err)
 		}
@@ -174,7 +174,7 @@ func VerifyIndex_cid2offset(ctx context.Context, carPath string, indexFilePath s
 	}
 	defer indexFile.Close()
 
-	c2o, err := compactindex.Open(indexFile)
+	c2o, err := compactindexsized.Open(indexFile)
 	if err != nil {
 		return fmt.Errorf("failed to open index: %w", err)
 	}
@@ -252,7 +252,7 @@ func VerifyIndex_cid2offset(ctx context.Context, carPath string, indexFilePath s
 	return nil
 }
 
-func findOffsetFromCid(db *compactindex.DB, c cid.Cid) (uint64, error) {
+func findOffsetFromCid(db *compactindexsized.DB, c cid.Cid) (uint64, error) {
 	bucket, err := db.LookupBucket(c.Bytes())
 	if err != nil {
 		return 0, fmt.Errorf("failed to lookup bucket for %s: %w", c, err)
@@ -261,5 +261,5 @@ func findOffsetFromCid(db *compactindex.DB, c cid.Cid) (uint64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("failed to lookup offset for %s: %w", c, err)
 	}
-	return offset, nil
+	return btoi(offset), nil
 }

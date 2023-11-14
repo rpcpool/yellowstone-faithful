@@ -13,7 +13,7 @@ import (
 	"github.com/ipld/go-car"
 	"github.com/ipld/go-car/util"
 	carv2 "github.com/ipld/go-car/v2"
-	"github.com/rpcpool/yellowstone-faithful/compactindex"
+	"github.com/rpcpool/yellowstone-faithful/compactindexsized"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
 	"k8s.io/klog/v2"
@@ -88,7 +88,7 @@ func openCarReaderWithCidIndex(carPath string, indexFilePath string) (*SimpleIte
 	}
 
 	klog.Infof("Reading index from %s", indexFilePath)
-	c2o, err := compactindex.Open(indexFile)
+	c2o, err := compactindexsized.Open(indexFile)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open index: %w", err)
 	}
@@ -126,9 +126,9 @@ func openCarReaderWithCidIndex(carPath string, indexFilePath string) (*SimpleIte
 }
 
 type SimpleIterator struct {
-	c2o       *compactindex.DB // index from cid to offset in the CAR file
-	cr        *carv2.Reader    // the CAR file
-	indexFile *os.File         // the index file
+	c2o       *compactindexsized.DB // index from cid to offset in the CAR file
+	cr        *carv2.Reader         // the CAR file
+	indexFile *os.File              // the index file
 }
 
 func NewSimpleCarIterator(carPath string, indexFilePath string) (*SimpleIterator, error) {
@@ -153,23 +153,23 @@ func (t *SimpleIterator) Get(ctx context.Context, c cid.Cid) (*blocks.BasicBlock
 	return node, err
 }
 
-func newOffsetFinderFunc(c2o *compactindex.DB) func(ctx context.Context, c cid.Cid) (uint64, error) {
+func newOffsetFinderFunc(c2o *compactindexsized.DB) func(ctx context.Context, c cid.Cid) (uint64, error) {
 	return func(ctx context.Context, c cid.Cid) (uint64, error) {
 		bucket, err := c2o.LookupBucket(c.Bytes())
 		if err != nil {
-			if err == compactindex.ErrNotFound {
+			if err == compactindexsized.ErrNotFound {
 				return 0, ErrNotFound
 			}
 			return 0, fmt.Errorf("failed to lookup bucket: %w", err)
 		}
 		offset, err := bucket.Lookup(c.Bytes())
 		if err != nil {
-			if err == compactindex.ErrNotFound {
+			if err == compactindexsized.ErrNotFound {
 				return 0, ErrNotFound
 			}
 			return 0, fmt.Errorf("failed to lookup offset: %w", err)
 		}
-		return offset, nil
+		return btoi(offset), nil
 	}
 }
 

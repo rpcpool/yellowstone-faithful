@@ -12,8 +12,8 @@ import (
 	"github.com/ipld/go-car/util"
 	carv2 "github.com/ipld/go-car/v2"
 	"github.com/patrickmn/go-cache"
-	"github.com/rpcpool/yellowstone-faithful/compactindex"
 	"github.com/rpcpool/yellowstone-faithful/compactindex36"
+	"github.com/rpcpool/yellowstone-faithful/compactindexsized"
 	"github.com/rpcpool/yellowstone-faithful/gsfa"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
@@ -75,7 +75,7 @@ func newCmd_rpcServerCar() *cli.Command {
 			}
 			defer cidToOffsetIndexFile.Close()
 
-			cidToOffsetIndex, err := compactindex.Open(cidToOffsetIndexFile)
+			cidToOffsetIndex, err := compactindexsized.Open(cidToOffsetIndexFile)
 			if err != nil {
 				return fmt.Errorf("failed to open index: %w", err)
 			}
@@ -158,7 +158,7 @@ func createAndStartRPCServer_withCar(
 	options *RpcServerOptions,
 	carReader *carv2.Reader,
 	remoteCarReader ReaderAtCloser,
-	cidToOffsetIndex *compactindex.DB,
+	cidToOffsetIndex *compactindexsized.DB,
 	slotToCidIndex *compactindex36.DB,
 	sigToCidIndex *compactindex36.DB,
 	gsfaReader *gsfa.GsfaReader,
@@ -224,7 +224,7 @@ type deprecatedRPCServer struct {
 	lassieFetcher    *lassieWrapper
 	localCarReader   *carv2.Reader
 	remoteCarReader  ReaderAtCloser
-	cidToOffsetIndex *compactindex.DB
+	cidToOffsetIndex *compactindexsized.DB
 	slotToCidIndex   *compactindex36.DB
 	sigToCidIndex    *compactindex36.DB
 	gsfaReader       *gsfa.GsfaReader

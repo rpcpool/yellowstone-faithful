@@ -17,8 +17,8 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/patrickmn/go-cache"
 	"github.com/rpcpool/yellowstone-faithful/bucketteer"
-	"github.com/rpcpool/yellowstone-faithful/compactindex"
 	"github.com/rpcpool/yellowstone-faithful/compactindex36"
+	"github.com/rpcpool/yellowstone-faithful/compactindexsized"
 	"github.com/rpcpool/yellowstone-faithful/gsfa"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
@@ -35,7 +35,7 @@ type Epoch struct {
 	localCarReader      *carv2.Reader
 	remoteCarReader     ReaderAtCloser
 	remoteCarHeaderSize uint64
-	cidToOffsetIndex    *compactindex.DB
+	cidToOffsetIndex    *compactindexsized.DB
 	slotToCidIndex      *compactindex36.DB
 	sigToCidIndex       *compactindex36.DB
 	sigExists           *bucketteer.Reader
@@ -118,7 +118,7 @@ func NewEpochFromConfig(config *Config, c *cli.Context) (*Epoch, error) {
 		}
 		ep.onClose = append(ep.onClose, cidToOffsetIndexFile.Close)
 
-		cidToOffsetIndex, err := compactindex.Open(cidToOffsetIndexFile)
+		cidToOffsetIndex, err := compactindexsized.Open(cidToOffsetIndexFile)
 		if err != nil {
 			return nil, fmt.Errorf("failed to open cid-to-offset index: %w", err)
 		}
