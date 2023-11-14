@@ -21,9 +21,10 @@ import (
 // Builder creates new compactindex files.
 type Builder struct {
 	Header
-	dir     string
-	closers []io.Closer
-	buckets []tempBucket
+	dir        string
+	headerSize int64
+	closers    []io.Closer
+	buckets    []tempBucket
 }
 
 // NewBuilderSized creates a new index builder.
@@ -85,8 +86,25 @@ func NewBuilderSized(
 	}, nil
 }
 
-func (b *Builder) SetKind(kind uint8) {
-	b.Header.Kind = kind
+// SetKind sets the kind of the index.
+// If the kind is already set, it is overwritten.
+func (b *Builder) SetKind(kind []byte) error {
+	// check if kind is too long
+	if len(kind) > MaxKeySize {
+		return fmt.Errorf("kind is too long")
+	}
+	// check if kind is empty
+	if len(kind) == 0 {
+		return fmt.Errorf("kind is empty")
+	}
+	// check if kind is already set
+	if b.Header.Meta.Count(KeyKind) > 0 {
+		// remove kind
+		b.Header.Meta.Remove(KeyKind)
+	}
+	// set kind
+	b.Header.Meta.Add(KeyKind, kind)
+	return nil
 }
 
 func (b *Builder) getValueSize() int {
@@ -109,13 +127,21 @@ func (b *Builder) Insert(key []byte, value []byte) error {
 func (b *Builder) Seal(ctx context.Context, f *os.File) (err error) {
 	// TODO support in-place writing.
 
+	defer func() {
+		f.Sync()
+	}()
+
 	// Write header.
-	var headerBuf [headerSize]byte
-	b.Header.Store(&headerBuf)
-	_, err = f.Write(headerBuf[:])
+	headerBuf := b.Header.Bytes()
+	headerSize := int64(len(headerBuf))
+	numWroteHeader, err := f.Write(headerBuf[:])
 	if err != nil {
 		return fmt.Errorf("failed to write header: %w", err)
 	}
+	if numWroteHeader != len(headerBuf) {
+		return fmt.Errorf("failed to write header: wrote %d bytes, expected %d", numWroteHeader, len(headerBuf))
+	}
+	b.headerSize = headerSize
 	// Create hole to leave space for bucket header table.
 	bucketTableLen := int64(b.NumBuckets) * bucketHdrLen
 	err = fallocate(f, headerSize, bucketTableLen)
@@ -169,6 +195,7 @@ func (b *Builder) sealBucket(ctx context.Context, i int, f *os.File) error {
 		Stride:      b.getEntryStride(),
 		OffsetWidth: uint8(b.getValueSize()),
 	}
+	desc.BucketHeader.headerSize = b.headerSize
 	// Write entries to file.
 	wr := bufio.NewWriter(f)
 	entryBuf := make([]byte, b.getEntryStride()) // TODO remove hardcoded constant

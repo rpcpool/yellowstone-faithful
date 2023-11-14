@@ -84,6 +84,7 @@ package compactindexsized
 // - The values it indexes are N-byte values instead of 8-byte values. This allows to index CIDs (in particular sha256+CBOR CIDs), and other values, directly.
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"math"
@@ -102,46 +103,65 @@ const Version = uint8(1)
 type Header struct {
 	ValueSize  uint64
 	NumBuckets uint32
-	Kind       uint8
+	Meta       Meta
 }
 
-// headerSize is the size of the header at the beginning of the file.
-const headerSize = 32
-
 // Load checks the Magic sequence and loads the header fields.
-func (h *Header) Load(buf *[headerSize]byte) error {
+func (h *Header) Load(buf []byte) error {
 	// Use a magic byte sequence to bail fast when user passes a corrupted/unrelated stream.
 	if *(*[8]byte)(buf[:8]) != Magic {
 		return fmt.Errorf("not a radiance compactindex file")
 	}
+	// read length of the rest of the header
+	lenWithoutMagicAndLen := binary.LittleEndian.Uint32(buf[8:12])
+	if lenWithoutMagicAndLen < 12 {
+		return fmt.Errorf("invalid header length")
+	}
+	if lenWithoutMagicAndLen > uint32(len(buf)) {
+		return fmt.Errorf("invalid header length")
+	}
+	// read the rest of the header
 	*h = Header{
-		ValueSize:  binary.LittleEndian.Uint64(buf[8:16]),
-		NumBuckets: binary.LittleEndian.Uint32(buf[16:20]),
+		ValueSize:  binary.LittleEndian.Uint64(buf[12:20]),
+		NumBuckets: binary.LittleEndian.Uint32(buf[20:24]),
 	}
 	// Check version.
-	if buf[20] != Version {
+	if buf[24] != Version {
 		return fmt.Errorf("unsupported index version: want %d, got %d", Version, buf[20])
 	}
-	h.Kind = buf[21]
-	// 10 bytes to spare for now. Might use it in the future.
-	// Force to zero for now.
-	for _, b := range buf[22:32] {
-		if b != 0x00 {
-			return fmt.Errorf("unsupported index version")
-		}
+	// read key-value pairs
+	if err := h.Meta.UnmarshalBinary(buf[25:]); err != nil {
+		return fmt.Errorf("failed to unmarshal metadata: %w", err)
+	}
+	if h.ValueSize == 0 {
+		return fmt.Errorf("value size not set")
+	}
+	if h.NumBuckets == 0 {
+		return fmt.Errorf("number of buckets not set")
 	}
 	return nil
 }
 
-func (h *Header) Store(buf *[headerSize]byte) {
-	copy(buf[0:8], Magic[:])
-	binary.LittleEndian.PutUint64(buf[8:16], h.ValueSize)
-	binary.LittleEndian.PutUint32(buf[16:20], h.NumBuckets)
-	buf[20] = Version
-	buf[21] = h.Kind
-	for i := 22; i < 32; i++ {
-		buf[i] = 0
+func (h *Header) Bytes() []byte {
+	buf := new(bytes.Buffer)
+	{
+		// value size
+		binary.Write(buf, binary.LittleEndian, h.ValueSize)
+		// number of buckets
+		binary.Write(buf, binary.LittleEndian, h.NumBuckets)
+		// version
+		buf.WriteByte(Version)
+		// key-value pairs
+		kvb := h.Meta.Bytes()
+		buf.Write(kvb)
 	}
+	lenWithoutMagicAndLen := buf.Len()
+
+	finalBuf := new(bytes.Buffer)
+	finalBuf.Write(Magic[:])                                                   // magic
+	binary.Write(finalBuf, binary.LittleEndian, uint32(lenWithoutMagicAndLen)) // length of the rest of the header
+	finalBuf.Write(buf.Bytes())                                                // the rest of the header
+	return finalBuf.Bytes()
 }
 
 // BucketHash returns the bucket index for the given key.
@@ -174,6 +194,7 @@ type BucketHeader struct {
 	NumEntries uint32
 	HashLen    uint8
 	FileOffset uint64
+	headerSize int64
 }
 
 // bucketHdrLen is the size of the header preceding the hash table entries.

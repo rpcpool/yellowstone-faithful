@@ -26,6 +26,12 @@ func btoi(b []byte) uint64 {
 	return binary.LittleEndian.Uint64(b)
 }
 
+func i32tob(i uint32) []byte {
+	b := make([]byte, 4)
+	binary.LittleEndian.PutUint32(b, i)
+	return b
+}
+
 func TestBuilder8(t *testing.T) {
 	const numBuckets = 3
 	const valueSize = 8
@@ -50,75 +56,78 @@ func TestBuilder8(t *testing.T) {
 
 	// Seal index.
 	require.NoError(t, builder.Seal(context.TODO(), targetFile))
+	require.NoError(t, targetFile.Sync())
 
 	// Assert binary content.
-	buf, err := os.ReadFile(targetFile.Name())
+	actual, err := os.ReadFile(targetFile.Name())
 	require.NoError(t, err)
-	assert.Equal(t, []byte{
+	assert.Equal(t, concatBytes(
 		// --- File header
 		// magic
-		0x72, 0x64, 0x63, 0x65, 0x63, 0x69, 0x64, 0x78,
+		Magic[:],
+		// header size
+		i32tob(14),
 		// value size
-		0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		[]byte{8, 0, 0, 0, 0, 0, 0, 0},
 		// num buckets
-		0x03, 0x00, 0x00, 0x00,
-		// padding
-		0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		[]byte{3, 0, 0, 0},
+		[]byte{1}, // version
+		[]byte{0}, // how many kv pairs
 
 		// --- Bucket header 0
 		// hash domain
-		0x00, 0x00, 0x00, 0x00,
+		[]byte{0x00, 0x00, 0x00, 0x00},
 		// num entries
-		0x01, 0x00, 0x00, 0x00,
+		[]byte{0x01, 0x00, 0x00, 0x00},
 		// hash len
-		0x03,
+		[]byte{0x03},
 		// padding
-		0x00,
+		[]byte{0x00},
 		// file offset
-		0x50, 0x00, 0x00, 0x00, 0x00, 0x00,
+		[]byte{74, 0x00, 0x00, 0x00, 0x00, 0x00},
 
 		// --- Bucket header 1
 		// hash domain
-		0x00, 0x00, 0x00, 0x00,
+		[]byte{0x00, 0x00, 0x00, 0x00},
 		// num entries
-		0x01, 0x00, 0x00, 0x00,
+		[]byte{0x01, 0x00, 0x00, 0x00},
 		// hash len
-		0x03,
+		[]byte{0x03},
 		// padding
-		0x00,
+		[]byte{0x00},
 		// file offset
-		0x5b, 0x00, 0x00, 0x00, 0x00, 0x00,
+		[]byte{85, 0x00, 0x00, 0x00, 0x00, 0x00},
 
 		// --- Bucket header 2
 		// hash domain
-		0x00, 0x00, 0x00, 0x00,
+		[]byte{0x00, 0x00, 0x00, 0x00},
 		// num entries
-		0x01, 0x00, 0x00, 0x00,
+		[]byte{0x01, 0x00, 0x00, 0x00},
 		// hash len
-		0x03,
+		[]byte{0x03},
 		// padding
-		0x00,
+		[]byte{0x00},
 		// file offset
-		0x66, 0x00, 0x00, 0x00, 0x00, 0x00,
+		[]byte{96, 0x00, 0x00, 0x00, 0x00, 0x00},
 
 		// --- Bucket 0
 		// hash
-		0xe2, 0xdb, 0x55,
+		[]byte{0xe2, 0xdb, 0x55},
 		// value
-		0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		[]byte{0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
 
 		// --- Bucket 1
 		// hash
-		0x92, 0xcd, 0xbb,
+		[]byte{0x92, 0xcd, 0xbb},
 		// value
-		0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		[]byte{0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
 
 		// --- Bucket 2
 		// hash
-		0xe3, 0x09, 0x6b,
+		[]byte{0xe3, 0x09, 0x6b},
 		// value
-		0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-	}, buf)
+		[]byte{0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
+	), actual)
 
 	// Reset file offset.
 	_, seekErr := targetFile.Seek(0, io.SeekStart)
@@ -152,22 +161,27 @@ func TestBuilder8(t *testing.T) {
 			HashDomain: 0x00,
 			NumEntries: 1,
 			HashLen:    3,
-			FileOffset: 0x50,
+			FileOffset: 74,
+			headerSize: 26,
 		},
 		Stride:      11, // 3 + 8
 		OffsetWidth: 8,
 	}, buckets[0].BucketDescriptor)
+
 	assert.Equal(t, BucketHeader{
 		HashDomain: 0x00,
 		NumEntries: 1,
 		HashLen:    3,
-		FileOffset: 0x5b,
+		FileOffset: 85,
+		headerSize: 26,
 	}, buckets[1].BucketHeader)
+
 	assert.Equal(t, BucketHeader{
 		HashDomain: 0x00,
 		NumEntries: 1,
 		HashLen:    3,
-		FileOffset: 0x66,
+		FileOffset: 96,
+		headerSize: 26,
 	}, buckets[2].BucketHeader)
 
 	// Test lookups.
@@ -250,7 +264,7 @@ func TestBuilder8_Random(t *testing.T) {
 
 		value, err := bucket.Lookup(key)
 		require.NoError(t, err)
-		require.True(t, btoi(value) > 0)
+		require.Greater(t, btoi(value), uint64(0), "The found value must be > 0")
 	}
 	t.Logf("Queried %d items", queries)
 	t.Logf("Query speed: %f/s", float64(queries)/time.Since(preQuery).Seconds())

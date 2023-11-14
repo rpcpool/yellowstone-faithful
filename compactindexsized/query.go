@@ -6,6 +6,8 @@ package compactindexsized
 // - The values it indexes are N-byte values instead of 8-byte values. This allows to index CIDs (in particular sha256+CBOR CIDs), and other values, directly.
 
 import (
+	"bytes"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -14,9 +16,12 @@ import (
 // DB is a compactindex handle.
 type DB struct {
 	Header
-	Stream   io.ReaderAt
-	prefetch bool
+	headerSize int64
+	Stream     io.ReaderAt
+	prefetch   bool
 }
+
+var ErrInvalidMagic = errors.New("invalid magic")
 
 // Open returns a handle to access a compactindex.
 //
@@ -25,16 +30,28 @@ type DB struct {
 func Open(stream io.ReaderAt) (*DB, error) {
 	// Read the static 32-byte header.
 	// Ignore errors if the read fails after filling the buffer (e.g. EOF).
-	var fileHeader [headerSize]byte
-	n, readErr := stream.ReadAt(fileHeader[:], 0)
-	if n < len(fileHeader) {
+	var magicAndSize [8 + 4]byte
+	n, readErr := stream.ReadAt(magicAndSize[:], 0)
+	if n < len(magicAndSize) {
+		// ReadAt must return non-nil error here.
+		return nil, readErr
+	}
+	// check magic
+	if !bytes.Equal(magicAndSize[:8], Magic[:]) {
+		return nil, ErrInvalidMagic
+	}
+	size := binary.LittleEndian.Uint32(magicAndSize[8:])
+	fileHeaderBuf := make([]byte, 8+4+size)
+	n, readErr = stream.ReadAt(fileHeaderBuf, 0)
+	if n < len(fileHeaderBuf) {
 		// ReadAt must return non-nil error here.
 		return nil, readErr
 	}
 	db := new(DB)
-	if err := db.Header.Load(&fileHeader); err != nil {
+	if err := db.Header.Load(fileHeaderBuf); err != nil {
 		return nil, err
 	}
+	db.headerSize = int64(8 + 4 + size)
 	db.Stream = stream
 	return db, nil
 }
@@ -44,8 +61,13 @@ func (db *DB) Prefetch(yes bool) {
 }
 
 // GetKind returns the kind of the index.
-func (db *DB) GetKind() uint8 {
-	return db.Header.Kind
+func (db *DB) GetKind() []byte {
+	return db.Header.Meta.GetFirst(KeyKind)
+}
+
+// KindIs returns whether the index is of the given kind.
+func (db *DB) KindIs(kind []byte) bool {
+	return db.Header.Meta.Count(KeyKind) > 0 && bytes.Equal(db.Header.Meta.GetFirst(KeyKind), kind)
 }
 
 func (db *DB) GetValueSize() uint64 {
@@ -85,6 +107,7 @@ func (db *DB) GetBucket(i uint) (*Bucket, error) {
 			OffsetWidth: uint8(db.GetValueSize()),
 		},
 	}
+	bucket.BucketHeader.headerSize = db.headerSize
 	// Read bucket header.
 	readErr := bucket.BucketHeader.readFrom(db.Stream, i)
 	if readErr != nil {
@@ -118,13 +141,13 @@ func (db *DB) entryStride() uint8 {
 	return uint8(HashSize) + uint8(offsetSize)
 }
 
-func bucketOffset(i uint) int64 {
+func bucketOffset(headerSize int64, i uint) int64 {
 	return headerSize + int64(i)*bucketHdrLen
 }
 
 func (b *BucketHeader) readFrom(rd io.ReaderAt, i uint) error {
 	var buf [bucketHdrLen]byte
-	n, err := rd.ReadAt(buf[:], bucketOffset(i))
+	n, err := rd.ReadAt(buf[:], bucketOffset(b.headerSize, i))
 	if n < len(buf) {
 		return err
 	}
@@ -135,7 +158,7 @@ func (b *BucketHeader) readFrom(rd io.ReaderAt, i uint) error {
 func (b *BucketHeader) writeTo(wr io.WriterAt, i uint) error {
 	var buf [bucketHdrLen]byte
 	b.Store(&buf)
-	_, err := wr.WriteAt(buf[:], bucketOffset(i))
+	_, err := wr.WriteAt(buf[:], bucketOffset(b.headerSize, i))
 	return err
 }
 
