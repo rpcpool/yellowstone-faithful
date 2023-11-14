@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/rpcpool/yellowstone-faithful/compactindex36"
+	"github.com/rpcpool/yellowstone-faithful/compactindexsized"
 	"github.com/sourcegraph/jsonrpc2"
 	"k8s.io/klog/v2"
 )
@@ -27,7 +27,7 @@ func (ser *deprecatedRPCServer) handleGetTransaction(ctx context.Context, conn *
 
 	transactionNode, err := ser.GetTransaction(WithSubrapghPrefetch(ctx, true), sig)
 	if err != nil {
-		if errors.Is(err, compactindex36.ErrNotFound) {
+		if errors.Is(err, compactindexsized.ErrNotFound) {
 			conn.ReplyRaw(
 				ctx,
 				req.ID,

@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/rpcpool/yellowstone-faithful/compactindex36"
+	"github.com/rpcpool/yellowstone-faithful/compactindexsized"
 	"github.com/sourcegraph/jsonrpc2"
 )
 
@@ -30,7 +30,7 @@ func (multi *MultiEpoch) handleGetBlockTime(ctx context.Context, conn *requestCo
 
 	block, err := epochHandler.GetBlock(WithSubrapghPrefetch(ctx, false), blockNum)
 	if err != nil {
-		if errors.Is(err, compactindex36.ErrNotFound) {
+		if errors.Is(err, compactindexsized.ErrNotFound) {
 			return &jsonrpc2.Error{
 				Code:    CodeNotFound,
 				Message: fmt.Sprintf("Slot %d was skipped, or missing in long-term storage", blockNum),

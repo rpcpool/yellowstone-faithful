@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/davecgh/go-spew/spew"
-	"github.com/rpcpool/yellowstone-faithful/compactindex36"
+	"github.com/rpcpool/yellowstone-faithful/compactindexsized"
 	"github.com/rpcpool/yellowstone-faithful/gsfa"
 	"github.com/urfave/cli/v2"
 )
@@ -61,7 +61,7 @@ func newCmd_rpcServerFilecoin() *cli.Command {
 			}
 			defer slotToCidIndexFile.Close()
 
-			slotToCidIndex, err := compactindex36.Open(slotToCidIndexFile)
+			slotToCidIndex, err := compactindexsized.Open(slotToCidIndexFile)
 			if err != nil {
 				return fmt.Errorf("failed to open slot-to-cid index: %w", err)
 			}
@@ -76,7 +76,7 @@ func newCmd_rpcServerFilecoin() *cli.Command {
 			}
 			defer sigToCidIndexFile.Close()
 
-			sigToCidIndex, err := compactindex36.Open(sigToCidIndexFile)
+			sigToCidIndex, err := compactindexsized.Open(sigToCidIndexFile)
 			if err != nil {
 				return fmt.Errorf("failed to open sig-to-cid index: %w", err)
 			}

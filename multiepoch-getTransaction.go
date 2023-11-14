@@ -9,7 +9,7 @@ import (
 
 	"github.com/gagliardetto/solana-go"
 	"github.com/rpcpool/yellowstone-faithful/bucketteer"
-	"github.com/rpcpool/yellowstone-faithful/compactindex36"
+	"github.com/rpcpool/yellowstone-faithful/compactindexsized"
 	"github.com/sourcegraph/jsonrpc2"
 	"k8s.io/klog/v2"
 )
@@ -163,7 +163,7 @@ func (multi *MultiEpoch) handleGetTransaction(ctx context.Context, conn *request
 
 	transactionNode, err := epochHandler.GetTransaction(WithSubrapghPrefetch(ctx, true), sig)
 	if err != nil {
-		if errors.Is(err, compactindex36.ErrNotFound) {
+		if errors.Is(err, compactindexsized.ErrNotFound) {
 			// NOTE: solana just returns null here in case of transaction not found
 			return &jsonrpc2.Error{
 				Code:    CodeNotFound,

@@ -13,7 +13,7 @@ import (
 	"github.com/ipfs/go-cid"
 	carv2 "github.com/ipld/go-car/v2"
 	"github.com/rpcpool/yellowstone-faithful/bucketteer"
-	"github.com/rpcpool/yellowstone-faithful/compactindex36"
+	"github.com/rpcpool/yellowstone-faithful/compactindexsized"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"k8s.io/klog/v2"
 )
@@ -58,10 +58,10 @@ func CreateIndex_sig2cid(ctx context.Context, tmpDir string, carPath string, ind
 	}
 
 	klog.Infof("Creating builder with %d items", numItems)
-	c2o, err := compactindex36.NewBuilder(
+	c2o, err := compactindexsized.NewBuilderSized(
 		tmpDir,
 		uint(numItems), // TODO: what if the number of real items is less than this?
-		(0),
+		36,
 	)
 	if err != nil {
 		return "", fmt.Errorf("failed to open index store: %w", err)
@@ -90,7 +90,7 @@ func CreateIndex_sig2cid(ctx context.Context, tmpDir string, carPath string, ind
 			var buf [36]byte
 			copy(buf[:], c.Bytes()[:36])
 
-			err = c2o.Insert(sig[:], buf)
+			err = c2o.Insert(sig[:], buf[:])
 			if err != nil {
 				return fmt.Errorf("failed to put cid to offset: %w", err)
 			}
@@ -168,7 +168,7 @@ func VerifyIndex_sig2cid(ctx context.Context, carPath string, indexFilePath stri
 	}
 	defer indexFile.Close()
 
-	c2o, err := compactindex36.Open(indexFile)
+	c2o, err := compactindexsized.Open(indexFile)
 	if err != nil {
 		return fmt.Errorf("failed to open index: %w", err)
 	}
@@ -299,7 +299,7 @@ func VerifyIndex_sigExists(ctx context.Context, carPath string, indexFilePath st
 	return nil
 }
 
-func findCidFromSignature(db *compactindex36.DB, sig solana.Signature) (cid.Cid, error) {
+func findCidFromSignature(db *compactindexsized.DB, sig solana.Signature) (cid.Cid, error) {
 	bucket, err := db.LookupBucket(sig[:])
 	if err != nil {
 		return cid.Cid{}, fmt.Errorf("failed to lookup bucket for %s: %w", sig, err)

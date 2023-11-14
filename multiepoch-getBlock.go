@@ -16,7 +16,7 @@ import (
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-car/util"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
-	"github.com/rpcpool/yellowstone-faithful/compactindex36"
+	"github.com/rpcpool/yellowstone-faithful/compactindexsized"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	solanablockrewards "github.com/rpcpool/yellowstone-faithful/solana-block-rewards"
 	"github.com/sourcegraph/jsonrpc2"
@@ -54,7 +54,7 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 
 	block, err := epochHandler.GetBlock(WithSubrapghPrefetch(ctx, true), slot)
 	if err != nil {
-		if errors.Is(err, compactindex36.ErrNotFound) {
+		if errors.Is(err, compactindexsized.ErrNotFound) {
 			return &jsonrpc2.Error{
 				Code:    CodeNotFound,
 				Message: fmt.Sprintf("Slot %d was skipped, or missing in long-term storage", slot),

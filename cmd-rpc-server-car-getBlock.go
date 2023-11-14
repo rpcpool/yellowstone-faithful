@@ -17,7 +17,7 @@ import (
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-car/util"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
-	"github.com/rpcpool/yellowstone-faithful/compactindex36"
+	"github.com/rpcpool/yellowstone-faithful/compactindexsized"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	solanablockrewards "github.com/rpcpool/yellowstone-faithful/solana-block-rewards"
 	"github.com/sourcegraph/jsonrpc2"
@@ -87,7 +87,7 @@ func (ser *deprecatedRPCServer) handleGetBlock(ctx context.Context, conn *reques
 	block, err := ser.GetBlock(WithSubrapghPrefetch(ctx, true), slot)
 	if err != nil {
 		klog.Errorf("failed to get block: %v", err)
-		if errors.Is(err, compactindex36.ErrNotFound) {
+		if errors.Is(err, compactindexsized.ErrNotFound) {
 			conn.ReplyWithError(
 				ctx,
 				req.ID,

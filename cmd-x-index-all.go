@@ -17,7 +17,6 @@ import (
 	"github.com/ipfs/go-cid"
 	carv1 "github.com/ipld/go-car"
 	"github.com/rpcpool/yellowstone-faithful/bucketteer"
-	"github.com/rpcpool/yellowstone-faithful/compactindex36"
 	"github.com/rpcpool/yellowstone-faithful/compactindexsized"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
 	"github.com/urfave/cli/v2"
@@ -131,10 +130,6 @@ func createAllIndexes(
 	rootCID := rd.header.Roots[0]
 
 	klog.Infof("Getting car file size")
-	targetFileSize, err := getFileSize(carPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get car file size: %w", err)
-	}
 
 	klog.Infof("Counting items in car file...")
 	numItems, err := carCountItemsByFirstByte(carPath)
@@ -167,7 +162,6 @@ func createAllIndexes(
 		tmpDir,
 		indexDir,
 		numItems[byte(iplddecoders.KindBlock)],
-		targetFileSize,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create slot_to_cid index: %w", err)
@@ -178,7 +172,6 @@ func createAllIndexes(
 		tmpDir,
 		indexDir,
 		numItems[byte(iplddecoders.KindTransaction)],
-		targetFileSize,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create sig_to_cid index: %w", err)
@@ -417,23 +410,22 @@ type Builder_SignatureToCid struct {
 	tmpDir   string
 	indexDir string
 	carPath  string
-	index    *compactindex36.Builder
+	index    *compactindexsized.Builder
 }
 
 func NewBuilder_SignatureToCid(
 	tmpDir string,
 	indexDir string,
 	numItems uint64,
-	targetFileSize uint64,
 ) (*Builder_SignatureToCid, error) {
 	tmpDir = filepath.Join(tmpDir, "index-sig-to-cid-"+time.Now().Format("20060102-150405.000000000")+fmt.Sprintf("-%d", rand.Int63()))
 	if err := os.MkdirAll(tmpDir, 0o755); err != nil {
 		return nil, fmt.Errorf("failed to create sig_to_cid tmp dir: %w", err)
 	}
-	index, err := compactindex36.NewBuilder(
+	index, err := compactindexsized.NewBuilderSized(
 		tmpDir,
 		uint(numItems),
-		(targetFileSize),
+		36,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create sig_to_cid index: %w", err)
@@ -448,7 +440,7 @@ func NewBuilder_SignatureToCid(
 func (b *Builder_SignatureToCid) Put(signature solana.Signature, cid cid.Cid) error {
 	var buf [36]byte
 	copy(buf[:], cid.Bytes()[:36])
-	return b.index.Insert(signature[:], buf)
+	return b.index.Insert(signature[:], buf[:])
 }
 
 func (b *Builder_SignatureToCid) Close() error {
@@ -475,23 +467,22 @@ type Builder_SlotToCid struct {
 	tmpDir   string
 	indexDir string
 	carPath  string
-	index    *compactindex36.Builder
+	index    *compactindexsized.Builder
 }
 
 func NewBuilder_SlotToCid(
 	tmpDir string,
 	indexDir string,
 	numItems uint64,
-	targetFileSize uint64,
 ) (*Builder_SlotToCid, error) {
 	tmpDir = filepath.Join(tmpDir, "index-slot-to-cid-"+time.Now().Format("20060102-150405.000000000")+fmt.Sprintf("-%d", rand.Int63()))
 	if err := os.MkdirAll(tmpDir, 0o755); err != nil {
 		return nil, fmt.Errorf("failed to create slot_to_cid tmp dir: %w", err)
 	}
-	index, err := compactindex36.NewBuilder(
+	index, err := compactindexsized.NewBuilderSized(
 		tmpDir,
 		uint(numItems),
-		(targetFileSize),
+		36,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create slot_to_cid index: %w", err)
@@ -506,7 +497,7 @@ func NewBuilder_SlotToCid(
 func (b *Builder_SlotToCid) Put(slot uint64, cid cid.Cid) error {
 	var buf [36]byte
 	copy(buf[:], cid.Bytes()[:36])
-	return b.index.Insert(uint64ToLeBytes(slot), buf)
+	return b.index.Insert(uint64ToLeBytes(slot), buf[:])
 }
 
 func (b *Builder_SlotToCid) Close() error {
@@ -743,7 +734,7 @@ func (i *Index_CidToOffset) Close() error {
 
 type Index_SlotToCid struct {
 	file *os.File
-	db   *compactindex36.DB
+	db   *compactindexsized.DB
 }
 
 func OpenIndex_SlotToCid(
@@ -754,7 +745,7 @@ func OpenIndex_SlotToCid(
 		return nil, fmt.Errorf("failed to open index file: %w", err)
 	}
 
-	index, err := compactindex36.Open(indexFile)
+	index, err := compactindexsized.Open(indexFile)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open index: %w", err)
 	}
@@ -779,7 +770,7 @@ func (i *Index_SlotToCid) Close() error {
 
 type Index_SigToCid struct {
 	file *os.File
-	db   *compactindex36.DB
+	db   *compactindexsized.DB
 }
 
 func OpenIndex_SigToCid(
@@ -790,7 +781,7 @@ func OpenIndex_SigToCid(
 		return nil, fmt.Errorf("failed to open index file: %w", err)
 	}
 
-	index, err := compactindex36.Open(indexFile)
+	index, err := compactindexsized.Open(indexFile)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open index: %w", err)
 	}

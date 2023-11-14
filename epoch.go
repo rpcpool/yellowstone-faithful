@@ -17,7 +17,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/patrickmn/go-cache"
 	"github.com/rpcpool/yellowstone-faithful/bucketteer"
-	"github.com/rpcpool/yellowstone-faithful/compactindex36"
 	"github.com/rpcpool/yellowstone-faithful/compactindexsized"
 	"github.com/rpcpool/yellowstone-faithful/gsfa"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
@@ -36,8 +35,8 @@ type Epoch struct {
 	remoteCarReader     ReaderAtCloser
 	remoteCarHeaderSize uint64
 	cidToOffsetIndex    *compactindexsized.DB
-	slotToCidIndex      *compactindex36.DB
-	sigToCidIndex       *compactindex36.DB
+	slotToCidIndex      *compactindexsized.DB
+	sigToCidIndex       *compactindexsized.DB
 	sigExists           *bucketteer.Reader
 	gsfaReader          *gsfa.GsfaReader
 	cidToNodeCache      *cache.Cache // TODO: prevent OOM
@@ -139,7 +138,7 @@ func NewEpochFromConfig(config *Config, c *cli.Context) (*Epoch, error) {
 		}
 		ep.onClose = append(ep.onClose, slotToCidIndexFile.Close)
 
-		slotToCidIndex, err := compactindex36.Open(slotToCidIndexFile)
+		slotToCidIndex, err := compactindexsized.Open(slotToCidIndexFile)
 		if err != nil {
 			return nil, fmt.Errorf("failed to open slot-to-cid index: %w", err)
 		}
@@ -160,7 +159,7 @@ func NewEpochFromConfig(config *Config, c *cli.Context) (*Epoch, error) {
 		}
 		ep.onClose = append(ep.onClose, sigToCidIndexFile.Close)
 
-		sigToCidIndex, err := compactindex36.Open(sigToCidIndexFile)
+		sigToCidIndex, err := compactindexsized.Open(sigToCidIndexFile)
 		if err != nil {
 			return nil, fmt.Errorf("failed to open sig-to-cid index: %w", err)
 		}

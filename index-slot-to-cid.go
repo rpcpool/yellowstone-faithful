@@ -11,7 +11,7 @@ import (
 	"github.com/dustin/go-humanize"
 	"github.com/ipfs/go-cid"
 	carv2 "github.com/ipld/go-car/v2"
-	"github.com/rpcpool/yellowstone-faithful/compactindex36"
+	"github.com/rpcpool/yellowstone-faithful/compactindexsized"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"k8s.io/klog/v2"
 )
@@ -56,10 +56,10 @@ func CreateIndex_slot2cid(ctx context.Context, tmpDir string, carPath string, in
 	}
 
 	klog.Infof("Creating builder with %d items", numItems)
-	c2o, err := compactindex36.NewBuilder(
+	c2o, err := compactindexsized.NewBuilderSized(
 		tmpDir,
 		uint(numItems), // TODO: what if the number of real items is less than this?
-		(0),
+		36,
 	)
 	if err != nil {
 		return "", fmt.Errorf("failed to open index store: %w", err)
@@ -87,7 +87,7 @@ func CreateIndex_slot2cid(ctx context.Context, tmpDir string, carPath string, in
 			var buf [36]byte
 			copy(buf[:], c.Bytes()[:36])
 
-			err = c2o.Insert(slotBytes, buf)
+			err = c2o.Insert(slotBytes, buf[:])
 			if err != nil {
 				return fmt.Errorf("failed to put cid to offset: %w", err)
 			}
@@ -165,7 +165,7 @@ func VerifyIndex_slot2cid(ctx context.Context, carPath string, indexFilePath str
 	}
 	defer indexFile.Close()
 
-	c2o, err := compactindex36.Open(indexFile)
+	c2o, err := compactindexsized.Open(indexFile)
 	if err != nil {
 		return fmt.Errorf("failed to open index: %w", err)
 	}
@@ -214,7 +214,7 @@ func uint64ToLeBytes(n uint64) []byte {
 }
 
 // findCidFromSlot finds the CID for the given slot number in the given index.
-func findCidFromSlot(db *compactindex36.DB, slotNum uint64) (cid.Cid, error) {
+func findCidFromSlot(db *compactindexsized.DB, slotNum uint64) (cid.Cid, error) {
 	slotBytes := uint64ToLeBytes(uint64(slotNum))
 	bucket, err := db.LookupBucket(slotBytes)
 	if err != nil {

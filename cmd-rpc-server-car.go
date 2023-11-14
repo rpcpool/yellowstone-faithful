@@ -12,7 +12,6 @@ import (
 	"github.com/ipld/go-car/util"
 	carv2 "github.com/ipld/go-car/v2"
 	"github.com/patrickmn/go-cache"
-	"github.com/rpcpool/yellowstone-faithful/compactindex36"
 	"github.com/rpcpool/yellowstone-faithful/compactindexsized"
 	"github.com/rpcpool/yellowstone-faithful/gsfa"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
@@ -90,7 +89,7 @@ func newCmd_rpcServerCar() *cli.Command {
 			}
 			defer slotToCidIndexFile.Close()
 
-			slotToCidIndex, err := compactindex36.Open(slotToCidIndexFile)
+			slotToCidIndex, err := compactindexsized.Open(slotToCidIndexFile)
 			if err != nil {
 				return fmt.Errorf("failed to open index: %w", err)
 			}
@@ -105,7 +104,7 @@ func newCmd_rpcServerCar() *cli.Command {
 			}
 			defer sigToCidIndexFile.Close()
 
-			sigToCidIndex, err := compactindex36.Open(sigToCidIndexFile)
+			sigToCidIndex, err := compactindexsized.Open(sigToCidIndexFile)
 			if err != nil {
 				return fmt.Errorf("failed to open index: %w", err)
 			}
@@ -159,8 +158,8 @@ func createAndStartRPCServer_withCar(
 	carReader *carv2.Reader,
 	remoteCarReader ReaderAtCloser,
 	cidToOffsetIndex *compactindexsized.DB,
-	slotToCidIndex *compactindex36.DB,
-	sigToCidIndex *compactindex36.DB,
+	slotToCidIndex *compactindexsized.DB,
+	sigToCidIndex *compactindexsized.DB,
 	gsfaReader *gsfa.GsfaReader,
 ) error {
 	if options == nil {
@@ -190,8 +189,8 @@ func createAndStartRPCServer_lassie(
 	ctx context.Context,
 	options *RpcServerOptions,
 	lassieWr *lassieWrapper,
-	slotToCidIndex *compactindex36.DB,
-	sigToCidIndex *compactindex36.DB,
+	slotToCidIndex *compactindexsized.DB,
+	sigToCidIndex *compactindexsized.DB,
 	gsfaReader *gsfa.GsfaReader,
 ) error {
 	if options == nil {
@@ -225,8 +224,8 @@ type deprecatedRPCServer struct {
 	localCarReader   *carv2.Reader
 	remoteCarReader  ReaderAtCloser
 	cidToOffsetIndex *compactindexsized.DB
-	slotToCidIndex   *compactindex36.DB
-	sigToCidIndex    *compactindex36.DB
+	slotToCidIndex   *compactindexsized.DB
+	sigToCidIndex    *compactindexsized.DB
 	gsfaReader       *gsfa.GsfaReader
 	cidToBlockCache  *cache.Cache // TODO: prevent OOM
 	options          *RpcServerOptions
