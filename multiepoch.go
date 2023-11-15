@@ -401,7 +401,7 @@ func sanitizeMethod(method string) string {
 
 func isValidLocalMethod(method string) bool {
 	switch method {
-	case "getBlock", "getTransaction", "getSignaturesForAddress", "getBlockTime":
+	case "getBlock", "getTransaction", "getSignaturesForAddress", "getBlockTime", "getGenesisHash":
 		return true
 	default:
 		return false
@@ -419,6 +419,8 @@ func (ser *MultiEpoch) handleRequest(ctx context.Context, conn *requestContext, 
 		return ser.handleGetSignaturesForAddress(ctx, conn, req)
 	case "getBlockTime":
 		return ser.handleGetBlockTime(ctx, conn, req)
+	case "getGenesisHash":
+		return ser.handleGetGenesisHash(ctx, conn, req)
 	default:
 		return &jsonrpc2.Error{
 			Code:    jsonrpc2.CodeMethodNotFound,
