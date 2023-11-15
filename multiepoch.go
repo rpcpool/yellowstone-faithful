@@ -298,19 +298,19 @@ func newMultiEpochHandler(handler *MultiEpoch, lsConf *ListenerConfig) func(ctx 
 		method := rpcRequest.Method
 
 		if method == "getVersion" {
-      versionInfo := make(map[string]any)
+			versionInfo := make(map[string]any)
 			faithfulVersion := handler.GetFaithfulVersionInfo()
-      versionInfo["faithful"] = faithfulVersion
+			versionInfo["faithful"] = faithfulVersion
 
-      solanaVersion := handler.GetSolanaVersionInfo()
-      for k,v := range solanaVersion {
-        versionInfo[k] = v
-      }
+			solanaVersion := handler.GetSolanaVersionInfo()
+			for k, v := range solanaVersion {
+				versionInfo[k] = v
+			}
 
 			err := rqCtx.ReplyRaw(
 				reqCtx,
 				rpcRequest.ID,
-        versionInfo,
+				versionInfo,
 			)
 			if err != nil {
 				klog.Errorf("[%s] failed to reply to getVersion: %v", reqID, err)
