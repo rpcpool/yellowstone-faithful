@@ -1,0 +1,11 @@
+[package]
+name = "faithful-rust"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+solana-client = "1.16.13"
+solana-sdk = "1.16.13"
+solana-transaction-status = "1.16.13"
