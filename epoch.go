@@ -22,6 +22,7 @@ import (
 	"github.com/rpcpool/yellowstone-faithful/gsfa"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
+	"github.com/rpcpool/yellowstone-faithful/radiance/genesis"
 	"github.com/urfave/cli/v2"
 	"k8s.io/klog/v2"
 )
@@ -30,6 +31,8 @@ type Epoch struct {
 	epoch          uint64
 	isFilecoinMode bool // true if the epoch is in Filecoin mode (i.e. Lassie mode)
 	config         *Config
+	// genesis:
+	genesis *GenesisContainer
 	// contains indexes and block data for the epoch
 	lassieFetcher       *lassieWrapper
 	localCarReader      *carv2.Reader
@@ -92,6 +95,10 @@ func (e *Epoch) Close() error {
 	return errors.Join(multiErr...)
 }
 
+func (e *Epoch) GetGenesis() *GenesisContainer {
+	return e.genesis
+}
+
 func NewEpochFromConfig(config *Config, c *cli.Context) (*Epoch, error) {
 	if config == nil {
 		return nil, fmt.Errorf("config must not be nil")
@@ -104,6 +111,19 @@ func NewEpochFromConfig(config *Config, c *cli.Context) (*Epoch, error) {
 		isFilecoinMode: isLassieMode,
 		config:         config,
 		onClose:        make([]func() error, 0),
+	}
+	{
+		// if epoch is 0, then try loading the genesis from the config:
+		if *config.Epoch == 0 {
+			genesisConfig, ha, err := genesis.ReadGenesisFromFile(string(config.Genesis.URI))
+			if err != nil {
+				return nil, fmt.Errorf("failed to read genesis: %w", err)
+			}
+			ep.genesis = &GenesisContainer{
+				Hash:   solana.HashFromBytes(ha[:]),
+				Config: genesisConfig,
+			}
+		}
 	}
 
 	if isCarMode {

@@ -249,26 +249,6 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 	}
 	tim.time("get entries")
 
-	if slot == 0 {
-		// NOTE: we assume this is on mainnet.
-		blockZeroBlocktime := uint64(1584368940)
-		zeroBlockHeight := uint64(0)
-		blockZeroBlockHash := lastEntryHash.String()
-		var blockResp GetBlockResponse
-		blockResp.Transactions = make([]GetTransactionResponse, 0)
-		blockResp.BlockTime = &blockZeroBlocktime
-		blockResp.Blockhash = lastEntryHash.String()
-		blockResp.ParentSlot = uint64(0)
-		blockResp.Rewards = make([]any, 0)
-		blockResp.BlockHeight = &zeroBlockHeight
-		blockResp.PreviousBlockhash = &blockZeroBlockHash // NOTE: this is what solana RPC does. Should it be nil instead? Or should it be the genesis hash?
-		return nil, conn.ReplyRaw(
-			ctx,
-			req.ID,
-			blockResp,
-		)
-	}
-
 	var allTransactions []GetTransactionResponse
 	var rewards any
 	hasRewards := !block.Rewards.(cidlink.Link).Cid.Equals(DummyCID)
@@ -423,6 +403,21 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 	blockResp.ParentSlot = uint64(block.Meta.Parent_slot)
 	blockResp.Rewards = rewards
 
+	if slot == 0 {
+		genesis := epochHandler.GetGenesis()
+		if genesis != nil {
+			blockZeroBlocktime := uint64(genesis.Config.CreationTime.Unix())
+			blockResp.BlockTime = &blockZeroBlocktime
+		}
+		blockResp.ParentSlot = uint64(0)
+
+		zeroBlockHeight := uint64(0)
+		blockResp.BlockHeight = &zeroBlockHeight
+
+		blockZeroBlockHash := lastEntryHash.String()
+		blockResp.PreviousBlockhash = &blockZeroBlockHash // NOTE: this is what solana RPC does. Should it be nil instead? Or should it be the genesis hash?
+	}
+
 	{
 		blockHeight, ok := block.GetBlockHeight()
 		if ok {
@@ -460,6 +455,15 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 		}
 	}
 	tim.time("get parent block")
+
+	{
+		if len(blockResp.Transactions) == 0 {
+			blockResp.Transactions = make([]GetTransactionResponse, 0)
+		}
+		if blockResp.Rewards == nil || len(blockResp.Rewards.([]any)) == 0 {
+			blockResp.Rewards = make([]any, 0)
+		}
+	}
 
 	err = conn.Reply(
 		ctx,

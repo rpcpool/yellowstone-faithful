@@ -125,6 +125,9 @@ type Config struct {
 			URI URI `json:"uri" yaml:"uri"`
 		} `json:"sig_exists" yaml:"sig_exists"`
 	} `json:"indexes" yaml:"indexes"`
+	Genesis struct {
+		URI URI `json:"uri" yaml:"uri"`
+	} `json:"genesis" yaml:"genesis"`
 }
 
 func (c *Config) ConfigFilepath() string {
@@ -293,6 +296,21 @@ func (c *Config) Validate() error {
 			// gsfa index (optional), if set, must be a local directory:
 			if !c.Indexes.Gsfa.URI.IsZero() && !c.Indexes.Gsfa.URI.IsLocal() {
 				return fmt.Errorf("indexes.gsfa.uri must be a local directory")
+			}
+		}
+	}
+	{
+		// if epoch is 0, then the genesis URI must be set:
+		if *c.Epoch == 0 {
+			if c.Genesis.URI.IsZero() {
+				return fmt.Errorf("epoch is 0, but genesis.uri is not set")
+			}
+			if !c.Genesis.URI.IsValid() {
+				return fmt.Errorf("genesis.uri is invalid")
+			}
+			// only support local genesis files for now:
+			if !c.Genesis.URI.IsLocal() {
+				return fmt.Errorf("genesis.uri must be a local file")
 			}
 		}
 	}
