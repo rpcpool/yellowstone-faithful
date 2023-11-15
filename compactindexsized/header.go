@@ -25,11 +25,11 @@ func (m *Meta) MarshalBinary() ([]byte, error) {
 		return nil, fmt.Errorf("number of key-value pairs %d exceeds max %d", len(m.KeyVals), MaxNumKVs)
 	}
 	buf.WriteByte(byte(len(m.KeyVals)))
-	for _, kv := range m.KeyVals {
+	for i, kv := range m.KeyVals {
 		{
 			keyLen := len(kv.Key)
 			if keyLen > MaxKeySize {
-				return nil, fmt.Errorf("key size %d exceeds max %d", keyLen, MaxKeySize)
+				return nil, fmt.Errorf("key %d size %d exceeds max %d", i, keyLen, MaxKeySize)
 			}
 			buf.WriteByte(byte(keyLen))
 			buf.Write(kv.Key)
@@ -37,7 +37,7 @@ func (m *Meta) MarshalBinary() ([]byte, error) {
 		{
 			valueLen := len(kv.Value)
 			if valueLen > MaxValueSize {
-				return nil, fmt.Errorf("value size %d exceeds max %d", valueLen, MaxValueSize)
+				return nil, fmt.Errorf("value %d size %d exceeds max %d", i, valueLen, MaxValueSize)
 			}
 			buf.WriteByte(byte(valueLen))
 			buf.Write(kv.Value)
@@ -61,21 +61,21 @@ func (m *Meta) UnmarshalBinary(b []byte) error {
 		{
 			keyLen, err := reader.ReadByte()
 			if err != nil {
-				return err
+				return fmt.Errorf("failed to read key length %d: %w", i, err)
 			}
 			kv.Key = make([]byte, keyLen)
 			if _, err := io.ReadFull(reader, kv.Key); err != nil {
-				return err
+				return fmt.Errorf("failed to read key %d: %w", i, err)
 			}
 		}
 		{
 			valueLen, err := reader.ReadByte()
 			if err != nil {
-				return err
+				return fmt.Errorf("failed to read value length %d: %w", i, err)
 			}
 			kv.Value = make([]byte, valueLen)
 			if _, err := io.ReadFull(reader, kv.Value); err != nil {
-				return err
+				return fmt.Errorf("failed to read value %d: %w", i, err)
 			}
 		}
 		m.KeyVals = append(m.KeyVals, kv)
@@ -112,6 +112,40 @@ func (m *Meta) GetFirst(key []byte) []byte {
 		}
 	}
 	return nil
+}
+
+// ReadFirst copies the first value for the given key into the given value.
+// It returns the number of bytes copied.
+func (m *Meta) ReadFirst(key []byte, valueDst []byte) int {
+	for _, kv := range m.KeyVals {
+		if bytes.Equal(kv.Key, key) {
+			return copy(valueDst, kv.Value)
+		}
+	}
+	return 0
+}
+
+// ReplaceFirst replaces the first value for the given key.
+func (m *Meta) ReplaceFirst(key, value []byte) error {
+	for i, kv := range m.KeyVals {
+		if bytes.Equal(kv.Key, key) {
+			m.KeyVals[i].Value = value
+			return nil
+		}
+	}
+	return fmt.Errorf("key %q not found", key)
+}
+
+// HasDuplicateKeys returns true if there are duplicate keys.
+func (m *Meta) HasDuplicateKeys() bool {
+	seen := make(map[string]struct{})
+	for _, kv := range m.KeyVals {
+		if _, ok := seen[string(kv.Key)]; ok {
+			return true
+		}
+		seen[string(kv.Key)] = struct{}{}
+	}
+	return false
 }
 
 func (m *Meta) Remove(key []byte) {
