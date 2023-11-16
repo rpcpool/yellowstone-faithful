@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/binary"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/gagliardetto/solana-go"
 	"github.com/ipfs/go-cid"
+	carv1 "github.com/ipld/go-car"
 	"github.com/ipld/go-car/util"
 	carv2 "github.com/ipld/go-car/v2"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -34,19 +36,19 @@ type Epoch struct {
 	// genesis:
 	genesis *GenesisContainer
 	// contains indexes and block data for the epoch
-	lassieFetcher       *lassieWrapper
-	localCarReader      *carv2.Reader
-	remoteCarReader     ReaderAtCloser
-	remoteCarHeaderSize uint64
-	cidToOffsetIndex    *compactindex.DB
-	slotToCidIndex      *compactindex36.DB
-	sigToCidIndex       *compactindex36.DB
-	sigExists           *bucketteer.Reader
-	gsfaReader          *gsfa.GsfaReader
-	cidToNodeCache      *cache.Cache // TODO: prevent OOM
-	onClose             []func() error
-	slotToCidCache      *cache.Cache
-	cidToOffsetCache    *cache.Cache
+	lassieFetcher    *lassieWrapper
+	localCarReader   *carv2.Reader
+	remoteCarReader  ReaderAtCloser
+	carHeaderSize    uint64
+	cidToOffsetIndex *compactindex.DB
+	slotToCidIndex   *compactindex36.DB
+	sigToCidIndex    *compactindex36.DB
+	sigExists        *bucketteer.Reader
+	gsfaReader       *gsfa.GsfaReader
+	cidToNodeCache   *cache.Cache // TODO: prevent OOM
+	onClose          []func() error
+	slotToCidCache   *cache.Cache
+	cidToOffsetCache *cache.Cache
 }
 
 func (r *Epoch) getSlotToCidFromCache(slot uint64) (cid.Cid, error, bool) {
@@ -227,7 +229,7 @@ func NewEpochFromConfig(config *Config, c *cli.Context) (*Epoch, error) {
 		ep.localCarReader = localCarReader
 		ep.remoteCarReader = remoteCarReader
 		if remoteCarReader != nil {
-			// read 10 bytes from the CAR file to get the header size
+			// determine the header size so that we know where the data starts:
 			headerSizeBuf, err := readSectionFromReaderAt(remoteCarReader, 0, 10)
 			if err != nil {
 				return nil, fmt.Errorf("failed to read CAR header: %w", err)
@@ -237,7 +239,24 @@ func NewEpochFromConfig(config *Config, c *cli.Context) (*Epoch, error) {
 			if n <= 0 {
 				return nil, fmt.Errorf("failed to decode CAR header size")
 			}
-			ep.remoteCarHeaderSize = uint64(n) + headerSize
+			ep.carHeaderSize = uint64(n) + headerSize
+		}
+		if localCarReader != nil {
+			// determine the header size so that we know where the data starts:
+			dr, err := localCarReader.DataReader()
+			if err != nil {
+				return nil, fmt.Errorf("failed to get local CAR data reader: %w", err)
+			}
+			header, err := readHeader(dr)
+			if err != nil {
+				return nil, fmt.Errorf("failed to read local CAR header: %w", err)
+			}
+			var buf bytes.Buffer
+			if err = carv1.WriteHeader(header, &buf); err != nil {
+				return nil, fmt.Errorf("failed to encode local CAR header: %w", err)
+			}
+			headerSize := uint64(buf.Len())
+			ep.carHeaderSize = headerSize
 		}
 	}
 	{

@@ -69,12 +69,15 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 	tim.time("GetBlock")
 	{
 		prefetcherFromCar := func() error {
-			if slot == 0 {
-				return nil
-			}
 			parentIsInPreviousEpoch := CalcEpochForSlot(uint64(block.Meta.Parent_slot)) != CalcEpochForSlot(slot)
+			if slot == 0 {
+				parentIsInPreviousEpoch = true
+			}
+			if slot > 1 && block.Meta.Parent_slot == 0 {
+				parentIsInPreviousEpoch = true
+			}
 
-			var blockCid, parentCid cid.Cid
+			var blockCid, parentBlockCid cid.Cid
 			wg := new(errgroup.Group)
 			wg.Go(func() (err error) {
 				blockCid, err = epochHandler.FindCidFromSlot(ctx, slot)
@@ -87,7 +90,7 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 				if parentIsInPreviousEpoch {
 					return nil
 				}
-				parentCid, err = epochHandler.FindCidFromSlot(ctx, uint64(block.Meta.Parent_slot))
+				parentBlockCid, err = epochHandler.FindCidFromSlot(ctx, uint64(block.Meta.Parent_slot))
 				if err != nil {
 					return err
 				}
@@ -97,7 +100,17 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 			if err != nil {
 				return err
 			}
-			klog.Infof("%s -> %s", parentCid, blockCid)
+			if slot == 0 {
+				klog.Infof("car start to slot(0)::%s", blockCid)
+			} else {
+				klog.Infof(
+					"slot(%d)::%s to slot(%d)::%s",
+					uint64(block.Meta.Parent_slot),
+					parentBlockCid,
+					slot,
+					blockCid,
+				)
+			}
 			{
 				var blockOffset, parentOffset uint64
 				wg := new(errgroup.Group)
@@ -111,13 +124,12 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 				wg.Go(func() (err error) {
 					if parentIsInPreviousEpoch {
 						// get car file header size
-						parentOffset = epochHandler.remoteCarHeaderSize
+						parentOffset = epochHandler.carHeaderSize
 						return nil
 					}
-					parentOffset, err = epochHandler.FindOffsetFromCid(ctx, parentCid)
+					parentOffset, err = epochHandler.FindOffsetFromCid(ctx, parentBlockCid)
 					if err != nil {
-						// If the parent is not found, it (probably) means that it's outside of the car file.
-						parentOffset = epochHandler.remoteCarHeaderSize
+						return err
 					}
 					return nil
 				})
@@ -128,23 +140,12 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 
 				length := blockOffset - parentOffset
 				MiB := uint64(1024 * 1024)
-				maxSize := MiB * 100
-				if length > maxSize {
-					length = maxSize
+				maxPrefetchSize := MiB * 10 // let's cap prefetching size
+				if length > maxPrefetchSize {
+					length = maxPrefetchSize
 				}
 
-				idealEntrySize := uint64(36190)
-				var start uint64
-				if parentIsInPreviousEpoch {
-					start = parentOffset
-				} else {
-					if parentOffset > idealEntrySize {
-						start = parentOffset - idealEntrySize
-					} else {
-						start = parentOffset
-					}
-					length += idealEntrySize
-				}
+				start := parentOffset
 
 				klog.Infof("prefetching CAR: start=%d length=%d (parent_offset=%d)", start, length, parentOffset)
 				carSection, err := epochHandler.ReadAtFromCar(ctx, start, length)
@@ -152,17 +153,14 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 					return err
 				}
 				dr := bytes.NewReader(carSection)
-				if !parentIsInPreviousEpoch {
-					dr.Seek(int64(idealEntrySize), io.SeekStart)
-				}
 				br := bufio.NewReader(dr)
 
 				gotCid, data, err := util.ReadNode(br)
 				if err != nil {
 					return fmt.Errorf("failed to read first node: %w", err)
 				}
-				if !parentIsInPreviousEpoch && !gotCid.Equals(parentCid) {
-					return fmt.Errorf("CID mismatch: expected %s, got %s", parentCid, gotCid)
+				if !parentIsInPreviousEpoch && !gotCid.Equals(parentBlockCid) {
+					return fmt.Errorf("CID mismatch: expected %s, got %s", parentBlockCid, gotCid)
 				}
 				epochHandler.putNodeInCache(gotCid, data)
 

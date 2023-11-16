@@ -155,6 +155,16 @@ func (m *MultiEpoch) GetFirstAvailableEpochNumber() (uint64, error) {
 	return 0, fmt.Errorf("no epochs available")
 }
 
+func (m *MultiEpoch) Close() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	klog.Info("Closing all epochs...")
+	for _, ep := range m.epochs {
+		ep.Close()
+	}
+	return nil
+}
+
 type ListenerConfig struct {
 	ProxyConfig *ProxyConfig
 }
