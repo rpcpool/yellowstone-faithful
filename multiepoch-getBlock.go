@@ -226,8 +226,6 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 							klog.Errorf("failed to decode Transaction %s: %v", tcid, err)
 							return nil
 						}
-						// NOTE: this messes up the order of transactions,
-						// but we sort them later anyway.
 						mu.Lock()
 						allTransactionNodes[entryIndex][txI] = txNode
 						mu.Unlock()
@@ -449,7 +447,9 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 				blockResp.PreviousBlockhash = &parentEntryHash
 			}
 		} else {
-			klog.Infof("parent slot is in a different epoch, not implemented yet (can't get previousBlockhash)")
+			if slot != 0 {
+				klog.Infof("parent slot is in a different epoch, not implemented yet (can't get previousBlockhash)")
+			}
 		}
 	}
 	tim.time("get parent block")
