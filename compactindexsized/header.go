@@ -104,8 +104,8 @@ func (m *Meta) Add(key, value []byte) error {
 	return nil
 }
 
-// ReplaceFirst replaces the first value for the given key.
-func (m *Meta) ReplaceFirst(key, value []byte) error {
+// Replace replaces the first value for the given key.
+func (m *Meta) Replace(key, value []byte) error {
 	if len(m.KeyVals) >= MaxNumKVs {
 		return fmt.Errorf("number of key-value pairs %d exceeds max %d", len(m.KeyVals), MaxNumKVs)
 	}
@@ -124,14 +124,14 @@ func (m *Meta) ReplaceFirst(key, value []byte) error {
 	return fmt.Errorf("key %q not found", key)
 }
 
-// GetFirst returns the first value for the given key.
-func (m *Meta) GetFirst(key []byte) []byte {
+// Get returns the first value for the given key.
+func (m *Meta) Get(key []byte) ([]byte, bool) {
 	for _, kv := range m.KeyVals {
 		if bytes.Equal(kv.Key, key) {
-			return kv.Value
+			return kv.Value, true
 		}
 	}
-	return nil
+	return nil, false
 }
 
 // ReadFirst copies the first value for the given key into the given value.
@@ -167,8 +167,8 @@ func (m *Meta) Remove(key []byte) {
 	m.KeyVals = newKeyVals
 }
 
-// Get returns all values for the given key.
-func (m *Meta) Get(key []byte) [][]byte {
+// GetAll returns all values for the given key.
+func (m *Meta) GetAll(key []byte) [][]byte {
 	var values [][]byte
 	for _, kv := range m.KeyVals {
 		if bytes.Equal(kv.Key, key) {

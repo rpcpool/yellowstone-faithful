@@ -308,7 +308,9 @@ func TestBuilder36(t *testing.T) {
 	require.NoError(t, err, "Failed to open generated index")
 	require.NotNil(t, db)
 
-	assert.Equal(t, kindSomething, db.GetKind())
+	got, ok := db.GetKind()
+	require.True(t, ok)
+	assert.Equal(t, kindSomething, got)
 
 	// File header assertions.
 	assert.Equal(t, Header{

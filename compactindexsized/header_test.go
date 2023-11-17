@@ -17,13 +17,17 @@ func TestHeaderMeta(t *testing.T) {
 
 	require.Equal(t, 2, meta.Count([]byte("foo")))
 
-	require.Equal(t, []byte("bar"), meta.GetFirst([]byte("foo")))
+	got, ok := meta.Get([]byte("foo"))
+	require.True(t, ok)
+	require.Equal(t, []byte("bar"), got)
 
-	require.Equal(t, [][]byte{[]byte("bar"), []byte("baz")}, meta.Get([]byte("foo")))
+	require.Equal(t, [][]byte{[]byte("bar"), []byte("baz")}, meta.GetAll([]byte("foo")))
 
-	require.Equal(t, [][]byte(nil), meta.Get([]byte("bar")))
+	require.Equal(t, [][]byte(nil), meta.GetAll([]byte("bar")))
 
-	require.Equal(t, []byte(nil), meta.GetFirst([]byte("bar")))
+	got, ok = meta.Get([]byte("bar"))
+	require.False(t, ok)
+	require.Equal(t, []byte(nil), got)
 
 	require.Equal(t, 0, meta.Count([]byte("bar")))
 
