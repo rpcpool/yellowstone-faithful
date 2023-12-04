@@ -94,9 +94,9 @@ func newCmd_rpc() *cli.Command {
 				Destination: &epochLoadConcurrency,
 			},
 			&cli.IntFlag{
-				Name:        "max-cache-size-mb",
+				Name:        "max-cache",
 				Usage:       "Maximum size of the cache in MB",
-				Value:       1024,
+				Value:       0,
 				Destination: &maxCacheSizeMB,
 			},
 		),
@@ -115,7 +115,7 @@ func newCmd_rpc() *cli.Command {
 				fmt.Printf("  - %s\n", configFile)
 			}
 
-			conf := bigcache.DefaultConfig(2 * time.Minute)
+			conf := bigcache.DefaultConfig(5 * time.Minute)
 			conf.HardMaxCacheSize = maxCacheSizeMB
 			allCache, err := hugecache.NewWithConfig(c.Context, conf)
 			if err != nil {
