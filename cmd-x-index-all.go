@@ -13,11 +13,10 @@ import (
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/dustin/go-humanize"
-	"github.com/gagliardetto/solana-go"
 	"github.com/ipfs/go-cid"
 	carv1 "github.com/ipld/go-car"
 	"github.com/rpcpool/yellowstone-faithful/bucketteer"
-	"github.com/rpcpool/yellowstone-faithful/compactindexsized"
+	"github.com/rpcpool/yellowstone-faithful/indexes"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
 	"github.com/urfave/cli/v2"
 	"k8s.io/klog/v2"
@@ -25,6 +24,8 @@ import (
 
 func newCmd_Index_all() *cli.Command {
 	var verify bool
+	var epoch uint64
+	var network indexes.Network
 	return &cli.Command{
 		Name:        "all",
 		Description: "Given a CAR file containing a Solana epoch, create all the necessary indexes and save them in the specified index dir.",
@@ -42,6 +43,22 @@ func newCmd_Index_all() *cli.Command {
 				Name:  "tmp-dir",
 				Usage: "temporary directory to use for storing intermediate files",
 				Value: "",
+			},
+			&cli.Uint64Flag{
+				Name:        "epoch",
+				Usage:       "the epoch of the CAR file",
+				Destination: &epoch,
+			},
+			&cli.StringFlag{
+				Name:  "network",
+				Usage: "the network of the CAR file",
+				Action: func(c *cli.Context, s string) error {
+					network = indexes.Network(s)
+					if !indexes.IsValidNetwork(network) {
+						return fmt.Errorf("invalid network: %s", network)
+					}
+					return nil
+				},
 			},
 		},
 		Subcommands: []*cli.Command{},
@@ -68,7 +85,14 @@ func newCmd_Index_all() *cli.Command {
 					klog.Infof("Took %s", time.Since(startedAt))
 				}()
 				klog.Infof("Creating all indexes for %s", carPath)
-				indexPaths, err := createAllIndexes(context.Background(), tmpDir, carPath, indexDir)
+				indexPaths, err := createAllIndexes(
+					c.Context,
+					epoch,
+					network,
+					tmpDir,
+					carPath,
+					indexDir,
+				)
 				if err != nil {
 					return err
 				}
@@ -96,6 +120,8 @@ var veryPlainSdumpConfig = spew.ConfigState{
 
 func createAllIndexes(
 	ctx context.Context,
+	epoch uint64,
+	network indexes.Network,
 	tmpDir string,
 	carPath string,
 	indexDir string,
@@ -148,19 +174,23 @@ func createAllIndexes(
 	}
 	klog.Infof("Total: %s items", humanize.Comma(int64(numTotalItems)))
 
-	cid_to_offset, err := NewBuilder_CidToOffset(
+	cid_to_offset_and_size, err := NewBuilder_CidToOffset(
+		epoch,
+		rootCID,
+		network,
 		tmpDir,
-		indexDir,
 		numTotalItems,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create cid_to_offset index: %w", err)
 	}
-	defer cid_to_offset.Close()
+	defer cid_to_offset_and_size.Close()
 
 	slot_to_cid, err := NewBuilder_SlotToCid(
+		epoch,
+		rootCID,
+		network,
 		tmpDir,
-		indexDir,
 		numItems[byte(iplddecoders.KindBlock)],
 	)
 	if err != nil {
@@ -169,8 +199,10 @@ func createAllIndexes(
 	defer slot_to_cid.Close()
 
 	sig_to_cid, err := NewBuilder_SignatureToCid(
+		epoch,
+		rootCID,
+		network,
 		tmpDir,
-		indexDir,
 		numItems[byte(iplddecoders.KindTransaction)],
 	)
 	if err != nil {
@@ -212,7 +244,7 @@ func createAllIndexes(
 
 		// klog.Infof("key: %s, offset: %d", bin.FormatByteSlice(c.Bytes()), totalOffset)
 
-		err = cid_to_offset.Put(_cid, totalOffset)
+		err = cid_to_offset_and_size.Put(_cid, totalOffset, sectionLength)
 		if err != nil {
 			return nil, fmt.Errorf("failed to index cid to offset: %w", err)
 		}
@@ -295,29 +327,32 @@ func createAllIndexes(
 	{
 		// seal the indexes
 		{
-			klog.Infof("Sealing cid_to_offset index...")
-			paths.CidToOffset, err = cid_to_offset.Seal(ctx, carPath, rootCID)
+			klog.Infof("Sealing cid_to_offset_and_size index...")
+			err = cid_to_offset_and_size.Seal(ctx, indexDir)
 			if err != nil {
 				return nil, fmt.Errorf("failed to seal cid_to_offset index: %w", err)
 			}
-			klog.Infof("Successfully sealed cid_to_offset index: %s", paths.CidToOffset)
+			paths.CidToOffsetAndSize = cid_to_offset_and_size.GetFilepath()
+			klog.Infof("Successfully sealed cid_to_offset_and_size index: %s", paths.CidToOffsetAndSize)
 		}
 
 		{
 			klog.Infof("Sealing slot_to_cid index...")
-			paths.SlotToCid, err = slot_to_cid.Seal(ctx, carPath, rootCID)
+			err = slot_to_cid.Seal(ctx, indexDir)
 			if err != nil {
 				return nil, fmt.Errorf("failed to seal slot_to_cid index: %w", err)
 			}
+			paths.SlotToCid = slot_to_cid.GetFilepath()
 			klog.Infof("Successfully sealed slot_to_cid index: %s", paths.SlotToCid)
 		}
 
 		{
 			klog.Infof("Sealing sig_to_cid index...")
-			paths.SignatureToCid, err = sig_to_cid.Seal(ctx, carPath, rootCID)
+			err = sig_to_cid.Seal(ctx, indexDir)
 			if err != nil {
 				return nil, fmt.Errorf("failed to seal sig_to_cid index: %w", err)
 			}
+			paths.SignatureToCid = sig_to_cid.GetFilepath()
 			klog.Infof("Successfully sealed sig_to_cid index: %s", paths.SignatureToCid)
 		}
 
@@ -345,179 +380,82 @@ func blackText(s string) string {
 }
 
 type IndexPaths struct {
-	CidToOffset     string
-	SlotToCid       string
-	SignatureToCid  string
-	SignatureExists string
-}
-
-type Builder_CidToOffset struct {
-	tmpDir   string
-	indexDir string
-	carPath  string
-	index    *compactindexsized.Builder
+	CidToOffsetAndSize string
+	SlotToCid          string
+	SignatureToCid     string
+	SignatureExists    string
 }
 
 func NewBuilder_CidToOffset(
+	epoch uint64,
+	rootCid cid.Cid,
+	network indexes.Network,
 	tmpDir string,
-	indexDir string,
 	numItems uint64,
-) (*Builder_CidToOffset, error) {
+) (*indexes.CidToOffsetAndSize_Writer, error) {
 	tmpDir = filepath.Join(tmpDir, "index-cid-to-offset-"+time.Now().Format("20060102-150405.000000000")+fmt.Sprintf("-%d", rand.Int63()))
 	if err := os.MkdirAll(tmpDir, 0o755); err != nil {
 		return nil, fmt.Errorf("failed to create cid_to_offset tmp dir: %w", err)
 	}
-	index, err := compactindexsized.NewBuilderSized(
+	index, err := indexes.NewWriter_CidToOffsetAndSize(
+		epoch,
+		rootCid,
+		network,
 		tmpDir,
-		uint(numItems),
-		8,
+		numItems,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create cid_to_offset index: %w", err)
+		return nil, fmt.Errorf("failed to create cid-to-offset-and-size index: %w", err)
 	}
-	return &Builder_CidToOffset{
-		tmpDir:   tmpDir,
-		indexDir: indexDir,
-		index:    index,
-	}, nil
-}
-
-func (b *Builder_CidToOffset) Put(c cid.Cid, offset uint64) error {
-	return b.index.Insert(c.Bytes(), itob(offset))
-}
-
-func (b *Builder_CidToOffset) Close() error {
-	return b.index.Close()
-}
-
-func (b *Builder_CidToOffset) Seal(ctx context.Context, carPath string, rootCid cid.Cid) (string, error) {
-	indexFilePath := filepath.Join(b.indexDir, fmt.Sprintf("%s.%s.cid-to-offset.index", filepath.Base(carPath), rootCid.String()))
-	klog.Infof("Creating cid_to_offset index file at %s", indexFilePath)
-	targetFile, err := os.Create(indexFilePath)
-	if err != nil {
-		return "", fmt.Errorf("failed to create cid_to_offset index file: %w", err)
-	}
-	defer targetFile.Close()
-
-	klog.Infof("Sealing cid_to_offset index...")
-	if err = b.index.Seal(ctx, targetFile); err != nil {
-		return "", fmt.Errorf("failed to seal cid_to_offset index: %w", err)
-	}
-	return indexFilePath, nil
-}
-
-type Builder_SignatureToCid struct {
-	tmpDir   string
-	indexDir string
-	carPath  string
-	index    *compactindexsized.Builder
+	return index, nil
 }
 
 func NewBuilder_SignatureToCid(
+	epoch uint64,
+	rootCid cid.Cid,
+	network indexes.Network,
 	tmpDir string,
-	indexDir string,
 	numItems uint64,
-) (*Builder_SignatureToCid, error) {
+) (*indexes.SigToCid_Writer, error) {
 	tmpDir = filepath.Join(tmpDir, "index-sig-to-cid-"+time.Now().Format("20060102-150405.000000000")+fmt.Sprintf("-%d", rand.Int63()))
 	if err := os.MkdirAll(tmpDir, 0o755); err != nil {
 		return nil, fmt.Errorf("failed to create sig_to_cid tmp dir: %w", err)
 	}
-	index, err := compactindexsized.NewBuilderSized(
+	index, err := indexes.NewWriter_SigToCid(
+		epoch,
+		rootCid,
+		network,
 		tmpDir,
-		uint(numItems),
-		36,
+		numItems,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create sig_to_cid index: %w", err)
 	}
-	return &Builder_SignatureToCid{
-		tmpDir:   tmpDir,
-		indexDir: indexDir,
-		index:    index,
-	}, nil
-}
-
-func (b *Builder_SignatureToCid) Put(signature solana.Signature, cid cid.Cid) error {
-	var buf [36]byte
-	copy(buf[:], cid.Bytes()[:36])
-	return b.index.Insert(signature[:], buf[:])
-}
-
-func (b *Builder_SignatureToCid) Close() error {
-	return b.index.Close()
-}
-
-func (b *Builder_SignatureToCid) Seal(ctx context.Context, carPath string, rootCid cid.Cid) (string, error) {
-	indexFilePath := filepath.Join(b.indexDir, fmt.Sprintf("%s.%s.sig-to-cid.index", filepath.Base(carPath), rootCid.String()))
-	klog.Infof("Creating sig_to_cid index file at %s", indexFilePath)
-	targetFile, err := os.Create(indexFilePath)
-	if err != nil {
-		return "", fmt.Errorf("failed to create sig_to_cid index file: %w", err)
-	}
-	defer targetFile.Close()
-
-	klog.Infof("Sealing sig_to_cid index...")
-	if err = b.index.Seal(ctx, targetFile); err != nil {
-		return "", fmt.Errorf("failed to seal sig_to_cid index: %w", err)
-	}
-	return indexFilePath, nil
-}
-
-type Builder_SlotToCid struct {
-	tmpDir   string
-	indexDir string
-	carPath  string
-	index    *compactindexsized.Builder
+	return index, nil
 }
 
 func NewBuilder_SlotToCid(
+	epoch uint64,
+	rootCid cid.Cid,
+	network indexes.Network,
 	tmpDir string,
-	indexDir string,
 	numItems uint64,
-) (*Builder_SlotToCid, error) {
+) (*indexes.SlotToCid_Writer, error) {
 	tmpDir = filepath.Join(tmpDir, "index-slot-to-cid-"+time.Now().Format("20060102-150405.000000000")+fmt.Sprintf("-%d", rand.Int63()))
 	if err := os.MkdirAll(tmpDir, 0o755); err != nil {
 		return nil, fmt.Errorf("failed to create slot_to_cid tmp dir: %w", err)
 	}
-	index, err := compactindexsized.NewBuilderSized(
+	index, err := indexes.NewWriter_SlotToCid(
+		epoch,
+		rootCid,
+		network,
 		tmpDir,
-		uint(numItems),
-		36,
+		numItems,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create slot_to_cid index: %w", err)
 	}
-	return &Builder_SlotToCid{
-		tmpDir:   tmpDir,
-		indexDir: indexDir,
-		index:    index,
-	}, nil
-}
-
-func (b *Builder_SlotToCid) Put(slot uint64, cid cid.Cid) error {
-	var buf [36]byte
-	copy(buf[:], cid.Bytes()[:36])
-	return b.index.Insert(uint64ToLeBytes(slot), buf[:])
-}
-
-func (b *Builder_SlotToCid) Close() error {
-	return b.index.Close()
-}
-
-func (b *Builder_SlotToCid) Seal(ctx context.Context, carPath string, rootCid cid.Cid) (string, error) {
-	indexFilePath := filepath.Join(b.indexDir, fmt.Sprintf("%s.%s.slot-to-cid.index", filepath.Base(carPath), rootCid.String()))
-	klog.Infof("Creating slot_to_cid index file at %s", indexFilePath)
-	targetFile, err := os.Create(indexFilePath)
-	if err != nil {
-		return "", fmt.Errorf("failed to create slot_to_cid index file: %w", err)
-	}
-	defer targetFile.Close()
-
-	klog.Infof("Sealing index...")
-	if err = b.index.Seal(ctx, targetFile); err != nil {
-		return "", fmt.Errorf("failed to seal slot_to_cid index: %w", err)
-	}
-	return indexFilePath, nil
+	return index, nil
 }
 
 func verifyAllIndexes(
@@ -550,7 +488,7 @@ func verifyAllIndexes(
 	}
 
 	cid_to_offset, err := OpenIndex_CidToOffset(
-		indexes.CidToOffset,
+		indexes.CidToOffsetAndSize,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to open cid_to_offset index: %w", err)
@@ -613,8 +551,11 @@ func verifyAllIndexes(
 		if err != nil {
 			return fmt.Errorf("failed to lookup offset for %s: %w", _cid, err)
 		}
-		if offset != totalOffset {
+		if offset.Offset != totalOffset {
 			return fmt.Errorf("offset mismatch for %s: %d != %d", _cid, offset, totalOffset)
+		}
+		if offset.Size != sectionLength {
+			return fmt.Errorf("length mismatch for %s: %d != %d", _cid, offset, sectionLength)
 		}
 
 		numIndexedOffsets++
@@ -696,110 +637,32 @@ func verifyAllIndexes(
 	return nil
 }
 
-type Index_CidToOffset struct {
-	file *os.File
-	db   *compactindexsized.DB
-}
-
 func OpenIndex_CidToOffset(
 	indexFilePath string,
-) (*Index_CidToOffset, error) {
-	indexFile, err := os.Open(indexFilePath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open index file: %w", err)
-	}
-
-	index, err := compactindexsized.Open(indexFile)
+) (*indexes.CidToOffsetAndSize_Reader, error) {
+	index, err := indexes.Open_CidToOffsetAndSize(indexFilePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open index: %w", err)
 	}
-
-	return &Index_CidToOffset{
-		file: indexFile,
-		db:   index,
-	}, nil
-}
-
-func (i *Index_CidToOffset) Get(cid_ cid.Cid) (uint64, error) {
-	offset, err := findOffsetFromCid(i.db, cid_)
-	if err != nil {
-		return 0, fmt.Errorf("failed to lookup offset for %s: %w", cid_, err)
-	}
-	return offset, nil
-}
-
-func (i *Index_CidToOffset) Close() error {
-	return i.file.Close()
-}
-
-type Index_SlotToCid struct {
-	file *os.File
-	db   *compactindexsized.DB
+	return index, nil
 }
 
 func OpenIndex_SlotToCid(
 	indexFilePath string,
-) (*Index_SlotToCid, error) {
-	indexFile, err := os.Open(indexFilePath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open index file: %w", err)
-	}
-
-	index, err := compactindexsized.Open(indexFile)
+) (*indexes.SlotToCid_Reader, error) {
+	index, err := indexes.Open_SlotToCid(indexFilePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open index: %w", err)
 	}
-
-	return &Index_SlotToCid{
-		file: indexFile,
-		db:   index,
-	}, nil
-}
-
-func (i *Index_SlotToCid) Get(slot uint64) (cid.Cid, error) {
-	cid_, err := findCidFromSlot(i.db, slot)
-	if err != nil {
-		return cid.Undef, fmt.Errorf("failed to lookup cid for slot %d: %w", slot, err)
-	}
-	return cid_, nil
-}
-
-func (i *Index_SlotToCid) Close() error {
-	return i.file.Close()
-}
-
-type Index_SigToCid struct {
-	file *os.File
-	db   *compactindexsized.DB
+	return index, nil
 }
 
 func OpenIndex_SigToCid(
 	indexFilePath string,
-) (*Index_SigToCid, error) {
-	indexFile, err := os.Open(indexFilePath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open index file: %w", err)
-	}
-
-	index, err := compactindexsized.Open(indexFile)
+) (*indexes.SigToCid_Reader, error) {
+	index, err := indexes.Open_SigToCid(indexFilePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open index: %w", err)
 	}
-
-	return &Index_SigToCid{
-		file: indexFile,
-		db:   index,
-	}, nil
-}
-
-func (i *Index_SigToCid) Get(sig solana.Signature) (cid.Cid, error) {
-	cid_, err := findCidFromSignature(i.db, sig)
-	if err != nil {
-		return cid.Undef, fmt.Errorf("failed to lookup cid for sig %x: %w", sig, err)
-	}
-	return cid_, nil
-}
-
-func (i *Index_SigToCid) Close() error {
-	return i.file.Close()
+	return index, nil
 }

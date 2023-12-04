@@ -21,7 +21,7 @@ import (
 // Builder creates new compactindex files.
 type Builder struct {
 	Header
-	dir        string
+	tmpDir     string
 	headerSize int64
 	closers    []io.Closer
 	buckets    []tempBucket
@@ -36,13 +36,13 @@ type Builder struct {
 // valueSize is the size of each value in bytes. It must be > 0 and <= 256.
 // All values must be of the same size.
 func NewBuilderSized(
-	dir string,
+	tmpDir string,
 	numItems uint,
 	valueSize uint,
 ) (*Builder, error) {
-	if dir == "" {
+	if tmpDir == "" {
 		var err error
-		dir, err = os.MkdirTemp("", "compactindex-")
+		tmpDir, err = os.MkdirTemp("", "compactindex-")
 		if err != nil {
 			return nil, fmt.Errorf("failed to create temp dir: %w", err)
 		}
@@ -61,7 +61,7 @@ func NewBuilderSized(
 	buckets := make([]tempBucket, numBuckets)
 	closers := make([]io.Closer, 0, numBuckets)
 	for i := range buckets {
-		name := filepath.Join(dir, fmt.Sprintf("keys-%d", i))
+		name := filepath.Join(tmpDir, fmt.Sprintf("keys-%d", i))
 		f, err := os.OpenFile(name, os.O_CREATE|os.O_RDWR, 0o666)
 		if err != nil {
 			for _, c := range closers {
@@ -82,7 +82,7 @@ func NewBuilderSized(
 		},
 		closers: closers,
 		buckets: buckets,
-		dir:     dir,
+		tmpDir:  tmpDir,
 	}, nil
 }
 
@@ -98,17 +98,17 @@ func (b *Builder) SetKind(kind []byte) error {
 		return fmt.Errorf("kind is empty")
 	}
 	// check if kind is already set
-	if b.Header.Meta.Count(KeyKind) > 0 {
+	if b.Header.Metadata.Count(KeyKind) > 0 {
 		// remove kind
-		b.Header.Meta.Remove(KeyKind)
+		b.Header.Metadata.Remove(KeyKind)
 	}
 	// set kind
-	b.Header.Meta.Add(KeyKind, kind)
+	b.Header.Metadata.Add(KeyKind, kind)
 	return nil
 }
 
 func (b *Builder) Metadata() *Meta {
-	return &b.Header.Meta
+	return &b.Header.Metadata
 }
 
 func (b *Builder) getValueSize() int {
@@ -128,17 +128,17 @@ func (b *Builder) Insert(key []byte, value []byte) error {
 //
 // The file should be opened with access mode os.O_RDWR.
 // Passing a non-empty file will result in a corrupted index.
-func (b *Builder) Seal(ctx context.Context, f *os.File) (err error) {
+func (b *Builder) Seal(ctx context.Context, file *os.File) (err error) {
 	// TODO support in-place writing.
 
 	defer func() {
-		f.Sync()
+		file.Sync()
 	}()
 
 	// Write header.
 	headerBuf := b.Header.Bytes()
 	headerSize := int64(len(headerBuf))
-	numWroteHeader, err := f.Write(headerBuf[:])
+	numWroteHeader, err := file.Write(headerBuf[:])
 	if err != nil {
 		return fmt.Errorf("failed to write header: %w", err)
 	}
@@ -148,10 +148,10 @@ func (b *Builder) Seal(ctx context.Context, f *os.File) (err error) {
 	b.headerSize = headerSize
 	// Create hole to leave space for bucket header table.
 	bucketTableLen := int64(b.NumBuckets) * bucketHdrLen
-	err = fallocate(f, headerSize, bucketTableLen)
+	err = fallocate(file, headerSize, bucketTableLen)
 	if errors.Is(err, syscall.EOPNOTSUPP) {
 		// The underlying file system may not support fallocate
-		err = fake_fallocate(f, headerSize, bucketTableLen)
+		err = fake_fallocate(file, headerSize, bucketTableLen)
 		if err != nil {
 			return fmt.Errorf("failed to fake fallocate() bucket table: %w", err)
 		}
@@ -161,7 +161,7 @@ func (b *Builder) Seal(ctx context.Context, f *os.File) (err error) {
 	}
 	// Seal each bucket.
 	for i := range b.buckets {
-		if err := b.sealBucket(ctx, i, f); err != nil {
+		if err := b.sealBucket(ctx, i, file); err != nil {
 			return fmt.Errorf("failed to seal bucket %d: %w", i, err)
 		}
 	}
@@ -228,7 +228,7 @@ func (b *Builder) Close() error {
 	for _, c := range b.closers {
 		c.Close()
 	}
-	return os.RemoveAll(b.dir)
+	return os.RemoveAll(b.tmpDir)
 }
 
 // tempBucket represents the "temporary bucket" file,

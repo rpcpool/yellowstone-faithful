@@ -213,7 +213,7 @@ func TestBuilder8_Random(t *testing.T) {
 
 	// Ensure we cleaned up after ourselves.
 	defer func() {
-		_, statErr := os.Stat(builder.dir)
+		_, statErr := os.Stat(builder.tmpDir)
 		assert.Truef(t, errors.Is(statErr, fs.ErrNotExist), "Delete failed: %v", statErr)
 	}()
 	defer builder.Close()

@@ -17,8 +17,8 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/patrickmn/go-cache"
 	"github.com/rpcpool/yellowstone-faithful/bucketteer"
-	"github.com/rpcpool/yellowstone-faithful/compactindexsized"
 	"github.com/rpcpool/yellowstone-faithful/gsfa"
+	"github.com/rpcpool/yellowstone-faithful/indexes"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
 	"github.com/urfave/cli/v2"
@@ -34,9 +34,9 @@ type Epoch struct {
 	localCarReader      *carv2.Reader
 	remoteCarReader     ReaderAtCloser
 	remoteCarHeaderSize uint64
-	cidToOffsetIndex    *compactindexsized.DB
-	slotToCidIndex      *compactindexsized.DB
-	sigToCidIndex       *compactindexsized.DB
+	cidToOffsetIndex    *indexes.CidToOffsetAndSize_Reader
+	slotToCidIndex      *indexes.SlotToCid_Reader
+	sigToCidIndex       *indexes.SigToCid_Reader
 	sigExists           *bucketteer.Reader
 	gsfaReader          *gsfa.GsfaReader
 	cidToNodeCache      *cache.Cache // TODO: prevent OOM
@@ -117,7 +117,7 @@ func NewEpochFromConfig(config *Config, c *cli.Context) (*Epoch, error) {
 		}
 		ep.onClose = append(ep.onClose, cidToOffsetIndexFile.Close)
 
-		cidToOffsetIndex, err := compactindexsized.Open(cidToOffsetIndexFile)
+		cidToOffsetIndex, err := indexes.OpenWithReader_CidToOffsetAndSize(cidToOffsetIndexFile)
 		if err != nil {
 			return nil, fmt.Errorf("failed to open cid-to-offset index: %w", err)
 		}
@@ -138,7 +138,7 @@ func NewEpochFromConfig(config *Config, c *cli.Context) (*Epoch, error) {
 		}
 		ep.onClose = append(ep.onClose, slotToCidIndexFile.Close)
 
-		slotToCidIndex, err := compactindexsized.Open(slotToCidIndexFile)
+		slotToCidIndex, err := indexes.OpenWithReader_SlotToCid(slotToCidIndexFile)
 		if err != nil {
 			return nil, fmt.Errorf("failed to open slot-to-cid index: %w", err)
 		}
@@ -159,7 +159,7 @@ func NewEpochFromConfig(config *Config, c *cli.Context) (*Epoch, error) {
 		}
 		ep.onClose = append(ep.onClose, sigToCidIndexFile.Close)
 
-		sigToCidIndex, err := compactindexsized.Open(sigToCidIndexFile)
+		sigToCidIndex, err := indexes.OpenWithReader_SigToCid(sigToCidIndexFile)
 		if err != nil {
 			return nil, fmt.Errorf("failed to open sig-to-cid index: %w", err)
 		}
@@ -411,7 +411,7 @@ func (ser *Epoch) FindCidFromSlot(ctx context.Context, slot uint64) (o cid.Cid, 
 	} else if has {
 		return c, nil
 	}
-	found, err := findCidFromSlot(ser.slotToCidIndex, slot)
+	found, err := ser.slotToCidIndex.Get(slot)
 	if err != nil {
 		return cid.Undef, err
 	}
@@ -424,7 +424,7 @@ func (ser *Epoch) FindCidFromSignature(ctx context.Context, sig solana.Signature
 	defer func() {
 		klog.Infof("Found CID for signature %s in %s: %s", sig, time.Since(startedAt), o)
 	}()
-	return findCidFromSignature(ser.sigToCidIndex, sig)
+	return ser.sigToCidIndex.Get(sig)
 }
 
 func (ser *Epoch) FindOffsetFromCid(ctx context.Context, cid cid.Cid) (o uint64, e error) {
@@ -439,12 +439,13 @@ func (ser *Epoch) FindOffsetFromCid(ctx context.Context, cid cid.Cid) (o uint64,
 	} else if has {
 		return offset, nil
 	}
-	found, err := findOffsetFromCid(ser.cidToOffsetIndex, cid)
+	found, err := ser.cidToOffsetIndex.Get(cid)
 	if err != nil {
 		return 0, err
 	}
-	ser.putCidToOffsetInCache(cid, found)
-	return found, nil
+	// TODO: use also the size.
+	ser.putCidToOffsetInCache(cid, found.Offset)
+	return found.Offset, nil
 }
 
 func (ser *Epoch) GetBlock(ctx context.Context, slot uint64) (*ipldbindcode.Block, error) {

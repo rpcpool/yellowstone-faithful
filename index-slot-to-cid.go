@@ -12,12 +12,20 @@ import (
 	"github.com/ipfs/go-cid"
 	carv2 "github.com/ipld/go-car/v2"
 	"github.com/rpcpool/yellowstone-faithful/compactindexsized"
+	"github.com/rpcpool/yellowstone-faithful/indexes"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"k8s.io/klog/v2"
 )
 
 // CreateIndex_slot2cid creates an index file that maps slot numbers to CIDs.
-func CreateIndex_slot2cid(ctx context.Context, tmpDir string, carPath string, indexDir string) (string, error) {
+func CreateIndex_slot2cid(
+	ctx context.Context,
+	epoch uint64,
+	network indexes.Network,
+	tmpDir string,
+	carPath string,
+	indexDir string,
+) (string, error) {
 	// Check if the CAR file exists:
 	exists, err := fileExists(carPath)
 	if err != nil {
@@ -41,6 +49,7 @@ func CreateIndex_slot2cid(ctx context.Context, tmpDir string, carPath string, in
 	if len(roots) != 1 {
 		return "", fmt.Errorf("CAR file has %d roots, expected 1", len(roots))
 	}
+	rootCid := roots[0]
 
 	// TODO: use another way to precisely count the number of solana Blocks in the CAR file.
 	klog.Infof("Counting items in car file...")
@@ -56,15 +65,17 @@ func CreateIndex_slot2cid(ctx context.Context, tmpDir string, carPath string, in
 	}
 
 	klog.Infof("Creating builder with %d items", numItems)
-	c2o, err := compactindexsized.NewBuilderSized(
+	sl2c, err := indexes.NewWriter_SlotToCid(
+		epoch,
+		rootCid,
+		network,
 		tmpDir,
-		uint(numItems), // TODO: what if the number of real items is less than this?
-		36,
+		numItems, // TODO: what if the number of real items is less than this?
 	)
 	if err != nil {
 		return "", fmt.Errorf("failed to open index store: %w", err)
 	}
-	defer c2o.Close()
+	defer sl2c.Close()
 
 	numItemsIndexed := uint64(0)
 	klog.Infof("Indexing...")
@@ -82,12 +93,7 @@ func CreateIndex_slot2cid(ctx context.Context, tmpDir string, carPath string, in
 		func(c cid.Cid, block *ipldbindcode.Block) error {
 			slotNum := block.Slot
 
-			slotBytes := uint64ToLeBytes(uint64(slotNum))
-
-			var buf [36]byte
-			copy(buf[:], c.Bytes()[:36])
-
-			err = c2o.Insert(slotBytes, buf[:])
+			err = sl2c.Put(uint64(slotNum), c)
 			if err != nil {
 				return fmt.Errorf("failed to put cid to offset: %w", err)
 			}
@@ -102,23 +108,14 @@ func CreateIndex_slot2cid(ctx context.Context, tmpDir string, carPath string, in
 		return "", fmt.Errorf("failed to index; error while iterating over blocks: %w", err)
 	}
 
-	rootCID := roots[0]
-
 	// Use the car file name and root CID to name the index file:
-	indexFilePath := filepath.Join(indexDir, fmt.Sprintf("%s.%s.slot-to-cid.index", filepath.Base(carPath), rootCID.String()))
-
-	klog.Infof("Creating index file at %s", indexFilePath)
-	targetFile, err := os.Create(indexFilePath)
-	if err != nil {
-		return "", fmt.Errorf("failed to create index file: %w", err)
-	}
-	defer targetFile.Close()
 
 	klog.Infof("Sealing index...")
-	if err = c2o.Seal(ctx, targetFile); err != nil {
+	if err = sl2c.Seal(ctx, indexDir); err != nil {
 		return "", fmt.Errorf("failed to seal index: %w", err)
 	}
-	klog.Infof("Index created; %d items indexed", numItemsIndexed)
+	indexFilePath := sl2c.GetFilepath()
+	klog.Infof("Index created at %s; %d items indexed", indexFilePath, numItemsIndexed)
 	return indexFilePath, nil
 }
 
@@ -159,13 +156,7 @@ func VerifyIndex_slot2cid(ctx context.Context, carPath string, indexFilePath str
 		return fmt.Errorf("CAR file has %d roots, expected 1", len(roots))
 	}
 
-	indexFile, err := os.Open(indexFilePath)
-	if err != nil {
-		return fmt.Errorf("failed to open index file: %w", err)
-	}
-	defer indexFile.Close()
-
-	c2o, err := compactindexsized.Open(indexFile)
+	c2o, err := indexes.Open_SlotToCid(indexFilePath)
 	if err != nil {
 		return fmt.Errorf("failed to open index: %w", err)
 	}
@@ -184,7 +175,7 @@ func VerifyIndex_slot2cid(ctx context.Context, carPath string, indexFilePath str
 		func(c cid.Cid, block *ipldbindcode.Block) error {
 			slotNum := uint64(block.Slot)
 
-			got, err := findCidFromSlot(c2o, slotNum)
+			got, err := c2o.Get(slotNum)
 			if err != nil {
 				return fmt.Errorf("failed to put cid to offset: %w", err)
 			}

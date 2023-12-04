@@ -62,12 +62,12 @@ func (db *DB) Prefetch(yes bool) {
 
 // GetKind returns the kind of the index.
 func (db *DB) GetKind() ([]byte, bool) {
-	return db.Header.Meta.Get(KeyKind)
+	return db.Header.Metadata.Get(KeyKind)
 }
 
 // KindIs returns whether the index is of the given kind.
 func (db *DB) KindIs(kind []byte) bool {
-	got, ok := db.Header.Meta.Get(KeyKind)
+	got, ok := db.Header.Metadata.Get(KeyKind)
 	return ok && bytes.Equal(got, kind)
 }
 

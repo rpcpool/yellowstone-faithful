@@ -78,7 +78,7 @@ func TestOpen_HeaderOnly(t *testing.T) {
 	assert.Equal(t, Header{
 		ValueSize:  0x1337,
 		NumBuckets: 0x42,
-		Meta: Meta{
+		Metadata: Meta{
 			KeyVals: []KV{
 				{
 					Key:   []byte("foo"),

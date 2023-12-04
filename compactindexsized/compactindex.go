@@ -103,7 +103,7 @@ const Version = uint8(1)
 type Header struct {
 	ValueSize  uint64
 	NumBuckets uint32
-	Meta       Meta
+	Metadata   Meta
 }
 
 // Load checks the Magic sequence and loads the header fields.
@@ -130,7 +130,7 @@ func (h *Header) Load(buf []byte) error {
 		return fmt.Errorf("unsupported index version: want %d, got %d", Version, buf[20])
 	}
 	// read key-value pairs
-	if err := h.Meta.UnmarshalBinary(buf[25:]); err != nil {
+	if err := h.Metadata.UnmarshalBinary(buf[25:]); err != nil {
 		return fmt.Errorf("failed to unmarshal metadata: %w", err)
 	}
 	if h.ValueSize == 0 {
@@ -152,7 +152,7 @@ func (h *Header) Bytes() []byte {
 		// version
 		buf.WriteByte(Version)
 		// key-value pairs
-		kvb := h.Meta.Bytes()
+		kvb := h.Metadata.Bytes()
 		buf.Write(kvb)
 	}
 	lenWithoutMagicAndLen := buf.Len()

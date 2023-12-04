@@ -5,12 +5,15 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/rpcpool/yellowstone-faithful/indexes"
 	"github.com/urfave/cli/v2"
 	"k8s.io/klog/v2"
 )
 
 func newCmd_Index_cid2offset() *cli.Command {
 	var verify bool
+	var epoch uint64
+	var network indexes.Network
 	return &cli.Command{
 		Name:        "cid-to-offset",
 		Description: "Given a CAR file containing a Solana epoch, create an index of the file that maps CIDs to offsets in the CAR file.",
@@ -28,6 +31,22 @@ func newCmd_Index_cid2offset() *cli.Command {
 				Name:  "tmp-dir",
 				Usage: "temporary directory to use for storing intermediate files",
 				Value: "",
+			},
+			&cli.Uint64Flag{
+				Name:        "epoch",
+				Usage:       "the epoch of the CAR file",
+				Destination: &epoch,
+			},
+			&cli.StringFlag{
+				Name:  "network",
+				Usage: "the network of the CAR file",
+				Action: func(c *cli.Context, s string) error {
+					network = indexes.Network(s)
+					if !indexes.IsValidNetwork(network) {
+						return fmt.Errorf("invalid network: %s", network)
+					}
+					return nil
+				},
 			},
 		},
 		Subcommands: []*cli.Command{},
@@ -50,6 +69,8 @@ func newCmd_Index_cid2offset() *cli.Command {
 				klog.Infof("Creating CID-to-offset index for %s", carPath)
 				indexFilepath, err := CreateIndex_cid2offset(
 					context.TODO(),
+					epoch,
+					network,
 					tmpDir,
 					carPath,
 					indexDir,
