@@ -36,10 +36,11 @@ func newCmd_Index_slot2cid() *cli.Command {
 				Name:        "epoch",
 				Usage:       "the epoch of the CAR file",
 				Destination: &epoch,
+				Required:    true,
 			},
 			&cli.StringFlag{
 				Name:  "network",
-				Usage: "the network of the CAR file",
+				Usage: "the cluster of the epoch; one of: mainnet, testnet, devnet",
 				Action: func(c *cli.Context, s string) error {
 					network = indexes.Network(s)
 					if !indexes.IsValidNetwork(network) {
@@ -47,6 +48,7 @@ func newCmd_Index_slot2cid() *cli.Command {
 					}
 					return nil
 				},
+				Required: true,
 			},
 		},
 		Subcommands: []*cli.Command{},
