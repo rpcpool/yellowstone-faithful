@@ -1,22 +1,12 @@
 package main
 
 import (
-	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"runtime"
-	"sync"
 
 	bin "github.com/gagliardetto/binary"
 	"github.com/gagliardetto/solana-go"
-	"github.com/rpcpool/yellowstone-faithful/gsfa/offsetstore"
-	metalatest "github.com/rpcpool/yellowstone-faithful/parse_legacy_transaction_status_meta/v-latest"
-	metaoldest "github.com/rpcpool/yellowstone-faithful/parse_legacy_transaction_status_meta/v-oldest"
-	"github.com/rpcpool/yellowstone-faithful/third_party/solana_proto/confirmed_block"
-	"github.com/sourcegraph/jsonrpc2"
-	"golang.org/x/sync/errgroup"
-	"k8s.io/klog/v2"
 )
 
 type GetSignaturesForAddressParams struct {
@@ -81,156 +71,6 @@ func parseGetSignaturesForAddressParams(raw *json.RawMessage) (*GetSignaturesFor
 		out.Limit = 1000
 	}
 	return out, nil
-}
-
-func (ser *deprecatedRPCServer) handleGetSignaturesForAddress(ctx context.Context, conn *requestContext, req *jsonrpc2.Request) {
-	if ser.gsfaReader == nil {
-		klog.Errorf("gsfaReader is nil")
-		conn.ReplyWithError(
-			ctx,
-			req.ID,
-			&jsonrpc2.Error{
-				Code:    jsonrpc2.CodeInternalError,
-				Message: "getSignaturesForAddress method is not enabled",
-			})
-		return
-	}
-	signaturesOnly := ser.options.GsfaOnlySignatures
-
-	params, err := parseGetSignaturesForAddressParams(req.Params)
-	if err != nil {
-		klog.Errorf("failed to parse params: %v", err)
-		conn.ReplyWithError(
-			ctx,
-			req.ID,
-			&jsonrpc2.Error{
-				Code:    jsonrpc2.CodeInvalidParams,
-				Message: "Invalid params",
-			})
-		return
-	}
-	pk := params.Address
-	limit := params.Limit
-
-	sigs, err := ser.gsfaReader.GetBeforeUntil(
-		ctx,
-		pk,
-		limit,
-		params.Before,
-		params.Until,
-	)
-	if err != nil {
-		if offsetstore.IsNotFound(err) {
-			klog.Infof("No signatures found for address: %s", pk)
-			conn.ReplyWithError(
-				ctx,
-				req.ID,
-				&jsonrpc2.Error{
-					Code:    jsonrpc2.CodeInternalError,
-					Message: "Not found",
-				})
-			return
-		}
-	}
-
-	var blockTimeCache struct {
-		m  map[uint64]uint64
-		mu sync.Mutex
-	}
-	blockTimeCache.m = make(map[uint64]uint64)
-	getBlockTime := func(slot uint64) uint64 {
-		blockTimeCache.mu.Lock()
-		defer blockTimeCache.mu.Unlock()
-		if blockTime, ok := blockTimeCache.m[slot]; ok {
-			return blockTime
-		}
-		block, err := ser.GetBlock(ctx, slot)
-		if err != nil {
-			klog.Errorf("failed to get block time for slot %d: %v", slot, err)
-			return 0
-		}
-		blockTimeCache.m[slot] = uint64(block.Meta.Blocktime)
-		return uint64(block.Meta.Blocktime)
-	}
-
-	wg := new(errgroup.Group)
-	wg.SetLimit(runtime.NumCPU() * 2)
-	// The response is an array of objects: [{signature: string}]
-	response := make([]map[string]any, len(sigs))
-	for i := range sigs {
-		ii := i
-		sig := sigs[ii]
-		wg.Go(func() error {
-			response[ii] = map[string]any{
-				"signature": sig.String(),
-			}
-			if signaturesOnly {
-				return nil
-			}
-			transactionNode, err := ser.GetTransaction(ctx, sig)
-			if err != nil {
-				klog.Errorf("failed to get tx %s: %v", sig, err)
-				return nil
-			}
-			if transactionNode != nil {
-				{
-					tx, meta, err := parseTransactionAndMetaFromNode(transactionNode, ser.GetDataFrameByCid)
-					if err == nil {
-						switch metaValue := meta.(type) {
-						case *confirmed_block.TransactionStatusMeta:
-							response[ii]["err"] = metaValue.Err
-						case *metalatest.TransactionStatusMeta:
-							response[ii]["err"] = metaValue.Status
-						case *metaoldest.TransactionStatusMeta:
-							response[ii]["err"] = metaValue.Status
-						}
-
-						if _, ok := response[ii]["err"]; ok {
-							response[ii]["err"], _ = parseTransactionError(response[ii]["err"])
-						}
-
-						memoData := getMemoInstructionDataFromTransaction(&tx)
-						if memoData != nil {
-							response[ii]["memo"] = string(memoData)
-						}
-					}
-
-					if _, ok := response[ii]["memo"]; !ok {
-						response[ii]["memo"] = nil
-					}
-					if _, ok := response[ii]["err"]; !ok {
-						response[ii]["err"] = nil
-					}
-				}
-				slot := uint64(transactionNode.Slot)
-				response[ii]["slot"] = slot
-				response[ii]["blockTime"] = getBlockTime(slot)
-				response[ii]["confirmationStatus"] = "finalized"
-			}
-			return nil
-		})
-	}
-	if err := wg.Wait(); err != nil {
-		klog.Errorf("failed to get txs: %v", err)
-		conn.ReplyWithError(
-			ctx,
-			req.ID,
-			&jsonrpc2.Error{
-				Code:    jsonrpc2.CodeInternalError,
-				Message: "Internal error",
-			})
-		return
-	}
-
-	// reply with the data
-	err = conn.ReplyRaw(
-		ctx,
-		req.ID,
-		response,
-	)
-	if err != nil {
-		klog.Errorf("failed to reply: %v", err)
-	}
 }
 
 func getMemoInstructionDataFromTransaction(tx *solana.Transaction) []byte {
