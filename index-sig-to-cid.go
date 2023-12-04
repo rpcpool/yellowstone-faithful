@@ -13,7 +13,6 @@ import (
 	"github.com/ipfs/go-cid"
 	carv2 "github.com/ipld/go-car/v2"
 	"github.com/rpcpool/yellowstone-faithful/bucketteer"
-	"github.com/rpcpool/yellowstone-faithful/compactindexsized"
 	"github.com/rpcpool/yellowstone-faithful/indexes"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"k8s.io/klog/v2"
@@ -289,25 +288,6 @@ func VerifyIndex_sigExists(ctx context.Context, carPath string, indexFilePath st
 		return fmt.Errorf("failed to verify index; error while iterating over blocks: %w", err)
 	}
 	return nil
-}
-
-func findCidFromSignature(db *compactindexsized.DB, sig solana.Signature) (cid.Cid, error) {
-	bucket, err := db.LookupBucket(sig[:])
-	if err != nil {
-		return cid.Cid{}, fmt.Errorf("failed to lookup bucket for %s: %w", sig, err)
-	}
-	got, err := bucket.Lookup(sig[:])
-	if err != nil {
-		return cid.Cid{}, fmt.Errorf("failed to lookup value for %s: %w", sig, err)
-	}
-	l, c, err := cid.CidFromBytes(got[:])
-	if err != nil {
-		return cid.Cid{}, fmt.Errorf("failed to parse cid from bytes: %w", err)
-	}
-	if l != 36 {
-		return cid.Cid{}, fmt.Errorf("unexpected cid length %d", l)
-	}
-	return c, nil
 }
 
 func readFirstSignature(buf []byte) (solana.Signature, error) {

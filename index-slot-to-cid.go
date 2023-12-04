@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/binary"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,7 +10,6 @@ import (
 	"github.com/dustin/go-humanize"
 	"github.com/ipfs/go-cid"
 	carv2 "github.com/ipld/go-car/v2"
-	"github.com/rpcpool/yellowstone-faithful/compactindexsized"
 	"github.com/rpcpool/yellowstone-faithful/indexes"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"k8s.io/klog/v2"
@@ -195,32 +193,4 @@ func VerifyIndex_slot2cid(ctx context.Context, carPath string, indexFilePath str
 		return fmt.Errorf("failed to verify index; error while iterating over blocks: %w", err)
 	}
 	return nil
-}
-
-// uint64ToLeBytes converts a uint64 to a little-endian byte slice.
-func uint64ToLeBytes(n uint64) []byte {
-	b := make([]byte, 8)
-	binary.LittleEndian.PutUint64(b, n)
-	return b
-}
-
-// findCidFromSlot finds the CID for the given slot number in the given index.
-func findCidFromSlot(db *compactindexsized.DB, slotNum uint64) (cid.Cid, error) {
-	slotBytes := uint64ToLeBytes(uint64(slotNum))
-	bucket, err := db.LookupBucket(slotBytes)
-	if err != nil {
-		return cid.Cid{}, fmt.Errorf("failed to lookup bucket for %d: %w", slotNum, err)
-	}
-	got, err := bucket.Lookup(slotBytes)
-	if err != nil {
-		return cid.Cid{}, fmt.Errorf("failed to lookup value for %d: %w", slotNum, err)
-	}
-	l, c, err := cid.CidFromBytes(got[:])
-	if err != nil {
-		return cid.Cid{}, fmt.Errorf("failed to parse cid from bytes: %w", err)
-	}
-	if l != 36 {
-		return cid.Cid{}, fmt.Errorf("unexpected cid length %d", l)
-	}
-	return c, nil
 }

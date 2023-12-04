@@ -60,6 +60,7 @@ require (
 	github.com/fsnotify/fsnotify v1.5.4
 	github.com/goware/urlx v0.3.2
 	github.com/ipld/go-car v0.5.0
+	github.com/ipld/go-trustless-utils v0.4.1
 	github.com/mostynb/zstdpool-freelist v0.0.0-20201229113212-927304c0c3b1
 	github.com/mr-tron/base58 v1.2.0
 	github.com/patrickmn/go-cache v2.1.0+incompatible
@@ -135,7 +136,6 @@ require (
 	github.com/ipfs/go-metrics-interface v0.0.1 // indirect
 	github.com/ipfs/go-peertaskqueue v0.8.1 // indirect
 	github.com/ipfs/go-verifcid v0.0.2 // indirect
-	github.com/ipld/go-trustless-utils v0.4.1 // indirect
 	github.com/jackpal/go-nat-pmp v1.0.2 // indirect
 	github.com/jbenet/go-temp-err-catcher v0.1.0 // indirect
 	github.com/jbenet/goprocess v0.1.4 // indirect

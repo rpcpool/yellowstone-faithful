@@ -13,11 +13,9 @@ import (
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/dustin/go-humanize"
-	"github.com/ipfs/go-cid"
 	carv1 "github.com/ipld/go-car"
 	"github.com/ipld/go-car/util"
 	carv2 "github.com/ipld/go-car/v2"
-	"github.com/rpcpool/yellowstone-faithful/compactindexsized"
 	"github.com/rpcpool/yellowstone-faithful/indexes"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
 	"k8s.io/klog/v2"
@@ -247,16 +245,4 @@ func VerifyIndex_cid2offset(ctx context.Context, carPath string, indexFilePath s
 		totalOffset += sectionLen
 	}
 	return nil
-}
-
-func findOffsetFromCid(db *compactindexsized.DB, c cid.Cid) (uint64, error) {
-	bucket, err := db.LookupBucket(c.Bytes())
-	if err != nil {
-		return 0, fmt.Errorf("failed to lookup bucket for %s: %w", c, err)
-	}
-	offset, err := bucket.Lookup(c.Bytes())
-	if err != nil {
-		return 0, fmt.Errorf("failed to lookup offset for %s: %w", c, err)
-	}
-	return btoi(offset), nil
 }
