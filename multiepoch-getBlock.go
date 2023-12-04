@@ -99,10 +99,11 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 				var blockOffset, parentOffset uint64
 				wg := new(errgroup.Group)
 				wg.Go(func() (err error) {
-					blockOffset, err = epochHandler.FindOffsetFromCid(ctx, blockCid)
+					offsetAndSize, err := epochHandler.FindOffsetFromCid(ctx, blockCid)
 					if err != nil {
 						return err
 					}
+					blockOffset = offsetAndSize.Offset
 					return nil
 				})
 				wg.Go(func() (err error) {
@@ -111,11 +112,12 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 						parentOffset = epochHandler.remoteCarHeaderSize
 						return nil
 					}
-					parentOffset, err = epochHandler.FindOffsetFromCid(ctx, parentCid)
+					offsetAndSize, err := epochHandler.FindOffsetFromCid(ctx, parentCid)
 					if err != nil {
 						// If the parent is not found, it (probably) means that it's outside of the car file.
 						parentOffset = epochHandler.remoteCarHeaderSize
 					}
+					parentOffset = offsetAndSize.Offset
 					return nil
 				})
 				err = wg.Wait()
@@ -161,7 +163,7 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 				if !parentIsInPreviousEpoch && !gotCid.Equals(parentCid) {
 					return fmt.Errorf("CID mismatch: expected %s, got %s", parentCid, gotCid)
 				}
-				epochHandler.putNodeInCache(gotCid, data)
+				epochHandler.GetCache().PutRawCarObject(gotCid, data)
 
 				for {
 					gotCid, data, err = util.ReadNode(br)
@@ -174,7 +176,7 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 					if gotCid.Equals(blockCid) {
 						break
 					}
-					epochHandler.putNodeInCache(gotCid, data)
+					epochHandler.GetCache().PutRawCarObject(gotCid, data)
 				}
 			}
 			return nil

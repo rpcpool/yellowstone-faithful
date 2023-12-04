@@ -57,13 +57,14 @@ require (
 )
 
 require (
+	github.com/allegro/bigcache v1.2.1
+	github.com/allegro/bigcache/v3 v3.1.0
 	github.com/fsnotify/fsnotify v1.5.4
 	github.com/goware/urlx v0.3.2
 	github.com/ipld/go-car v0.5.0
 	github.com/ipld/go-trustless-utils v0.4.1
 	github.com/mostynb/zstdpool-freelist v0.0.0-20201229113212-927304c0c3b1
 	github.com/mr-tron/base58 v1.2.0
-	github.com/patrickmn/go-cache v2.1.0+incompatible
 	github.com/ronanh/intcomp v1.1.0
 	github.com/ryanuber/go-glob v1.0.0
 	github.com/tejzpr/ordered-concurrently/v3 v3.0.1

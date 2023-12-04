@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/binary"
@@ -15,9 +16,9 @@ import (
 	"github.com/ipld/go-car/util"
 	carv2 "github.com/ipld/go-car/v2"
 	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/patrickmn/go-cache"
 	"github.com/rpcpool/yellowstone-faithful/bucketteer"
 	"github.com/rpcpool/yellowstone-faithful/gsfa"
+	hugecache "github.com/rpcpool/yellowstone-faithful/huge-cache"
 	"github.com/rpcpool/yellowstone-faithful/indexes"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
@@ -39,32 +40,12 @@ type Epoch struct {
 	sigToCidIndex       *indexes.SigToCid_Reader
 	sigExists           *bucketteer.Reader
 	gsfaReader          *gsfa.GsfaReader
-	cidToNodeCache      *cache.Cache // TODO: prevent OOM
 	onClose             []func() error
-	slotToCidCache      *cache.Cache
-	cidToOffsetCache    *cache.Cache
+	allCache            *hugecache.Cache
 }
 
-func (r *Epoch) getSlotToCidFromCache(slot uint64) (cid.Cid, error, bool) {
-	if v, ok := r.slotToCidCache.Get(fmt.Sprint(slot)); ok {
-		return v.(cid.Cid), nil, true
-	}
-	return cid.Undef, nil, false
-}
-
-func (r *Epoch) putSlotToCidInCache(slot uint64, c cid.Cid) {
-	r.slotToCidCache.Set(fmt.Sprint(slot), c, cache.DefaultExpiration)
-}
-
-func (r *Epoch) getCidToOffsetFromCache(c cid.Cid) (uint64, error, bool) {
-	if v, ok := r.cidToOffsetCache.Get(c.String()); ok {
-		return v.(uint64), nil, true
-	}
-	return 0, nil, false
-}
-
-func (r *Epoch) putCidToOffsetInCache(c cid.Cid, offset uint64) {
-	r.cidToOffsetCache.Set(c.String(), offset, cache.DefaultExpiration)
+func (r *Epoch) GetCache() *hugecache.Cache {
+	return r.allCache
 }
 
 func (e *Epoch) Epoch() uint64 {
@@ -91,7 +72,11 @@ func (e *Epoch) Close() error {
 	return errors.Join(multiErr...)
 }
 
-func NewEpochFromConfig(config *Config, c *cli.Context) (*Epoch, error) {
+func NewEpochFromConfig(
+	config *Config,
+	c *cli.Context,
+	allCache *hugecache.Cache,
+) (*Epoch, error) {
 	if config == nil {
 		return nil, fmt.Errorf("config must not be nil")
 	}
@@ -103,6 +88,7 @@ func NewEpochFromConfig(config *Config, c *cli.Context) (*Epoch, error) {
 		isFilecoinMode: isLassieMode,
 		config:         config,
 		onClose:        make([]func() error, 0),
+		allCache:       allCache,
 	}
 
 	if isCarMode {
@@ -246,19 +232,6 @@ func NewEpochFromConfig(config *Config, c *cli.Context) (*Epoch, error) {
 		ep.sigExists = sigExists
 	}
 
-	{
-		ca := cache.New(30*time.Second, 1*time.Minute)
-		ep.cidToNodeCache = ca
-	}
-	{
-		ca := cache.New(30*time.Second, 1*time.Minute)
-		ep.slotToCidCache = ca
-	}
-	{
-		ca := cache.New(30*time.Second, 1*time.Minute)
-		ep.cidToOffsetCache = ca
-	}
-
 	return ep, nil
 }
 
@@ -281,17 +254,6 @@ func newRandomSignature() [64]byte {
 	return sig
 }
 
-func (r *Epoch) getNodeFromCache(c cid.Cid) (v []byte, err error, has bool) {
-	if v, ok := r.cidToNodeCache.Get(c.String()); ok {
-		return v.([]byte), nil, true
-	}
-	return nil, nil, false
-}
-
-func (r *Epoch) putNodeInCache(c cid.Cid, data []byte) {
-	r.cidToNodeCache.Set(c.String(), data, cache.DefaultExpiration)
-}
-
 func (r *Epoch) Config() *Config {
 	return r.config
 }
@@ -303,7 +265,7 @@ func (s *Epoch) prefetchSubgraph(ctx context.Context, wantedCid cid.Cid) error {
 		if err == nil {
 			// put in cache
 			return sub.Each(ctx, func(c cid.Cid, data []byte) error {
-				s.putNodeInCache(c, data)
+				s.GetCache().PutRawCarObject(c, data)
 				return nil
 			})
 		}
@@ -316,7 +278,7 @@ func (s *Epoch) prefetchSubgraph(ctx context.Context, wantedCid cid.Cid) error {
 func (s *Epoch) GetNodeByCid(ctx context.Context, wantedCid cid.Cid) ([]byte, error) {
 	{
 		// try from cache
-		data, err, has := s.getNodeFromCache(wantedCid)
+		data, err, has := s.GetCache().GetRawCarObject(wantedCid)
 		if err != nil {
 			return nil, err
 		}
@@ -329,7 +291,7 @@ func (s *Epoch) GetNodeByCid(ctx context.Context, wantedCid cid.Cid) ([]byte, er
 		data, err := s.lassieFetcher.GetNodeByCid(ctx, wantedCid)
 		if err == nil {
 			// put in cache
-			s.putNodeInCache(wantedCid, data)
+			s.GetCache().PutRawCarObject(wantedCid, data)
 			return data, nil
 		}
 		klog.Errorf("failed to get node from lassie: %v", err)
@@ -369,13 +331,21 @@ func (s *Epoch) ReadAtFromCar(ctx context.Context, offset uint64, length uint64)
 	return data, nil
 }
 
-func (s *Epoch) GetNodeByOffset(ctx context.Context, wantedCid cid.Cid, offset uint64) ([]byte, error) {
+func (s *Epoch) GetNodeByOffset(ctx context.Context, wantedCid cid.Cid, offsetAndSize *indexes.OffsetAndSize) ([]byte, error) {
+	if offsetAndSize == nil {
+		return nil, fmt.Errorf("offsetAndSize must not be nil")
+	}
+	if offsetAndSize.Size == 0 {
+		return nil, fmt.Errorf("offsetAndSize.Size must not be 0")
+	}
+	offset := offsetAndSize.Offset
+	length := offsetAndSize.Size
 	if s.localCarReader == nil {
 		// try remote reader
 		if s.remoteCarReader == nil {
 			return nil, fmt.Errorf("no CAR reader available")
 		}
-		return readNodeFromReaderAt(s.remoteCarReader, wantedCid, offset)
+		return readNodeFromReaderAt(s.remoteCarReader, wantedCid, offset, length)
 	}
 	// Get reader and seek to offset, then read node.
 	dr, err := s.localCarReader.DataReader()
@@ -386,17 +356,39 @@ func (s *Epoch) GetNodeByOffset(ctx context.Context, wantedCid cid.Cid, offset u
 	dr.Seek(int64(offset), io.SeekStart)
 	br := bufio.NewReader(dr)
 
-	gotCid, data, err := util.ReadNode(br)
+	return readNodeWithKnownSize(br, wantedCid, length)
+}
+
+func readNodeWithKnownSize(br *bufio.Reader, wantedCid cid.Cid, length uint64) ([]byte, error) {
+	section := make([]byte, length)
+	_, err := io.ReadFull(br, section)
 	if err != nil {
-		klog.Errorf("failed to read node: %v", err)
+		klog.Errorf("failed to read section: %v", err)
 		return nil, err
+	}
+	return parseNodeFromSection(section, wantedCid)
+}
+
+func parseNodeFromSection(section []byte, wantedCid cid.Cid) ([]byte, error) {
+	// read an uvarint from the buffer
+	gotLen, usize := binary.Uvarint(section)
+	if usize <= 0 {
+		return nil, fmt.Errorf("failed to decode uvarint")
+	}
+	if gotLen > uint64(util.MaxAllowedSectionSize) { // Don't OOM
+		return nil, errors.New("malformed car; header is bigger than util.MaxAllowedSectionSize")
+	}
+	data := section[usize:]
+	cidLen, gotCid, err := cid.CidFromReader(bytes.NewReader(data))
+	if err != nil {
+		return nil, fmt.Errorf("failed to read cid: %w", err)
 	}
 	// verify that the CID we read matches the one we expected.
 	if !gotCid.Equals(wantedCid) {
 		klog.Errorf("CID mismatch: expected %s, got %s", wantedCid, gotCid)
 		return nil, fmt.Errorf("CID mismatch: expected %s, got %s", wantedCid, gotCid)
 	}
-	return data, nil
+	return data[cidLen:], nil
 }
 
 func (ser *Epoch) FindCidFromSlot(ctx context.Context, slot uint64) (o cid.Cid, e error) {
@@ -406,7 +398,7 @@ func (ser *Epoch) FindCidFromSlot(ctx context.Context, slot uint64) (o cid.Cid, 
 	}()
 
 	// try from cache
-	if c, err, has := ser.getSlotToCidFromCache(slot); err != nil {
+	if c, err, has := ser.GetCache().GetSlotToCid(slot); err != nil {
 		return cid.Undef, err
 	} else if has {
 		return c, nil
@@ -415,7 +407,7 @@ func (ser *Epoch) FindCidFromSlot(ctx context.Context, slot uint64) (o cid.Cid, 
 	if err != nil {
 		return cid.Undef, err
 	}
-	ser.putSlotToCidInCache(slot, found)
+	ser.GetCache().PutSlotToCid(slot, found)
 	return found, nil
 }
 
@@ -427,25 +419,25 @@ func (ser *Epoch) FindCidFromSignature(ctx context.Context, sig solana.Signature
 	return ser.sigToCidIndex.Get(sig)
 }
 
-func (ser *Epoch) FindOffsetFromCid(ctx context.Context, cid cid.Cid) (o uint64, e error) {
+func (ser *Epoch) FindOffsetFromCid(ctx context.Context, cid cid.Cid) (os *indexes.OffsetAndSize, e error) {
 	startedAt := time.Now()
 	defer func() {
-		klog.Infof("Found offset for CID %s in %s: %d", cid, time.Since(startedAt), o)
+		klog.Infof("Found offset and size for CID %s in %s: o=%d s=%d", cid, time.Since(startedAt), os.Offset, os.Size)
 	}()
 
 	// try from cache
-	if offset, err, has := ser.getCidToOffsetFromCache(cid); err != nil {
-		return 0, err
+	if osi, err, has := ser.GetCache().GetCidToOffsetAndSize(cid); err != nil {
+		return nil, err
 	} else if has {
-		return offset, nil
+		return osi, nil
 	}
 	found, err := ser.cidToOffsetIndex.Get(cid)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	// TODO: use also the size.
-	ser.putCidToOffsetInCache(cid, found.Offset)
-	return found.Offset, nil
+	ser.GetCache().PutCidToOffsetAndSize(cid, found)
+	return found, nil
 }
 
 func (ser *Epoch) GetBlock(ctx context.Context, slot uint64) (*ipldbindcode.Block, error) {

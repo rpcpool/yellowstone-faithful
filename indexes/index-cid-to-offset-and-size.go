@@ -124,6 +124,18 @@ func (w *CidToOffsetAndSize_Writer) GetFilepath() string {
 	return w.finalPath
 }
 
+func NewOffsetAndSize(offset uint64, size uint64) *OffsetAndSize {
+	return &OffsetAndSize{
+		Offset: offset,
+		Size:   size,
+	}
+}
+
+// IsValid returns true if the offset and size are valid.
+func (oas *OffsetAndSize) IsValid() bool {
+	return oas.Offset <= maxUint48 && oas.Size <= maxUint24
+}
+
 type OffsetAndSize struct {
 	Offset uint64 // uint48, 6 bytes, max 281.5 TB (terabytes)
 	Size   uint64 // uint24, 3 bytes, max 16.7 MB (megabytes)
