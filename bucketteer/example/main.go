@@ -97,7 +97,7 @@ func main() {
 	}
 	if true {
 		// now search for random signatures that are not in the Bucketteer:
-		numSearches := 100_000_000
+		numSearches := 10_000_000
 		fmt.Println(
 			"testing search for random signatures that are not in the Bucketteer (numSearches:",
 			humanize.Comma(int64(numSearches)),

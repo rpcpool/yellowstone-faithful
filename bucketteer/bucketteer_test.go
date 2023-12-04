@@ -153,7 +153,7 @@ func TestBucketteer(t *testing.T) {
 						hash, err := contentReader.ReadUint64(bin.LE)
 						require.NoError(t, err)
 						found := false
-						for _, h := range wr.prefixToHashes[prefix] {
+						for _, h := range wr.prefixToHashes[prefixToUint16(prefix)] {
 							if h == hash {
 								found = true
 								break
