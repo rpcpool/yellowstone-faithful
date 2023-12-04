@@ -109,9 +109,9 @@ type Config struct {
 		} `json:"filecoin" yaml:"filecoin"`
 	} `json:"data" yaml:"data"`
 	Indexes struct {
-		CidToOffset struct {
+		CidToOffsetAndSize struct {
 			URI URI `json:"uri" yaml:"uri"`
-		} `json:"cid_to_offset" yaml:"cid_to_offset"`
+		} `json:"cid_to_offset_and_size" yaml:"cid_to_offset_and_size"`
 		SlotToCid struct {
 			URI URI `json:"uri" yaml:"uri"`
 		} `json:"slot_to_cid" yaml:"slot_to_cid"`
@@ -214,10 +214,10 @@ func (c *Config) Validate() error {
 		if err := isSupportedURI(c.Data.Car.URI, "data.car.uri"); err != nil {
 			return err
 		}
-		if c.Indexes.CidToOffset.URI.IsZero() {
-			return fmt.Errorf("indexes.cid_to_offset.uri must be set")
+		if c.Indexes.CidToOffsetAndSize.URI.IsZero() {
+			return fmt.Errorf("indexes.cid_to_offset_and_size.uri must be set")
 		}
-		if err := isSupportedURI(c.Indexes.CidToOffset.URI, "indexes.cid_to_offset.uri"); err != nil {
+		if err := isSupportedURI(c.Indexes.CidToOffsetAndSize.URI, "indexes.cid_to_offset_and_size.uri"); err != nil {
 			return err
 		}
 	} else {
@@ -273,8 +273,8 @@ func (c *Config) Validate() error {
 			if !c.Data.Car.URI.IsValid() {
 				return fmt.Errorf("data.car.uri is invalid")
 			}
-			if !c.Indexes.CidToOffset.URI.IsValid() {
-				return fmt.Errorf("indexes.cid_to_offset.uri is invalid")
+			if !c.Indexes.CidToOffsetAndSize.URI.IsValid() {
+				return fmt.Errorf("indexes.cid_to_offset_and_size.uri is invalid")
 			}
 		}
 		if !c.Indexes.SlotToCid.URI.IsValid() {

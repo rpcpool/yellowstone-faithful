@@ -31,17 +31,17 @@ type Epoch struct {
 	isFilecoinMode bool // true if the epoch is in Filecoin mode (i.e. Lassie mode)
 	config         *Config
 	// contains indexes and block data for the epoch
-	lassieFetcher       *lassieWrapper
-	localCarReader      *carv2.Reader
-	remoteCarReader     ReaderAtCloser
-	remoteCarHeaderSize uint64
-	cidToOffsetIndex    *indexes.CidToOffsetAndSize_Reader
-	slotToCidIndex      *indexes.SlotToCid_Reader
-	sigToCidIndex       *indexes.SigToCid_Reader
-	sigExists           *bucketteer.Reader
-	gsfaReader          *gsfa.GsfaReader
-	onClose             []func() error
-	allCache            *hugecache.Cache
+	lassieFetcher           *lassieWrapper
+	localCarReader          *carv2.Reader
+	remoteCarReader         ReaderAtCloser
+	remoteCarHeaderSize     uint64
+	cidToOffsetAndSizeIndex *indexes.CidToOffsetAndSize_Reader
+	slotToCidIndex          *indexes.SlotToCid_Reader
+	sigToCidIndex           *indexes.SigToCid_Reader
+	sigExists               *bucketteer.Reader
+	gsfaReader              *gsfa.GsfaReader
+	onClose                 []func() error
+	allCache                *hugecache.Cache
 }
 
 func (r *Epoch) GetCache() *hugecache.Cache {
@@ -93,24 +93,24 @@ func NewEpochFromConfig(
 
 	if isCarMode {
 		// The CAR-mode requires a cid-to-offset index.
-		cidToOffsetIndexFile, err := openIndexStorage(
+		cidToOffsetAndSizeIndexFile, err := openIndexStorage(
 			c.Context,
-			string(config.Indexes.CidToOffset.URI),
+			string(config.Indexes.CidToOffsetAndSize.URI),
 			DebugMode,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to open cid-to-offset index file: %w", err)
 		}
-		ep.onClose = append(ep.onClose, cidToOffsetIndexFile.Close)
+		ep.onClose = append(ep.onClose, cidToOffsetAndSizeIndexFile.Close)
 
-		cidToOffsetIndex, err := indexes.OpenWithReader_CidToOffsetAndSize(cidToOffsetIndexFile)
+		cidToOffsetIndex, err := indexes.OpenWithReader_CidToOffsetAndSize(cidToOffsetAndSizeIndexFile)
 		if err != nil {
 			return nil, fmt.Errorf("failed to open cid-to-offset index: %w", err)
 		}
-		if config.Indexes.CidToOffset.URI.IsRemoteWeb() {
+		if config.Indexes.CidToOffsetAndSize.URI.IsRemoteWeb() {
 			cidToOffsetIndex.Prefetch(true)
 		}
-		ep.cidToOffsetIndex = cidToOffsetIndex
+		ep.cidToOffsetAndSizeIndex = cidToOffsetIndex
 	}
 
 	{
@@ -431,7 +431,7 @@ func (ser *Epoch) FindOffsetFromCid(ctx context.Context, cid cid.Cid) (os *index
 	} else if has {
 		return osi, nil
 	}
-	found, err := ser.cidToOffsetIndex.Get(cid)
+	found, err := ser.cidToOffsetAndSizeIndex.Get(cid)
 	if err != nil {
 		return nil, err
 	}

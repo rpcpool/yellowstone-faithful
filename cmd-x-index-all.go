@@ -184,7 +184,7 @@ func createAllIndexes(
 		numTotalItems,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create cid_to_offset index: %w", err)
+		return nil, fmt.Errorf("failed to create cid_to_offset_and_size index: %w", err)
 	}
 	defer cid_to_offset_and_size.Close()
 
@@ -332,7 +332,7 @@ func createAllIndexes(
 			klog.Infof("Sealing cid_to_offset_and_size index...")
 			err = cid_to_offset_and_size.Seal(ctx, indexDir)
 			if err != nil {
-				return nil, fmt.Errorf("failed to seal cid_to_offset index: %w", err)
+				return nil, fmt.Errorf("failed to seal cid_to_offset_and_size index: %w", err)
 			}
 			paths.CidToOffsetAndSize = cid_to_offset_and_size.GetFilepath()
 			klog.Infof("Successfully sealed cid_to_offset_and_size index: %s", paths.CidToOffsetAndSize)
@@ -397,7 +397,7 @@ func NewBuilder_CidToOffset(
 ) (*indexes.CidToOffsetAndSize_Writer, error) {
 	tmpDir = filepath.Join(tmpDir, "index-cid-to-offset-"+time.Now().Format("20060102-150405.000000000")+fmt.Sprintf("-%d", rand.Int63()))
 	if err := os.MkdirAll(tmpDir, 0o755); err != nil {
-		return nil, fmt.Errorf("failed to create cid_to_offset tmp dir: %w", err)
+		return nil, fmt.Errorf("failed to create cid_to_offset_and_size tmp dir: %w", err)
 	}
 	index, err := indexes.NewWriter_CidToOffsetAndSize(
 		epoch,
@@ -489,13 +489,13 @@ func verifyAllIndexes(
 		return fmt.Errorf("car file must have exactly 1 root, but has %d", len(rd.header.Roots))
 	}
 
-	cid_to_offset, err := OpenIndex_CidToOffset(
+	cid_to_offset_and_size, err := OpenIndex_CidToOffset(
 		indexes.CidToOffsetAndSize,
 	)
 	if err != nil {
-		return fmt.Errorf("failed to open cid_to_offset index: %w", err)
+		return fmt.Errorf("failed to open cid_to_offset_and_size index: %w", err)
 	}
-	defer cid_to_offset.Close()
+	defer cid_to_offset_and_size.Close()
 
 	slot_to_cid, err := OpenIndex_SlotToCid(
 		indexes.SlotToCid,
@@ -549,7 +549,7 @@ func verifyAllIndexes(
 
 		// klog.Infof("key: %s, offset: %d", bin.FormatByteSlice(c.Bytes()), totalOffset)
 
-		offset, err := cid_to_offset.Get(_cid)
+		offset, err := cid_to_offset_and_size.Get(_cid)
 		if err != nil {
 			return fmt.Errorf("failed to lookup offset for %s: %w", _cid, err)
 		}
@@ -644,7 +644,7 @@ func OpenIndex_CidToOffset(
 ) (*indexes.CidToOffsetAndSize_Reader, error) {
 	index, err := indexes.Open_CidToOffsetAndSize(indexFilePath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open index: %w", err)
+		return nil, fmt.Errorf("failed to open cid_to_offset_and_size index: %w", err)
 	}
 	return index, nil
 }
@@ -654,7 +654,7 @@ func OpenIndex_SlotToCid(
 ) (*indexes.SlotToCid_Reader, error) {
 	index, err := indexes.Open_SlotToCid(indexFilePath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open index: %w", err)
+		return nil, fmt.Errorf("failed to open slot_to_cid index: %w", err)
 	}
 	return index, nil
 }
@@ -664,7 +664,7 @@ func OpenIndex_SigToCid(
 ) (*indexes.SigToCid_Reader, error) {
 	index, err := indexes.Open_SigToCid(indexFilePath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open index: %w", err)
+		return nil, fmt.Errorf("failed to open sig_to_cid index: %w", err)
 	}
 	return index, nil
 }
