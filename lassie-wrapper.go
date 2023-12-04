@@ -15,6 +15,7 @@ import (
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/ipld/go-ipld-prime/storage"
 	"github.com/ipld/go-ipld-prime/storage/memstore"
+	trustlessutils "github.com/ipld/go-trustless-utils"
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/urfave/cli/v2"
@@ -38,7 +39,7 @@ func (l *lassieWrapper) GetNodeByCid(ctx context.Context, wantedCid cid.Cid) ([]
 			ctx,
 			wantedCid,
 			"",
-			types.DagScopeBlock,
+			trustlessutils.DagScopeBlock,
 			store,
 		)
 		if err != nil {
@@ -60,7 +61,7 @@ func (l *lassieWrapper) GetSubgraph(ctx context.Context, wantedCid cid.Cid) (*Wr
 			ctx,
 			wantedCid,
 			"",
-			types.DagScopeAll,
+			trustlessutils.DagScopeAll,
 			store,
 		)
 		if err != nil {
@@ -74,10 +75,10 @@ func (l *lassieWrapper) Fetch(
 	ctx context.Context,
 	rootCid cid.Cid,
 	path string,
-	dagScope types.DagScope,
+	dagScope trustlessutils.DagScope,
 	store RwStorage,
 ) (*types.RetrievalStats, error) {
-	request, err := types.NewRequestForPath(store, rootCid, path, types.DagScope(dagScope))
+	request, err := types.NewRequestForPath(store, rootCid, path, trustlessutils.DagScope(dagScope), nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -86,7 +87,7 @@ func (l *lassieWrapper) Fetch(
 	request.PreloadLinkSystem.SetWriteStorage(store)
 	request.PreloadLinkSystem.TrustedStorage = true
 
-	stats, err := l.lassie.Fetch(ctx, request, func(types.RetrievalEvent) {})
+	stats, err := l.lassie.Fetch(ctx, request)
 	if err != nil {
 		return stats, fmt.Errorf("failed to fetch: %w", err)
 	}
@@ -102,9 +103,6 @@ func newLassieWrapper(
 	providerTimeout := cctx.Duration("provider-timeout")
 	globalTimeout := cctx.Duration("global-timeout")
 	bitswapConcurrency := cctx.Int("bitswap-concurrency")
-	eventRecorderURL := cctx.String("event-recorder-url")
-	authToken := cctx.String("event-recorder-auth")
-	instanceID := cctx.String("event-recorder-instance-id")
 
 	providerTimeoutOpt := lassie.WithProviderTimeout(providerTimeout)
 
@@ -158,8 +156,9 @@ func newLassieWrapper(
 		return nil, err
 	}
 
-	// create and subscribe an event recorder API if configured
-	setupLassieEventRecorder(ctx, eventRecorderURL, authToken, instanceID, lassie)
+	// if eventRecorderCfg.EndpointURL != "" {
+	// 	setupLassieEventRecorder(ctx, eventRecorderCfg, lassie)
+	// }
 
 	return &lassieWrapper{
 		lassie: lassie,

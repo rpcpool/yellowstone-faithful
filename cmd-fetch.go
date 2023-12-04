@@ -21,14 +21,16 @@ package main
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/url"
-	"os"
 	"strings"
-	"time"
+
+	golog "github.com/ipfs/go-log/v2"
 
 	"github.com/dustin/go-humanize"
+	"github.com/filecoin-project/lassie/pkg/aggregateeventrecorder"
 	"github.com/filecoin-project/lassie/pkg/events"
 	"github.com/filecoin-project/lassie/pkg/indexerlookup"
 	"github.com/filecoin-project/lassie/pkg/lassie"
@@ -36,34 +38,28 @@ import (
 	"github.com/filecoin-project/lassie/pkg/retriever"
 	"github.com/filecoin-project/lassie/pkg/storage"
 	"github.com/filecoin-project/lassie/pkg/types"
+	"github.com/google/uuid"
 	"github.com/ipfs/go-cid"
+	"github.com/ipld/go-car/v2"
+	"github.com/ipld/go-car/v2/storage/deferred"
+	"github.com/ipld/go-ipld-prime/datamodel"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
-	"github.com/libp2p/go-libp2p"
+	trustlessutils "github.com/ipld/go-trustless-utils"
+	trustlesshttp "github.com/ipld/go-trustless-utils/http"
+	"github.com/libp2p/go-libp2p/config"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/urfave/cli/v2"
-	"k8s.io/klog/v2"
 )
 
 var globalFetchProviderAddrInfos []peer.AddrInfo
 
 var lassieFetchFlags = []cli.Flag{
 	&cli.StringFlag{
-		Name:      "output",
-		Aliases:   []string{"o"},
-		Usage:     "the CAR file to write to, may be an existing or a new CAR, or use '-' to write to stdout",
+		Name:    "output",
+		Aliases: []string{"o"},
+		Usage: "the CAR file to write to, may be an existing or a new CAR, " +
+			"or use '-' to write to stdout",
 		TakesFile: true,
-	},
-	&cli.DurationFlag{
-		Name:    "provider-timeout",
-		Aliases: []string{"pt"},
-		Usage:   "consider it an error after not receiving a response from a storage provider after this amount of time",
-		Value:   20 * time.Second,
-	},
-	&cli.DurationFlag{
-		Name:    "global-timeout",
-		Aliases: []string{"gt"},
-		Usage:   "consider it an error after not completing the retrieval after this amount of time",
-		Value:   0,
 	},
 	&cli.BoolFlag{
 		Name:    "progress",
@@ -71,152 +67,305 @@ var lassieFetchFlags = []cli.Flag{
 		Usage:   "print progress output",
 	},
 	&cli.StringFlag{
-		Name:        "dag-scope",
-		Usage:       "describes the fetch behavior at the end of the traversal path. Valid values include [all, entity, block].",
-		DefaultText: "defaults to all, the entire DAG at the end of the path will be fetched",
-		Value:       "all",
+		Name: "dag-scope",
+		Usage: "describes the fetch behavior at the end of the traversal " +
+			"path. Valid values include [all, entity, block].",
+		DefaultText: "defaults to all, the entire DAG at the end of the path will " +
+			"be fetched",
+		Value: "all",
 		Action: func(cctx *cli.Context, v string) error {
 			switch v {
-			case string(types.DagScopeAll):
-			case string(types.DagScopeEntity):
-			case string(types.DagScopeBlock):
+			case string(trustlessutils.DagScopeAll):
+			case string(trustlessutils.DagScopeEntity):
+			case string(trustlessutils.DagScopeBlock):
 			default:
-				return fmt.Errorf("invalid dag-scope parameter, must be of value [all, entity, block]")
+				return fmt.Errorf("invalid dag-scope parameter, must be of value " +
+					"[all, entity, block]")
 			}
-
 			return nil
 		},
 	},
 	&cli.StringFlag{
-		Name:        "providers",
-		Aliases:     []string{"provider"},
-		DefaultText: "Providers will be discovered automatically",
-		Usage:       "Addresses of providers, including peer IDs, to use instead of automatic discovery, seperated by a comma. All protocols will be attempted when connecting to these providers. Example: /ip4/1.2.3.4/tcp/1234/p2p/12D3KooWBSTEYMLSu5FnQjshEVah9LFGEZoQt26eacCEVYfedWA4",
+		Name: "entity-bytes",
+		Usage: "describes the byte range to consider when selecting the blocks " +
+			"from a sharded file. Valid values should be of the form from:to, where " +
+			"from and to are byte offsets and to may be '*'",
+		DefaultText: "defaults to the entire file, 0:*",
 		Action: func(cctx *cli.Context, v string) error {
-			// Do nothing if given an empty string
-			if v == "" {
-				return nil
+			if _, err := trustlessutils.ParseByteRange(v); err != nil {
+				return fmt.Errorf("invalid entity-bytes parameter, must be of the " +
+					"form from:to, where from and to are byte offsets and to may be '*'")
 			}
-
-			var err error
-			globalFetchProviderAddrInfos, err = types.ParseProviderStrings(v)
-			return err
+			return nil
 		},
 	},
-	&cli.StringFlag{
-		Name:        "ipni-endpoint",
-		Aliases:     []string{"ipni"},
-		DefaultText: "Defaults to https://cid.contact",
-		Usage:       "HTTP endpoint of the IPNI instance used to discover providers.",
+	&cli.BoolFlag{
+		Name: "duplicates",
+		Usage: "allow duplicate blocks to be written to the output CAR, which " +
+			"may be useful for streaming.",
+		Aliases: []string{"dups"},
 	},
+	FlagIPNIEndpoint,
 	FlagEventRecorderAuth,
 	FlagEventRecorderInstanceId,
 	FlagEventRecorderUrl,
 	FlagVerbose,
 	FlagVeryVerbose,
 	FlagProtocols,
+	FlagAllowProviders,
 	FlagExcludeProviders,
 	FlagTempDir,
 	FlagBitswapConcurrency,
+	FlagGlobalTimeout,
+	FlagProviderTimeout,
 }
 
 var fetchCmd = &cli.Command{
 	Name:   "fetch",
 	Usage:  "Fetches content from the IPFS and Filecoin network",
-	Before: before,
-	Action: Fetch,
+	After:  after,
+	Action: fetchAction,
 	Flags:  lassieFetchFlags,
 }
 
-func Fetch(cctx *cli.Context) error {
+func after(cctx *cli.Context) error {
+	ResetGlobalFlags()
+	return nil
+}
+
+func fetchAction(cctx *cli.Context) error {
 	if cctx.Args().Len() != 1 {
-		return fmt.Errorf("usage: lassie fetch [-o <CAR file>] [-t <timeout>] <CID>[/path/to/content]")
+		// "help" becomes a subcommand, clear it to deal with a urfave/cli bug
+		// Ref: https://github.com/urfave/cli/blob/v2.25.7/help.go#L253-L255
+		cctx.Command.Subcommands = nil
+		cli.ShowCommandHelpAndExit(cctx, "fetch", 0)
+		return nil
 	}
 
-	ctx := cctx.Context
 	msgWriter := cctx.App.ErrWriter
 	dataWriter := cctx.App.Writer
 
-	progress := cctx.Bool("progress")
-	providerTimeout := cctx.Duration("provider-timeout")
-	globalTimeout := cctx.Duration("global-timeout")
-	dagScope := cctx.String("dag-scope")
+	root, path, scope, byteRange, duplicates, err := parseCidPath(cctx.Args().Get(0))
+	if err != nil {
+		return err
+	}
+
+	if cctx.IsSet("dag-scope") {
+		if scope, err = trustlessutils.ParseDagScope(cctx.String("dag-scope")); err != nil {
+			return err
+		}
+	}
+
+	if cctx.IsSet("entity-bytes") {
+		if entityBytes, err := trustlessutils.ParseByteRange(cctx.String("entity-bytes")); err != nil {
+			return err
+		} else if entityBytes.IsDefault() {
+			byteRange = nil
+		} else {
+			byteRange = &entityBytes
+		}
+	}
+
+	if cctx.IsSet("duplicates") {
+		duplicates = cctx.Bool("duplicates")
+	}
+
 	tempDir := cctx.String("tempdir")
-	bitswapConcurrency := cctx.Int("bitswap-concurrency")
+	progress := cctx.Bool("progress")
+
+	output := cctx.String("output")
+	outfile := fmt.Sprintf("%s.car", root.String())
+	if output != "" {
+		outfile = output
+	}
+
+	lassieCfg, err := buildLassieConfigFromCLIContext(cctx, nil, nil)
+	if err != nil {
+		return err
+	}
+
 	eventRecorderURL := cctx.String("event-recorder-url")
 	authToken := cctx.String("event-recorder-auth")
 	instanceID := cctx.String("event-recorder-instance-id")
+	eventRecorderCfg := getEventRecorderConfig(eventRecorderURL, authToken, instanceID)
 
-	rootCid, path, err := parseCidPath(cctx.Args().Get(0))
+	err = fetchRun(
+		cctx.Context,
+		lassieCfg,
+		eventRecorderCfg,
+		msgWriter,
+		dataWriter,
+		root,
+		path,
+		scope,
+		byteRange,
+		duplicates,
+		tempDir,
+		progress,
+		outfile,
+	)
 	if err != nil {
-		return err
+		return cli.Exit(err, 1)
 	}
 
-	providerTimeoutOpt := lassie.WithProviderTimeout(providerTimeout)
+	return nil
+}
 
-	host, err := host.InitHost(ctx, []libp2p.Option{})
-	if err != nil {
-		return err
-	}
-	hostOpt := lassie.WithHost(host)
-	lassieOpts := []lassie.LassieOption{providerTimeoutOpt, hostOpt}
+func parseCidPath(spec string) (
+	root cid.Cid,
+	path datamodel.Path,
+	scope trustlessutils.DagScope,
+	byteRange *trustlessutils.ByteRange,
+	duplicates bool,
+	err error,
+) {
+	scope = trustlessutils.DagScopeAll // default
 
-	if len(globalFetchProviderAddrInfos) > 0 {
-		finderOpt := lassie.WithFinder(retriever.NewDirectCandidateFinder(host, globalFetchProviderAddrInfos))
-		if cctx.IsSet("ipni-endpoint") {
-			klog.Warning("Ignoring ipni-endpoint flag since direct provider is specified")
+	if !strings.HasPrefix(spec, "/ipfs/") {
+		cstr := strings.Split(spec, "/")[0]
+		path = datamodel.ParsePath(strings.TrimPrefix(spec, cstr))
+		if root, err = cid.Parse(cstr); err != nil {
+			return cid.Undef, datamodel.Path{}, trustlessutils.DagScopeAll, nil, false, err
 		}
-		lassieOpts = append(lassieOpts, finderOpt)
-	} else if cctx.IsSet("ipni-endpoint") {
-		endpoint := cctx.String("ipni-endpoint")
-		endpointUrl, err := url.Parse(endpoint)
-		if err != nil {
-			klog.Error("Failed to parse IPNI endpoint as URL", "err", err)
-			return fmt.Errorf("cannot parse given IPNI endpoint %s as valid URL: %w", endpoint, err)
-		}
-		finder, err := indexerlookup.NewCandidateFinder(indexerlookup.WithHttpEndpoint(endpointUrl))
-		if err != nil {
-			klog.Error("Failed to instantiate IPNI candidate finder", "err", err)
-			return err
-		}
-		lassieOpts = append(lassieOpts, lassie.WithFinder(finder))
-		klog.Info("Using explicit IPNI endpoint to find candidates", "endpoint", endpoint)
-	}
-
-	if len(providerBlockList) > 0 {
-		lassieOpts = append(lassieOpts, lassie.WithProviderBlockList(providerBlockList))
-	}
-
-	if len(protocols) > 0 {
-		lassieOpts = append(lassieOpts, lassie.WithProtocols(protocols))
-	}
-
-	if globalTimeout > 0 {
-		lassieOpts = append(lassieOpts, lassie.WithGlobalTimeout(globalTimeout))
-	}
-
-	if tempDir != "" {
-		lassieOpts = append(lassieOpts, lassie.WithTempDir(tempDir))
+		return root, path, scope, byteRange, duplicates, err
 	} else {
-		tempDir = os.TempDir()
-	}
+		specParts := strings.Split(spec, "?")
+		spec = specParts[0]
 
-	if bitswapConcurrency > 0 {
-		lassieOpts = append(lassieOpts, lassie.WithBitswapConcurrency(bitswapConcurrency))
-	}
+		if root, path, err = trustlesshttp.ParseUrlPath(spec); err != nil {
+			return cid.Undef, datamodel.Path{}, trustlessutils.DagScopeAll, nil, false, err
+		}
 
-	lassie, err := lassie.NewLassie(ctx, lassieOpts...)
+		switch len(specParts) {
+		case 1:
+		case 2:
+			query, err := url.ParseQuery(specParts[1])
+			if err != nil {
+				return cid.Undef, datamodel.Path{}, trustlessutils.DagScopeAll, nil, false, err
+			}
+			scope, err = trustlessutils.ParseDagScope(query.Get("dag-scope"))
+			if err != nil {
+				return cid.Undef, datamodel.Path{}, trustlessutils.DagScopeAll, nil, false, err
+			}
+			if query.Get("entity-bytes") != "" {
+				br, err := trustlessutils.ParseByteRange(query.Get("entity-bytes"))
+				if err != nil {
+					return cid.Undef, datamodel.Path{}, trustlessutils.DagScopeAll, nil, false, err
+				}
+				byteRange = &br
+			}
+			duplicates = query.Get("dups") == "y"
+		default:
+			return cid.Undef, datamodel.Path{}, trustlessutils.DagScopeAll, nil, false, fmt.Errorf("invalid query: %s", spec)
+		}
+
+		return root, path, scope, byteRange, duplicates, nil
+	}
+}
+
+type progressPrinter struct {
+	candidatesFound int
+	writer          io.Writer
+}
+
+func (pp *progressPrinter) subscriber(event types.RetrievalEvent) {
+	switch ret := event.(type) {
+	case events.StartedFindingCandidatesEvent:
+		fmt.Fprintf(pp.writer, "\rQuerying indexer for %s...\n", ret.RootCid())
+	case events.StartedRetrievalEvent:
+		fmt.Fprintf(pp.writer, "\rRetrieving from [%s] (%s)...\n", events.Identifier(ret), ret.Code())
+	case events.ConnectedToProviderEvent:
+		fmt.Fprintf(pp.writer, "\rRetrieving from [%s] (%s)...\n", events.Identifier(ret), ret.Code())
+	case events.GraphsyncProposedEvent:
+		fmt.Fprintf(pp.writer, "\rRetrieving from [%s] (%s)...\n", events.Identifier(ret), ret.Code())
+	case events.GraphsyncAcceptedEvent:
+		fmt.Fprintf(pp.writer, "\rRetrieving from [%s] (%s)...\n", events.Identifier(ret), ret.Code())
+	case events.FirstByteEvent:
+		fmt.Fprintf(pp.writer, "\rRetrieving from [%s] (%s)...\n", events.Identifier(ret), ret.Code())
+	case events.CandidatesFoundEvent:
+		pp.candidatesFound = len(ret.Candidates())
+	case events.CandidatesFilteredEvent:
+		if len(fetchProviderAddrInfos) == 0 {
+			fmt.Fprintf(pp.writer, "Found %d storage provider candidate(s) in the indexer:\n", pp.candidatesFound)
+		} else {
+			fmt.Fprintf(pp.writer, "Using the specified storage provider(s):\n")
+		}
+		for _, candidate := range ret.Candidates() {
+			fmt.Fprintf(pp.writer, "\r\t%s, Protocols: %v\n", candidate.MinerPeer.ID, candidate.Metadata.Protocols())
+		}
+	case events.FailedEvent:
+		fmt.Fprintf(pp.writer, "\rRetrieval failure from indexer: %s\n", ret.ErrorMessage())
+	case events.FailedRetrievalEvent:
+		fmt.Fprintf(pp.writer, "\rRetrieval failure for [%s]: %s\n", events.Identifier(ret), ret.ErrorMessage())
+	case events.SucceededEvent:
+		// noop, handled at return from Retrieve()
+	}
+}
+
+type onlyWriter struct {
+	w io.Writer
+}
+
+func (ow *onlyWriter) Write(p []byte) (n int, err error) {
+	return ow.w.Write(p)
+}
+
+type fetchRunFunc func(
+	ctx context.Context,
+	lassieCfg *lassie.LassieConfig,
+	eventRecorderCfg *aggregateeventrecorder.EventRecorderConfig,
+	msgWriter io.Writer,
+	dataWriter io.Writer,
+	rootCid cid.Cid,
+	path datamodel.Path,
+	dagScope trustlessutils.DagScope,
+	entityBytes *trustlessutils.ByteRange,
+	duplicates bool,
+	tempDir string,
+	progress bool,
+	outfile string,
+) error
+
+var fetchRun fetchRunFunc = defaultFetchRun
+
+const stdoutFileString string = "-" // a string representing stdout
+
+// defaultFetchRun is the handler for the fetch command.
+// This abstraction allows the fetch command to be invoked
+// programmatically for testing.
+func defaultFetchRun(
+	ctx context.Context,
+	lassieCfg *lassie.LassieConfig,
+	eventRecorderCfg *aggregateeventrecorder.EventRecorderConfig,
+	msgWriter io.Writer,
+	dataWriter io.Writer,
+	rootCid cid.Cid,
+	path datamodel.Path,
+	dagScope trustlessutils.DagScope,
+	entityBytes *trustlessutils.ByteRange,
+	duplicates bool,
+	tempDir string,
+	progress bool,
+	outfile string,
+) error {
+	lassie, err := lassie.NewLassieWithConfig(ctx, lassieCfg)
 	if err != nil {
 		return err
 	}
 
-	// create and subscribe an event recorder API if configured
-	setupLassieEventRecorder(ctx, eventRecorderURL, authToken, instanceID, lassie)
+	// create and subscribe an event recorder API if an endpoint URL is set
+	if eventRecorderCfg.EndpointURL != "" {
+		setupLassieEventRecorder(ctx, eventRecorderCfg, lassie)
+	}
 
-	if len(globalFetchProviderAddrInfos) == 0 {
-		fmt.Fprintf(msgWriter, "Fetching %s", rootCid.String()+path)
+	printPath := path.String()
+	if printPath != "" {
+		printPath = "/" + printPath
+	}
+	if len(fetchProviderAddrInfos) == 0 {
+		fmt.Fprintf(msgWriter, "Fetching %s", rootCid.String()+printPath)
 	} else {
-		fmt.Fprintf(msgWriter, "Fetching %s from %v", rootCid.String()+path, globalFetchProviderAddrInfos)
+		fmt.Fprintf(msgWriter, "Fetching %s from specified provider(s)", rootCid.String()+printPath)
 	}
 	if progress {
 		fmt.Fprintln(msgWriter)
@@ -224,21 +373,34 @@ func Fetch(cctx *cli.Context) error {
 		lassie.RegisterSubscriber(pp.subscriber)
 	}
 
-	outfile := fmt.Sprintf("%s.car", rootCid)
-	if cctx.IsSet("output") {
-		outfile = cctx.String("output")
+	var carWriter storage.DeferredWriter
+	carOpts := []car.Option{
+		car.WriteAsCarV1(true),
+		car.StoreIdentityCIDs(false),
+		car.UseWholeCIDs(false),
 	}
 
-	var carWriter *storage.DeferredCarWriter
-	if outfile == "-" { // stdout
+	tempStore := storage.NewDeferredStorageCar(tempDir, rootCid)
+
+	if outfile == stdoutFileString {
 		// we need the onlyWriter because stdout is presented as an os.File, and
 		// therefore pretend to support seeks, so feature-checking in go-car
 		// will make bad assumptions about capabilities unless we hide it
-		carWriter = storage.NewDeferredCarWriterForStream(rootCid, &onlyWriter{dataWriter})
+		w := &onlyWriter{dataWriter}
+		if duplicates {
+			carWriter = storage.NewDuplicateAdderCarForStream(ctx, w, rootCid, path.String(), dagScope, entityBytes, tempStore)
+		} else {
+			carWriter = deferred.NewDeferredCarWriterForStream(w, []cid.Cid{rootCid}, carOpts...)
+		}
 	} else {
-		carWriter = storage.NewDeferredCarWriterForPath(rootCid, outfile)
+		if duplicates {
+			carWriter = storage.NewDuplicateAdderCarForPath(ctx, outfile, rootCid, path.String(), dagScope, entityBytes, tempStore)
+		} else {
+			carWriter = deferred.NewDeferredCarWriterForPath(outfile, []cid.Cid{rootCid}, carOpts...)
+		}
 	}
-	tempStore := storage.NewDeferredStorageCar(tempDir)
+	defer carWriter.Close()
+
 	carStore := storage.NewCachingTempStore(carWriter.BlockWriteOpener(), tempStore)
 	defer carStore.Close()
 
@@ -254,7 +416,7 @@ func Fetch(cctx *cli.Context) error {
 		}
 	}, false)
 
-	request, err := types.NewRequestForPath(carStore, rootCid, path, types.DagScope(dagScope))
+	request, err := types.NewRequestForPath(carStore, rootCid, path.String(), dagScope, entityBytes)
 	if err != nil {
 		return err
 	}
@@ -265,18 +427,23 @@ func Fetch(cctx *cli.Context) error {
 	request.PreloadLinkSystem.SetReadStorage(preloadStore)
 	request.PreloadLinkSystem.SetWriteStorage(preloadStore)
 	request.PreloadLinkSystem.TrustedStorage = true
+	request.Duplicates = duplicates
 
-	stats, err := lassie.Fetch(ctx, request, func(types.RetrievalEvent) {})
+	stats, err := lassie.Fetch(ctx, request)
 	if err != nil {
 		fmt.Fprintln(msgWriter)
 		return err
+	}
+	spid := stats.StorageProviderId.String()
+	if spid == "" {
+		spid = types.BitswapIndentifier
 	}
 	fmt.Fprintf(msgWriter, "\nFetched [%s] from [%s]:\n"+
 		"\tDuration: %s\n"+
 		"\t  Blocks: %d\n"+
 		"\t   Bytes: %s\n",
 		rootCid,
-		stats.StorageProviderId,
+		spid,
 		stats.Duration,
 		blockCount,
 		humanize.IBytes(stats.Size),
@@ -285,77 +452,94 @@ func Fetch(cctx *cli.Context) error {
 	return nil
 }
 
-func parseCidPath(cpath string) (cid.Cid, string, error) {
-	cstr := strings.Split(cpath, "/")[0]
-	path := strings.TrimPrefix(cpath, cstr)
-	rootCid, err := cid.Parse(cstr)
+func buildLassieConfigFromCLIContext(cctx *cli.Context, lassieOpts []lassie.LassieOption, libp2pOpts []config.Option) (*lassie.LassieConfig, error) {
+	providerTimeout := cctx.Duration("provider-timeout")
+	globalTimeout := cctx.Duration("global-timeout")
+	bitswapConcurrency := cctx.Int("bitswap-concurrency")
+	bitswapConcurrencyPerRetrieval := cctx.Int("bitswap-concurrency-per-retrieval")
+
+	lassieOpts = append(lassieOpts, lassie.WithProviderTimeout(providerTimeout))
+
+	if globalTimeout > 0 {
+		lassieOpts = append(lassieOpts, lassie.WithGlobalTimeout(globalTimeout))
+	}
+
+	if len(protocols) > 0 {
+		lassieOpts = append(lassieOpts, lassie.WithProtocols(protocols))
+	}
+
+	host, err := host.InitHost(cctx.Context, libp2pOpts)
 	if err != nil {
-		return cid.Undef, "", err
+		return nil, err
 	}
-	return rootCid, path, nil
+	lassieOpts = append(lassieOpts, lassie.WithHost(host))
+
+	if len(fetchProviderAddrInfos) > 0 {
+		finderOpt := lassie.WithFinder(retriever.NewDirectCandidateFinder(host, fetchProviderAddrInfos))
+		if cctx.IsSet("ipni-endpoint") {
+			logger.Warn("Ignoring ipni-endpoint flag since direct provider is specified")
+		}
+		lassieOpts = append(lassieOpts, finderOpt)
+	} else if cctx.IsSet("ipni-endpoint") {
+		endpoint := cctx.String("ipni-endpoint")
+		endpointUrl, err := url.ParseRequestURI(endpoint)
+		if err != nil {
+			logger.Errorw("Failed to parse IPNI endpoint as URL", "err", err)
+			return nil, fmt.Errorf("cannot parse given IPNI endpoint %s as valid URL: %w", endpoint, err)
+		}
+		finder, err := indexerlookup.NewCandidateFinder(indexerlookup.WithHttpEndpoint(endpointUrl))
+		if err != nil {
+			logger.Errorw("Failed to instantiate IPNI candidate finder", "err", err)
+			return nil, err
+		}
+		lassieOpts = append(lassieOpts, lassie.WithFinder(finder))
+		logger.Debug("Using explicit IPNI endpoint to find candidates", "endpoint", endpoint)
+	}
+
+	if len(providerBlockList) > 0 {
+		lassieOpts = append(lassieOpts, lassie.WithProviderBlockList(providerBlockList))
+	}
+
+	if bitswapConcurrency > 0 {
+		lassieOpts = append(lassieOpts, lassie.WithBitswapConcurrency(bitswapConcurrency))
+	}
+
+	if bitswapConcurrencyPerRetrieval > 0 {
+		lassieOpts = append(lassieOpts, lassie.WithBitswapConcurrencyPerRetrieval(bitswapConcurrencyPerRetrieval))
+	} else if bitswapConcurrency > 0 {
+		lassieOpts = append(lassieOpts, lassie.WithBitswapConcurrencyPerRetrieval(bitswapConcurrency))
+	}
+
+	return lassie.NewLassieConfig(lassieOpts...), nil
 }
 
-type progressPrinter struct {
-	candidatesFound int
-	writer          io.Writer
-}
-
-func (pp *progressPrinter) subscriber(event types.RetrievalEvent) {
-	switch ret := event.(type) {
-	case events.RetrievalEventStarted:
-		switch ret.Phase() {
-		case types.IndexerPhase:
-			fmt.Fprintf(pp.writer, "\rQuerying indexer for %s...\n", ret.PayloadCid())
-		case types.QueryPhase:
-			fmt.Fprintf(pp.writer, "\rQuerying [%s] (%s)...\n", types.Identifier(ret), ret.Code())
-		case types.RetrievalPhase:
-			fmt.Fprintf(pp.writer, "\rRetrieving from [%s] (%s)...\n", types.Identifier(ret), ret.Code())
-		}
-	case events.RetrievalEventConnected:
-		switch ret.Phase() {
-		case types.QueryPhase:
-			fmt.Fprintf(pp.writer, "\rQuerying [%s] (%s)...\n", types.Identifier(ret), ret.Code())
-		case types.RetrievalPhase:
-			fmt.Fprintf(pp.writer, "\rRetrieving from [%s] (%s)...\n", types.Identifier(ret), ret.Code())
-		}
-	case events.RetrievalEventProposed:
-		fmt.Fprintf(pp.writer, "\rRetrieving from [%s] (%s)...\n", types.Identifier(ret), ret.Code())
-	case events.RetrievalEventAccepted:
-		fmt.Fprintf(pp.writer, "\rRetrieving from [%s] (%s)...\n", types.Identifier(ret), ret.Code())
-	case events.RetrievalEventFirstByte:
-		fmt.Fprintf(pp.writer, "\rRetrieving from [%s] (%s)...\n", types.Identifier(ret), ret.Code())
-	case events.RetrievalEventCandidatesFound:
-		pp.candidatesFound = len(ret.Candidates())
-	case events.RetrievalEventCandidatesFiltered:
-		num := "all of them"
-		if pp.candidatesFound != len(ret.Candidates()) {
-			num = fmt.Sprintf("%d of them", len(ret.Candidates()))
-		} else if pp.candidatesFound == 1 {
-			num = "it"
-		}
-		if len(globalFetchProviderAddrInfos) > 0 {
-			fmt.Fprintf(pp.writer, "Found %d storage providers candidates from the indexer, querying %s:\n", pp.candidatesFound, num)
-		} else {
-			fmt.Fprintf(pp.writer, "Using the explicitly specified storage provider(s), querying %s:\n", num)
-		}
-		for _, candidate := range ret.Candidates() {
-			fmt.Fprintf(pp.writer, "\r\t%s, Protocols: %v\n", candidate.MinerPeer.ID, candidate.Metadata.Protocols())
-		}
-	case events.RetrievalEventFailed:
-		if ret.Phase() == types.IndexerPhase {
-			fmt.Fprintf(pp.writer, "\rRetrieval failure from indexer: %s\n", ret.ErrorMessage())
-		} else {
-			fmt.Fprintf(pp.writer, "\rRetrieval failure for [%s]: %s\n", types.Identifier(ret), ret.ErrorMessage())
-		}
-	case events.RetrievalEventSuccess:
-		// noop, handled at return from Retrieve()
+func getEventRecorderConfig(endpointURL string, authToken string, instanceID string) *aggregateeventrecorder.EventRecorderConfig {
+	return &aggregateeventrecorder.EventRecorderConfig{
+		InstanceID:            instanceID,
+		EndpointURL:           endpointURL,
+		EndpointAuthorization: authToken,
 	}
 }
 
-type onlyWriter struct {
-	w io.Writer
+// setupLassieEventRecorder creates and subscribes an EventRecorder if an event recorder URL is given
+func setupLassieEventRecorder(
+	ctx context.Context,
+	cfg *aggregateeventrecorder.EventRecorderConfig,
+	lassie *lassie.Lassie,
+) {
+	if cfg.EndpointURL != "" {
+		if cfg.InstanceID == "" {
+			uuid, err := uuid.NewRandom()
+			if err != nil {
+				logger.Warnw("failed to generate default event recorder instance ID UUID, no instance ID will be provided", "err", err)
+			}
+			cfg.InstanceID = uuid.String() // returns "" if uuid is invalid
+		}
+
+		eventRecorder := aggregateeventrecorder.NewAggregateEventRecorder(ctx, *cfg)
+		lassie.RegisterSubscriber(eventRecorder.RetrievalEventSubscriber())
+		logger.Infow("Reporting retrieval events to event recorder API", "url", cfg.EndpointURL, "instance_id", cfg.InstanceID)
+	}
 }
 
-func (ow *onlyWriter) Write(p []byte) (n int, err error) {
-	return ow.w.Write(p)
-}
+var logger = golog.Logger("lassie/main")
