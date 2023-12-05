@@ -16,6 +16,7 @@ import (
 	"github.com/dustin/go-humanize"
 	bin "github.com/gagliardetto/binary"
 	"github.com/gagliardetto/solana-go"
+	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-libipfs/blocks"
 	"github.com/ipld/go-car"
 	"github.com/rpcpool/yellowstone-faithful/gsfa"
@@ -121,7 +122,11 @@ func newCmd_Index_gsfa() *cli.Command {
 			rootCID := rd.Header.Roots[0]
 
 			// Use the car file name and root CID to name the gsfa index dir:
-			gsfaIndexDir := filepath.Join(indexDir, fmt.Sprintf("%s-%s-gsfa-index", filepath.Base(carPath), rootCID.String()))
+			gsfaIndexDir := filepath.Join(indexDir, formatIndexDirname_gsfa(
+				epoch,
+				rootCID,
+				network,
+			))
 			klog.Infof("Creating gsfa index dir at %s", gsfaIndexDir)
 			err = os.Mkdir(gsfaIndexDir, 0o755)
 			if err != nil {
@@ -255,6 +260,16 @@ func newCmd_Index_gsfa() *cli.Command {
 			return nil
 		},
 	}
+}
+
+func formatIndexDirname_gsfa(epoch uint64, rootCid cid.Cid, network indexes.Network) string {
+	return fmt.Sprintf(
+		"epoch-%d-%s-%s-%s",
+		epoch,
+		rootCid.String(),
+		network,
+		"gsfa.indexdir",
+	)
 }
 
 type TransactionWithSlot struct {

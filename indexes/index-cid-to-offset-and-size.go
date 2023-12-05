@@ -28,7 +28,7 @@ const (
 
 func formatFilename_CidToOffsetAndSize(epoch uint64, rootCid cid.Cid, network Network) string {
 	return fmt.Sprintf(
-		"%d-%s-%s-%s",
+		"epoch-%d-%s-%s-%s",
 		epoch,
 		rootCid.String(),
 		network,
