@@ -167,6 +167,14 @@ func (m *MultiEpoch) GetFirstAvailableBlock(ctx context.Context) (*ipldbindcode.
 	return oldestEpoch.GetFirstAvailableBlock(ctx)
 }
 
+func (m *MultiEpoch) GetMostRecentAvailableBlock(ctx context.Context) (*ipldbindcode.Block, error) {
+	mostRecentEpoch, err := m.GetMostRecentAvailableEpoch()
+	if err != nil {
+		return nil, err
+	}
+	return mostRecentEpoch.GetMostRecentAvailableBlock(ctx)
+}
+
 func (m *MultiEpoch) GetMostRecentAvailableEpochNumber() (uint64, error) {
 	numbers := m.GetEpochNumbers()
 	if len(numbers) > 0 {
@@ -442,7 +450,7 @@ func sanitizeMethod(method string) string {
 
 func isValidLocalMethod(method string) bool {
 	switch method {
-	case "getBlock", "getTransaction", "getSignaturesForAddress", "getBlockTime", "getGenesisHash", "getFirstAvailableBlock":
+	case "getBlock", "getTransaction", "getSignaturesForAddress", "getBlockTime", "getGenesisHash", "getFirstAvailableBlock", "getSlot":
 		return true
 	default:
 		return false
@@ -464,6 +472,8 @@ func (ser *MultiEpoch) handleRequest(ctx context.Context, conn *requestContext, 
 		return ser.handleGetGenesisHash(ctx, conn, req)
 	case "getFirstAvailableBlock":
 		return ser.handleGetFirstAvailableBlock(ctx, conn, req)
+	case "getSlot":
+		return ser.handleGetSlot(ctx, conn, req)
 	default:
 		return &jsonrpc2.Error{
 			Code:    jsonrpc2.CodeMethodNotFound,

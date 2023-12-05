@@ -363,6 +363,42 @@ func (r *Epoch) Config() *Config {
 	return r.config
 }
 
+func (s *Epoch) GetMostRecentAvailableBlock(ctx context.Context) (*ipldbindcode.Block, error) {
+	// get root object, then get the last subset, then the last block.
+	rootCid := s.rootCid
+	rootNode, err := s.GetNodeByCid(ctx, rootCid)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get root node: %w", err)
+	}
+	epochNode, err := iplddecoders.DecodeEpoch(rootNode)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode epoch node: %w", err)
+	}
+	if len(epochNode.Subsets) == 0 {
+		return nil, fmt.Errorf("no subsets found")
+	}
+	subsetNode, err := s.GetNodeByCid(ctx, epochNode.Subsets[len(epochNode.Subsets)-1].(cidlink.Link).Cid)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get subset node: %w", err)
+	}
+	subset, err := iplddecoders.DecodeSubset(subsetNode)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode subset node: %w", err)
+	}
+	if len(subset.Blocks) == 0 {
+		return nil, fmt.Errorf("no blocks found")
+	}
+	blockNode, err := s.GetNodeByCid(ctx, subset.Blocks[len(subset.Blocks)-1].(cidlink.Link).Cid)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get block node: %w", err)
+	}
+	block, err := iplddecoders.DecodeBlock(blockNode)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode block node: %w", err)
+	}
+	return block, nil
+}
+
 func (s *Epoch) GetFirstAvailableBlock(ctx context.Context) (*ipldbindcode.Block, error) {
 	// get root object, then get the first subset, then the first block.
 	rootCid := s.rootCid
