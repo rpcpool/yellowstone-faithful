@@ -247,6 +247,9 @@ func NewEpochFromConfig(
 		if err != nil {
 			return nil, fmt.Errorf("failed to open CAR file: %w", err)
 		}
+		if config.IsSplitCarMode() {
+			// TODO: load the remote split CAR files.
+		}
 		if localCarReader != nil {
 			ep.onClose = append(ep.onClose, localCarReader.Close)
 		}

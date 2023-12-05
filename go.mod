@@ -2,6 +2,8 @@ module github.com/rpcpool/yellowstone-faithful
 
 go 1.20
 
+replace github.com/anjor/carlet => github.com/rpcpool/carlet v0.0.4
+
 require (
 	github.com/benbjohnson/clock v1.3.5 // indirect
 	github.com/cespare/xxhash/v2 v2.2.0
@@ -33,7 +35,7 @@ require (
 	github.com/klauspost/compress v1.17.2
 	github.com/libp2p/go-libp2p v0.32.1
 	github.com/libp2p/go-libp2p-routing-helpers v0.7.1 // indirect
-	github.com/multiformats/go-multiaddr v0.12.0 // indirect
+	github.com/multiformats/go-multiaddr v0.12.0
 	github.com/multiformats/go-multicodec v0.9.0
 	github.com/multiformats/go-multihash v0.2.3 // indirect
 	github.com/sourcegraph/jsonrpc2 v0.2.0
@@ -58,10 +60,12 @@ require (
 
 require (
 	github.com/allegro/bigcache/v3 v3.1.0
+	github.com/anjor/carlet v0.0.0-00010101000000-000000000000
 	github.com/fsnotify/fsnotify v1.5.4
 	github.com/goware/urlx v0.3.2
 	github.com/ipld/go-car v0.5.0
 	github.com/ipld/go-trustless-utils v0.4.1
+	github.com/jellydator/ttlcache/v3 v3.1.0
 	github.com/libp2p/go-reuseport v0.4.0
 	github.com/mostynb/zstdpool-freelist v0.0.0-20201229113212-927304c0c3b1
 	github.com/mr-tron/base58 v1.2.0
@@ -102,6 +106,8 @@ require (
 	github.com/filecoin-project/go-amt-ipld/v4 v4.1.0 // indirect
 	github.com/filecoin-project/go-cbor-util v0.0.1 // indirect
 	github.com/filecoin-project/go-ds-versioning v0.1.2 // indirect
+	github.com/filecoin-project/go-fil-commcid v0.1.0 // indirect
+	github.com/filecoin-project/go-fil-commp-hashhash v0.2.0 // indirect
 	github.com/filecoin-project/go-hamt-ipld/v3 v3.2.0 // indirect
 	github.com/filecoin-project/go-retrieval-types v1.2.0 // indirect
 	github.com/filecoin-project/go-statemachine v1.0.3 // indirect
