@@ -126,6 +126,7 @@ func (m *MultiEpoch) CountEpochs() int {
 	return len(m.epochs)
 }
 
+// GetEpochNumbers returns a list of epoch numbers, sorted from most recent to oldest.
 func (m *MultiEpoch) GetEpochNumbers() []uint64 {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
