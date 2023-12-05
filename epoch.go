@@ -16,6 +16,7 @@ import (
 	carv1 "github.com/ipld/go-car"
 	"github.com/ipld/go-car/util"
 	carv2 "github.com/ipld/go-car/v2"
+	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/rpcpool/yellowstone-faithful/bucketteer"
 	"github.com/rpcpool/yellowstone-faithful/gsfa"
@@ -40,6 +41,7 @@ type Epoch struct {
 	localCarReader          *carv2.Reader
 	remoteCarReader         ReaderAtCloser
 	carHeaderSize           uint64
+	rootCid                 cid.Cid
 	cidToOffsetAndSizeIndex *indexes.CidToOffsetAndSize_Reader
 	slotToCidIndex          *indexes.SlotToCid_Reader
 	sigToCidIndex           *indexes.SigToCid_Reader
@@ -333,6 +335,8 @@ func NewEpochFromConfig(
 		}
 	}
 
+	ep.rootCid = lastRootCid
+
 	return ep, nil
 }
 
@@ -357,6 +361,42 @@ func newRandomSignature() [64]byte {
 
 func (r *Epoch) Config() *Config {
 	return r.config
+}
+
+func (s *Epoch) GetFirstAvailableBlock(ctx context.Context) (*ipldbindcode.Block, error) {
+	// get root object, then get the first subset, then the first block.
+	rootCid := s.rootCid
+	rootNode, err := s.GetNodeByCid(ctx, rootCid)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get root node: %w", err)
+	}
+	epochNode, err := iplddecoders.DecodeEpoch(rootNode)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode epoch node: %w", err)
+	}
+	if len(epochNode.Subsets) == 0 {
+		return nil, fmt.Errorf("no subsets found")
+	}
+	subsetNode, err := s.GetNodeByCid(ctx, epochNode.Subsets[0].(cidlink.Link).Cid)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get subset node: %w", err)
+	}
+	subset, err := iplddecoders.DecodeSubset(subsetNode)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode subset node: %w", err)
+	}
+	if len(subset.Blocks) == 0 {
+		return nil, fmt.Errorf("no blocks found")
+	}
+	blockNode, err := s.GetNodeByCid(ctx, subset.Blocks[0].(cidlink.Link).Cid)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get block node: %w", err)
+	}
+	block, err := iplddecoders.DecodeBlock(blockNode)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode block node: %w", err)
+	}
+	return block, nil
 }
 
 func (s *Epoch) prefetchSubgraph(ctx context.Context, wantedCid cid.Cid) error {

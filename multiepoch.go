@@ -14,6 +14,7 @@ import (
 	"github.com/goware/urlx"
 	"github.com/libp2p/go-reuseport"
 	"github.com/mr-tron/base58"
+	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"github.com/sourcegraph/jsonrpc2"
 	"github.com/valyala/fasthttp"
 	"k8s.io/klog/v2"
@@ -138,7 +139,7 @@ func (m *MultiEpoch) GetEpochNumbers() []uint64 {
 	return epochNumbers
 }
 
-func (m *MultiEpoch) GetFirstAvailableEpoch() (*Epoch, error) {
+func (m *MultiEpoch) GetMostRecentAvailableEpoch() (*Epoch, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	numbers := m.GetEpochNumbers()
@@ -148,7 +149,25 @@ func (m *MultiEpoch) GetFirstAvailableEpoch() (*Epoch, error) {
 	return nil, fmt.Errorf("no epochs available")
 }
 
-func (m *MultiEpoch) GetFirstAvailableEpochNumber() (uint64, error) {
+func (m *MultiEpoch) GetOldestAvailableEpoch() (*Epoch, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	numbers := m.GetEpochNumbers()
+	if len(numbers) > 0 {
+		return m.epochs[numbers[len(numbers)-1]], nil
+	}
+	return nil, fmt.Errorf("no epochs available")
+}
+
+func (m *MultiEpoch) GetFirstAvailableBlock(ctx context.Context) (*ipldbindcode.Block, error) {
+	oldestEpoch, err := m.GetOldestAvailableEpoch()
+	if err != nil {
+		return nil, err
+	}
+	return oldestEpoch.GetFirstAvailableBlock(ctx)
+}
+
+func (m *MultiEpoch) GetMostRecentAvailableEpochNumber() (uint64, error) {
 	numbers := m.GetEpochNumbers()
 	if len(numbers) > 0 {
 		return numbers[0], nil
@@ -423,7 +442,7 @@ func sanitizeMethod(method string) string {
 
 func isValidLocalMethod(method string) bool {
 	switch method {
-	case "getBlock", "getTransaction", "getSignaturesForAddress", "getBlockTime", "getGenesisHash":
+	case "getBlock", "getTransaction", "getSignaturesForAddress", "getBlockTime", "getGenesisHash", "getFirstAvailableBlock":
 		return true
 	default:
 		return false
@@ -443,6 +462,8 @@ func (ser *MultiEpoch) handleRequest(ctx context.Context, conn *requestContext, 
 		return ser.handleGetBlockTime(ctx, conn, req)
 	case "getGenesisHash":
 		return ser.handleGetGenesisHash(ctx, conn, req)
+	case "getFirstAvailableBlock":
+		return ser.handleGetFirstAvailableBlock(ctx, conn, req)
 	default:
 		return &jsonrpc2.Error{
 			Code:    jsonrpc2.CodeMethodNotFound,
