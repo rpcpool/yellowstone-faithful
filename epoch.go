@@ -90,6 +90,7 @@ func NewEpochFromConfig(
 		onClose:        make([]func() error, 0),
 		allCache:       allCache,
 	}
+	var lastRootCid cid.Cid
 
 	if isCarMode {
 		// The CAR-mode requires a cid-to-offset index.
@@ -111,6 +112,11 @@ func NewEpochFromConfig(
 			cidToOffsetIndex.Prefetch(true)
 		}
 		ep.cidToOffsetAndSizeIndex = cidToOffsetIndex
+
+		if ep.Epoch() != cidToOffsetIndex.Meta().Epoch {
+			return nil, fmt.Errorf("epoch mismatch in cid-to-offset-and-size index: expected %d, got %d", ep.Epoch(), cidToOffsetIndex.Meta().Epoch)
+		}
+		lastRootCid = cidToOffsetIndex.Meta().RootCid
 	}
 
 	{
@@ -132,6 +138,14 @@ func NewEpochFromConfig(
 			slotToCidIndex.Prefetch(true)
 		}
 		ep.slotToCidIndex = slotToCidIndex
+
+		if ep.Epoch() != slotToCidIndex.Meta().Epoch {
+			return nil, fmt.Errorf("epoch mismatch in slot-to-cid index: expected %d, got %d", ep.Epoch(), slotToCidIndex.Meta().Epoch)
+		}
+		if lastRootCid != cid.Undef && !lastRootCid.Equals(slotToCidIndex.Meta().RootCid) {
+			return nil, fmt.Errorf("root CID mismatch in slot-to-cid index: expected %s, got %s", lastRootCid, slotToCidIndex.Meta().RootCid)
+		}
+		lastRootCid = slotToCidIndex.Meta().RootCid
 	}
 
 	{
@@ -153,6 +167,14 @@ func NewEpochFromConfig(
 			sigToCidIndex.Prefetch(true)
 		}
 		ep.sigToCidIndex = sigToCidIndex
+
+		if ep.Epoch() != sigToCidIndex.Meta().Epoch {
+			return nil, fmt.Errorf("epoch mismatch in sig-to-cid index: expected %d, got %d", ep.Epoch(), sigToCidIndex.Meta().Epoch)
+		}
+
+		if !lastRootCid.Equals(sigToCidIndex.Meta().RootCid) {
+			return nil, fmt.Errorf("root CID mismatch in sig-to-cid index: expected %s, got %s", lastRootCid, sigToCidIndex.Meta().RootCid)
+		}
 	}
 
 	{
@@ -163,6 +185,8 @@ func NewEpochFromConfig(
 			}
 			ep.onClose = append(ep.onClose, gsfaIndex.Close)
 			ep.gsfaReader = gsfaIndex
+
+			// TODO: check epoch and root CID
 		}
 	}
 
@@ -176,6 +200,11 @@ func NewEpochFromConfig(
 			return nil, fmt.Errorf("newLassieWrapper: %w", err)
 		}
 		ep.lassieFetcher = ls
+
+		if !lastRootCid.Equals(config.Data.Filecoin.RootCID) {
+			return nil, fmt.Errorf("root CID mismatch in lassie: expected %s, got %s", lastRootCid, config.Data.Filecoin.RootCID)
+		}
+		// TODO: check epoch.
 	}
 
 	if isCarMode {
@@ -204,6 +233,7 @@ func NewEpochFromConfig(
 			}
 			ep.remoteCarHeaderSize = uint64(n) + headerSize
 		}
+
 	}
 	{
 		sigExistsFile, err := openIndexStorage(
@@ -230,6 +260,7 @@ func NewEpochFromConfig(
 		}
 
 		ep.sigExists = sigExists
+		// TODO: check epoch and root CID
 	}
 
 	return ep, nil

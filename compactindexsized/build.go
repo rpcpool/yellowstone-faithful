@@ -16,11 +16,13 @@ import (
 	"path/filepath"
 	"sort"
 	"syscall"
+
+	"github.com/rpcpool/yellowstone-faithful/indexmeta"
 )
 
 // Builder creates new compactindex files.
 type Builder struct {
-	Header
+	Header     Header
 	tmpDir     string
 	headerSize int64
 	closers    []io.Closer
@@ -79,6 +81,7 @@ func NewBuilderSized(
 		Header: Header{
 			ValueSize:  uint64(valueSize),
 			NumBuckets: uint32(numBuckets),
+			Metadata:   &indexmeta.Meta{},
 		},
 		closers: closers,
 		buckets: buckets,
@@ -90,7 +93,7 @@ func NewBuilderSized(
 // If the kind is already set, it is overwritten.
 func (b *Builder) SetKind(kind []byte) error {
 	// check if kind is too long
-	if len(kind) > MaxKeySize {
+	if len(kind) > indexmeta.MaxKeySize {
 		return fmt.Errorf("kind is too long")
 	}
 	// check if kind is empty
@@ -98,21 +101,21 @@ func (b *Builder) SetKind(kind []byte) error {
 		return fmt.Errorf("kind is empty")
 	}
 	// check if kind is already set
-	if b.Header.Metadata.Count(KeyKind) > 0 {
+	if b.Header.Metadata.Count(indexmeta.MetadataKey_Kind) > 0 {
 		// remove kind
-		b.Header.Metadata.Remove(KeyKind)
+		b.Header.Metadata.Remove(indexmeta.MetadataKey_Kind)
 	}
 	// set kind
-	b.Header.Metadata.Add(KeyKind, kind)
+	b.Header.Metadata.Add(indexmeta.MetadataKey_Kind, kind)
 	return nil
 }
 
-func (b *Builder) Metadata() *Meta {
-	return &b.Header.Metadata
+func (b *Builder) Metadata() *indexmeta.Meta {
+	return b.Header.Metadata
 }
 
 func (b *Builder) getValueSize() int {
-	return int(b.ValueSize)
+	return int(b.Header.ValueSize)
 }
 
 // Insert writes a key-value mapping to the index.
@@ -147,7 +150,7 @@ func (b *Builder) Seal(ctx context.Context, file *os.File) (err error) {
 	}
 	b.headerSize = headerSize
 	// Create hole to leave space for bucket header table.
-	bucketTableLen := int64(b.NumBuckets) * bucketHdrLen
+	bucketTableLen := int64(b.Header.NumBuckets) * bucketHdrLen
 	err = fallocate(file, headerSize, bucketTableLen)
 	if errors.Is(err, syscall.EOPNOTSUPP) {
 		// The underlying file system may not support fallocate

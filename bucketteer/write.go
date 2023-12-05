@@ -10,6 +10,7 @@ import (
 	"sort"
 
 	bin "github.com/gagliardetto/binary"
+	"github.com/rpcpool/yellowstone-faithful/indexmeta"
 )
 
 type Writer struct {
@@ -77,7 +78,7 @@ func (b *Writer) Close() error {
 }
 
 // Seal writes the Bucketteer's state to the given writer.
-func (b *Writer) Seal(meta map[string]string) (int64, error) {
+func (b *Writer) Seal(meta indexmeta.Meta) (int64, error) {
 	// truncate file and seek to beginning:
 	if err := b.destination.Truncate(0); err != nil {
 		return 0, err
@@ -96,7 +97,7 @@ func createHeader(
 	magic [8]byte,
 	version uint64,
 	headerSizeIn uint32,
-	meta map[string]string,
+	meta indexmeta.Meta,
 	prefixToOffset bucketToOffset,
 ) ([]byte, error) {
 	tmpHeaderBuf := new(bytes.Buffer)
@@ -120,18 +121,12 @@ func createHeader(
 	}
 	// write meta
 	{
-		// write num meta entries
-		if err := headerWriter.WriteUint64(uint64(len(meta)), binary.LittleEndian); err != nil {
-			return nil, err
+		metaBuf, err := meta.MarshalBinary()
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal metadata: %w", err)
 		}
-		// write meta entries
-		for k, v := range meta {
-			if err := headerWriter.WriteString(k); err != nil {
-				return nil, err
-			}
-			if err := headerWriter.WriteString(v); err != nil {
-				return nil, err
-			}
+		if _, err := headerWriter.Write(metaBuf); err != nil {
+			return nil, fmt.Errorf("failed to write metadata: %w", err)
 		}
 	}
 	// write num buckets
@@ -171,7 +166,7 @@ func overwriteFileContentAt(
 func seal(
 	out *bufio.Writer,
 	prefixToHashes *prefixToHashes,
-	meta map[string]string,
+	meta indexmeta.Meta,
 ) ([]byte, int64, error) {
 	prefixToOffset := bucketToOffset{}
 	for prefixAsUint16 := range prefixToHashes {

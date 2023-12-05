@@ -8,12 +8,13 @@ import (
 	"math"
 
 	bin "github.com/gagliardetto/binary"
+	"github.com/rpcpool/yellowstone-faithful/indexmeta"
 	"golang.org/x/exp/mmap"
 )
 
 type Reader struct {
 	contentReader  io.ReaderAt
-	meta           map[string]string
+	meta           *indexmeta.Meta
 	prefixToOffset *bucketToOffset
 }
 
@@ -76,14 +77,8 @@ func (r *Reader) Close() error {
 	return nil
 }
 
-func (r *Reader) Meta() map[string]string {
+func (r *Reader) Meta() *indexmeta.Meta {
 	return r.meta
-}
-
-// GetMeta returns the value of the given key.
-// Returns an empty string if the key does not exist.
-func (r *Reader) GetMeta(key string) string {
-	return r.meta[key]
 }
 
 func readHeaderSize(reader io.ReaderAt) (int64, error) {
@@ -96,7 +91,7 @@ func readHeaderSize(reader io.ReaderAt) (int64, error) {
 	return headerSize, nil
 }
 
-func readHeader(reader io.ReaderAt) (*bucketToOffset, map[string]string, int64, error) {
+func readHeader(reader io.ReaderAt) (*bucketToOffset, *indexmeta.Meta, int64, error) {
 	// read header size:
 	headerSize, err := readHeaderSize(reader)
 	if err != nil {
@@ -132,21 +127,10 @@ func readHeader(reader io.ReaderAt) (*bucketToOffset, map[string]string, int64, 
 		}
 	}
 	// read meta:
-	numMeta, err := decoder.ReadUint64(bin.LE)
-	if err != nil {
-		return nil, nil, 0, err
-	}
-	meta := make(map[string]string, numMeta)
-	for i := uint64(0); i < numMeta; i++ {
-		key, err := decoder.ReadString()
-		if err != nil {
-			return nil, nil, 0, err
-		}
-		value, err := decoder.ReadString()
-		if err != nil {
-			return nil, nil, 0, err
-		}
-		meta[key] = value
+	var meta indexmeta.Meta
+	// read key-value pairs
+	if err := meta.UnmarshalWithDecoder(decoder); err != nil {
+		return nil, nil, 0, fmt.Errorf("failed to unmarshal metadata: %w", err)
 	}
 	// numPrefixes:
 	numPrefixes, err := decoder.ReadUint64(bin.LE)
@@ -167,7 +151,7 @@ func readHeader(reader io.ReaderAt) (*bucketToOffset, map[string]string, int64, 
 		}
 		prefixToOffset[prefixToUint16(prefix)] = offset
 	}
-	return &prefixToOffset, meta, headerSize + 4, err
+	return &prefixToOffset, &meta, headerSize + 4, err
 }
 
 func (r *Reader) Has(sig [64]byte) (bool, error) {

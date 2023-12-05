@@ -6,6 +6,7 @@ import (
 	"math/rand"
 	"testing"
 
+	"github.com/rpcpool/yellowstone-faithful/indexmeta"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -75,11 +76,11 @@ func TestOpen_HeaderOnly(t *testing.T) {
 	require.NotNil(t, db)
 
 	assert.NotNil(t, db.Stream)
-	assert.Equal(t, Header{
+	assert.Equal(t, &Header{
 		ValueSize:  0x1337,
 		NumBuckets: 0x42,
-		Metadata: Meta{
-			KeyVals: []KV{
+		Metadata: &indexmeta.Meta{
+			KeyVals: []indexmeta.KV{
 				{
 					Key:   []byte("foo"),
 					Value: []byte("bar"),

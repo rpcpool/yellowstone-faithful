@@ -17,6 +17,7 @@ import (
 	carv1 "github.com/ipld/go-car"
 	"github.com/rpcpool/yellowstone-faithful/bucketteer"
 	"github.com/rpcpool/yellowstone-faithful/indexes"
+	"github.com/rpcpool/yellowstone-faithful/indexmeta"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
 	"github.com/urfave/cli/v2"
 	"k8s.io/klog/v2"
@@ -360,8 +361,15 @@ func createAllIndexes(
 
 		{
 			klog.Infof("Sealing sig_exists index...")
-			meta := map[string]string{
-				"root_cid": rootCID.String(),
+			meta := indexmeta.Meta{}
+			if err := meta.AddUint64(indexmeta.MetadataKey_Epoch, epoch); err != nil {
+				return nil, fmt.Errorf("failed to add epoch to sig_exists index metadata: %w", err)
+			}
+			if err := meta.AddCid(indexmeta.MetadataKey_RootCid, rootCID); err != nil {
+				return nil, fmt.Errorf("failed to add root cid to sig_exists index metadata: %w", err)
+			}
+			if err := meta.AddString(indexmeta.MetadataKey_Network, string(network)); err != nil {
+				return nil, fmt.Errorf("failed to add network to sig_exists index metadata: %w", err)
 			}
 			if _, err = sig_exists.Seal(meta); err != nil {
 				return nil, fmt.Errorf("failed to seal sig_exists index: %w", err)

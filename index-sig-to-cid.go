@@ -14,6 +14,7 @@ import (
 	carv2 "github.com/ipld/go-car/v2"
 	"github.com/rpcpool/yellowstone-faithful/bucketteer"
 	"github.com/rpcpool/yellowstone-faithful/indexes"
+	"github.com/rpcpool/yellowstone-faithful/indexmeta"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"k8s.io/klog/v2"
 )
@@ -242,13 +243,9 @@ func VerifyIndex_sigExists(ctx context.Context, carPath string, indexFilePath st
 
 	// check root_cid matches
 	rootCID := roots[0]
-	storedRootCidString := sigExists.GetMeta("root_cid")
-	if storedRootCidString == "" {
-		return fmt.Errorf("index file does not have a root_cid meta")
-	}
-	storedRootCid, err := cid.Parse(storedRootCidString)
-	if err != nil {
-		return fmt.Errorf("failed to parse stored root cid: %w", err)
+	storedRootCid, ok := sigExists.Meta().GetCid(indexmeta.MetadataKey_RootCid)
+	if !ok {
+		return fmt.Errorf("index file does not have a root cid meta")
 	}
 	if !rootCID.Equals(storedRootCid) {
 		return fmt.Errorf("root CID mismatch: expected %s, got %s", rootCID, storedRootCid)

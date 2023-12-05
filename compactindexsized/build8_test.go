@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rpcpool/yellowstone-faithful/indexmeta"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/vbauerster/mpb/v8/decor"
@@ -139,9 +140,10 @@ func TestBuilder8(t *testing.T) {
 	require.NotNil(t, db)
 
 	// File header assertions.
-	assert.Equal(t, Header{
+	assert.Equal(t, &Header{
 		ValueSize:  valueSize,
 		NumBuckets: numBuckets,
+		Metadata:   &indexmeta.Meta{},
 	}, db.Header)
 
 	// Get bucket handles.

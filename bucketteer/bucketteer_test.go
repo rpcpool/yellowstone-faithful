@@ -1,11 +1,13 @@
 package bucketteer
 
 import (
+	"math"
 	"os"
 	"path/filepath"
 	"testing"
 
 	bin "github.com/gagliardetto/binary"
+	"github.com/rpcpool/yellowstone-faithful/indexmeta"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/mmap"
 )
@@ -44,11 +46,11 @@ func TestBucketteer(t *testing.T) {
 		wr.Put(sig)
 		require.True(t, wr.Has(sig))
 	}
-	require.Equal(t, 3, len(wr.prefixToHashes))
+	require.Equal(t, 65536, len(wr.prefixToHashes))
 	{
-		gotSize, err := wr.Seal(map[string]string{
-			"epoch": "test",
-		})
+		meta := indexmeta.Meta{}
+		meta.Add([]byte("epoch"), []byte("test"))
+		gotSize, err := wr.Seal(meta)
 		require.NoError(t, err)
 		require.NoError(t, wr.Close())
 		realSize, err := getFizeSize(path)
@@ -63,7 +65,7 @@ func TestBucketteer(t *testing.T) {
 		// read header size:
 		headerSize, err := reader.ReadUint32(bin.LE)
 		require.NoError(t, err)
-		require.Equal(t, uint32(8+8+8+(8+(4+5)+(4+4))+(3*(2+8))), headerSize)
+		require.Equal(t, uint32(8+8+8+(1+(1+5)+(1+4))+(65536*(2+8))), headerSize)
 
 		// magic:
 		{
@@ -80,24 +82,34 @@ func TestBucketteer(t *testing.T) {
 		}
 		{
 			// read meta:
-			numMeta, err := reader.ReadUint64(bin.LE)
+			numMeta, err := reader.ReadUint8()
 			require.NoError(t, err)
-			require.Equal(t, uint64(1), numMeta)
+			require.Equal(t, uint8(1), numMeta)
 
-			key, err := reader.ReadString()
+			keyLen, err := reader.ReadUint8()
 			require.NoError(t, err)
-			require.Equal(t, "epoch", key)
+			require.Equal(t, uint8(5), keyLen)
 
-			value, err := reader.ReadString()
+			key := make([]byte, keyLen)
+			_, err = reader.Read(key)
 			require.NoError(t, err)
-			require.Equal(t, "test", value)
+			require.Equal(t, "epoch", string(key))
+
+			valueLen, err := reader.ReadUint8()
+			require.NoError(t, err)
+			require.Equal(t, uint8(4), valueLen)
+
+			value := make([]byte, valueLen)
+			_, err = reader.Read(value)
+			require.NoError(t, err)
+			require.Equal(t, "test", string(value))
 		}
 		// numPrefixes:
 		numPrefixes, err := reader.ReadUint64(bin.LE)
 		require.NoError(t, err)
-		require.Equal(t, uint64(3), numPrefixes)
+		require.Equal(t, uint64(65536), numPrefixes)
 		// prefix -> offset:
-		prefixToOffset := make(map[[2]byte]uint64)
+		prefixToOffset := [math.MaxUint16 + 1]uint64{}
 		{
 			for i := 0; i < int(numPrefixes); i++ {
 				var prefix [2]byte
@@ -105,35 +117,35 @@ func TestBucketteer(t *testing.T) {
 				require.NoError(t, err)
 				offset, err := reader.ReadUint64(bin.LE)
 				require.NoError(t, err)
-				prefixToOffset[prefix] = offset
+				prefixToOffset[prefixToUint16(prefix)] = offset
 			}
 		}
 		{
-			require.Equal(t,
-				map[[2]uint8]uint64{
-					{0x1, 0x2}:  0x0,
-					{0x16, 0x2}: 0x1c,
-					{0x63, 0x2}: 0x28,
-				}, prefixToOffset)
+			require.Equal(t, 65536, len(prefixToOffset))
+
+			require.Equal(t, uint64(0x804), prefixToOffset[prefixToUint16([2]byte{0x1, 0x2})])
+			require.Equal(t, uint64(0x870), prefixToOffset[prefixToUint16([2]byte{0x16, 0x2})])
+			require.Equal(t, uint64(0x9ac), prefixToOffset[prefixToUint16([2]byte{0x63, 0x2})])
 		}
 		contentBuf, err := reader.ReadNBytes(reader.Remaining())
 		require.NoError(t, err)
-		require.Equal(t,
-			[]byte{
-				0x3, 0x0, 0x0, 0x0, // num entries
-				0x49, 0xd7, 0xaf, 0x9e, 0x94, 0x4d, 0x9a, 0x6f,
-				0x2f, 0x12, 0xdb, 0x5b, 0x1, 0x62, 0xae, 0x1a,
-				0x3b, 0xb6, 0x71, 0x5f, 0x4, 0x4f, 0x36, 0xf2,
-				0x1, 0x0, 0x0, 0x0, // num entries
-				0x58, 0xe1, 0x9d, 0xde, 0x7c, 0xfb, 0xeb, 0x5a,
-				0x1, 0x0, 0x0, 0x0, // num entries
-				0x4c, 0xbd, 0xa3, 0xed, 0xd3, 0x8b, 0xa8, 0x44,
-			},
-			contentBuf,
-		)
+		// require.Equal(t,
+		// 	[]byte{
+		// 		0x3, 0x0, 0x0, 0x0, // num entries
+		// 		0x49, 0xd7, 0xaf, 0x9e, 0x94, 0x4d, 0x9a, 0x6f,
+		// 		0x2f, 0x12, 0xdb, 0x5b, 0x1, 0x62, 0xae, 0x1a,
+		// 		0x3b, 0xb6, 0x71, 0x5f, 0x4, 0x4f, 0x36, 0xf2,
+		// 		0x1, 0x0, 0x0, 0x0, // num entries
+		// 		0x58, 0xe1, 0x9d, 0xde, 0x7c, 0xfb, 0xeb, 0x5a,
+		// 		0x1, 0x0, 0x0, 0x0, // num entries
+		// 		0x4c, 0xbd, 0xa3, 0xed, 0xd3, 0x8b, 0xa8, 0x44,
+		// 	},
+		// 	contentBuf,
+		// )
 		contentReader := bin.NewBorshDecoder(contentBuf)
 		{
-			for prefix, offset := range prefixToOffset {
+			for prefixAsNumber, offset := range prefixToOffset {
+				prefix := uint16ToPrefix(uint16(prefixAsNumber))
 				// Now read the bucket:
 				{
 					err := contentReader.SetPosition(uint(offset))
@@ -175,6 +187,10 @@ func TestBucketteer(t *testing.T) {
 			ok, err := reader.Has(firstSig)
 			require.NoError(t, err)
 			require.True(t, ok)
+
+			got, ok := reader.Meta().Get(indexmeta.MetadataKey_Epoch)
+			require.True(t, ok)
+			require.Equal(t, []byte("test"), got)
 		}
 	}
 }

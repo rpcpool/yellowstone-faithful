@@ -19,6 +19,8 @@ import (
 	"github.com/ipfs/go-libipfs/blocks"
 	"github.com/ipld/go-car"
 	"github.com/rpcpool/yellowstone-faithful/bucketteer"
+	"github.com/rpcpool/yellowstone-faithful/indexes"
+	"github.com/rpcpool/yellowstone-faithful/indexmeta"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
 	"github.com/rpcpool/yellowstone-faithful/readahead"
 	concurrently "github.com/tejzpr/ordered-concurrently/v3"
@@ -28,6 +30,8 @@ import (
 
 func newCmd_Index_sigExists() *cli.Command {
 	var verify bool
+	var epoch uint64
+	var network indexes.Network
 	return &cli.Command{
 		Name:        "sig-exists",
 		Description: "Create sig-exists index from a CAR file",
@@ -52,6 +56,24 @@ func newCmd_Index_sigExists() *cli.Command {
 				Name:        "verify",
 				Usage:       "verify the index after creating it",
 				Destination: &verify,
+			},
+			&cli.Uint64Flag{
+				Name:        "epoch",
+				Usage:       "epoch",
+				Destination: &epoch,
+				Required:    true,
+			},
+			&cli.StringFlag{
+				Name:        "network",
+				Usage:       "network",
+				Destination: (*string)(&network),
+				Required:    true,
+				Action: func(c *cli.Context, v string) error {
+					if !indexes.IsValidNetwork(indexes.Network(v)) {
+						return fmt.Errorf("invalid network: %s", v)
+					}
+					return nil
+				},
 			},
 		},
 		Action: func(c *cli.Context) error {
@@ -204,11 +226,17 @@ func newCmd_Index_sigExists() *cli.Command {
 
 			klog.Info("Sealing index...")
 			sealingStartedAt := time.Now()
-			_, err = index.Seal(
-				map[string]string{
-					"root_cid": rootCID.String(),
-				},
-			)
+			meta := indexmeta.Meta{}
+			if err := meta.AddUint64(indexmeta.MetadataKey_Epoch, epoch); err != nil {
+				return fmt.Errorf("failed to add epoch to sig_exists index metadata: %w", err)
+			}
+			if err := meta.AddCid(indexmeta.MetadataKey_RootCid, rootCID); err != nil {
+				return fmt.Errorf("failed to add root cid to sig_exists index metadata: %w", err)
+			}
+			if err := meta.AddString(indexmeta.MetadataKey_Network, string(network)); err != nil {
+				return fmt.Errorf("failed to add network to sig_exists index metadata: %w", err)
+			}
+			_, err = index.Seal(meta)
 			if err != nil {
 				return fmt.Errorf("error while sealing index: %w", err)
 			}

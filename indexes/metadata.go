@@ -6,6 +6,7 @@ import (
 
 	"github.com/ipfs/go-cid"
 	"github.com/rpcpool/yellowstone-faithful/compactindexsized"
+	"github.com/rpcpool/yellowstone-faithful/indexmeta"
 )
 
 type Metadata struct {
@@ -47,12 +48,6 @@ func (m *Metadata) AssertIndexKind(x []byte) error {
 	return nil
 }
 
-var (
-	MetadataKey_Epoch   = []byte("epoch")
-	MetadataKey_RootCid = []byte("rootCid")
-	MetadataKey_Network = []byte("network")
-)
-
 func setDefaultMetadata(index *compactindexsized.Builder, metadata *Metadata) error {
 	if index == nil {
 		return fmt.Errorf("index is nil")
@@ -62,51 +57,51 @@ func setDefaultMetadata(index *compactindexsized.Builder, metadata *Metadata) er
 	}
 	setter := index.Metadata()
 
-	if err := setter.Add(MetadataKey_Epoch, uint64tob(metadata.Epoch)); err != nil {
+	if err := setter.Add(indexmeta.MetadataKey_Epoch, uint64tob(metadata.Epoch)); err != nil {
 		return err
 	}
 
 	if metadata.RootCid == cid.Undef {
 		return fmt.Errorf("root cid is undefined")
 	}
-	if err := setter.Add(MetadataKey_RootCid, metadata.RootCid.Bytes()); err != nil {
+	if err := setter.Add(indexmeta.MetadataKey_RootCid, metadata.RootCid.Bytes()); err != nil {
 		return err
 	}
 
 	if !IsValidNetwork(metadata.Network) {
 		return fmt.Errorf("invalid network")
 	}
-	if err := setter.Add(MetadataKey_Network, []byte(metadata.Network)); err != nil {
+	if err := setter.Add(indexmeta.MetadataKey_Network, []byte(metadata.Network)); err != nil {
 		return err
 	}
 
 	if len(metadata.IndexKind) == 0 {
 		return fmt.Errorf("index kind is empty")
 	}
-	return setter.Add(compactindexsized.KeyKind, metadata.IndexKind)
+	return setter.Add(indexmeta.MetadataKey_Kind, metadata.IndexKind)
 }
 
 // getDefaultMetadata gets and validates the metadata from the index.
 // Will return an error if some of the metadata is missing.
 func getDefaultMetadata(index *compactindexsized.DB) (*Metadata, error) {
 	out := &Metadata{}
-	meta := index.Metadata
+	meta := index.Header.Metadata
 
-	indexKind, ok := meta.Get(compactindexsized.KeyKind)
+	indexKind, ok := meta.Get(indexmeta.MetadataKey_Kind)
 	if ok {
 		out.IndexKind = indexKind
 	} else {
 		return nil, fmt.Errorf("metadata.kind is empty (index kind)")
 	}
 
-	epochBytes, ok := meta.Get(MetadataKey_Epoch)
+	epochBytes, ok := meta.Get(indexmeta.MetadataKey_Epoch)
 	if ok {
 		out.Epoch = btoUint64(epochBytes)
 	} else {
 		return nil, fmt.Errorf("metadata.epoch is empty")
 	}
 
-	rootCidBytes, ok := meta.Get(MetadataKey_RootCid)
+	rootCidBytes, ok := meta.Get(indexmeta.MetadataKey_RootCid)
 	if ok {
 		var err error
 		out.RootCid, err = cid.Cast(rootCidBytes)
@@ -117,7 +112,7 @@ func getDefaultMetadata(index *compactindexsized.DB) (*Metadata, error) {
 		return nil, fmt.Errorf("metadata.rootCid is empty")
 	}
 
-	networkBytes, ok := meta.Get(MetadataKey_Network)
+	networkBytes, ok := meta.Get(indexmeta.MetadataKey_Network)
 	if ok {
 		out.Network = Network(networkBytes)
 	} else {

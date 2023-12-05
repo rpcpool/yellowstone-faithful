@@ -92,6 +92,7 @@ import (
 	"sort"
 
 	"github.com/cespare/xxhash/v2"
+	"github.com/rpcpool/yellowstone-faithful/indexmeta"
 )
 
 // Magic are the first eight bytes of an index.
@@ -103,7 +104,7 @@ const Version = uint8(1)
 type Header struct {
 	ValueSize  uint64
 	NumBuckets uint32
-	Metadata   Meta
+	Metadata   *indexmeta.Meta
 }
 
 // Load checks the Magic sequence and loads the header fields.
@@ -124,6 +125,7 @@ func (h *Header) Load(buf []byte) error {
 	*h = Header{
 		ValueSize:  binary.LittleEndian.Uint64(buf[12:20]),
 		NumBuckets: binary.LittleEndian.Uint32(buf[20:24]),
+		Metadata:   new(indexmeta.Meta),
 	}
 	// Check version.
 	if buf[24] != Version {
@@ -152,6 +154,9 @@ func (h *Header) Bytes() []byte {
 		// version
 		buf.WriteByte(Version)
 		// key-value pairs
+		if h.Metadata == nil {
+			h.Metadata = new(indexmeta.Meta)
+		}
 		kvb := h.Metadata.Bytes()
 		buf.Write(kvb)
 	}

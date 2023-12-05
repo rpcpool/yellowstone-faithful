@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/ipfs/go-cid"
+	"github.com/rpcpool/yellowstone-faithful/indexmeta"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/vbauerster/mpb/v8/decor"
@@ -307,19 +308,21 @@ func TestBuilder36(t *testing.T) {
 	db, err := Open(targetFile)
 	require.NoError(t, err, "Failed to open generated index")
 	require.NotNil(t, db)
+	require.NotNil(t, db.Header)
+	require.NotNil(t, db.Header.Metadata)
 
 	got, ok := db.GetKind()
 	require.True(t, ok)
 	assert.Equal(t, kindSomething, got)
 
 	// File header assertions.
-	assert.Equal(t, Header{
+	assert.Equal(t, &Header{
 		ValueSize:  valueSize,
 		NumBuckets: numBuckets,
-		Metadata: Meta{
-			KeyVals: []KV{
+		Metadata: &indexmeta.Meta{
+			KeyVals: []indexmeta.KV{
 				{
-					Key:   KeyKind,
+					Key:   indexmeta.MetadataKey_Kind,
 					Value: kindSomething,
 				},
 				{

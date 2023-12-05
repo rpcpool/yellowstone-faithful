@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rpcpool/yellowstone-faithful/indexmeta"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/vbauerster/mpb/v8/decor"
@@ -276,13 +277,13 @@ func TestBuilder48(t *testing.T) {
 	require.NotNil(t, db)
 
 	// File header assertions.
-	assert.Equal(t, Header{
+	assert.Equal(t, &Header{
 		ValueSize:  valueSize,
 		NumBuckets: numBuckets,
-		Metadata: Meta{
-			KeyVals: []KV{
+		Metadata: &indexmeta.Meta{
+			KeyVals: []indexmeta.KV{
 				{
-					Key:   KeyKind,
+					Key:   indexmeta.MetadataKey_Kind,
 					Value: kindSomething48,
 				},
 			},

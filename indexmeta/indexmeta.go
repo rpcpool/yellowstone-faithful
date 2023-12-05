@@ -1,9 +1,19 @@
-package compactindexsized
+package indexmeta
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"io"
+
+	bin "github.com/gagliardetto/binary"
+	"github.com/ipfs/go-cid"
+)
+
+const (
+	MaxNumKVs    = 255
+	MaxKeySize   = 255
+	MaxValueSize = 255
 )
 
 type Meta struct {
@@ -19,7 +29,7 @@ func (m *Meta) Bytes() []byte {
 	return b
 }
 
-func (m *Meta) MarshalBinary() ([]byte, error) {
+func (m Meta) MarshalBinary() ([]byte, error) {
 	var buf bytes.Buffer
 	if len(m.KeyVals) > MaxNumKVs {
 		return nil, fmt.Errorf("number of key-value pairs %d exceeds max %d", len(m.KeyVals), MaxNumKVs)
@@ -46,17 +56,19 @@ func (m *Meta) MarshalBinary() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func (m *Meta) UnmarshalBinary(b []byte) error {
-	if len(b) == 0 {
+func (m *Meta) UnmarshalWithDecoder(decoder *bin.Decoder) error {
+	if !decoder.HasRemaining() {
 		return nil
 	}
-	numKVs := int(b[0])
+	numKVs, err := decoder.ReadByte()
+	if err != nil {
+		return fmt.Errorf("failed to read number of key-value pairs: %w", err)
+	}
 	if numKVs > MaxNumKVs {
 		return fmt.Errorf("number of key-value pairs %d exceeds max %d", numKVs, MaxNumKVs)
 	}
-	b = b[1:]
-	reader := bytes.NewReader(b)
-	for i := 0; i < numKVs; i++ {
+	reader := decoder
+	for i := 0; i < int(numKVs); i++ {
 		var kv KV
 		{
 			keyLen, err := reader.ReadByte()
@@ -83,11 +95,13 @@ func (m *Meta) UnmarshalBinary(b []byte) error {
 	return nil
 }
 
-const (
-	MaxNumKVs    = 255
-	MaxKeySize   = 255
-	MaxValueSize = 255
-)
+func (m *Meta) UnmarshalBinary(b []byte) error {
+	if len(b) == 0 {
+		return nil
+	}
+	decoder := bin.NewBorshDecoder(b)
+	return m.UnmarshalWithDecoder(decoder)
+}
 
 // Add adds a key-value pair to the metadata.
 func (m *Meta) Add(key, value []byte) error {
@@ -102,6 +116,56 @@ func (m *Meta) Add(key, value []byte) error {
 	}
 	m.KeyVals = append(m.KeyVals, KV{Key: key, Value: value})
 	return nil
+}
+
+func (m *Meta) AddCid(key []byte, value cid.Cid) error {
+	return m.Add(key, value.Bytes())
+}
+
+func (m Meta) GetCid(key []byte) (cid.Cid, bool) {
+	value, ok := m.Get(key)
+	if !ok {
+		return cid.Undef, false
+	}
+	_, _cid, err := cid.CidFromBytes(value)
+	if err != nil {
+		return cid.Undef, false
+	}
+	return _cid, true
+}
+
+func (m *Meta) AddString(key []byte, value string) error {
+	return m.Add(key, []byte(value))
+}
+
+func (m Meta) GetString(key []byte) (string, bool) {
+	value, ok := m.Get(key)
+	if !ok {
+		return "", false
+	}
+	return string(value), true
+}
+
+func (m *Meta) AddUint64(key []byte, value uint64) error {
+	return m.Add(key, encodeUint64(value))
+}
+
+func (m Meta) GetUint64(key []byte) (uint64, bool) {
+	value, ok := m.Get(key)
+	if !ok {
+		return 0, false
+	}
+	return decodeUint64(value), true
+}
+
+func encodeUint64(value uint64) []byte {
+	buf := make([]byte, 8)
+	binary.LittleEndian.PutUint64(buf, value)
+	return buf
+}
+
+func decodeUint64(buf []byte) uint64 {
+	return binary.LittleEndian.Uint64(buf)
 }
 
 // Replace replaces the first value for the given key.
@@ -125,7 +189,7 @@ func (m *Meta) Replace(key, value []byte) error {
 }
 
 // Get returns the first value for the given key.
-func (m *Meta) Get(key []byte) ([]byte, bool) {
+func (m Meta) Get(key []byte) ([]byte, bool) {
 	for _, kv := range m.KeyVals {
 		if bytes.Equal(kv.Key, key) {
 			return kv.Value, true
@@ -136,7 +200,7 @@ func (m *Meta) Get(key []byte) ([]byte, bool) {
 
 // ReadFirst copies the first value for the given key into the given value.
 // It returns the number of bytes copied.
-func (m *Meta) ReadFirst(key []byte, valueDst []byte) int {
+func (m Meta) ReadFirst(key []byte, valueDst []byte) int {
 	for _, kv := range m.KeyVals {
 		if bytes.Equal(kv.Key, key) {
 			return copy(valueDst, kv.Value)
@@ -146,7 +210,7 @@ func (m *Meta) ReadFirst(key []byte, valueDst []byte) int {
 }
 
 // HasDuplicateKeys returns true if there are duplicate keys.
-func (m *Meta) HasDuplicateKeys() bool {
+func (m Meta) HasDuplicateKeys() bool {
 	seen := make(map[string]struct{})
 	for _, kv := range m.KeyVals {
 		if _, ok := seen[string(kv.Key)]; ok {
@@ -168,7 +232,7 @@ func (m *Meta) Remove(key []byte) {
 }
 
 // GetAll returns all values for the given key.
-func (m *Meta) GetAll(key []byte) [][]byte {
+func (m Meta) GetAll(key []byte) [][]byte {
 	var values [][]byte
 	for _, kv := range m.KeyVals {
 		if bytes.Equal(kv.Key, key) {
@@ -197,5 +261,3 @@ type KV struct {
 func NewKV(key, value []byte) KV {
 	return KV{Key: key, Value: value}
 }
-
-var KeyKind = []byte{'k', 'i', 'n', 'd'}
