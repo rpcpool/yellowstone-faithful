@@ -208,7 +208,7 @@ pub extern "C" fn parse_instruction(bytes: *const u8, len: usize) -> Response {
 }
 
 #[repr(C)]
-struct Response {
+pub struct Response {
     buf: Buffer,
     status: i32,
 }

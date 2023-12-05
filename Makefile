@@ -13,15 +13,11 @@ build-rust-wrapper:
 jsonParsed: build-rust-wrapper
 	# build faithful-cli with jsonParsed format support via ffi (rust)
 	rm -rf ./bin/faithful-cli_jsonParsed
-	cp txstatus/target/x86_64-unknown-linux-gnu/release/libdemo_transaction_status_ffi.so ./txstatus/lib/libsolana_transaction_status_wrapper.so
-	LD_FLAGS="$(BASE_LD_FLAGS) -r $(ROOT_DIR)txstatus/lib"
+	# static linking:
+	cp txstatus/target/x86_64-unknown-linux-gnu/release/libdemo_transaction_status_ffi.a ./txstatus/lib/libsolana_transaction_status_wrapper.a
+	LD_FLAGS="$(BASE_LD_FLAGS) -extldflags -static"
 	go build -ldflags=$(LD_FLAGS) -tags ffi -o ./bin/faithful-cli_jsonParsed .
 	echo "built old-faithful with jsonParsed format support via ffi (rust)"
-	# LD_LIBRARY_PATH=txstatus/lib:$LD_LIBRARY_PATH ./bin/faithful-cli_jsonParsed
-	echo "To run the binary, please set LD_LIBRARY_PATH=txstatus/lib:\$$LD_LIBRARY_PATH ./bin/faithful-cli_jsonParsed"
-	# or:
-	# sudo cp ./txstatus/lib/libsolana_transaction_status_wrapper.so /usr/local/lib/
-	# sudo ldconfig
 compile:
 	@echo "\nCompiling faithful-cli binary for current platform ..."
 	go build -ldflags="$(BASE_LD_FLAGS)" -o ./bin/faithful-cli .

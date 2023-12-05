@@ -4,7 +4,7 @@
 package txstatus
 
 /*
-#cgo LDFLAGS: -L./lib -lsolana_transaction_status_wrapper
+#cgo LDFLAGS: -L./lib -lsolana_transaction_status_wrapper -lm -ldl
 #include "./lib/transaction_status.h"
 */
 import "C"
