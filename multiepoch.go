@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/goware/urlx"
+	"github.com/libp2p/go-reuseport"
 	"github.com/mr-tron/base58"
 	"github.com/sourcegraph/jsonrpc2"
 	"github.com/valyala/fasthttp"
@@ -202,7 +203,12 @@ func (m *MultiEpoch) ListenAndServe(ctx context.Context, listenOn string, lsConf
 			klog.Errorf("Error while shutting down RPC server: %s", err)
 		}
 	}()
-	return s.ListenAndServe(listenOn)
+	ln, err := reuseport.Listen("tcp4", listenOn)
+	if err != nil {
+		klog.Fatalf("error in reuseport listener: %v", err)
+		return err
+	}
+	return s.Serve(ln)
 }
 
 func randomRequestID() string {

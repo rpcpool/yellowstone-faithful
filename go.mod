@@ -57,12 +57,12 @@ require (
 )
 
 require (
-	github.com/allegro/bigcache v1.2.1
 	github.com/allegro/bigcache/v3 v3.1.0
 	github.com/fsnotify/fsnotify v1.5.4
 	github.com/goware/urlx v0.3.2
 	github.com/ipld/go-car v0.5.0
 	github.com/ipld/go-trustless-utils v0.4.1
+	github.com/libp2p/go-reuseport v0.4.0
 	github.com/mostynb/zstdpool-freelist v0.0.0-20201229113212-927304c0c3b1
 	github.com/mr-tron/base58 v1.2.0
 	github.com/ronanh/intcomp v1.1.0
@@ -151,7 +151,6 @@ require (
 	github.com/libp2p/go-msgio v0.3.0 // indirect
 	github.com/libp2p/go-nat v0.2.0 // indirect
 	github.com/libp2p/go-netroute v0.2.1 // indirect
-	github.com/libp2p/go-reuseport v0.4.0 // indirect
 	github.com/libp2p/go-yamux/v4 v4.0.1 // indirect
 	github.com/logrusorgru/aurora v2.0.3+incompatible // indirect
 	github.com/marten-seemann/tcp v0.0.0-20210406111302-dfbc87cc63fd // indirect
