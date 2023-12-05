@@ -102,10 +102,15 @@ func (multi *MultiEpoch) handleGetSignaturesForAddress(ctx context.Context, conn
 	}
 
 	if len(foundSignatures) == 0 {
-		return &jsonrpc2.Error{
-			Code:    jsonrpc2.CodeInternalError,
-			Message: "Not found",
-		}, fmt.Errorf("no signatures found for address: %s", pk)
+		err = conn.ReplyRaw(
+			ctx,
+			req.ID,
+			[]map[string]any{},
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to reply: %w", err)
+		}
+		return nil, nil
 	}
 
 	var blockTimeCache struct {
