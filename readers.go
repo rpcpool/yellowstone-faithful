@@ -38,11 +38,7 @@ type carReader struct {
 }
 
 func newCarReader(r io.ReadCloser) (*carReader, error) {
-	cachingReader, err := readahead.NewCachingReaderFromReader(r, readahead.DefaultChunkSize)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create caching reader: %s", err)
-	}
-	br := bufio.NewReader(cachingReader)
+	br := bufio.NewReaderSize(r, readahead.DefaultChunkSize)
 	ch, err := readHeader(br)
 	if err != nil {
 		return nil, err

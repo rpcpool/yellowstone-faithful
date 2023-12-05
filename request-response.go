@@ -14,6 +14,7 @@ import (
 	jsoniter "github.com/json-iterator/go"
 	"github.com/mostynb/zstdpool-freelist"
 	"github.com/mr-tron/base58"
+	"github.com/rpcpool/yellowstone-faithful/txstatus"
 	"github.com/sourcegraph/jsonrpc2"
 	"github.com/valyala/fasthttp"
 )
@@ -164,7 +165,7 @@ func (req *GetBlockRequest) Validate() error {
 		solana.EncodingBase64,
 		solana.EncodingBase64Zstd,
 		solana.EncodingJSON,
-		// solana.EncodingJSONParsed, // TODO: add support for this
+		solana.EncodingJSONParsed, // TODO: add support for this
 	) {
 		return fmt.Errorf("unsupported encoding")
 	}
@@ -292,7 +293,7 @@ func (req *GetTransactionRequest) Validate() error {
 		solana.EncodingBase64,
 		solana.EncodingBase64Zstd,
 		solana.EncodingJSON,
-		// solana.EncodingJSONParsed, // TODO: add support for this
+		solana.EncodingJSONParsed, // TODO: add support for this
 	) {
 		return fmt.Errorf("unsupported encoding")
 	}
@@ -386,9 +387,54 @@ func encodeTransactionResponseBasedOnWantedEncoding(
 		}
 		return encodeBytesResponseBasedOnWantedEncoding(encoding, txBuf)
 	case solana.EncodingJSONParsed:
-		return nil, fmt.Errorf("unsupported encoding")
+		if !txstatus.IsEnabled() {
+			return nil, fmt.Errorf("unsupported encoding")
+		}
+
+		parsedInstructions := make([]json.RawMessage, 0)
+
+		for _, inst := range tx.Message.Instructions {
+			instrParams := txstatus.Parameters{
+				ProgramID: solana.VoteProgramID,
+				Instruction: txstatus.CompiledInstruction{
+					ProgramIDIndex: uint8(inst.ProgramIDIndex),
+					Accounts: func() []uint8 {
+						out := make([]uint8, len(inst.Accounts))
+						for i, v := range inst.Accounts {
+							out[i] = uint8(v)
+						}
+						return out
+					}(),
+					Data: inst.Data,
+				},
+				AccountKeys: txstatus.AccountKeys{
+					StaticKeys: tx.Message.AccountKeys,
+					// TODO: add support for dynamic keys?
+					// DynamicKeys: &LoadedAddresses{
+					// 	Writable: []solana.PublicKey{},
+					// 	Readonly: []solana.PublicKey{
+					// 		solana.TokenLendingProgramID,
+					// 	},
+					// },
+				},
+				StackHeight: nil,
+			}
+
+			parsedInstructionJSON, err := instrParams.ParseInstruction()
+			if err != nil {
+				return nil, fmt.Errorf("failed to parse instruction: %w", err)
+			}
+			parsedInstructions = append(parsedInstructions, parsedInstructionJSON)
+		}
+
+		resp, err := txstatus.FromTransaction(tx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert transaction to txstatus.Transaction: %w", err)
+		}
+		resp.Message.Instructions = parsedInstructions
+
+		return resp, nil
 	case solana.EncodingJSON:
-		// TODO: add support for this
 		return tx, nil
 	default:
 		return nil, fmt.Errorf("unsupported encoding")

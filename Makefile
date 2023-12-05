@@ -1,24 +1,43 @@
 DEFAULT:compile
 
 IPLD_SCHEMA_PATH := ledger.ipldsch
-LD_FLAGS := "-X main.GitCommit=`git rev-parse HEAD` -X main.GitTag=`git symbolic-ref -q --short HEAD || git describe --tags --exact-match || git rev-parse HEAD`"
+BASE_LD_FLAGS := -X main.GitCommit=`git rev-parse HEAD` -X main.GitTag=`git symbolic-ref -q --short HEAD || git describe --tags --exact-match || git rev-parse HEAD`
 
+ROOT_DIR := $(dir $(realpath $(lastword $(MAKEFILE_LIST))))
+
+build-rust-wrapper:
+	rm -rf txstatus/lib
+	cd txstatus && cargo build --release --lib --target=x86_64-unknown-linux-gnu --target-dir=target
+	cbindgen ./txstatus -o txstatus/lib/transaction_status.h --lang c
+	echo "build-rust-wrapper done"
+jsonParsed: build-rust-wrapper
+	# build faithful-cli with jsonParsed format support via ffi (rust)
+	rm -rf ./bin/faithful-cli_jsonParsed
+	cp txstatus/target/x86_64-unknown-linux-gnu/release/libdemo_transaction_status_ffi.so ./txstatus/lib/libsolana_transaction_status_wrapper.so
+	LD_FLAGS="$(BASE_LD_FLAGS) -r $(ROOT_DIR)txstatus/lib"
+	go build -ldflags=$(LD_FLAGS) -tags ffi -o ./bin/faithful-cli_jsonParsed .
+	echo "built old-faithful with jsonParsed format support via ffi (rust)"
+	# LD_LIBRARY_PATH=txstatus/lib:$LD_LIBRARY_PATH ./bin/faithful-cli_jsonParsed
+	echo "To run the binary, please set LD_LIBRARY_PATH=txstatus/lib:\$$LD_LIBRARY_PATH ./bin/faithful-cli_jsonParsed"
+	# or:
+	# sudo cp ./txstatus/lib/libsolana_transaction_status_wrapper.so /usr/local/lib/
+	# sudo ldconfig
 compile:
 	@echo "\nCompiling faithful-cli binary for current platform ..."
-	go build -ldflags=$(LD_FLAGS) -o ./bin/faithful-cli .
+	go build -ldflags="$(BASE_LD_FLAGS)" -o ./bin/faithful-cli .
 compile-all: compile-linux compile-mac compile-windows
 compile-linux:
 	@echo "\nCompiling faithful-cli binary for linux amd64 ..."
-	GOOS=linux GOARCH=amd64 go build -ldflags=$(LD_FLAGS) -o ./bin/linux/amd64/faithful-cli_linux_amd64 .
+	GOOS=linux GOARCH=amd64 go build -ldflags="$(BASE_LD_FLAGS)" -o ./bin/linux/amd64/faithful-cli_linux_amd64 .
 compile-mac:
 	@echo "\nCompiling faithful-cli binary for mac amd64 ..."
-	GOOS=darwin GOARCH=amd64 go build -ldflags=$(LD_FLAGS) -o ./bin/darwin/amd64/faithful-cli_darwin_amd64 .
+	GOOS=darwin GOARCH=amd64 go build -ldflags="$(BASE_LD_FLAGS)" -o ./bin/darwin/amd64/faithful-cli_darwin_amd64 .
 
 	@echo "\nCompiling faithful-cli binary for mac arm64 ..."
-	GOOS=darwin GOARCH=arm64 go build -ldflags=$(LD_FLAGS) -o ./bin/darwin/arm64/faithful-cli_darwin_arm64 .
+	GOOS=darwin GOARCH=arm64 go build -ldflags="$(BASE_LD_FLAGS)" -o ./bin/darwin/arm64/faithful-cli_darwin_arm64 .
 compile-windows:
 	@echo "\nCompiling faithful-cli binary for windows amd64 ..."
-	GOOS=windows GOARCH=amd64 go build -ldflags=$(LD_FLAGS) -o ./bin/windows/amd64/faithful-cli_windows_amd64.exe .
+	GOOS=windows GOARCH=amd64 go build -ldflags="$(BASE_LD_FLAGS)" -o ./bin/windows/amd64/faithful-cli_windows_amd64.exe .
 test:
 	go test -v ./...
 bindcode: install-deps
