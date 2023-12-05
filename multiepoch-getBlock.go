@@ -396,7 +396,9 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 	tim.time("get transactions")
 	var blockResp GetBlockResponse
 	blockResp.Transactions = allTransactions
-	blockResp.BlockTime = &blocktime
+	if blocktime != 0 {
+		blockResp.BlockTime = &blocktime
+	}
 	blockResp.Blockhash = lastEntryHash.String()
 	blockResp.ParentSlot = uint64(block.Meta.Parent_slot)
 	blockResp.Rewards = rewards

@@ -46,7 +46,12 @@ func (multi *MultiEpoch) handleGetBlockTime(ctx context.Context, conn *requestCo
 	err = conn.ReplyRaw(
 		ctx,
 		req.ID,
-		blockTime,
+		func() any {
+			if blockTime != 0 {
+				return blockTime
+			}
+			return nil
+		}(),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to reply: %w", err)
