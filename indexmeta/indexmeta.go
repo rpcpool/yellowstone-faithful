@@ -56,10 +56,12 @@ func (m Meta) MarshalBinary() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func (m *Meta) UnmarshalWithDecoder(decoder *bin.Decoder) error {
-	if !decoder.HasRemaining() {
-		return nil
-	}
+type Decoder interface {
+	io.ByteReader
+	io.Reader
+}
+
+func (m *Meta) UnmarshalWithDecoder(decoder Decoder) error {
 	numKVs, err := decoder.ReadByte()
 	if err != nil {
 		return fmt.Errorf("failed to read number of key-value pairs: %w", err)

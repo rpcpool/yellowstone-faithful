@@ -4,12 +4,15 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/rpcpool/yellowstone-faithful/indexmeta"
 	"github.com/stretchr/testify/require"
 )
 
 func TestManifest(t *testing.T) {
 	fp := filepath.Join(t.TempDir(), "test_manifest")
-	m, err := NewManifest(fp)
+	meta := indexmeta.Meta{}
+	meta.Add([]byte("epoch"), []byte("test"))
+	m, err := NewManifest(fp, meta)
 	require.NoError(t, err)
 	defer m.Close()
 	require.NotNil(t, m)
@@ -42,10 +45,14 @@ func TestManifest(t *testing.T) {
 	{
 		// now close and reopen
 		m.Close()
-		m, err = NewManifest(fp)
+		m, err = NewManifest(fp, indexmeta.Meta{})
 		require.NoError(t, err)
 		defer m.Close()
 		require.NotNil(t, m)
+
+		epoch, ok := m.header.meta.Get([]byte("epoch"))
+		require.True(t, ok)
+		require.Equal(t, []byte("test"), epoch)
 	}
 	{
 		all, err := m.ReadAll()

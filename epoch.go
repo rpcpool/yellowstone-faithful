@@ -20,6 +20,7 @@ import (
 	"github.com/rpcpool/yellowstone-faithful/gsfa"
 	hugecache "github.com/rpcpool/yellowstone-faithful/huge-cache"
 	"github.com/rpcpool/yellowstone-faithful/indexes"
+	"github.com/rpcpool/yellowstone-faithful/indexmeta"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
 	"github.com/urfave/cli/v2"
@@ -186,7 +187,21 @@ func NewEpochFromConfig(
 			ep.onClose = append(ep.onClose, gsfaIndex.Close)
 			ep.gsfaReader = gsfaIndex
 
-			// TODO: check epoch and root CID
+			gotIndexEpoch, ok := gsfaIndex.Meta().GetUint64(indexmeta.MetadataKey_Epoch)
+			if !ok {
+				return nil, fmt.Errorf("the gsfa index does not have the epoch metadata")
+			}
+			if ep.Epoch() != gotIndexEpoch {
+				return nil, fmt.Errorf("epoch mismatch in gsfa index: expected %d, got %d", ep.Epoch(), gotIndexEpoch)
+			}
+
+			gotRootCid, ok := gsfaIndex.Meta().GetCid(indexmeta.MetadataKey_RootCid)
+			if !ok {
+				return nil, fmt.Errorf("the gsfa index does not have the root CID metadata")
+			}
+			if !lastRootCid.Equals(gotRootCid) {
+				return nil, fmt.Errorf("root CID mismatch in gsfa index: expected %s, got %s", lastRootCid, gotRootCid)
+			}
 		}
 	}
 
@@ -233,7 +248,6 @@ func NewEpochFromConfig(
 			}
 			ep.remoteCarHeaderSize = uint64(n) + headerSize
 		}
-
 	}
 	{
 		sigExistsFile, err := openIndexStorage(
@@ -260,7 +274,23 @@ func NewEpochFromConfig(
 		}
 
 		ep.sigExists = sigExists
-		// TODO: check epoch and root CID
+
+		gotEpoch, ok := sigExists.Meta().GetUint64(indexmeta.MetadataKey_Epoch)
+		if !ok {
+			return nil, fmt.Errorf("the sig-exists index does not have the epoch metadata")
+		}
+		if ep.Epoch() != gotEpoch {
+			return nil, fmt.Errorf("epoch mismatch in sig-exists index: expected %d, got %d", ep.Epoch(), gotEpoch)
+		}
+
+		gotRootCid, ok := sigExists.Meta().GetCid(indexmeta.MetadataKey_RootCid)
+		if !ok {
+			return nil, fmt.Errorf("the sig-exists index does not have the root CID metadata")
+		}
+
+		if !lastRootCid.Equals(gotRootCid) {
+			return nil, fmt.Errorf("root CID mismatch in sig-exists index: expected %s, got %s", lastRootCid, gotRootCid)
+		}
 	}
 
 	return ep, nil
