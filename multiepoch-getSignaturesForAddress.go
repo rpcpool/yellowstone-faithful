@@ -191,7 +191,11 @@ func (multi *MultiEpoch) handleGetSignaturesForAddress(ctx context.Context, conn
 					}
 					slot := uint64(transactionNode.Slot)
 					response[ii]["slot"] = slot
-					response[ii]["blockTime"] = getBlockTime(slot, ser)
+					if blockTime := getBlockTime(slot, ser); blockTime != 0 {
+						response[ii]["blockTime"] = blockTime
+					} else {
+						response[ii]["blockTime"] = nil
+					}
 					response[ii]["confirmationStatus"] = "finalized"
 				}
 				return nil
