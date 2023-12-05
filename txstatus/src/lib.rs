@@ -140,7 +140,7 @@ pub extern "C" fn parse_instruction(bytes: *const u8, len: usize) -> Response {
             stack_height,
         );
         if parsed.is_err() {
-            println!("[rust] parse error: {:?}", parsed);
+            // println!("[rust] parse error: {:?}", parsed);
             let mut response = vec![0; 32];
             // add error string to response:
             let error = parsed.err().unwrap();

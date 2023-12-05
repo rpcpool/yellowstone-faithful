@@ -394,8 +394,9 @@ func encodeTransactionResponseBasedOnWantedEncoding(
 		parsedInstructions := make([]json.RawMessage, 0)
 
 		for _, inst := range tx.Message.Instructions {
+			programId, _ := tx.ResolveProgramIDIndex(inst.ProgramIDIndex)
 			instrParams := txstatus.Parameters{
-				ProgramID: solana.VoteProgramID,
+				ProgramID: programId,
 				Instruction: txstatus.CompiledInstruction{
 					ProgramIDIndex: uint8(inst.ProgramIDIndex),
 					Accounts: func() []uint8 {
@@ -409,7 +410,7 @@ func encodeTransactionResponseBasedOnWantedEncoding(
 				},
 				AccountKeys: txstatus.AccountKeys{
 					StaticKeys: tx.Message.AccountKeys,
-					// TODO: add support for dynamic keys?
+					// TODO: add support for dynamic keys? From meta?
 					// DynamicKeys: &LoadedAddresses{
 					// 	Writable: []solana.PublicKey{},
 					// 	Readonly: []solana.PublicKey{
@@ -421,10 +422,28 @@ func encodeTransactionResponseBasedOnWantedEncoding(
 			}
 
 			parsedInstructionJSON, err := instrParams.ParseInstruction()
-			if err != nil {
-				return nil, fmt.Errorf("failed to parse instruction: %w", err)
+			if err != nil || parsedInstructionJSON == nil || !strings.HasPrefix(strings.TrimSpace(string(parsedInstructionJSON)), "{") {
+				nonParseadInstructionJSON := map[string]any{
+					"accounts": func() []string {
+						out := make([]string, len(inst.Accounts))
+						for i, v := range inst.Accounts {
+							// TODO: add support for dynamic keys? From meta?
+							if v >= uint16(len(tx.Message.AccountKeys)) {
+								continue
+							}
+							out[i] = tx.Message.AccountKeys[v].String()
+						}
+						return out
+					}(),
+					"data":        base58.Encode(inst.Data),
+					"programId":   programId.String(),
+					"stackHeight": nil,
+				}
+				asRaw, _ := jsoniter.ConfigCompatibleWithStandardLibrary.Marshal(nonParseadInstructionJSON)
+				parsedInstructions = append(parsedInstructions, asRaw)
+			} else {
+				parsedInstructions = append(parsedInstructions, parsedInstructionJSON)
 			}
-			parsedInstructions = append(parsedInstructions, parsedInstructionJSON)
 		}
 
 		resp, err := txstatus.FromTransaction(tx)
