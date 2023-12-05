@@ -47,7 +47,7 @@ func newCmd_Index_cid2offset() *cli.Command {
 				Action: func(c *cli.Context, s string) error {
 					network = indexes.Network(s)
 					if !indexes.IsValidNetwork(network) {
-						return fmt.Errorf("invalid network: %s", network)
+						return fmt.Errorf("invalid network: %q", network)
 					}
 					return nil
 				},
