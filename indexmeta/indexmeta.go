@@ -116,8 +116,12 @@ func (m *Meta) Add(key, value []byte) error {
 	if len(value) > MaxValueSize {
 		return fmt.Errorf("value size %d exceeds max %d", len(value), MaxValueSize)
 	}
-	m.KeyVals = append(m.KeyVals, KV{Key: key, Value: value})
+	m.KeyVals = append(m.KeyVals, KV{Key: cloneBytes(key), Value: cloneBytes(value)})
 	return nil
+}
+
+func cloneBytes(b []byte) []byte {
+	return append([]byte(nil), b...)
 }
 
 func (m *Meta) AddCid(key []byte, value cid.Cid) error {
@@ -183,7 +187,7 @@ func (m *Meta) Replace(key, value []byte) error {
 	}
 	for i, kv := range m.KeyVals {
 		if bytes.Equal(kv.Key, key) {
-			m.KeyVals[i].Value = value
+			m.KeyVals[i].Value = cloneBytes(value)
 			return nil
 		}
 	}

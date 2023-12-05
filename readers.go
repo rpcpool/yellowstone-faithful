@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"time"
 
+	"github.com/dustin/go-humanize"
 	"github.com/ipfs/go-cid"
 	cbor "github.com/ipfs/go-ipld-cbor"
 	"github.com/ipfs/go-libipfs/blocks"
@@ -227,6 +229,7 @@ func carCountItemsByFirstByte(carPath string) (map[byte]uint64, error) {
 
 	numTotalItems := uint64(0)
 	counts := make(map[byte]uint64)
+	startedCountAt := time.Now()
 	for {
 		_, _, block, err := rd.NextNode()
 		if err != nil {
@@ -241,9 +244,15 @@ func carCountItemsByFirstByte(carPath string) (map[byte]uint64, error) {
 		numTotalItems++
 
 		if numTotalItems%1_000_000 == 0 {
-			printToStderr(".")
+			printToStderr(
+				fmt.Sprintf("\rCounted %s items", humanize.Comma(int64(numTotalItems))),
+			)
 		}
 	}
+
+	printToStderr(
+		fmt.Sprintf("\rCounted %s items in %s\n", humanize.Comma(int64(numTotalItems)), time.Since(startedCountAt).Truncate(time.Second)),
+	)
 
 	return counts, nil
 }

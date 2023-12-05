@@ -110,7 +110,7 @@ func (w *SigToCid_Writer) Seal(ctx context.Context, dstDir string) error {
 
 func (w *SigToCid_Writer) Close() error {
 	if !w.sealed {
-		panic(fmt.Errorf("attempted to close a sig-to-cid index that was not sealed"))
+		return fmt.Errorf("attempted to close a sig-to-cid index that was not sealed")
 	}
 	return w.index.Close()
 }

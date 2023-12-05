@@ -114,7 +114,7 @@ func (w *CidToOffsetAndSize_Writer) Seal(ctx context.Context, dstDir string) err
 
 func (w *CidToOffsetAndSize_Writer) Close() error {
 	if !w.sealed {
-		panic(fmt.Errorf("attempted to close a cid-to-offset-and-size index that was not sealed"))
+		return fmt.Errorf("attempted to close a cid-to-offset-and-size index that was not sealed")
 	}
 	return w.index.Close()
 }

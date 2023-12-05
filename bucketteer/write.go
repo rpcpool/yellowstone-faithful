@@ -39,7 +39,7 @@ func NewWriter(path string) (*Writer, error) {
 	if ok, err := fileIsBlank(path); err != nil {
 		return nil, err
 	} else if !ok {
-		return nil, fmt.Errorf("file is not blank")
+		return nil, fmt.Errorf("file already exists and is not empty: %s", path)
 	}
 	file, err := os.Create(path)
 	if err != nil {

@@ -20,7 +20,7 @@ type Manifest struct {
 
 var (
 	_MAGIC   = [...]byte{'g', 's', 'f', 'a', 'm', 'n', 'f', 's'}
-	_Version = uint64(1)
+	_Version = uint64(2)
 )
 
 var headerLenWithoutMeta = len(_MAGIC) + 8 // 8 bytes for the version

@@ -109,7 +109,7 @@ func (w *SlotToCid_Writer) Seal(ctx context.Context, dstDir string) error {
 
 func (w *SlotToCid_Writer) Close() error {
 	if !w.sealed {
-		panic(fmt.Errorf("attempted to close a slot-to-cid index that was not sealed"))
+		return fmt.Errorf("attempted to close a slot-to-cid index that was not sealed")
 	}
 	return w.index.Close()
 }

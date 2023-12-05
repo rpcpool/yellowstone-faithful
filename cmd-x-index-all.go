@@ -88,7 +88,9 @@ func newCmd_Index_all() *cli.Command {
 					klog.Infof("Took %s", time.Since(startedAt))
 				}()
 				klog.Infof("Creating all indexes for %s", carPath)
-				indexPaths, err := createAllIndexes(
+				klog.Infof("Indexes will be saved in %s", indexDir)
+				klog.Infof("This CAR file is for epoch %d and cluster %s", epoch, network)
+				indexPaths, numTotalItems, err := createAllIndexes(
 					c.Context,
 					epoch,
 					network,
@@ -100,9 +102,14 @@ func newCmd_Index_all() *cli.Command {
 					return err
 				}
 				klog.Info("Indexes created:")
-				veryPlainSdumpConfig.Dump(indexPaths)
+				fmt.Println(indexPaths.String())
 				if verify {
-					return verifyAllIndexes(context.Background(), carPath, indexPaths)
+					return verifyAllIndexes(
+						context.Background(),
+						carPath,
+						indexPaths,
+						numTotalItems,
+					)
 				}
 				klog.Info("Skipping verification.")
 			}
@@ -128,29 +135,29 @@ func createAllIndexes(
 	tmpDir string,
 	carPath string,
 	indexDir string,
-) (*IndexPaths, error) {
+) (*IndexPaths, uint64, error) {
 	// Check if the CAR file exists:
 	exists, err := fileExists(carPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to check if CAR file exists: %w", err)
+		return nil, 0, fmt.Errorf("failed to check if CAR file exists: %w", err)
 	}
 	if !exists {
-		return nil, fmt.Errorf("CAR file %q does not exist", carPath)
+		return nil, 0, fmt.Errorf("CAR file %q does not exist", carPath)
 	}
 
 	carFile, err := os.Open(carPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open car file: %w", err)
+		return nil, 0, fmt.Errorf("failed to open car file: %w", err)
 	}
 	defer carFile.Close()
 
 	rd, err := newCarReader(carFile)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create car reader: %w", err)
+		return nil, 0, fmt.Errorf("failed to create car reader: %w", err)
 	}
 	// check it has 1 root
 	if len(rd.header.Roots) != 1 {
-		return nil, fmt.Errorf("car file must have exactly 1 root, but has %d", len(rd.header.Roots))
+		return nil, 0, fmt.Errorf("car file must have exactly 1 root, but has %d", len(rd.header.Roots))
 	}
 	// print roots:
 	for _, root := range rd.header.Roots {
@@ -163,8 +170,9 @@ func createAllIndexes(
 	klog.Infof("Counting items in car file...")
 	numItems, err := carCountItemsByFirstByte(carPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to count items in car file: %w", err)
+		return nil, 0, fmt.Errorf("failed to count items in car file: %w", err)
 	}
+	fmt.Println()
 	klog.Infof("Found items in car file:")
 	numTotalItems := uint64(0)
 	var kinds []byte
@@ -185,7 +193,7 @@ func createAllIndexes(
 		numTotalItems,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create cid_to_offset_and_size index: %w", err)
+		return nil, 0, fmt.Errorf("failed to create cid_to_offset_and_size index: %w", err)
 	}
 	defer cid_to_offset_and_size.Close()
 
@@ -197,7 +205,7 @@ func createAllIndexes(
 		numItems[byte(iplddecoders.KindBlock)],
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create slot_to_cid index: %w", err)
+		return nil, 0, fmt.Errorf("failed to create slot_to_cid index: %w", err)
 	}
 	defer slot_to_cid.Close()
 
@@ -209,7 +217,7 @@ func createAllIndexes(
 		numItems[byte(iplddecoders.KindTransaction)],
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create sig_to_cid index: %w", err)
+		return nil, 0, fmt.Errorf("failed to create sig_to_cid index: %w", err)
 	}
 	defer sig_to_cid.Close()
 
@@ -218,7 +226,7 @@ func createAllIndexes(
 		sigExistsFilepath,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create sig_exists index: %w", err)
+		return nil, 0, fmt.Errorf("failed to create sig_exists index: %w", err)
 	}
 	defer sig_exists.Close()
 
@@ -226,7 +234,7 @@ func createAllIndexes(
 	{
 		var buf bytes.Buffer
 		if err = carv1.WriteHeader(rd.header, &buf); err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		totalOffset = uint64(buf.Len())
 	}
@@ -236,20 +244,22 @@ func createAllIndexes(
 	numIndexedTransactions := uint64(0)
 	lastCheckpoint := time.Now()
 	klog.Infof("Indexing...")
+	var eta time.Duration
+	startedAt := time.Now()
 	for {
 		_cid, sectionLength, block, err := rd.NextNode()
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				break
 			}
-			return nil, err
+			return nil, 0, err
 		}
 
 		// klog.Infof("key: %s, offset: %d", bin.FormatByteSlice(c.Bytes()), totalOffset)
 
 		err = cid_to_offset_and_size.Put(_cid, totalOffset, sectionLength)
 		if err != nil {
-			return nil, fmt.Errorf("failed to index cid to offset: %w", err)
+			return nil, 0, fmt.Errorf("failed to index cid to offset: %w", err)
 		}
 		numIndexedOffsets++
 
@@ -259,12 +269,12 @@ func createAllIndexes(
 			{
 				block, err := iplddecoders.DecodeBlock(block.RawData())
 				if err != nil {
-					return nil, fmt.Errorf("failed to decode block: %w", err)
+					return nil, 0, fmt.Errorf("failed to decode block: %w", err)
 				}
 
 				err = slot_to_cid.Put(uint64(block.Slot), _cid)
 				if err != nil {
-					return nil, fmt.Errorf("failed to index slot to cid: %w", err)
+					return nil, 0, fmt.Errorf("failed to index slot to cid: %w", err)
 				}
 				numIndexedBlocks++
 			}
@@ -272,17 +282,17 @@ func createAllIndexes(
 			{
 				txNode, err := iplddecoders.DecodeTransaction(block.RawData())
 				if err != nil {
-					return nil, fmt.Errorf("failed to decode transaction: %w", err)
+					return nil, 0, fmt.Errorf("failed to decode transaction: %w", err)
 				}
 
 				sig, err := readFirstSignature(txNode.Data.Bytes())
 				if err != nil {
-					return nil, fmt.Errorf("failed to read signature: %w", err)
+					return nil, 0, fmt.Errorf("failed to read signature: %w", err)
 				}
 
 				err = sig_to_cid.Put(sig, _cid)
 				if err != nil {
-					return nil, fmt.Errorf("failed to index signature to cid: %w", err)
+					return nil, 0, fmt.Errorf("failed to index signature to cid: %w", err)
 				}
 
 				sig_exists.Put(sig)
@@ -293,25 +303,35 @@ func createAllIndexes(
 
 		totalOffset += sectionLength
 
-		if numIndexedOffsets%100_000 == 0 {
-			printToStderr(".")
-		}
-		if numIndexedOffsets%10_000_000 == 0 {
-			timeFor10_000_000 := time.Since(lastCheckpoint)
-			howMany10_000_000 := ((numTotalItems - numIndexedOffsets) / 10_000_000) + 1
-			eta := timeFor10_000_000 * time.Duration(howMany10_000_000)
-
-			printToStderr(
-				"\n" + greenBackground(
-					fmt.Sprintf(" %s (%s) ",
-						humanize.Comma(int64(numIndexedOffsets)),
-						time.Since(lastCheckpoint),
-					),
-				) + "ETA: " + eta.String() + "\n",
-			)
+		if numIndexedOffsets%1_000_000 == 0 && numIndexedOffsets > 0 {
+			timeForChunk := time.Since(lastCheckpoint)
+			numChunksLeft := ((numTotalItems - numIndexedOffsets) / 1_000_000) + 1
+			eta = timeForChunk * time.Duration(numChunksLeft)
 			lastCheckpoint = time.Now()
 		}
+		if numIndexedOffsets%100_000 == 0 {
+			var etaString string
+			if eta > 0 {
+				etaString = fmt.Sprintf(" ETA: %s   ", eta.Truncate(time.Second).String())
+			} else {
+				etaString = ", ETA: ---   "
+			}
+			printToStderr(
+				fmt.Sprintf("\rIndexing: %s/%s items [%s%%] %s",
+					humanize.Comma(int64(numIndexedOffsets)),
+					humanize.Comma(int64(numTotalItems)),
+					humanize.CommafWithDigits(float64(numIndexedOffsets)/float64(numTotalItems)*100, 2),
+					etaString,
+				),
+			)
+		}
 	}
+	printToStderr(
+		fmt.Sprintf("\rIndexed %s items in %s                           \n",
+			humanize.Comma(int64(numIndexedOffsets)),
+			time.Since(startedAt).Truncate(time.Second),
+		),
+	)
 	printToStderr("\n")
 	klog.Infof(
 		"Indexed %s offsets, %s blocks, %s transactions",
@@ -320,12 +340,10 @@ func createAllIndexes(
 		humanize.Comma(int64(numIndexedTransactions)),
 	)
 
-	klog.Infof("Preparing to seal indexes...")
+	klog.Infof("Preparing to seal indexes (DO NOT EXIT)...")
 
 	paths := &IndexPaths{}
 	paths.SignatureExists = sigExistsFilepath
-
-	klog.Infof("Root CID: %s", rootCID)
 
 	{
 		// seal the indexes
@@ -333,7 +351,7 @@ func createAllIndexes(
 			klog.Infof("Sealing cid_to_offset_and_size index...")
 			err = cid_to_offset_and_size.Seal(ctx, indexDir)
 			if err != nil {
-				return nil, fmt.Errorf("failed to seal cid_to_offset_and_size index: %w", err)
+				return nil, 0, fmt.Errorf("failed to seal cid_to_offset_and_size index: %w", err)
 			}
 			paths.CidToOffsetAndSize = cid_to_offset_and_size.GetFilepath()
 			klog.Infof("Successfully sealed cid_to_offset_and_size index: %s", paths.CidToOffsetAndSize)
@@ -343,7 +361,7 @@ func createAllIndexes(
 			klog.Infof("Sealing slot_to_cid index...")
 			err = slot_to_cid.Seal(ctx, indexDir)
 			if err != nil {
-				return nil, fmt.Errorf("failed to seal slot_to_cid index: %w", err)
+				return nil, 0, fmt.Errorf("failed to seal slot_to_cid index: %w", err)
 			}
 			paths.SlotToCid = slot_to_cid.GetFilepath()
 			klog.Infof("Successfully sealed slot_to_cid index: %s", paths.SlotToCid)
@@ -353,7 +371,7 @@ func createAllIndexes(
 			klog.Infof("Sealing sig_to_cid index...")
 			err = sig_to_cid.Seal(ctx, indexDir)
 			if err != nil {
-				return nil, fmt.Errorf("failed to seal sig_to_cid index: %w", err)
+				return nil, 0, fmt.Errorf("failed to seal sig_to_cid index: %w", err)
 			}
 			paths.SignatureToCid = sig_to_cid.GetFilepath()
 			klog.Infof("Successfully sealed sig_to_cid index: %s", paths.SignatureToCid)
@@ -363,22 +381,22 @@ func createAllIndexes(
 			klog.Infof("Sealing sig_exists index...")
 			meta := indexmeta.Meta{}
 			if err := meta.AddUint64(indexmeta.MetadataKey_Epoch, epoch); err != nil {
-				return nil, fmt.Errorf("failed to add epoch to sig_exists index metadata: %w", err)
+				return nil, 0, fmt.Errorf("failed to add epoch to sig_exists index metadata: %w", err)
 			}
 			if err := meta.AddCid(indexmeta.MetadataKey_RootCid, rootCID); err != nil {
-				return nil, fmt.Errorf("failed to add root cid to sig_exists index metadata: %w", err)
+				return nil, 0, fmt.Errorf("failed to add root cid to sig_exists index metadata: %w", err)
 			}
 			if err := meta.AddString(indexmeta.MetadataKey_Network, string(network)); err != nil {
-				return nil, fmt.Errorf("failed to add network to sig_exists index metadata: %w", err)
+				return nil, 0, fmt.Errorf("failed to add network to sig_exists index metadata: %w", err)
 			}
 			if _, err = sig_exists.Seal(meta); err != nil {
-				return nil, fmt.Errorf("failed to seal sig_exists index: %w", err)
+				return nil, 0, fmt.Errorf("failed to seal sig_exists index: %w", err)
 			}
 			klog.Infof("Successfully sealed sig_exists index: %s", paths.SignatureExists)
 		}
 	}
 
-	return paths, nil
+	return paths, numTotalItems, nil
 }
 
 func greenBackground(s string) string {
@@ -394,6 +412,28 @@ type IndexPaths struct {
 	SlotToCid          string
 	SignatureToCid     string
 	SignatureExists    string
+}
+
+// IndexPaths.String
+func (p *IndexPaths) String() string {
+	var builder bytes.Buffer
+	builder.WriteString("  cid_to_offset_and_size:\n    uri: ")
+	builder.WriteString(quoteSingle(p.CidToOffsetAndSize))
+	builder.WriteString("\n")
+	builder.WriteString("  slot_to_cid:\n    uri: ")
+	builder.WriteString(quoteSingle(p.SlotToCid))
+	builder.WriteString("\n")
+	builder.WriteString("  sig_to_cid:\n    uri: ")
+	builder.WriteString(quoteSingle(p.SignatureToCid))
+	builder.WriteString("\n")
+	builder.WriteString("  sig_exists:\n    uri: ")
+	builder.WriteString(quoteSingle(p.SignatureExists))
+	builder.WriteString("\n")
+	return builder.String()
+}
+
+func quoteSingle(s string) string {
+	return fmt.Sprintf("'%s'", s)
 }
 
 func NewBuilder_CidToOffset(
@@ -472,6 +512,7 @@ func verifyAllIndexes(
 	ctx context.Context,
 	carPath string,
 	indexes *IndexPaths,
+	numTotalItems uint64,
 ) error {
 	// Check if the CAR file exists:
 	exists, err := fileExists(carPath)
@@ -546,6 +587,8 @@ func verifyAllIndexes(
 	numIndexedTransactions := uint64(0)
 	klog.Infof("Verifying indexes...")
 	lastCheckpoint := time.Now()
+	var eta time.Duration
+	startedAt := time.Now()
 	for {
 		_cid, sectionLength, block, err := rd.NextNode()
 		if err != nil {
@@ -621,28 +664,46 @@ func verifyAllIndexes(
 
 		totalOffset += sectionLength
 
-		if numIndexedOffsets%100_000 == 0 {
-			printToStderr(".")
-		}
-		if numIndexedOffsets%1_000_000 == 0 {
-			printToStderr(
-				"\n" + greenBackground(
-					fmt.Sprintf(" %s (%s) ",
-						humanize.Comma(int64(numIndexedOffsets)),
-						time.Since(lastCheckpoint),
-					),
-				) + "\n",
-			)
+		if numIndexedOffsets%1_000_000 == 0 && numIndexedOffsets > 0 && numTotalItems > 0 {
+			timeForChunk := time.Since(lastCheckpoint)
+			numChunksLeft := ((numTotalItems - numIndexedOffsets) / 1_000_000) + 1
+			eta = timeForChunk * time.Duration(numChunksLeft)
 			lastCheckpoint = time.Now()
 		}
+		if numIndexedOffsets%100_000 == 0 {
+			if numTotalItems > 0 {
+				var etaString string
+				if eta > 0 {
+					etaString = fmt.Sprintf(", ETA: %s   ", eta.Truncate(time.Second).String())
+				} else {
+					etaString = ", ETA: ---   "
+				}
+				printToStderr(
+					fmt.Sprintf("\rVerifying index: %s/%s items [%s%%] %s",
+						humanize.Comma(int64(numIndexedOffsets)),
+						humanize.Comma(int64(numTotalItems)),
+						humanize.CommafWithDigits(float64(numIndexedOffsets)/float64(numTotalItems)*100, 2),
+						etaString,
+					),
+				)
+			} else {
+				printToStderr(
+					fmt.Sprintf("\rVerifying index: %s items",
+						humanize.Comma(int64(numIndexedOffsets)),
+					),
+				)
+			}
+		}
 	}
-	printToStderr("\n")
-	klog.Infof(
-		"Verified %s offsets, %s blocks, %s transactions",
-		humanize.Comma(int64(numIndexedOffsets)),
-		humanize.Comma(int64(numIndexedBlocks)),
-		humanize.Comma(int64(numIndexedTransactions)),
-	)
+
+	printToStderr(
+		fmt.Sprintf(
+			"\rVerified %s offsets, %s blocks, %s transactions in %s\n",
+			humanize.Comma(int64(numIndexedOffsets)),
+			humanize.Comma(int64(numIndexedBlocks)),
+			humanize.Comma(int64(numIndexedTransactions)),
+			time.Since(startedAt).Truncate(time.Second),
+		))
 
 	return nil
 }

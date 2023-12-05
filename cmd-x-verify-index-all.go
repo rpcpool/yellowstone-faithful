@@ -39,6 +39,7 @@ func newCmd_VerifyIndex_all() *cli.Command {
 						SignatureToCid:     indexFilePathSig2Cid,
 						SignatureExists:    indexFilePathSigExists,
 					},
+					0,
 				)
 				if err != nil {
 					return err
