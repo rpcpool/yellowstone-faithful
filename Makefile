@@ -10,7 +10,7 @@ build-rust-wrapper:
 	cd txstatus && cargo build --release --lib --target=x86_64-unknown-linux-gnu --target-dir=target
 	cbindgen ./txstatus -o txstatus/lib/transaction_status.h --lang c
 	echo "build-rust-wrapper done"
-jsonParsed: build-rust-wrapper
+jsonParsed-linux: build-rust-wrapper
 	# build faithful-cli with jsonParsed format support via ffi (rust)
 	rm -rf ./bin/faithful-cli_jsonParsed
 	# static linking:

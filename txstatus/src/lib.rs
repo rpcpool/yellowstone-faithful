@@ -15,20 +15,15 @@ use solana_sdk::{instruction::CompiledInstruction, message::AccountKeys, pubkey:
 use solana_transaction_status::parse_instruction::parse;
 
 #[no_mangle]
-pub extern "C" fn hello_from_rust() {
-    println!("Hello from Rust at time: {}!", chrono::Local::now());
-}
-
-#[no_mangle]
 pub extern "C" fn parse_instruction(bytes: *const u8, len: usize) -> Response {
-    let started_at = Instant::now();
+    // let started_at = Instant::now();
     let bytes = unsafe {
         assert!(!bytes.is_null());
         slice::from_raw_parts(bytes, len)
     };
     let bytes = bytes.to_vec();
-    println!("[rust] params raw bytes: {:?}", bytes);
-    println!("[rust] params:");
+    // println!("[rust] params raw bytes: {:?}", bytes);
+    // println!("[rust] params:");
     let mut decoder = Decoder::new(bytes);
     {
         // read program ID:
@@ -58,10 +53,10 @@ pub extern "C" fn parse_instruction(bytes: *const u8, len: usize) -> Response {
             child: None,
         };
         let static_account_keys_len = decoder.read_u8().unwrap() as usize;
-        println!(
-            "[rust] static_account_keys_len: {:?}",
-            static_account_keys_len
-        );
+        // println!(
+        //     "[rust] static_account_keys_len: {:?}",
+        //     static_account_keys_len
+        // );
         let mut static_account_keys_vec = vec![];
         for _ in 0..static_account_keys_len {
             let account_key_bytes = decoder.read_bytes(32).unwrap();
@@ -73,7 +68,7 @@ pub extern "C" fn parse_instruction(bytes: *const u8, len: usize) -> Response {
         if has_dynamic_account_keys {
             let mut loaded_addresses = LoadedAddresses::default();
             let num_writable_accounts = decoder.read_u8().unwrap() as usize;
-            println!("[rust] num_writable_accounts: {:?}", num_writable_accounts);
+            // println!("[rust] num_writable_accounts: {:?}", num_writable_accounts);
             // read 32 bytes for each writable account:
             for _ in 0..num_writable_accounts {
                 let account_key_bytes = decoder.read_bytes(32).unwrap();
@@ -115,28 +110,28 @@ pub extern "C" fn parse_instruction(bytes: *const u8, len: usize) -> Response {
         let mut stack_height: Option<u32> = None;
         {
             let has_stack_height = decoder.read_option().unwrap();
-            println!("[rust] has_stack_height: {:?}", has_stack_height);
+            // println!("[rust] has_stack_height: {:?}", has_stack_height);
             if has_stack_height {
                 stack_height = Some(
                     decoder
                         .read_u32(byte_order::ByteOrder::LittleEndian)
                         .unwrap(),
                 );
-                println!("[rust] stack_height: {:?}", stack_height);
+                // println!("[rust] stack_height: {:?}", stack_height);
             }
         }
-        println!("[rust] program_id: {:?}", program_id);
-        println!("[rust] instruction: {:?}", instruction);
-        println!(
-            "[rust] account_keys.static: {:?}",
-            parsed_account_keys.parent
-        );
-        println!(
-            "[rust] has_dynamic_account_keys: {:?}",
-            has_dynamic_account_keys
-        );
-        println!("[rust] account_keys.dynamic: {:?}", sommmm);
-        println!("[rust] stack_height: {:?}", stack_height);
+        // println!("[rust] program_id: {:?}", program_id);
+        // println!("[rust] instruction: {:?}", instruction);
+        // println!(
+        //     "[rust] account_keys.static: {:?}",
+        //     parsed_account_keys.parent
+        // );
+        // println!(
+        //     "[rust] has_dynamic_account_keys: {:?}",
+        //     has_dynamic_account_keys
+        // );
+        // println!("[rust] account_keys.dynamic: {:?}", sommmm);
+        // println!("[rust] stack_height: {:?}", stack_height);
 
         let parsed = parse(
             &program_id, // program_id
@@ -162,29 +157,29 @@ pub extern "C" fn parse_instruction(bytes: *const u8, len: usize) -> Response {
                 status: 1,
             };
         } else {
-            println!(
-                "[rust] successfully parsed the instruction in {:?}: {:?}",
-                Instant::now() - started_at,
-                parsed
-            );
+            // println!(
+            //     "[rust] successfully parsed the instruction in {:?}: {:?}",
+            //     Instant::now() - started_at,
+            //     parsed
+            // );
             let parsed = parsed.unwrap();
             let parsed_json = serde_json::to_vec(&parsed).unwrap();
             {
-                let parsed_json_str = String::from_utf8(parsed_json.clone()).unwrap();
-                println!(
-                    "[rust] parsed instruction as json at {:?}: {}",
-                    Instant::now() - started_at,
-                    parsed_json_str
-                );
+                // let parsed_json_str = String::from_utf8(parsed_json.clone()).unwrap();
+                // println!(
+                //     "[rust] parsed instruction as json at {:?}: {}",
+                //     Instant::now() - started_at,
+                //     parsed_json_str
+                // );
             }
 
-            println!("[rust] {:?}", Instant::now() - started_at);
+            // println!("[rust] {:?}", Instant::now() - started_at);
             let mut response = vec![0; 32];
             response.extend_from_slice(&parsed_json);
 
             let data = response.as_mut_ptr();
             let len = response.len();
-            println!("[rust] {:?}", Instant::now() - started_at);
+            // println!("[rust] {:?}", Instant::now() - started_at);
             return Response {
                 buf: Buffer {
                     data: unsafe { data.add(32) },
@@ -193,17 +188,6 @@ pub extern "C" fn parse_instruction(bytes: *const u8, len: usize) -> Response {
                 status: 0,
             };
         }
-    }
-    let mut response = vec![0; 32];
-    for i in 0..32 {
-        response[i] = i as u8;
-    }
-    let data = response.as_mut_ptr();
-    let len = response.len();
-    std::mem::forget(response);
-    Response {
-        buf: Buffer { data, len },
-        status: 123,
     }
 }
 
@@ -225,20 +209,6 @@ extern "C" fn free_buf(buf: Buffer) {
     unsafe {
         Box::from_raw(s);
     }
-}
-
-// write a C external function that accepts a string, parses it as json, and returns a string:
-#[no_mangle]
-pub extern "C" fn accept_json(json: *const libc::c_char) -> *const libc::c_char {
-    let json = unsafe { CStr::from_ptr(json).to_bytes() };
-    let json = String::from_utf8(json.to_vec()).unwrap();
-    {
-        let v: serde_json::Value = serde_json::from_str(&json).unwrap();
-        println!("v: {:?}", v);
-    }
-    let json = json + "!";
-    let json = CString::new(json).unwrap().into_raw();
-    json
 }
 
 struct Combined {
