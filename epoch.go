@@ -13,6 +13,7 @@ import (
 
 	"github.com/gagliardetto/solana-go"
 	"github.com/ipfs/go-cid"
+	carv1 "github.com/ipld/go-car"
 	"github.com/ipld/go-car/util"
 	carv2 "github.com/ipld/go-car/v2"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -23,6 +24,7 @@ import (
 	"github.com/rpcpool/yellowstone-faithful/indexmeta"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
+	"github.com/rpcpool/yellowstone-faithful/radiance/genesis"
 	"github.com/urfave/cli/v2"
 	"k8s.io/klog/v2"
 )
@@ -31,11 +33,13 @@ type Epoch struct {
 	epoch          uint64
 	isFilecoinMode bool // true if the epoch is in Filecoin mode (i.e. Lassie mode)
 	config         *Config
+	// genesis:
+	genesis *GenesisContainer
 	// contains indexes and block data for the epoch
 	lassieFetcher           *lassieWrapper
 	localCarReader          *carv2.Reader
 	remoteCarReader         ReaderAtCloser
-	remoteCarHeaderSize     uint64
+	carHeaderSize           uint64
 	cidToOffsetAndSizeIndex *indexes.CidToOffsetAndSize_Reader
 	slotToCidIndex          *indexes.SlotToCid_Reader
 	sigToCidIndex           *indexes.SigToCid_Reader
@@ -73,6 +77,10 @@ func (e *Epoch) Close() error {
 	return errors.Join(multiErr...)
 }
 
+func (e *Epoch) GetGenesis() *GenesisContainer {
+	return e.genesis
+}
+
 func NewEpochFromConfig(
 	config *Config,
 	c *cli.Context,
@@ -92,7 +100,19 @@ func NewEpochFromConfig(
 		allCache:       allCache,
 	}
 	var lastRootCid cid.Cid
-
+	{
+		// if epoch is 0, then try loading the genesis from the config:
+		if *config.Epoch == 0 {
+			genesisConfig, ha, err := genesis.ReadGenesisFromFile(string(config.Genesis.URI))
+			if err != nil {
+				return nil, fmt.Errorf("failed to read genesis: %w", err)
+			}
+			ep.genesis = &GenesisContainer{
+				Hash:   solana.HashFromBytes(ha[:]),
+				Config: genesisConfig,
+			}
+		}
+	}
 	if isCarMode {
 		// The CAR-mode requires a cid-to-offset index.
 		cidToOffsetAndSizeIndexFile, err := openIndexStorage(
@@ -236,7 +256,7 @@ func NewEpochFromConfig(
 		ep.localCarReader = localCarReader
 		ep.remoteCarReader = remoteCarReader
 		if remoteCarReader != nil {
-			// read 10 bytes from the CAR file to get the header size
+			// determine the header size so that we know where the data starts:
 			headerSizeBuf, err := readSectionFromReaderAt(remoteCarReader, 0, 10)
 			if err != nil {
 				return nil, fmt.Errorf("failed to read CAR header: %w", err)
@@ -246,7 +266,24 @@ func NewEpochFromConfig(
 			if n <= 0 {
 				return nil, fmt.Errorf("failed to decode CAR header size")
 			}
-			ep.remoteCarHeaderSize = uint64(n) + headerSize
+			ep.carHeaderSize = uint64(n) + headerSize
+		}
+		if localCarReader != nil {
+			// determine the header size so that we know where the data starts:
+			dr, err := localCarReader.DataReader()
+			if err != nil {
+				return nil, fmt.Errorf("failed to get local CAR data reader: %w", err)
+			}
+			header, err := readHeader(dr)
+			if err != nil {
+				return nil, fmt.Errorf("failed to read local CAR header: %w", err)
+			}
+			var buf bytes.Buffer
+			if err = carv1.WriteHeader(header, &buf); err != nil {
+				return nil, fmt.Errorf("failed to encode local CAR header: %w", err)
+			}
+			headerSize := uint64(buf.Len())
+			ep.carHeaderSize = headerSize
 		}
 	}
 	{

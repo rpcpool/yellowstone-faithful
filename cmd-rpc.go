@@ -169,6 +169,12 @@ func newCmd_rpc() *cli.Command {
 				EpochSearchConcurrency: epochSearchConcurrency,
 			})
 
+			defer func() {
+				if err := multi.Close(); err != nil {
+					klog.Errorf("error closing multi-epoch: %s", err.Error())
+				}
+			}()
+
 			for _, epoch := range epochs {
 				if err := multi.AddEpoch(epoch.Epoch(), epoch); err != nil {
 					return cli.Exit(fmt.Sprintf("failed to add epoch %d: %s", epoch.Epoch(), err.Error()), 1)

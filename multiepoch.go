@@ -156,6 +156,16 @@ func (m *MultiEpoch) GetFirstAvailableEpochNumber() (uint64, error) {
 	return 0, fmt.Errorf("no epochs available")
 }
 
+func (m *MultiEpoch) Close() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	klog.Info("Closing all epochs...")
+	for _, ep := range m.epochs {
+		ep.Close()
+	}
+	return nil
+}
+
 type ListenerConfig struct {
 	ProxyConfig *ProxyConfig
 }
@@ -304,13 +314,19 @@ func newMultiEpochHandler(handler *MultiEpoch, lsConf *ListenerConfig) func(ctx 
 		method := rpcRequest.Method
 
 		if method == "getVersion" {
+			versionInfo := make(map[string]any)
 			faithfulVersion := handler.GetFaithfulVersionInfo()
+			versionInfo["faithful"] = faithfulVersion
+
+			solanaVersion := handler.GetSolanaVersionInfo()
+			for k, v := range solanaVersion {
+				versionInfo[k] = v
+			}
+
 			err := rqCtx.ReplyRaw(
 				reqCtx,
 				rpcRequest.ID,
-				map[string]any{
-					"faithful": faithfulVersion,
-				},
+				versionInfo,
 			)
 			if err != nil {
 				klog.Errorf("[%s] failed to reply to getVersion: %v", reqID, err)
@@ -407,7 +423,7 @@ func sanitizeMethod(method string) string {
 
 func isValidLocalMethod(method string) bool {
 	switch method {
-	case "getBlock", "getTransaction", "getSignaturesForAddress", "getBlockTime":
+	case "getBlock", "getTransaction", "getSignaturesForAddress", "getBlockTime", "getGenesisHash":
 		return true
 	default:
 		return false
@@ -425,6 +441,8 @@ func (ser *MultiEpoch) handleRequest(ctx context.Context, conn *requestContext, 
 		return ser.handleGetSignaturesForAddress(ctx, conn, req)
 	case "getBlockTime":
 		return ser.handleGetBlockTime(ctx, conn, req)
+	case "getGenesisHash":
+		return ser.handleGetGenesisHash(ctx, conn, req)
 	default:
 		return &jsonrpc2.Error{
 			Code:    jsonrpc2.CodeMethodNotFound,

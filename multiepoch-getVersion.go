@@ -46,3 +46,11 @@ func (ser *MultiEpoch) GetFaithfulVersionInfo() map[string]any {
 	faithfulVersion["epochs"] = ser.GetEpochNumbers()
 	return faithfulVersion
 }
+
+// This function should return the solana version we are compatible with
+func (ser *MultiEpoch) GetSolanaVersionInfo() map[string]any {
+  solanaVersion := make(map[string]any)
+  solanaVersion["feature-set"] = 1879391783
+  solanaVersion["solana-core"] = "1.16.7"
+  return solanaVersion
+}
