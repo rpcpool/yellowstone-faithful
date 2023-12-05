@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/dustin/go-humanize"
 	"github.com/ipfs/go-cid"
 	carv1 "github.com/ipld/go-car"
@@ -25,13 +24,15 @@ import (
 
 func newCmd_Index_all() *cli.Command {
 	var verify bool
-	var epoch uint64
 	var network indexes.Network
 	return &cli.Command{
 		Name:        "all",
 		Description: "Given a CAR file containing a Solana epoch, create all the necessary indexes and save them in the specified index dir.",
 		ArgsUsage:   "<car-path> <index-dir>",
 		Before: func(c *cli.Context) error {
+			if network == "" {
+				network = indexes.NetworkMainnet
+			}
 			return nil
 		},
 		Flags: []cli.Flag{
@@ -45,23 +46,16 @@ func newCmd_Index_all() *cli.Command {
 				Usage: "temporary directory to use for storing intermediate files",
 				Value: "",
 			},
-			&cli.Uint64Flag{
-				Name:        "epoch",
-				Usage:       "the epoch of the CAR file",
-				Destination: &epoch,
-				Required:    true,
-			},
 			&cli.StringFlag{
 				Name:  "network",
 				Usage: "the cluster of the epoch; one of: mainnet, testnet, devnet",
 				Action: func(c *cli.Context, s string) error {
 					network = indexes.Network(s)
 					if !indexes.IsValidNetwork(network) {
-						return fmt.Errorf("invalid network: %s", network)
+						return fmt.Errorf("invalid network: %q", network)
 					}
 					return nil
 				},
-				Required: true,
 			},
 		},
 		Subcommands: []*cli.Command{},
@@ -89,10 +83,9 @@ func newCmd_Index_all() *cli.Command {
 				}()
 				klog.Infof("Creating all indexes for %s", carPath)
 				klog.Infof("Indexes will be saved in %s", indexDir)
-				klog.Infof("This CAR file is for epoch %d and cluster %s", epoch, network)
+
 				indexPaths, numTotalItems, err := createAllIndexes(
 					c.Context,
-					epoch,
 					network,
 					tmpDir,
 					carPath,
@@ -118,19 +111,8 @@ func newCmd_Index_all() *cli.Command {
 	}
 }
 
-var veryPlainSdumpConfig = spew.ConfigState{
-	Indent:                  "  ",
-	DisablePointerAddresses: true,
-	DisableCapacities:       true,
-	DisableMethods:          true,
-	DisablePointerMethods:   true,
-	ContinueOnMethod:        true,
-	SortKeys:                true,
-}
-
 func createAllIndexes(
 	ctx context.Context,
-	epoch uint64,
 	network indexes.Network,
 	tmpDir string,
 	carPath string,
@@ -168,9 +150,12 @@ func createAllIndexes(
 	klog.Infof("Getting car file size")
 
 	klog.Infof("Counting items in car file...")
-	numItems, err := carCountItemsByFirstByte(carPath)
+	numItems, epochObject, err := carCountItemsByFirstByte(carPath)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to count items in car file: %w", err)
+	}
+	if epochObject == nil {
+		return nil, 0, fmt.Errorf("failed to find epoch object in the car file")
 	}
 	fmt.Println()
 	klog.Infof("Found items in car file:")
@@ -184,6 +169,9 @@ func createAllIndexes(
 		numTotalItems += numItems[kind]
 	}
 	klog.Infof("Total: %s items", humanize.Comma(int64(numTotalItems)))
+
+	epoch := uint64(epochObject.Epoch)
+	klog.Infof("This CAR file is for epoch %d and cluster %s", epoch, network)
 
 	cid_to_offset_and_size, err := NewBuilder_CidToOffset(
 		epoch,

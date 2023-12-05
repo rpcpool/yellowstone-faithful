@@ -15,6 +15,8 @@ import (
 	"github.com/ipfs/go-libipfs/blocks"
 	carv1 "github.com/ipld/go-car"
 	"github.com/ipld/go-car/util"
+	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
+	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
 	"github.com/rpcpool/yellowstone-faithful/readahead"
 )
 
@@ -211,28 +213,29 @@ func carCountItems(carPath string) (uint64, error) {
 	return count, nil
 }
 
-func carCountItemsByFirstByte(carPath string) (map[byte]uint64, error) {
+func carCountItemsByFirstByte(carPath string) (map[byte]uint64, *ipldbindcode.Epoch, error) {
 	file, err := os.Open(carPath)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer file.Close()
 
 	rd, err := newCarReader(file)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open car file: %w", err)
+		return nil, nil, fmt.Errorf("failed to open car file: %w", err)
 	}
 
 	numTotalItems := uint64(0)
 	counts := make(map[byte]uint64)
 	startedCountAt := time.Now()
+	var epochObject *ipldbindcode.Epoch
 	for {
 		_, _, block, err := rd.NextNode()
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				break
 			}
-			return nil, err
+			return nil, nil, err
 		}
 		// the first data byte is the block type (after the CBOR tag)
 		firstDataByte := block.RawData()[1]
@@ -244,13 +247,20 @@ func carCountItemsByFirstByte(carPath string) (map[byte]uint64, error) {
 				fmt.Sprintf("\rCounted %s items", humanize.Comma(int64(numTotalItems))),
 			)
 		}
+
+		if iplddecoders.Kind(firstDataByte) == iplddecoders.KindEpoch {
+			epochObject, err = iplddecoders.DecodeEpoch(block.RawData())
+			if err != nil {
+				return nil, nil, fmt.Errorf("failed to decode Epoch node: %w", err)
+			}
+		}
 	}
 
 	printToStderr(
 		fmt.Sprintf("\rCounted %s items in %s\n", humanize.Comma(int64(numTotalItems)), time.Since(startedCountAt).Truncate(time.Second)),
 	)
 
-	return counts, nil
+	return counts, epochObject, err
 }
 
 func printToStderr(msg string) {

@@ -37,6 +37,9 @@ func newCmd_Index_sigExists() *cli.Command {
 		Description: "Create sig-exists index from a CAR file",
 		ArgsUsage:   "<car-path> <index-dir>",
 		Before: func(c *cli.Context) error {
+			if network == "" {
+				network = indexes.NetworkMainnet
+			}
 			return nil
 		},
 		Flags: []cli.Flag{
@@ -67,7 +70,6 @@ func newCmd_Index_sigExists() *cli.Command {
 				Name:        "network",
 				Usage:       "network",
 				Destination: (*string)(&network),
-				Required:    true,
 				Action: func(c *cli.Context, v string) error {
 					if !indexes.IsValidNetwork(indexes.Network(v)) {
 						return fmt.Errorf("invalid network: %s", v)

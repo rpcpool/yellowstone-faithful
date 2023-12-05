@@ -19,6 +19,9 @@ func newCmd_Index_sig2cid() *cli.Command {
 		Description: "Given a CAR file containing a Solana epoch, create an index of the file that maps transaction signatures to CIDs.",
 		ArgsUsage:   "<car-path> <index-dir>",
 		Before: func(c *cli.Context) error {
+			if network == "" {
+				network = indexes.NetworkMainnet
+			}
 			return nil
 		},
 		Flags: []cli.Flag{
@@ -48,7 +51,6 @@ func newCmd_Index_sig2cid() *cli.Command {
 					}
 					return nil
 				},
-				Required: true,
 			},
 		},
 		Subcommands: []*cli.Command{},
