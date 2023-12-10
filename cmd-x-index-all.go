@@ -19,6 +19,7 @@ import (
 	"github.com/rpcpool/yellowstone-faithful/indexmeta"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
 	"github.com/urfave/cli/v2"
+	"golang.org/x/sync/errgroup"
 	"k8s.io/klog/v2"
 )
 
@@ -334,53 +335,63 @@ func createAllIndexes(
 	paths.SignatureExists = sigExistsFilepath
 
 	{
+		wg := new(errgroup.Group)
+
 		// seal the indexes
-		{
+		wg.Go(func() error {
 			klog.Infof("Sealing cid_to_offset_and_size index...")
 			err = cid_to_offset_and_size.Seal(ctx, indexDir)
 			if err != nil {
-				return nil, 0, fmt.Errorf("failed to seal cid_to_offset_and_size index: %w", err)
+				return fmt.Errorf("failed to seal cid_to_offset_and_size index: %w", err)
 			}
 			paths.CidToOffsetAndSize = cid_to_offset_and_size.GetFilepath()
 			klog.Infof("Successfully sealed cid_to_offset_and_size index: %s", paths.CidToOffsetAndSize)
-		}
+			return nil
+		})
 
-		{
+		wg.Go(func() error {
 			klog.Infof("Sealing slot_to_cid index...")
 			err = slot_to_cid.Seal(ctx, indexDir)
 			if err != nil {
-				return nil, 0, fmt.Errorf("failed to seal slot_to_cid index: %w", err)
+				return fmt.Errorf("failed to seal slot_to_cid index: %w", err)
 			}
 			paths.SlotToCid = slot_to_cid.GetFilepath()
 			klog.Infof("Successfully sealed slot_to_cid index: %s", paths.SlotToCid)
-		}
+			return nil
+		})
 
-		{
+		wg.Go(func() error {
 			klog.Infof("Sealing sig_to_cid index...")
 			err = sig_to_cid.Seal(ctx, indexDir)
 			if err != nil {
-				return nil, 0, fmt.Errorf("failed to seal sig_to_cid index: %w", err)
+				return fmt.Errorf("failed to seal sig_to_cid index: %w", err)
 			}
 			paths.SignatureToCid = sig_to_cid.GetFilepath()
 			klog.Infof("Successfully sealed sig_to_cid index: %s", paths.SignatureToCid)
-		}
+			return nil
+		})
 
-		{
+		wg.Go(func() error {
 			klog.Infof("Sealing sig_exists index...")
 			meta := indexmeta.Meta{}
 			if err := meta.AddUint64(indexmeta.MetadataKey_Epoch, epoch); err != nil {
-				return nil, 0, fmt.Errorf("failed to add epoch to sig_exists index metadata: %w", err)
+				return fmt.Errorf("failed to add epoch to sig_exists index metadata: %w", err)
 			}
 			if err := meta.AddCid(indexmeta.MetadataKey_RootCid, rootCID); err != nil {
-				return nil, 0, fmt.Errorf("failed to add root cid to sig_exists index metadata: %w", err)
+				return fmt.Errorf("failed to add root cid to sig_exists index metadata: %w", err)
 			}
 			if err := meta.AddString(indexmeta.MetadataKey_Network, string(network)); err != nil {
-				return nil, 0, fmt.Errorf("failed to add network to sig_exists index metadata: %w", err)
+				return fmt.Errorf("failed to add network to sig_exists index metadata: %w", err)
 			}
 			if _, err = sig_exists.Seal(meta); err != nil {
-				return nil, 0, fmt.Errorf("failed to seal sig_exists index: %w", err)
+				return fmt.Errorf("failed to seal sig_exists index: %w", err)
 			}
 			klog.Infof("Successfully sealed sig_exists index: %s", paths.SignatureExists)
+			return nil
+		})
+
+		if err := wg.Wait(); err != nil {
+			return nil, 0, err
 		}
 	}
 
