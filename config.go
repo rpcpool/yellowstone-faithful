@@ -99,14 +99,11 @@ type Config struct {
 	Epoch            *uint64 `json:"epoch" yaml:"epoch"`
 	Data             struct {
 		Car *struct {
-			URI           URI `json:"uri" yaml:"uri"`
-			SplitMetadata *struct {
-				URI    URI `json:"uri" yaml:"uri"` // Local path to the split metadata file.
-				Miners []struct {
-					MinerID string `json:"miner_id" yaml:"miner_id"`
-					// If the miner is a Filecoin miner, then the provider is the miner's peer ID.
-				} `json:"miners" yaml:"miners"`
-			} `json:"split_metadata" yaml:"split_metadata"`
+			URI        URI `json:"uri" yaml:"uri"`
+			FromPieces *struct {
+				Metadata URI `json:"uri" yaml:"uri"`     // Local path to the split metadata file.
+				Deals    URI `json:"deals" yaml:"deals"` // Local path to the split deals file.
+			} `json:"from_pieces" yaml:"from_pieces"`
 		} `json:"car" yaml:"car"`
 		Filecoin *struct {
 			// Enable enables Filecoin mode. If false, or if this section is not present, CAR mode is used.
@@ -164,7 +161,7 @@ func (c *Config) IsFilecoinMode() bool {
 }
 
 func (c *Config) IsSplitCarMode() bool {
-	return c.Data.Car != nil && c.Data.Car.SplitMetadata != nil && len(c.Data.Car.SplitMetadata.Miners) > 0
+	return c.Data.Car != nil && c.Data.Car.FromPieces != nil && !c.Data.Car.FromPieces.Metadata.IsZero() && !c.Data.Car.FromPieces.Deals.IsZero()
 }
 
 type ConfigSlice []*Config
@@ -222,7 +219,7 @@ func (c *Config) Validate() error {
 		if c.Data.Car == nil {
 			return fmt.Errorf("car-mode=true; data.car must be set")
 		}
-		if c.Data.Car.URI.IsZero() && c.Data.Car.SplitMetadata == nil {
+		if c.Data.Car.URI.IsZero() && c.Data.Car.FromPieces == nil {
 			return fmt.Errorf("data.car.uri or data.car.split_metadata must be set")
 		}
 		if !c.Data.Car.URI.IsZero() {
@@ -230,19 +227,25 @@ func (c *Config) Validate() error {
 				return err
 			}
 		}
-		if c.Data.Car.SplitMetadata != nil {
-			if c.Data.Car.SplitMetadata.URI.IsZero() {
-				return fmt.Errorf("data.car.split_metadata.uri must be set")
+		// can't have both:
+		if !c.Data.Car.URI.IsZero() && c.Data.Car.FromPieces != nil {
+			return fmt.Errorf("data.car.uri and data.car.split_metadata cannot both be set")
+		}
+		if c.Data.Car.FromPieces != nil {
+			{
+				if c.Data.Car.FromPieces.Metadata.IsZero() {
+					return fmt.Errorf("data.car.from_pieces.metadata.uri must be set")
+				}
+				if !c.Data.Car.FromPieces.Metadata.IsLocal() {
+					return fmt.Errorf("data.car.from_pieces.metadata.uri must be a local file")
+				}
 			}
-			if !c.Data.Car.SplitMetadata.URI.IsLocal() {
-				return fmt.Errorf("data.car.split_metadata.uri must be a local file")
-			}
-			if len(c.Data.Car.SplitMetadata.Miners) == 0 {
-				return fmt.Errorf("data.car.split_metadata.miners must not be empty")
-			}
-			for minerIndex, miner := range c.Data.Car.SplitMetadata.Miners {
-				if miner.MinerID == "" {
-					return fmt.Errorf("data.car.split_metadata.miners[%d].miner_id must not be empty", minerIndex)
+			{
+				if c.Data.Car.FromPieces.Deals.IsZero() {
+					return fmt.Errorf("data.car.from_pieces.deals.uri must be set")
+				}
+				if !c.Data.Car.FromPieces.Deals.IsLocal() {
+					return fmt.Errorf("data.car.from_pieces.deals.uri must be a local file")
 				}
 			}
 		}
@@ -260,7 +263,6 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("data.filecoin.root_cid must be set")
 		}
 		// validate providers:
-
 		for providerIndex, provider := range c.Data.Filecoin.Providers {
 			if provider == "" {
 				return fmt.Errorf("data.filecoin.providers must not be empty")
@@ -302,16 +304,19 @@ func (c *Config) Validate() error {
 	{
 		// check that the URIs are valid
 		if isCarMode {
-			if !c.Data.Car.URI.IsValid() {
-				return fmt.Errorf("data.car.uri is invalid")
-			}
 			if !c.Indexes.CidToOffsetAndSize.URI.IsValid() {
 				return fmt.Errorf("indexes.cid_to_offset_and_size.uri is invalid")
 			}
-
-			if c.Data.Car.SplitMetadata != nil {
-				if !c.Data.Car.SplitMetadata.URI.IsValid() {
-					return fmt.Errorf("data.car.split_metadata.uri is invalid")
+			if c.Data.Car.FromPieces != nil {
+				if !c.Data.Car.FromPieces.Metadata.IsValid() {
+					return fmt.Errorf("data.car.from_pieces.metadata.uri is invalid")
+				}
+				if !c.Data.Car.FromPieces.Deals.IsValid() {
+					return fmt.Errorf("data.car.from_pieces.deals.uri is invalid")
+				}
+			} else {
+				if !c.Data.Car.URI.IsValid() {
+					return fmt.Errorf("data.car.uri is invalid")
 				}
 			}
 		}
