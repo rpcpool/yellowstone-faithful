@@ -9,7 +9,7 @@ import (
 
 func (ser *MultiEpoch) tryEnrichGetVersion(body []byte) ([]byte, error) {
 	var decodedRemote jsonrpc2.Response
-	if err := json.Unmarshal(body, &decodedRemote); err != nil {
+	if err := fasterJson.Unmarshal(body, &decodedRemote); err != nil {
 		return nil, err
 	}
 	if decodedRemote.Error != nil || decodedRemote.Result == nil {
@@ -17,7 +17,7 @@ func (ser *MultiEpoch) tryEnrichGetVersion(body []byte) ([]byte, error) {
 	}
 	// node decode the result:
 	var decodedResult map[string]any
-	if err := json.Unmarshal(*decodedRemote.Result, &decodedResult); err != nil {
+	if err := fasterJson.Unmarshal(*decodedRemote.Result, &decodedResult); err != nil {
 		return nil, fmt.Errorf("failed to decode result: %w", err)
 	}
 	// enrich the result:
@@ -25,13 +25,13 @@ func (ser *MultiEpoch) tryEnrichGetVersion(body []byte) ([]byte, error) {
 	decodedResult["faithful"] = faithfulVersion
 
 	// re-encode the result:
-	encodedResult, err := json.Marshal(decodedResult)
+	encodedResult, err := fasterJson.Marshal(decodedResult)
 	if err != nil {
 		return nil, fmt.Errorf("failed to re-encode result: %w", err)
 	}
 	// re-encode the response:
 	decodedRemote.Result = (*json.RawMessage)(&encodedResult)
-	encodedResponse, err := json.Marshal(decodedRemote)
+	encodedResponse, err := fasterJson.Marshal(decodedRemote)
 	if err != nil {
 		return nil, fmt.Errorf("failed to re-encode response: %w", err)
 	}
@@ -49,8 +49,8 @@ func (ser *MultiEpoch) GetFaithfulVersionInfo() map[string]any {
 
 // This function should return the solana version we are compatible with
 func (ser *MultiEpoch) GetSolanaVersionInfo() map[string]any {
-  solanaVersion := make(map[string]any)
-  solanaVersion["feature-set"] = 1879391783
-  solanaVersion["solana-core"] = "1.16.7"
-  return solanaVersion
+	solanaVersion := make(map[string]any)
+	solanaVersion["feature-set"] = 1879391783
+	solanaVersion["solana-core"] = "1.16.7"
+	return solanaVersion
 }

@@ -6,10 +6,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/gagliardetto/solana-go/rpc/jsonrpc"
+	"github.com/filecoin-project/go-address"
 	"github.com/jellydator/ttlcache/v3"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multiaddr"
+	"github.com/ybbus/jsonrpc/v3"
 )
 
 type MinerInfoCache struct {
@@ -40,17 +41,17 @@ func NewMinerInfo(
 	}
 }
 
-func (d MinerInfoCache) GetProviderInfo(ctx context.Context, provider string) (*MinerInfo, error) {
-	file := d.minerInfoCache.Get(provider)
+func (d MinerInfoCache) GetProviderInfo(ctx context.Context, provider address.Address) (*MinerInfo, error) {
+	file := d.minerInfoCache.Get(provider.String())
 	if file != nil && !file.IsExpired() {
 		return file.Value(), nil
 	}
 
-	minerInfo, err := MinerInfoFetcher{Client: d.lotusClient}.GetProviderInfo(ctx, provider)
+	minerInfo, err := MinerInfoFetcher{Client: d.lotusClient}.GetProviderInfo(ctx, provider.String())
 	if err != nil {
 		return nil, err
 	}
-	d.minerInfoCache.Set(provider, minerInfo, ttlcache.DefaultTTL)
+	d.minerInfoCache.Set(provider.String(), minerInfo, ttlcache.DefaultTTL)
 	return minerInfo, nil
 }
 

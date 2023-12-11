@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -16,6 +15,7 @@ import (
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-car/util"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	jsoniter "github.com/json-iterator/go"
 	"github.com/rpcpool/yellowstone-faithful/compactindexsized"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	solanablockrewards "github.com/rpcpool/yellowstone-faithful/solana-block-rewards"
@@ -23,6 +23,8 @@ import (
 	"golang.org/x/sync/errgroup"
 	"k8s.io/klog/v2"
 )
+
+var fasterJson = jsoniter.ConfigCompatibleWithStandardLibrary
 
 func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContext, req *jsonrpc2.Request) (*jsonrpc2.Error, error) {
 	tim := newTimer()
@@ -281,7 +283,7 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 		} else {
 			{
 				// encode rewards as JSON, then decode it as a map
-				buf, err := json.Marshal(actualRewards)
+				buf, err := fasterJson.Marshal(actualRewards)
 				if err != nil {
 					return &jsonrpc2.Error{
 						Code:    jsonrpc2.CodeInternalError,
@@ -289,7 +291,7 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 					}, fmt.Errorf("failed to encode rewards: %v", err)
 				}
 				var m map[string]any
-				err = json.Unmarshal(buf, &m)
+				err = fasterJson.Unmarshal(buf, &m)
 				if err != nil {
 					return &jsonrpc2.Error{
 						Code:    jsonrpc2.CodeInternalError,

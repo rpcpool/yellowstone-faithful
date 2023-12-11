@@ -1,6 +1,8 @@
 module github.com/rpcpool/yellowstone-faithful
 
-go 1.20
+go 1.21
+
+toolchain go1.21.4
 
 replace github.com/anjor/carlet => github.com/rpcpool/carlet v0.0.4
 
@@ -73,7 +75,9 @@ require (
 	github.com/ryanuber/go-glob v1.0.0
 	github.com/tejzpr/ordered-concurrently/v3 v3.0.1
 	github.com/valyala/fasthttp v1.47.0
+	github.com/ybbus/jsonrpc/v3 v3.1.5
 	golang.org/x/exp v0.0.0-20231006140011-7918f672742d
+	gopkg.in/yaml.v2 v2.4.0
 	gopkg.in/yaml.v3 v3.0.1
 	k8s.io/klog v1.0.0
 )

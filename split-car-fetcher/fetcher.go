@@ -108,7 +108,7 @@ type RemoteFileSplitCarReader struct {
 func NewRemoteFileSplitCarReader(commP string, url string) (*RemoteFileSplitCarReader, error) {
 	size, err := getContentSizeWithHeadOrZeroRange(url)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get content size: %s", err)
+		return nil, fmt.Errorf("failed to get content size from %q: %s", url, err)
 	}
 	return &RemoteFileSplitCarReader{
 		commP:      commP,
@@ -134,7 +134,7 @@ func (fscr *RemoteFileSplitCarReader) ReadAt(p []byte, off int64) (n int, err er
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusPartialContent {
-		return 0, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+		return 0, fmt.Errorf("GET %q: unexpected status code: %d", fscr.url, resp.StatusCode)
 	}
 	n, err = io.ReadFull(resp.Body, p)
 	if err != nil {
@@ -175,7 +175,7 @@ func NewSplitCarReader(
 	for _, cf := range files.CarPieces {
 		fi, err := readerCreator(cf)
 		if err != nil {
-			return nil, fmt.Errorf("failed to open file %q: %s", cf.Name, err)
+			return nil, fmt.Errorf("failed to open remote file %q: %s", cf.CommP, err)
 		}
 
 		size := int(fi.Size())
@@ -185,7 +185,7 @@ func NewSplitCarReader(
 			expectedSize := int(cf.HeaderSize) + int(cf.ContentSize) // NOTE: valid only for pre-upload split CARs. They get padded after upload.
 			if size != expectedSize {
 				return nil, fmt.Errorf(
-					"file %q has unexpected size: saved=%d actual=%d (diff=%d)",
+					"remote file %q has unexpected size: saved=%d actual=%d (diff=%d)",
 					cf.Name,
 					expectedSize,
 					size,

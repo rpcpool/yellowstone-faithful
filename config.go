@@ -101,8 +101,12 @@ type Config struct {
 		Car *struct {
 			URI        URI `json:"uri" yaml:"uri"`
 			FromPieces *struct {
-				Metadata URI `json:"uri" yaml:"uri"`     // Local path to the split metadata file.
-				Deals    URI `json:"deals" yaml:"deals"` // Local path to the split deals file.
+				Metadata struct {
+					URI URI `json:"uri" yaml:"uri"` // Local path to the metadata file.
+				} `json:"metadata" yaml:"metadata"`
+				Deals struct {
+					URI URI `json:"uri" yaml:"uri"` // Local path to the deals file.
+				} `json:"deals" yaml:"deals"`
 			} `json:"from_pieces" yaml:"from_pieces"`
 		} `json:"car" yaml:"car"`
 		Filecoin *struct {
@@ -161,7 +165,7 @@ func (c *Config) IsFilecoinMode() bool {
 }
 
 func (c *Config) IsSplitCarMode() bool {
-	return c.Data.Car != nil && c.Data.Car.FromPieces != nil && !c.Data.Car.FromPieces.Metadata.IsZero() && !c.Data.Car.FromPieces.Deals.IsZero()
+	return c.Data.Car != nil && c.Data.Car.FromPieces != nil && !c.Data.Car.FromPieces.Metadata.URI.IsZero() && !c.Data.Car.FromPieces.Deals.URI.IsZero()
 }
 
 type ConfigSlice []*Config
@@ -220,7 +224,7 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("car-mode=true; data.car must be set")
 		}
 		if c.Data.Car.URI.IsZero() && c.Data.Car.FromPieces == nil {
-			return fmt.Errorf("data.car.uri or data.car.split_metadata must be set")
+			return fmt.Errorf("data.car.uri or data.car.from_pieces must be set")
 		}
 		if !c.Data.Car.URI.IsZero() {
 			if err := isSupportedURI(c.Data.Car.URI, "data.car.uri"); err != nil {
@@ -229,22 +233,22 @@ func (c *Config) Validate() error {
 		}
 		// can't have both:
 		if !c.Data.Car.URI.IsZero() && c.Data.Car.FromPieces != nil {
-			return fmt.Errorf("data.car.uri and data.car.split_metadata cannot both be set")
+			return fmt.Errorf("data.car.uri and data.car.from_pieces cannot both be set")
 		}
 		if c.Data.Car.FromPieces != nil {
 			{
-				if c.Data.Car.FromPieces.Metadata.IsZero() {
+				if c.Data.Car.FromPieces.Metadata.URI.IsZero() {
 					return fmt.Errorf("data.car.from_pieces.metadata.uri must be set")
 				}
-				if !c.Data.Car.FromPieces.Metadata.IsLocal() {
+				if !c.Data.Car.FromPieces.Metadata.URI.IsLocal() {
 					return fmt.Errorf("data.car.from_pieces.metadata.uri must be a local file")
 				}
 			}
 			{
-				if c.Data.Car.FromPieces.Deals.IsZero() {
+				if c.Data.Car.FromPieces.Deals.URI.IsZero() {
 					return fmt.Errorf("data.car.from_pieces.deals.uri must be set")
 				}
-				if !c.Data.Car.FromPieces.Deals.IsLocal() {
+				if !c.Data.Car.FromPieces.Deals.URI.IsLocal() {
 					return fmt.Errorf("data.car.from_pieces.deals.uri must be a local file")
 				}
 			}
@@ -308,10 +312,10 @@ func (c *Config) Validate() error {
 				return fmt.Errorf("indexes.cid_to_offset_and_size.uri is invalid")
 			}
 			if c.Data.Car.FromPieces != nil {
-				if !c.Data.Car.FromPieces.Metadata.IsValid() {
+				if !c.Data.Car.FromPieces.Metadata.URI.IsValid() {
 					return fmt.Errorf("data.car.from_pieces.metadata.uri is invalid")
 				}
-				if !c.Data.Car.FromPieces.Deals.IsValid() {
+				if !c.Data.Car.FromPieces.Deals.URI.IsValid() {
 					return fmt.Errorf("data.car.from_pieces.deals.uri is invalid")
 				}
 			} else {

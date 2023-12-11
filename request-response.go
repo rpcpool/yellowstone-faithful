@@ -174,7 +174,7 @@ func (req *GetBlockRequest) Validate() error {
 
 func parseGetBlockRequest(raw *json.RawMessage) (*GetBlockRequest, error) {
 	var params []any
-	if err := json.Unmarshal(*raw, &params); err != nil {
+	if err := fasterJson.Unmarshal(*raw, &params); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal params: %w", err)
 	}
 	if len(params) < 1 {
@@ -311,7 +311,7 @@ func isAnyEncodingOf(s solana.EncodingType, anyOf ...solana.EncodingType) bool {
 
 func parseGetTransactionRequest(raw *json.RawMessage) (*GetTransactionRequest, error) {
 	var params []any
-	if err := json.Unmarshal(*raw, &params); err != nil {
+	if err := fasterJson.Unmarshal(*raw, &params); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal params: %w", err)
 	}
 	if len(params) < 1 {
@@ -483,7 +483,7 @@ func encodeBytesResponseBasedOnWantedEncoding(
 
 func parseGetBlockTimeRequest(raw *json.RawMessage) (uint64, error) {
 	var params []any
-	if err := json.Unmarshal(*raw, &params); err != nil {
+	if err := fasterJson.Unmarshal(*raw, &params); err != nil {
 		return 0, fmt.Errorf("failed to unmarshal params: %w", err)
 	}
 	if len(params) < 1 {

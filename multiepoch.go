@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"crypto/rand"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"sort"
@@ -310,7 +309,7 @@ func newMultiEpochHandler(handler *MultiEpoch, lsConf *ListenerConfig) func(ctx 
 
 		// parse request
 		var rpcRequest jsonrpc2.Request
-		if err := json.Unmarshal(body, &rpcRequest); err != nil {
+		if err := fasterJson.Unmarshal(body, &rpcRequest); err != nil {
 			klog.Errorf("[%s] failed to parse request body: %v", err)
 			replyJSON(reqCtx, http.StatusBadRequest, jsonrpc2.Response{
 				Error: &jsonrpc2.Error{

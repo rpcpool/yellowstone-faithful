@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"time"
@@ -58,7 +57,7 @@ func loadFromJSON(configFilepath string, dst any) error {
 		return fmt.Errorf("failed to open config file: %w", err)
 	}
 	defer file.Close()
-	return json.NewDecoder(file).Decode(dst)
+	return fasterJson.NewDecoder(file).Decode(dst)
 }
 
 // loadFromYAML loads a YAML file into dst (which must be a pointer).

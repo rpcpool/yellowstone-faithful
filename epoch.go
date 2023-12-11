@@ -11,6 +11,11 @@ import (
 	"io"
 	"time"
 
+	"github.com/multiformats/go-multiaddr"
+	"github.com/ybbus/jsonrpc/v3"
+
+	"github.com/anjor/carlet"
+	"github.com/davecgh/go-spew/spew"
 	"github.com/gagliardetto/solana-go"
 	"github.com/ipfs/go-cid"
 	carv1 "github.com/ipld/go-car"
@@ -26,6 +31,7 @@ import (
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
 	"github.com/rpcpool/yellowstone-faithful/radiance/genesis"
+	splitcarfetcher "github.com/rpcpool/yellowstone-faithful/split-car-fetcher"
 	"github.com/urfave/cli/v2"
 	"k8s.io/klog/v2"
 )
@@ -245,12 +251,84 @@ func NewEpochFromConfig(
 	}
 
 	if isCarMode {
-		localCarReader, remoteCarReader, err := openCarStorage(c.Context, string(config.Data.Car.URI))
-		if err != nil {
-			return nil, fmt.Errorf("failed to open CAR file: %w", err)
-		}
+		var localCarReader *carv2.Reader
+		var remoteCarReader ReaderAtCloser
+		var err error
 		if config.IsSplitCarMode() {
-			// TODO: load the remote split CAR files.
+
+			metadata, err := splitcarfetcher.MetadataFromYaml(string(config.Data.Car.FromPieces.Metadata.URI))
+			if err != nil {
+				return nil, fmt.Errorf("failed to read pieces metadata: %w", err)
+			}
+
+			dealRegistry, err := splitcarfetcher.DealsFromCSV(string(config.Data.Car.FromPieces.Deals.URI))
+			if err != nil {
+				return nil, fmt.Errorf("failed to read deals: %w", err)
+			}
+
+			lotusAPIAddress := "https://api.node.glif.io"
+			cl := jsonrpc.NewClient(lotusAPIAddress)
+			dm := splitcarfetcher.NewMinerInfo(
+				cl,
+				5*time.Minute,
+				5*time.Second,
+			)
+
+			scr, err := splitcarfetcher.NewSplitCarReader(metadata.CarPieces,
+				func(piece carlet.CarFile) (splitcarfetcher.ReaderAtCloserSize, error) {
+					minerID, ok := dealRegistry.GetMinerByPieceCID(piece.CommP)
+					if !ok {
+						return nil, fmt.Errorf("failed to find miner for piece CID %s", piece.CommP)
+					}
+					klog.Infof("piece CID %s is stored on miner %s", piece.CommP, minerID)
+					minerInfo, err := dm.GetProviderInfo(c.Context, minerID)
+					if err != nil {
+						return nil, fmt.Errorf("failed to get miner info for miner %s, for piece %s: %w", minerID, piece.CommP, err)
+					}
+					if len(minerInfo.Multiaddrs) == 0 {
+						return nil, fmt.Errorf("miner %s has no multiaddrs", minerID)
+					}
+					spew.Dump(minerInfo)
+					// extract the IP address from the multiaddr:
+					split := multiaddr.Split(minerInfo.Multiaddrs[0])
+					if len(split) < 2 {
+						return nil, fmt.Errorf("invalid multiaddr: %s", minerInfo.Multiaddrs[0])
+					}
+					component0 := split[0].(*multiaddr.Component)
+					component1 := split[1].(*multiaddr.Component)
+
+					var ip string
+					var port string
+
+					if component0.Protocol().Code == multiaddr.P_IP4 {
+						ip = component0.Value()
+						port = component1.Value()
+					} else if component1.Protocol().Code == multiaddr.P_IP4 {
+						ip = component1.Value()
+						port = component0.Value()
+					} else {
+						return nil, fmt.Errorf("invalid multiaddr: %s", minerInfo.Multiaddrs[0])
+					}
+					// reset the port to 80:
+					// TODO: use the appropriate port (80, better if 443 with TLS)
+					port = "80"
+					minerIP := fmt.Sprintf("%s:%s", ip, port)
+					klog.Infof("piece CID %s is stored on miner %s (%s)", piece.CommP, minerID, minerIP)
+					formattedURL := fmt.Sprintf("http://%s/piece/%s", minerIP, piece.CommP.String())
+					return splitcarfetcher.NewRemoteFileSplitCarReader(
+						piece.CommP.String(),
+						formattedURL,
+					)
+				})
+			if err != nil {
+				return nil, fmt.Errorf("failed to open CAR file from pieces: %w", err)
+			}
+			remoteCarReader = scr
+		} else {
+			localCarReader, remoteCarReader, err = openCarStorage(c.Context, string(config.Data.Car.URI))
+			if err != nil {
+				return nil, fmt.Errorf("failed to open CAR file: %w", err)
+			}
 		}
 		if localCarReader != nil {
 			ep.onClose = append(ep.onClose, localCarReader.Close)

@@ -19,7 +19,7 @@ type GetSignaturesForAddressParams struct {
 
 func parseGetSignaturesForAddressParams(raw *json.RawMessage) (*GetSignaturesForAddressParams, error) {
 	var params []any
-	if err := json.Unmarshal(*raw, &params); err != nil {
+	if err := fasterJson.Unmarshal(*raw, &params); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal params: %w", err)
 	}
 	if len(params) < 1 {
@@ -94,13 +94,13 @@ var (
 func parseTransactionError(v any) (map[string]any, error) {
 	// TODO: if any of the following fails, return the original value.
 	// marshal to json
-	b, err := json.Marshal(v)
+	b, err := fasterJson.Marshal(v)
 	if err != nil {
 		return nil, err
 	}
 	// then unmarshal to map
 	var m map[string]any
-	err = json.Unmarshal(b, &m)
+	err = fasterJson.Unmarshal(b, &m)
 	if err != nil {
 		return nil, err
 	}
