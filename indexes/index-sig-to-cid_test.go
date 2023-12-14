@@ -57,10 +57,8 @@ func TestSigToCid(t *testing.T) {
 		}
 	}
 	{
-		// if try to close the index before sealing it, should panic
-		require.Panics(t, func() {
-			require.NoError(t, writer.Close())
-		})
+		// if try to close the index before sealing it, it should fail
+		require.Error(t, writer.Close())
 	}
 
 	// seal the index
