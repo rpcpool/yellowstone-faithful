@@ -210,7 +210,7 @@ func createAllIndexes(
 	}
 	defer sig_to_cid.Close()
 
-	sigExistsFilepath := formatSigExistsIndexFilePath(indexDir, carPath, rootCID.String())
+	sigExistsFilepath := formatSigExistsIndexFilePath(indexDir, epoch, rootCID, network)
 	sig_exists, err := bucketteer.NewWriter(
 		sigExistsFilepath,
 	)

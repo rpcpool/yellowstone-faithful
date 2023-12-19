@@ -16,6 +16,7 @@ import (
 	"github.com/davecgh/go-spew/spew"
 	"github.com/dustin/go-humanize"
 	"github.com/gagliardetto/solana-go"
+	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-libipfs/blocks"
 	"github.com/ipld/go-car"
 	"github.com/rpcpool/yellowstone-faithful/bucketteer"
@@ -122,7 +123,7 @@ func newCmd_Index_sigExists() *cli.Command {
 			}
 
 			klog.Infof("Creating sig-exists index for %s", carPath)
-			indexFilePath := formatSigExistsIndexFilePath(indexDir, carPath, rootCID.String())
+			indexFilePath := formatSigExistsIndexFilePath(indexDir, epoch, rootCID, network)
 			index, err := bucketteer.NewWriter(
 				indexFilePath,
 			)
@@ -264,8 +265,21 @@ func newCmd_Index_sigExists() *cli.Command {
 	}
 }
 
-func formatSigExistsIndexFilePath(indexDir string, carPath string, rootCID string) string {
-	return filepath.Join(indexDir, fmt.Sprintf("%s.%s.sig-exists.index", filepath.Base(carPath), rootCID))
+func formatSigExistsIndexFilePath(indexDir string, epoch uint64, rootCID cid.Cid, network indexes.Network) string {
+	return filepath.Join(
+		indexDir,
+		formatFilename_SigExists(epoch, rootCID, network),
+	)
+}
+
+func formatFilename_SigExists(epoch uint64, rootCid cid.Cid, network indexes.Network) string {
+	return fmt.Sprintf(
+		"epoch-%d-%s-%s-%s",
+		epoch,
+		rootCid.String(),
+		network,
+		"sig-exists.index",
+	)
 }
 
 var classicSpewConfig = spew.ConfigState{
