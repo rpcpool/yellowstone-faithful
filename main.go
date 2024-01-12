@@ -57,6 +57,7 @@ func main() {
 			newCmd_XTraverse(),
 			newCmd_Version(),
 			newCmd_rpc(),
+			newCmd_check_deals(),
 		},
 	}
 

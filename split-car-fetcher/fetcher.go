@@ -62,7 +62,7 @@ func (fscr *FileSplitCarReader) Size() int64 {
 	return fscr.size
 }
 
-func getContentSizeWithHeadOrZeroRange(url string) (int64, error) {
+func GetContentSizeWithHeadOrZeroRange(url string) (int64, error) {
 	// try sending a HEAD request to the server to get the file size:
 	resp, err := http.Head(url)
 	if err != nil {
@@ -106,7 +106,7 @@ type RemoteFileSplitCarReader struct {
 }
 
 func NewRemoteFileSplitCarReader(commP string, url string) (*RemoteFileSplitCarReader, error) {
-	size, err := getContentSizeWithHeadOrZeroRange(url)
+	size, err := GetContentSizeWithHeadOrZeroRange(url)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get content size from %q: %s", url, err)
 	}
