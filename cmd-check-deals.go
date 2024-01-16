@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/multiformats/go-multiaddr"
 	"github.com/ybbus/jsonrpc/v3"
 
@@ -69,11 +70,10 @@ func newCmd_check_deals() *cli.Command {
 			// Check deals:
 			for _, config := range configs {
 				epoch := *config.Epoch
-				klog.Infof("Checking pieces for epoch %d", epoch)
 				isLassieMode := config.IsFilecoinMode()
 				isCarMode := !isLassieMode
 				if isCarMode && config.IsSplitCarMode() {
-					klog.Infof("Checking pieces for epoch %d, CAR mode", epoch)
+					klog.Infof("Checking pieces for epoch %d from %q", epoch, config.ConfigFilepath())
 
 					metadata, err := splitcarfetcher.MetadataFromYaml(string(config.Data.Car.FromPieces.Metadata.URI))
 					if err != nil {
@@ -107,7 +107,7 @@ func newCmd_check_deals() *cli.Command {
 							if len(minerInfo.Multiaddrs) == 0 {
 								return nil, fmt.Errorf("miner %s has no multiaddrs", minerID)
 							}
-							// spew.Dump(minerInfo)
+							spew.Dump(minerInfo)
 							// extract the IP address from the multiaddr:
 							split := multiaddr.Split(minerInfo.Multiaddrs[0])
 							if len(split) < 2 {
@@ -134,18 +134,34 @@ func newCmd_check_deals() *cli.Command {
 
 							size, err := splitcarfetcher.GetContentSizeWithHeadOrZeroRange(formattedURL)
 							if err != nil {
-								return nil, fmt.Errorf("epoch %d: failed to get content size from %q: %s", epoch, formattedURL, err)
+								return nil, fmt.Errorf(
+									"failed to get content size from %q (miner=%s): %s",
+									formattedURL,
+									minerID,
+									err,
+								)
 							}
-							klog.Infof("[OK] content size for piece CID %s is %d", piece.CommP, size)
+							klog.Infof(
+								"[OK] content size for piece CID %s is %d (from miner %s, resolved to %s)",
+								piece.CommP,
+								size,
+								minerID,
+								minerIP,
+							)
 							return splitcarfetcher.NewRemoteFileSplitCarReader(
 								piece.CommP.String(),
 								formattedURL,
 							)
 						})
 					if err != nil {
-						return fmt.Errorf("epoch %d: failed to open CAR file from pieces: %w", epoch, err)
+						return fmt.Errorf(
+							"epoch %d from %q: failed to open CAR file from pieces: %w",
+							epoch,
+							config.ConfigFilepath(),
+							err,
+						)
 					} else {
-						klog.Infof("[OK] Pieces for epoch %d are all retrievable", epoch)
+						klog.Infof("[OK] Pieces for epoch %d from %q are all retrievable", epoch, config.ConfigFilepath())
 					}
 				} else {
 					klog.Infof("Car file for epoch %d is not stored as split pieces, skipping", epoch)
