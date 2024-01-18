@@ -117,7 +117,7 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 				var blockOffset, parentOffset uint64
 				wg := new(errgroup.Group)
 				wg.Go(func() (err error) {
-					offsetAndSize, err := epochHandler.FindOffsetFromCid(ctx, blockCid)
+					offsetAndSize, err := epochHandler.FindOffsetAndSizeFromCid(ctx, blockCid)
 					if err != nil {
 						return err
 					}
@@ -130,7 +130,7 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 						parentOffset = epochHandler.carHeaderSize
 						return nil
 					}
-					offsetAndSize, err := epochHandler.FindOffsetFromCid(ctx, parentBlockCid)
+					offsetAndSize, err := epochHandler.FindOffsetAndSizeFromCid(ctx, parentBlockCid)
 					if err != nil {
 						return err
 					}

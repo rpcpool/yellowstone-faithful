@@ -100,6 +100,10 @@ func (index *GsfaReader) Meta() indexmeta.Meta {
 	return index.man.Meta()
 }
 
+func (index *GsfaReader) Version() uint64 {
+	return index.man.Version()
+}
+
 func (index *GsfaReader) Get(
 	ctx context.Context,
 	pk solana.PublicKey,

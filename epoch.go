@@ -24,6 +24,7 @@ import (
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/rpcpool/yellowstone-faithful/bucketteer"
+	deprecatedbucketter "github.com/rpcpool/yellowstone-faithful/deprecated/bucketteer"
 	"github.com/rpcpool/yellowstone-faithful/gsfa"
 	hugecache "github.com/rpcpool/yellowstone-faithful/huge-cache"
 	"github.com/rpcpool/yellowstone-faithful/indexes"
@@ -43,18 +44,19 @@ type Epoch struct {
 	// genesis:
 	genesis *GenesisContainer
 	// contains indexes and block data for the epoch
-	lassieFetcher           *lassieWrapper
-	localCarReader          *carv2.Reader
-	remoteCarReader         ReaderAtCloser
-	carHeaderSize           uint64
-	rootCid                 cid.Cid
-	cidToOffsetAndSizeIndex *indexes.CidToOffsetAndSize_Reader
-	slotToCidIndex          *indexes.SlotToCid_Reader
-	sigToCidIndex           *indexes.SigToCid_Reader
-	sigExists               *bucketteer.Reader
-	gsfaReader              *gsfa.GsfaReader
-	onClose                 []func() error
-	allCache                *hugecache.Cache
+	lassieFetcher               *lassieWrapper
+	localCarReader              *carv2.Reader
+	remoteCarReader             ReaderAtCloser
+	carHeaderSize               uint64
+	rootCid                     cid.Cid
+	cidToOffsetAndSizeIndex     *indexes.CidToOffsetAndSize_Reader
+	deprecated_cidToOffsetIndex *indexes.Deprecated_CidToOffset_Reader
+	slotToCidIndex              *indexes.SlotToCid_Reader
+	sigToCidIndex               *indexes.SigToCid_Reader
+	sigExists                   SigExistsIndex
+	gsfaReader                  *gsfa.GsfaReader
+	onClose                     []func() error
+	allCache                    *hugecache.Cache
 }
 
 func (r *Epoch) GetCache() *hugecache.Cache {
@@ -122,30 +124,52 @@ func NewEpochFromConfig(
 		}
 	}
 	if isCarMode {
-		// The CAR-mode requires a cid-to-offset index.
-		cidToOffsetAndSizeIndexFile, err := openIndexStorage(
-			c.Context,
-			string(config.Indexes.CidToOffsetAndSize.URI),
-			DebugMode,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to open cid-to-offset index file: %w", err)
-		}
-		ep.onClose = append(ep.onClose, cidToOffsetAndSizeIndexFile.Close)
+		if config.IsDeprecatedIndexes() {
+			// The CAR-mode requires a cid-to-offset index.
+			cidToOffsetIndexFile, err := openIndexStorage(
+				c.Context,
+				string(config.Indexes.CidToOffset.URI),
+				DebugMode,
+			)
+			if err != nil {
+				return nil, fmt.Errorf("failed to open cid-to-offset index file: %w", err)
+			}
+			ep.onClose = append(ep.onClose, cidToOffsetIndexFile.Close)
 
-		cidToOffsetIndex, err := indexes.OpenWithReader_CidToOffsetAndSize(cidToOffsetAndSizeIndexFile)
-		if err != nil {
-			return nil, fmt.Errorf("failed to open cid-to-offset index: %w", err)
-		}
-		if config.Indexes.CidToOffsetAndSize.URI.IsRemoteWeb() {
-			cidToOffsetIndex.Prefetch(true)
-		}
-		ep.cidToOffsetAndSizeIndex = cidToOffsetIndex
+			cidToOffsetIndex, err := indexes.Deprecated_OpenWithReader_CidToOffset(cidToOffsetIndexFile)
+			if err != nil {
+				return nil, fmt.Errorf("failed to open cid-to-offset index: %w", err)
+			}
+			if config.Indexes.CidToOffsetAndSize.URI.IsRemoteWeb() {
+				cidToOffsetIndex.Prefetch(true)
+			}
+			ep.deprecated_cidToOffsetIndex = cidToOffsetIndex
+		} else {
+			// The CAR-mode requires a cid-to-offset index.
+			cidToOffsetAndSizeIndexFile, err := openIndexStorage(
+				c.Context,
+				string(config.Indexes.CidToOffsetAndSize.URI),
+				DebugMode,
+			)
+			if err != nil {
+				return nil, fmt.Errorf("failed to open cid-to-offset index file: %w", err)
+			}
+			ep.onClose = append(ep.onClose, cidToOffsetAndSizeIndexFile.Close)
 
-		if ep.Epoch() != cidToOffsetIndex.Meta().Epoch {
-			return nil, fmt.Errorf("epoch mismatch in cid-to-offset-and-size index: expected %d, got %d", ep.Epoch(), cidToOffsetIndex.Meta().Epoch)
+			cidToOffsetAndSizeIndex, err := indexes.OpenWithReader_CidToOffsetAndSize(cidToOffsetAndSizeIndexFile)
+			if err != nil {
+				return nil, fmt.Errorf("failed to open cid-to-offset index: %w", err)
+			}
+			if config.Indexes.CidToOffsetAndSize.URI.IsRemoteWeb() {
+				cidToOffsetAndSizeIndex.Prefetch(true)
+			}
+			ep.cidToOffsetAndSizeIndex = cidToOffsetAndSizeIndex
+
+			if ep.Epoch() != cidToOffsetAndSizeIndex.Meta().Epoch {
+				return nil, fmt.Errorf("epoch mismatch in cid-to-offset-and-size index: expected %d, got %d", ep.Epoch(), cidToOffsetAndSizeIndex.Meta().Epoch)
+			}
+			lastRootCid = cidToOffsetAndSizeIndex.Meta().RootCid
 		}
-		lastRootCid = cidToOffsetIndex.Meta().RootCid
 	}
 
 	{
@@ -168,13 +192,15 @@ func NewEpochFromConfig(
 		}
 		ep.slotToCidIndex = slotToCidIndex
 
-		if ep.Epoch() != slotToCidIndex.Meta().Epoch {
-			return nil, fmt.Errorf("epoch mismatch in slot-to-cid index: expected %d, got %d", ep.Epoch(), slotToCidIndex.Meta().Epoch)
+		if !slotToCidIndex.IsDeprecatedOldVersion() {
+			if ep.Epoch() != slotToCidIndex.Meta().Epoch {
+				return nil, fmt.Errorf("epoch mismatch in slot-to-cid index: expected %d, got %d", ep.Epoch(), slotToCidIndex.Meta().Epoch)
+			}
+			if lastRootCid != cid.Undef && !lastRootCid.Equals(slotToCidIndex.Meta().RootCid) {
+				return nil, fmt.Errorf("root CID mismatch in slot-to-cid index: expected %s, got %s", lastRootCid, slotToCidIndex.Meta().RootCid)
+			}
+			lastRootCid = slotToCidIndex.Meta().RootCid
 		}
-		if lastRootCid != cid.Undef && !lastRootCid.Equals(slotToCidIndex.Meta().RootCid) {
-			return nil, fmt.Errorf("root CID mismatch in slot-to-cid index: expected %s, got %s", lastRootCid, slotToCidIndex.Meta().RootCid)
-		}
-		lastRootCid = slotToCidIndex.Meta().RootCid
 	}
 
 	{
@@ -197,12 +223,13 @@ func NewEpochFromConfig(
 		}
 		ep.sigToCidIndex = sigToCidIndex
 
-		if ep.Epoch() != sigToCidIndex.Meta().Epoch {
-			return nil, fmt.Errorf("epoch mismatch in sig-to-cid index: expected %d, got %d", ep.Epoch(), sigToCidIndex.Meta().Epoch)
-		}
-
-		if !lastRootCid.Equals(sigToCidIndex.Meta().RootCid) {
-			return nil, fmt.Errorf("root CID mismatch in sig-to-cid index: expected %s, got %s", lastRootCid, sigToCidIndex.Meta().RootCid)
+		if !sigToCidIndex.IsDeprecatedOldVersion() {
+			if ep.Epoch() != sigToCidIndex.Meta().Epoch {
+				return nil, fmt.Errorf("epoch mismatch in sig-to-cid index: expected %d, got %d", ep.Epoch(), sigToCidIndex.Meta().Epoch)
+			}
+			if !lastRootCid.Equals(sigToCidIndex.Meta().RootCid) {
+				return nil, fmt.Errorf("root CID mismatch in sig-to-cid index: expected %s, got %s", lastRootCid, sigToCidIndex.Meta().RootCid)
+			}
 		}
 	}
 
@@ -215,20 +242,22 @@ func NewEpochFromConfig(
 			ep.onClose = append(ep.onClose, gsfaIndex.Close)
 			ep.gsfaReader = gsfaIndex
 
-			gotIndexEpoch, ok := gsfaIndex.Meta().GetUint64(indexmeta.MetadataKey_Epoch)
-			if !ok {
-				return nil, fmt.Errorf("the gsfa index does not have the epoch metadata")
-			}
-			if ep.Epoch() != gotIndexEpoch {
-				return nil, fmt.Errorf("epoch mismatch in gsfa index: expected %d, got %d", ep.Epoch(), gotIndexEpoch)
-			}
+			if gsfaIndex.Version() >= 2 {
+				gotIndexEpoch, ok := gsfaIndex.Meta().GetUint64(indexmeta.MetadataKey_Epoch)
+				if !ok {
+					return nil, fmt.Errorf("the gsfa index does not have the epoch metadata")
+				}
+				if ep.Epoch() != gotIndexEpoch {
+					return nil, fmt.Errorf("epoch mismatch in gsfa index: expected %d, got %d", ep.Epoch(), gotIndexEpoch)
+				}
 
-			gotRootCid, ok := gsfaIndex.Meta().GetCid(indexmeta.MetadataKey_RootCid)
-			if !ok {
-				return nil, fmt.Errorf("the gsfa index does not have the root CID metadata")
-			}
-			if !lastRootCid.Equals(gotRootCid) {
-				return nil, fmt.Errorf("root CID mismatch in gsfa index: expected %s, got %s", lastRootCid, gotRootCid)
+				gotRootCid, ok := gsfaIndex.Meta().GetCid(indexmeta.MetadataKey_RootCid)
+				if !ok {
+					return nil, fmt.Errorf("the gsfa index does not have the root CID metadata")
+				}
+				if !lastRootCid.Equals(gotRootCid) {
+					return nil, fmt.Errorf("root CID mismatch in gsfa index: expected %s, got %s", lastRootCid, gotRootCid)
+				}
 			}
 		}
 	}
@@ -380,36 +409,53 @@ func NewEpochFromConfig(
 		}
 		ep.onClose = append(ep.onClose, sigExistsFile.Close)
 
-		sigExists, err := bucketteer.NewReader(sigExistsFile)
-		if err != nil {
-			return nil, fmt.Errorf("failed to open sig-exists index: %w", err)
-		}
-		ep.onClose = append(ep.onClose, sigExists.Close)
-
-		{
-			// warm up the cache
-			for i := 0; i < 100_000; i++ {
-				sigExists.Has(newRandomSignature())
+		if config.IsDeprecatedIndexes() {
+			sigExists, err := deprecatedbucketter.NewReader(sigExistsFile)
+			if err != nil {
+				return nil, fmt.Errorf("failed to open sig-exists index: %w", err)
 			}
-		}
+			ep.onClose = append(ep.onClose, sigExists.Close)
 
-		ep.sigExists = sigExists
+			{
+				// warm up the cache
+				for i := 0; i < 100_000; i++ {
+					sigExists.Has(newRandomSignature())
+				}
+			}
 
-		gotEpoch, ok := sigExists.Meta().GetUint64(indexmeta.MetadataKey_Epoch)
-		if !ok {
-			return nil, fmt.Errorf("the sig-exists index does not have the epoch metadata")
-		}
-		if ep.Epoch() != gotEpoch {
-			return nil, fmt.Errorf("epoch mismatch in sig-exists index: expected %d, got %d", ep.Epoch(), gotEpoch)
-		}
+			ep.sigExists = sigExists
+		} else {
+			sigExists, err := bucketteer.NewReader(sigExistsFile)
+			if err != nil {
+				return nil, fmt.Errorf("failed to open sig-exists index: %w", err)
+			}
+			ep.onClose = append(ep.onClose, sigExists.Close)
 
-		gotRootCid, ok := sigExists.Meta().GetCid(indexmeta.MetadataKey_RootCid)
-		if !ok {
-			return nil, fmt.Errorf("the sig-exists index does not have the root CID metadata")
-		}
+			{
+				// warm up the cache
+				for i := 0; i < 100_000; i++ {
+					sigExists.Has(newRandomSignature())
+				}
+			}
 
-		if !lastRootCid.Equals(gotRootCid) {
-			return nil, fmt.Errorf("root CID mismatch in sig-exists index: expected %s, got %s", lastRootCid, gotRootCid)
+			ep.sigExists = sigExists
+
+			gotEpoch, ok := sigExists.Meta().GetUint64(indexmeta.MetadataKey_Epoch)
+			if !ok {
+				return nil, fmt.Errorf("the sig-exists index does not have the epoch metadata")
+			}
+			if ep.Epoch() != gotEpoch {
+				return nil, fmt.Errorf("epoch mismatch in sig-exists index: expected %d, got %d", ep.Epoch(), gotEpoch)
+			}
+
+			gotRootCid, ok := sigExists.Meta().GetCid(indexmeta.MetadataKey_RootCid)
+			if !ok {
+				return nil, fmt.Errorf("the sig-exists index does not have the root CID metadata")
+			}
+
+			if !lastRootCid.Equals(gotRootCid) {
+				return nil, fmt.Errorf("root CID mismatch in sig-exists index: expected %s, got %s", lastRootCid, gotRootCid)
+			}
 		}
 	}
 
@@ -552,14 +598,14 @@ func (s *Epoch) GetNodeByCid(ctx context.Context, wantedCid cid.Cid) ([]byte, er
 		klog.Errorf("failed to get node from lassie: %v", err)
 		return nil, err
 	}
-	// Find CAR file offset for CID in index.
-	offset, err := s.FindOffsetFromCid(ctx, wantedCid)
+	// Find CAR file oas for CID in index.
+	oas, err := s.FindOffsetAndSizeFromCid(ctx, wantedCid)
 	if err != nil {
 		klog.Errorf("failed to find offset for CID %s: %v", wantedCid, err)
 		// not found or error
 		return nil, err
 	}
-	return s.GetNodeByOffset(ctx, wantedCid, offset)
+	return s.GetNodeByOffsetAndSize(ctx, wantedCid, oas)
 }
 
 func (s *Epoch) ReadAtFromCar(ctx context.Context, offset uint64, length uint64) ([]byte, error) {
@@ -586,7 +632,7 @@ func (s *Epoch) ReadAtFromCar(ctx context.Context, offset uint64, length uint64)
 	return data, nil
 }
 
-func (s *Epoch) GetNodeByOffset(ctx context.Context, wantedCid cid.Cid, offsetAndSize *indexes.OffsetAndSize) ([]byte, error) {
+func (s *Epoch) GetNodeByOffsetAndSize(ctx context.Context, wantedCid cid.Cid, offsetAndSize *indexes.OffsetAndSize) ([]byte, error) {
 	if offsetAndSize == nil {
 		return nil, fmt.Errorf("offsetAndSize must not be nil")
 	}
@@ -600,7 +646,7 @@ func (s *Epoch) GetNodeByOffset(ctx context.Context, wantedCid cid.Cid, offsetAn
 		if s.remoteCarReader == nil {
 			return nil, fmt.Errorf("no CAR reader available")
 		}
-		return readNodeFromReaderAt(s.remoteCarReader, wantedCid, offset, length)
+		return readNodeFromReaderAtWithOffsetAndSize(s.remoteCarReader, wantedCid, offset, length)
 	}
 	// Get reader and seek to offset, then read node.
 	dr, err := s.localCarReader.DataReader()
@@ -612,6 +658,39 @@ func (s *Epoch) GetNodeByOffset(ctx context.Context, wantedCid cid.Cid, offsetAn
 	br := bufio.NewReader(dr)
 
 	return readNodeWithKnownSize(br, wantedCid, length)
+}
+
+func (s *Epoch) getNodeSize(ctx context.Context, offset uint64) (uint64, error) {
+	if s.localCarReader == nil {
+		// try remote reader
+		if s.remoteCarReader == nil {
+			return 0, fmt.Errorf("no CAR reader available")
+		}
+		return readNodeSizeFromReaderAtWithOffset(s.remoteCarReader, offset)
+	}
+	// Get reader and seek to offset, then read node.
+	dr, err := s.localCarReader.DataReader()
+	if err != nil {
+		klog.Errorf("failed to get data reader: %v", err)
+		return 0, err
+	}
+	return readNodeSizeFromReaderAtWithOffset(dr, offset)
+}
+
+func readNodeSizeFromReaderAtWithOffset(reader io.ReaderAt, offset uint64) (uint64, error) {
+	// read MaxVarintLen64 bytes
+	lenBuf := make([]byte, binary.MaxVarintLen64)
+	_, err := reader.ReadAt(lenBuf, int64(offset))
+	if err != nil {
+		return 0, err
+	}
+	// read uvarint
+	dataLen, n := binary.Uvarint(lenBuf)
+	dataLen += uint64(n)
+	if dataLen > uint64(util.MaxAllowedSectionSize) { // Don't OOM
+		return 0, errors.New("malformed car; header is bigger than util.MaxAllowedSectionSize")
+	}
+	return dataLen, nil
 }
 
 func readNodeWithKnownSize(br *bufio.Reader, wantedCid cid.Cid, length uint64) ([]byte, error) {
@@ -674,10 +753,14 @@ func (ser *Epoch) FindCidFromSignature(ctx context.Context, sig solana.Signature
 	return ser.sigToCidIndex.Get(sig)
 }
 
-func (ser *Epoch) FindOffsetFromCid(ctx context.Context, cid cid.Cid) (os *indexes.OffsetAndSize, e error) {
+func (ser *Epoch) FindOffsetAndSizeFromCid(ctx context.Context, cid cid.Cid) (os *indexes.OffsetAndSize, e error) {
 	startedAt := time.Now()
 	defer func() {
-		klog.Infof("Found offset and size for CID %s in %s: o=%d s=%d", cid, time.Since(startedAt), os.Offset, os.Size)
+		if os != nil {
+			klog.Infof("Found offset and size for CID %s in %s: o=%d s=%d", cid, time.Since(startedAt), os.Offset, os.Size)
+		} else {
+			klog.Infof("Offset and size for CID %s in %s: not found", cid, time.Since(startedAt))
+		}
 	}()
 
 	// try from cache
@@ -686,6 +769,30 @@ func (ser *Epoch) FindOffsetFromCid(ctx context.Context, cid cid.Cid) (os *index
 	} else if has {
 		return osi, nil
 	}
+
+	if ser.config.IsDeprecatedIndexes() {
+		offset, err := ser.deprecated_cidToOffsetIndex.Get(cid)
+		if err != nil {
+			return nil, err
+		}
+
+		klog.Infof("Found offset for CID %s in %s: %d", cid, time.Since(startedAt), offset)
+
+		size, err := ser.getNodeSize(ctx, offset)
+		if err != nil {
+			return nil, err
+		}
+
+		klog.Infof("Found size for CID %s in %s: %d", cid, time.Since(startedAt), size)
+
+		found := &indexes.OffsetAndSize{
+			Offset: offset,
+			Size:   size,
+		}
+		ser.GetCache().PutCidToOffsetAndSize(cid, found)
+		return found, nil
+	}
+
 	found, err := ser.cidToOffsetAndSizeIndex.Get(cid)
 	if err != nil {
 		return nil, err

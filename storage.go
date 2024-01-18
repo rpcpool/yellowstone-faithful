@@ -90,7 +90,7 @@ func readSectionFromReaderAt(reader ReaderAtCloser, offset uint64, length uint64
 	return data, nil
 }
 
-func readNodeFromReaderAt(reader ReaderAtCloser, wantedCid cid.Cid, offset uint64, length uint64) ([]byte, error) {
+func readNodeFromReaderAtWithOffsetAndSize(reader ReaderAtCloser, wantedCid cid.Cid, offset uint64, length uint64) ([]byte, error) {
 	// read MaxVarintLen64 bytes
 	section := make([]byte, length)
 	_, err := reader.ReadAt(section, int64(offset))

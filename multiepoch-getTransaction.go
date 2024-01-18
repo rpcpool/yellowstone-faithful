@@ -8,16 +8,19 @@ import (
 	"time"
 
 	"github.com/gagliardetto/solana-go"
-	"github.com/rpcpool/yellowstone-faithful/bucketteer"
 	"github.com/rpcpool/yellowstone-faithful/compactindexsized"
 	"github.com/sourcegraph/jsonrpc2"
 	"k8s.io/klog/v2"
 )
 
-func (multi *MultiEpoch) getAllBucketteers() map[uint64]*bucketteer.Reader {
+type SigExistsIndex interface {
+	Has(sig [64]byte) (bool, error)
+}
+
+func (multi *MultiEpoch) getAllBucketteers() map[uint64]SigExistsIndex {
 	multi.mu.RLock()
 	defer multi.mu.RUnlock()
-	bucketteers := make(map[uint64]*bucketteer.Reader)
+	bucketteers := make(map[uint64]SigExistsIndex)
 	for _, epoch := range multi.epochs {
 		if epoch.sigExists != nil {
 			bucketteers[epoch.Epoch()] = epoch.sigExists

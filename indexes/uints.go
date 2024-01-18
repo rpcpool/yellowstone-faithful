@@ -57,14 +57,14 @@ func btoUint48(buf []byte) uint64 {
 	return binary.LittleEndian.Uint64(cloneAndPad(buf, 2))
 }
 
-// uint64tob converts a uint64 to an 8-byte slice.
+// uint64tob converts a uint64 to an 8-byte little-endian slice.
 func uint64tob(v uint64) []byte {
 	buf := make([]byte, 8)
 	binary.LittleEndian.PutUint64(buf, v)
 	return buf
 }
 
-// btoUint64 converts an 8-byte slice to a uint64.
+// btoUint64 converts an 8-byte little-endian slice to a uint64.
 func btoUint64(buf []byte) uint64 {
 	_ = buf[7] // bounds check hint to compiler
 	return binary.LittleEndian.Uint64(buf)

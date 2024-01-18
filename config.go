@@ -119,7 +119,10 @@ type Config struct {
 	Indexes struct {
 		CidToOffsetAndSize struct {
 			URI URI `json:"uri" yaml:"uri"`
-		} `json:"cid_to_offset_and_size" yaml:"cid_to_offset_and_size"`
+		} `json:"cid_to_offset_and_size" yaml:"cid_to_offset_and_size"` // Latest index version. Includes offset and size.
+		CidToOffset struct {
+			URI URI `json:"uri" yaml:"uri"`
+		} `json:"cid_to_offset" yaml:"cid_to_offset"` // Legacy	index, deprecated. Only includes offset.
 		SlotToCid struct {
 			URI URI `json:"uri" yaml:"uri"`
 		} `json:"slot_to_cid" yaml:"slot_to_cid"`
@@ -136,6 +139,12 @@ type Config struct {
 	Genesis struct {
 		URI URI `json:"uri" yaml:"uri"`
 	} `json:"genesis" yaml:"genesis"`
+}
+
+// IsDeprecatedIndexes returns true if the config is using the deprecated indexes version.
+func (c *Config) IsDeprecatedIndexes() bool {
+	// CidToOffsetAndSize is not set and CidToOffset is set.
+	return c.Indexes.CidToOffsetAndSize.URI.IsZero() && !c.Indexes.CidToOffset.URI.IsZero()
 }
 
 func (c *Config) ConfigFilepath() string {
@@ -253,11 +262,24 @@ func (c *Config) Validate() error {
 				}
 			}
 		}
-		if c.Indexes.CidToOffsetAndSize.URI.IsZero() {
-			return fmt.Errorf("indexes.cid_to_offset_and_size.uri must be set")
+		// CidToOffsetAndSize and CidToOffset cannot be both set or both unset.
+		if !c.Indexes.CidToOffsetAndSize.URI.IsZero() && !c.Indexes.CidToOffset.URI.IsZero() {
+			return fmt.Errorf("indexes.cid_to_offset_and_size.uri and indexes.cid_to_offset.uri cannot both be set")
 		}
-		if err := isSupportedURI(c.Indexes.CidToOffsetAndSize.URI, "indexes.cid_to_offset_and_size.uri"); err != nil {
-			return err
+		if c.Indexes.CidToOffsetAndSize.URI.IsZero() && c.Indexes.CidToOffset.URI.IsZero() {
+			return fmt.Errorf("indexes.cid_to_offset_and_size.uri and indexes.cid_to_offset.uri cannot both be unset")
+		}
+		// validate CidToOffsetAndSize URI:
+		if !c.Indexes.CidToOffsetAndSize.URI.IsZero() {
+			if err := isSupportedURI(c.Indexes.CidToOffsetAndSize.URI, "indexes.cid_to_offset_and_size.uri"); err != nil {
+				return err
+			}
+		}
+		// validate CidToOffset URI:
+		if !c.Indexes.CidToOffset.URI.IsZero() {
+			if err := isSupportedURI(c.Indexes.CidToOffset.URI, "indexes.cid_to_offset.uri"); err != nil {
+				return err
+			}
 		}
 	} else {
 		if c.Data.Filecoin == nil {
@@ -308,8 +330,11 @@ func (c *Config) Validate() error {
 	{
 		// check that the URIs are valid
 		if isCarMode {
-			if !c.Indexes.CidToOffsetAndSize.URI.IsValid() {
+			if !c.Indexes.CidToOffsetAndSize.URI.IsZero() && !c.Indexes.CidToOffsetAndSize.URI.IsValid() {
 				return fmt.Errorf("indexes.cid_to_offset_and_size.uri is invalid")
+			}
+			if !c.Indexes.CidToOffset.URI.IsZero() && !c.Indexes.CidToOffset.URI.IsValid() {
+				return fmt.Errorf("indexes.cid_to_offset.uri is invalid")
 			}
 			if c.Data.Car.FromPieces != nil {
 				if !c.Data.Car.FromPieces.Metadata.URI.IsValid() {

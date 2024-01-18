@@ -60,17 +60,19 @@ func readHeader(file *os.File) (*Header, error) {
 	if err != nil {
 		return nil, err
 	}
-	var meta indexmeta.Meta
-	err = meta.UnmarshalWithDecoder(bufio.NewReader(file))
-	if err != nil {
-		return nil, err
+	header := &Header{
+		version: version,
 	}
-	metaByteSize := len(meta.Bytes())
-	return &Header{
-		version:      version,
-		metaByteSize: int64(metaByteSize),
-		meta:         meta,
-	}, nil
+	if version >= 2 {
+		var meta indexmeta.Meta
+		err = meta.UnmarshalWithDecoder(bufio.NewReader(file))
+		if err != nil {
+			return nil, err
+		}
+		header.metaByteSize = int64(len(meta.Bytes()))
+		header.meta = meta
+	}
+	return header, nil
 }
 
 func writeHeader(file *os.File, meta indexmeta.Meta, version uint64) error {
@@ -122,7 +124,7 @@ func NewManifest(filename string, meta indexmeta.Meta) (*Manifest, error) {
 		if err != nil {
 			return nil, err
 		}
-		if header.Version() != _Version {
+		if header.Version() != _Version && header.Version() != 1 {
 			return nil, fmt.Errorf("unsupported manifest version: %d", header.Version())
 		}
 		man.header = header
@@ -190,6 +192,10 @@ func (m *Manifest) getContentLength() (int64, error) {
 		return 0, err
 	}
 	return currentFileSize - int64(headerLenWithoutMeta) - m.header.metaByteSize, nil
+}
+
+func (m *Manifest) Version() uint64 {
+	return m.header.version
 }
 
 // Put appends the given uint64 tuple to the file.

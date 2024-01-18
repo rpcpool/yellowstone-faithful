@@ -96,7 +96,7 @@ import (
 )
 
 // Magic are the first eight bytes of an index.
-var Magic = [8]byte{'r', 'd', 'c', 'e', 'c', 'i', 'd', 'x'}
+var Magic = [8]byte{'c', 'o', 'm', 'p', 'i', 's', 'z', 'd'}
 
 const Version = uint8(1)
 

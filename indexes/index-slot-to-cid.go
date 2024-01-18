@@ -9,6 +9,7 @@ import (
 
 	"github.com/ipfs/go-cid"
 	"github.com/rpcpool/yellowstone-faithful/compactindexsized"
+	"github.com/rpcpool/yellowstone-faithful/deprecated/compactindex36"
 )
 
 type SlotToCid_Writer struct {
@@ -120,9 +121,10 @@ func (w *SlotToCid_Writer) GetFilepath() string {
 }
 
 type SlotToCid_Reader struct {
-	file  io.Closer
-	meta  *Metadata
-	index *compactindexsized.DB
+	file            io.Closer
+	meta            *Metadata
+	index           *compactindexsized.DB
+	deprecatedIndex *compactindex36.DB
 }
 
 func Open_SlotToCid(filepath string) (*SlotToCid_Reader, error) {
@@ -134,6 +136,13 @@ func Open_SlotToCid(filepath string) (*SlotToCid_Reader, error) {
 }
 
 func OpenWithReader_SlotToCid(reader ReaderAtCloser) (*SlotToCid_Reader, error) {
+	isOld, err := IsFileOldFormat(reader)
+	if err != nil {
+		return nil, err
+	}
+	if isOld {
+		return OpenWithReader_SlotToCid_Deprecated(reader)
+	}
 	index, err := compactindexsized.Open(reader)
 	if err != nil {
 		return nil, err
@@ -158,7 +167,34 @@ func OpenWithReader_SlotToCid(reader ReaderAtCloser) (*SlotToCid_Reader, error) 
 	}, nil
 }
 
+func OpenWithReader_SlotToCid_Deprecated(reader ReaderAtCloser) (*SlotToCid_Reader, error) {
+	index, err := compactindex36.Open(reader)
+	if err != nil {
+		return nil, err
+	}
+	return &SlotToCid_Reader{
+		file:            reader,
+		deprecatedIndex: index,
+	}, nil
+}
+
+func (r *SlotToCid_Reader) IsDeprecatedOldVersion() bool {
+	return r.deprecatedIndex != nil
+}
+
 func (r *SlotToCid_Reader) Get(slot uint64) (cid.Cid, error) {
+	if r.IsDeprecatedOldVersion() {
+		key := uint64tob(slot)
+		value, err := r.deprecatedIndex.Lookup(key)
+		if err != nil {
+			return cid.Undef, err
+		}
+		_, c, err := cid.CidFromBytes(value[:])
+		if err != nil {
+			return cid.Undef, err
+		}
+		return c, nil
+	}
 	key := uint64tob(slot)
 	value, err := r.index.Lookup(key)
 	if err != nil {
@@ -181,5 +217,9 @@ func (r *SlotToCid_Reader) Meta() *Metadata {
 }
 
 func (r *SlotToCid_Reader) Prefetch(b bool) {
+	if r.IsDeprecatedOldVersion() {
+		r.deprecatedIndex.Prefetch(b)
+		return
+	}
 	r.index.Prefetch(b)
 }

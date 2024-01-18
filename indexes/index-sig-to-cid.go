@@ -10,6 +10,7 @@ import (
 	"github.com/gagliardetto/solana-go"
 	"github.com/ipfs/go-cid"
 	"github.com/rpcpool/yellowstone-faithful/compactindexsized"
+	"github.com/rpcpool/yellowstone-faithful/deprecated/compactindex36"
 )
 
 type SigToCid_Writer struct {
@@ -121,9 +122,10 @@ func (w *SigToCid_Writer) GetFilepath() string {
 }
 
 type SigToCid_Reader struct {
-	file  io.Closer
-	meta  *Metadata
-	index *compactindexsized.DB
+	file            io.Closer
+	meta            *Metadata
+	index           *compactindexsized.DB
+	deprecatedIndex *compactindex36.DB
 }
 
 func Open_SigToCid(filepath string) (*SigToCid_Reader, error) {
@@ -140,6 +142,13 @@ type ReaderAtCloser interface {
 }
 
 func OpenWithReader_SigToCid(reader ReaderAtCloser) (*SigToCid_Reader, error) {
+	isOld, err := IsFileOldFormat(reader)
+	if err != nil {
+		return nil, err
+	}
+	if isOld {
+		return OpenWithReader_SigToCid_Deprecated(reader)
+	}
 	index, err := compactindexsized.Open(reader)
 	if err != nil {
 		return nil, err
@@ -164,9 +173,36 @@ func OpenWithReader_SigToCid(reader ReaderAtCloser) (*SigToCid_Reader, error) {
 	}, nil
 }
 
+func OpenWithReader_SigToCid_Deprecated(reader ReaderAtCloser) (*SigToCid_Reader, error) {
+	index, err := compactindex36.Open(reader)
+	if err != nil {
+		return nil, err
+	}
+	return &SigToCid_Reader{
+		file:            reader,
+		deprecatedIndex: index,
+	}, nil
+}
+
+func (r *SigToCid_Reader) IsDeprecatedOldVersion() bool {
+	return r.deprecatedIndex != nil
+}
+
 func (r *SigToCid_Reader) Get(sig solana.Signature) (cid.Cid, error) {
 	if sig.IsZero() {
 		return cid.Undef, fmt.Errorf("sig is undefined")
+	}
+	if r.IsDeprecatedOldVersion() {
+		key := sig[:]
+		value, err := r.deprecatedIndex.Lookup(key)
+		if err != nil {
+			return cid.Undef, err
+		}
+		_, c, err := cid.CidFromBytes(value[:])
+		if err != nil {
+			return cid.Undef, err
+		}
+		return c, nil
 	}
 	key := sig[:]
 	value, err := r.index.Lookup(key)
@@ -190,5 +226,9 @@ func (r *SigToCid_Reader) Meta() *Metadata {
 }
 
 func (r *SigToCid_Reader) Prefetch(b bool) {
+	if r.IsDeprecatedOldVersion() {
+		r.deprecatedIndex.Prefetch(b)
+		return
+	}
 	r.index.Prefetch(b)
 }
