@@ -14,6 +14,7 @@ import (
 	jsoniter "github.com/json-iterator/go"
 	"github.com/mostynb/zstdpool-freelist"
 	"github.com/mr-tron/base58"
+	"github.com/rpcpool/yellowstone-faithful/third_party/solana_proto/confirmed_block"
 	"github.com/rpcpool/yellowstone-faithful/txstatus"
 	"github.com/sourcegraph/jsonrpc2"
 	"github.com/valyala/fasthttp"
@@ -165,7 +166,7 @@ func (req *GetBlockRequest) Validate() error {
 		solana.EncodingBase64,
 		solana.EncodingBase64Zstd,
 		solana.EncodingJSON,
-		solana.EncodingJSONParsed, // TODO: add support for this
+		solana.EncodingJSONParsed,
 	) {
 		return fmt.Errorf("unsupported encoding")
 	}
@@ -378,6 +379,7 @@ var zstdEncoderPool = zstdpool.NewEncoderPool()
 func encodeTransactionResponseBasedOnWantedEncoding(
 	encoding solana.EncodingType,
 	tx solana.Transaction,
+	meta any,
 ) (any, error) {
 	switch encoding {
 	case solana.EncodingBase58, solana.EncodingBase64, solana.EncodingBase64Zstd:
@@ -410,13 +412,30 @@ func encodeTransactionResponseBasedOnWantedEncoding(
 				},
 				AccountKeys: txstatus.AccountKeys{
 					StaticKeys: tx.Message.AccountKeys,
-					// TODO: add support for dynamic keys? From meta?
-					// DynamicKeys: &LoadedAddresses{
-					// 	Writable: []solana.PublicKey{},
-					// 	Readonly: []solana.PublicKey{
-					// 		solana.TokenLendingProgramID,
-					// 	},
-					// },
+					// TODO: test this:
+					DynamicKeys: func() *txstatus.LoadedAddresses {
+						switch v := meta.(type) {
+						case *confirmed_block.TransactionStatusMeta:
+							return &txstatus.LoadedAddresses{
+								Writable: func() []solana.PublicKey {
+									out := make([]solana.PublicKey, len(v.LoadedWritableAddresses))
+									for i, v := range v.LoadedWritableAddresses {
+										out[i] = solana.PublicKeyFromBytes(v)
+									}
+									return out
+								}(),
+								Readonly: func() []solana.PublicKey {
+									out := make([]solana.PublicKey, len(v.LoadedReadonlyAddresses))
+									for i, v := range v.LoadedReadonlyAddresses {
+										out[i] = solana.PublicKeyFromBytes(v)
+									}
+									return out
+								}(),
+							}
+						default:
+							return nil
+						}
+					}(),
 				},
 				StackHeight: nil,
 			}
@@ -427,11 +446,20 @@ func encodeTransactionResponseBasedOnWantedEncoding(
 					"accounts": func() []string {
 						out := make([]string, len(inst.Accounts))
 						for i, v := range inst.Accounts {
-							// TODO: add support for dynamic keys? From meta?
 							if v >= uint16(len(tx.Message.AccountKeys)) {
 								continue
 							}
 							out[i] = tx.Message.AccountKeys[v].String()
+						}
+						// TODO: validate that the order is correct
+						switch v := meta.(type) {
+						case *confirmed_block.TransactionStatusMeta:
+							for _, wr := range v.LoadedWritableAddresses {
+								out = append(out, solana.PublicKeyFromBytes(wr).String())
+							}
+							for _, ro := range v.LoadedReadonlyAddresses {
+								out = append(out, solana.PublicKeyFromBytes(ro).String())
+							}
 						}
 						return out
 					}(),

@@ -378,7 +378,7 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 				}
 				txResp.Meta = meta
 
-				encodedTx, err := encodeTransactionResponseBasedOnWantedEncoding(*params.Options.Encoding, tx)
+				encodedTx, err := encodeTransactionResponseBasedOnWantedEncoding(*params.Options.Encoding, tx, meta)
 				if err != nil {
 					return &jsonrpc2.Error{
 						Code:    jsonrpc2.CodeInternalError,
