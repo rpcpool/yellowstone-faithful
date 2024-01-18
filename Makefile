@@ -21,10 +21,12 @@ jsonParsed-linux: build-rust-wrapper
 compile:
 	@echo "\nCompiling faithful-cli binary for current platform ..."
 	go build -ldflags="$(BASE_LD_FLAGS)" -o ./bin/faithful-cli .
+	chmod +x ./bin/faithful-cli
 compile-all: compile-linux compile-mac compile-windows
 compile-linux:
 	@echo "\nCompiling faithful-cli binary for linux amd64 ..."
 	GOOS=linux GOARCH=amd64 go build -ldflags="$(BASE_LD_FLAGS)" -o ./bin/linux/amd64/faithful-cli_linux_amd64 .
+	chmod +x ./bin/linux/amd64/faithful-cli_linux_amd64
 compile-mac:
 	@echo "\nCompiling faithful-cli binary for mac amd64 ..."
 	GOOS=darwin GOARCH=amd64 go build -ldflags="$(BASE_LD_FLAGS)" -o ./bin/darwin/amd64/faithful-cli_darwin_amd64 .
