@@ -216,7 +216,7 @@ func (multi *MultiEpoch) handleGetTransaction(ctx context.Context, conn *request
 		}
 		response.Meta = meta
 
-		encodedTx, err := encodeTransactionResponseBasedOnWantedEncoding(*params.Options.Encoding, tx)
+		encodedTx, err := encodeTransactionResponseBasedOnWantedEncoding(*params.Options.Encoding, tx, meta)
 		if err != nil {
 			return &jsonrpc2.Error{
 				Code:    jsonrpc2.CodeInternalError,
