@@ -28,6 +28,7 @@ func newCmd_Index_all() *cli.Command {
 	var network indexes.Network
 	return &cli.Command{
 		Name:        "all",
+		Usage:       "Create all the necessary indexes for a Solana epoch.",
 		Description: "Given a CAR file containing a Solana epoch, create all the necessary indexes and save them in the specified index dir.",
 		ArgsUsage:   "<car-path> <index-dir>",
 		Before: func(c *cli.Context) error {

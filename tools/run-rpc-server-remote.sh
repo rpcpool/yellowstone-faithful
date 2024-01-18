@@ -44,11 +44,10 @@ fi
 CID_URL=https://files.old-faithful.net/${EPOCH}/epoch-${EPOCH}.cid
 EPOCH_CID=$($READ_COMMAND $CID_URL)
 
-EPOCH_URL=https://files.old-faithful.net/${EPOCH}/epoch-${EPOCH}.car
+EPOCH_CONFIG_URL=https://files.old-faithful.net/${EPOCH}/epoch-${EPOCH}.yml
+
+wget -q ${EPOCH_CONFIG_URL} -O epoch-${EPOCH}.yml
 
 set -x
-faithful-cli rpc-server-car --listen ":7999" \
-     ${EPOCH_URL} \
-     https://files.old-faithful.net/${EPOCH}/epoch-${EPOCH}.car.${EPOCH_CID}.cid-to-offset.index \
-     https://files.old-faithful.net/${EPOCH}/epoch-${EPOCH}.car.${EPOCH_CID}.slot-to-cid.index \
-     https://files.old-faithful.net/${EPOCH}/epoch-${EPOCH}.car.${EPOCH_CID}.sig-to-cid.index
+faithful-cli rpc --listen ":7999" \
+     epoch-${EPOCH}.yml

@@ -33,6 +33,7 @@ func newCmd_rpc() *cli.Command {
 	var maxCacheSizeMB int
 	return &cli.Command{
 		Name:        "rpc",
+		Usage:       "Start a Solana JSON RPC server.",
 		Description: "Provide multiple epoch config files, and start a Solana JSON RPC that exposes getTransaction, getBlock, and (optionally) getSignaturesForAddress",
 		ArgsUsage:   "<one or more config files or directories containing config files (nested is fine)>",
 		Before: func(c *cli.Context) error {

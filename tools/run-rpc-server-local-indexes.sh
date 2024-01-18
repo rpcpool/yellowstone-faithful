@@ -25,11 +25,11 @@ fi
 
 INDEX_DIR=${2:-.}
 
-EPOCH_URL=https://files.old-faithful.net/${EPOCH}/epoch-${EPOCH}.car
+# TODO: fix with the correct URL for the epoch config file.
+EPOCH_CONFIG_URL=https://files.old-faithful.net/${EPOCH}/epoch-${EPOCH}.yml
+
+wget -q ${EPOCH_CONFIG_URL} -O epoch-${EPOCH}.yml
 
 set -x
-faithful-cli rpc-server-car --listen ":7999" \
-     ${EPOCH_URL} \
-     ${INDEX_DIR}/epoch-${EPOCH}.car.*.cid-to-offset.index \
-     ${INDEX_DIR}/epoch-${EPOCH}.car.*.slot-to-cid.index \
-     ${INDEX_DIR}/epoch-${EPOCH}.car.*.sig-to-cid.index
+faithful-cli rpc --listen ":7999" \
+     epoch-${EPOCH}.yml

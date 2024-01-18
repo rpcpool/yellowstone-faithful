@@ -42,13 +42,9 @@ $ ../tools/download-gsfa.sh 0 ./epoch0
 If you have a local copy of a CAR archive and the indexes and run a RPC server servicing data from them. For example:
 
 ```
-/usr/local/bin/faithful-cli rpc-server-car \
+/usr/local/bin/faithful-cli rpc \
     --listen $PORT \
-    epoch-455.car \
-    epoch-455.car.*.cid-to-offset.index \
-    epoch-455.car.*.slot-to-cid.index \
-    epoch-455.car.*.sig-to-cid.index \
-    epoch-455.car-*-gsfa-index
+    epoch-455.yaml
 ```
 
 You can download the CAR files either via Filecoin or via the bucket provided by Triton. There are helper scripts in the `tools` folder. To download the full epoch data:

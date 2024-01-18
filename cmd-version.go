@@ -10,7 +10,8 @@ import (
 func newCmd_Version() *cli.Command {
 	return &cli.Command{
 		Name:        "version",
-		Description: "Print version information",
+		Usage:       "Print version information of this binary.",
+		Description: "Print version information of this binary.",
 		Before: func(c *cli.Context) error {
 			return nil
 		},
