@@ -44,11 +44,11 @@ func main() {
 	fmt.Printf("First 8 bytes = %v , as string = %s\n", b, b)
 	target := oldMagic
 	if !bytes.Equal(b, target[:]) {
-		fmt.Printf("Doesn't match old magic, but has %v\n", b)
+		fmt.Printf("Doesn't match old magic; skipping\n")
 		return
 	}
 	if dry {
-		fmt.Printf("⚪ Dry run, not replacing\n")
+		fmt.Printf("⚪ Dry run, not replacing and exiting\n")
 		return
 	}
 	fmt.Printf("Found old magic; replacing with new magic\n")
