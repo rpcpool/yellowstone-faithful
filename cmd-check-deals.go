@@ -46,6 +46,10 @@ func (f *commaSeparatedStringSliceFlag) Has(value string) bool {
 	return false
 }
 
+func (f *commaSeparatedStringSliceFlag) Len() int {
+	return len(f.slice)
+}
+
 func newCmd_check_deals() *cli.Command {
 	var includePatterns cli.StringSlice
 	var excludePatterns cli.StringSlice
@@ -106,7 +110,7 @@ func newCmd_check_deals() *cli.Command {
 			klog.Info("Will check remote storage pieces for each epoch config")
 
 			// Check provider allowlist:
-			if len(providerAllowlist.slice) > 0 {
+			if providerAllowlist.Len() > 0 {
 				klog.Infof("Provider allowlist: %v", providerAllowlist.slice)
 			} else {
 				klog.Infof("Provider allowlist: <empty>")
@@ -190,7 +194,7 @@ func checkAllPieces(
 				piece.CommP,
 				minerID,
 			)
-			if len(providerAllowlist.slice) > 0 {
+			if providerAllowlist.Len() > 0 {
 				if !providerAllowlist.Has(minerID.String()) {
 					klog.Infof("skipping piece %d/%d with CID %s, because miner %s is not in the allowlist", pieceIndex+1, numPieces, piece.CommP, minerID)
 					return nil
