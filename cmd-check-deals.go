@@ -49,7 +49,7 @@ func (f *commaSeparatedStringSliceFlag) Has(value string) bool {
 func newCmd_check_deals() *cli.Command {
 	var includePatterns cli.StringSlice
 	var excludePatterns cli.StringSlice
-	var providerWhitelist commaSeparatedStringSliceFlag
+	var providerAllowlist commaSeparatedStringSliceFlag
 	return &cli.Command{
 		Name:        "check-deals",
 		Description: "Validate remote split car retrieval for the given config files",
@@ -70,11 +70,10 @@ func newCmd_check_deals() *cli.Command {
 				Value:       cli.NewStringSlice(".git"),
 				Destination: &excludePatterns,
 			},
-			// provider-whitelist
 			&cli.GenericFlag{
-				Name:  "provider-whitelist",
-				Usage: "Whitelist of providers to check",
-				Value: &providerWhitelist,
+				Name:  "provider-allowlist",
+				Usage: "List of providers to allow checking (comma-separated, can be specified multiple times); will ignore all pieces that correspond to a provider not in the allowlist.",
+				Value: &providerAllowlist,
 			},
 		},
 		Action: func(c *cli.Context) error {
@@ -106,11 +105,11 @@ func newCmd_check_deals() *cli.Command {
 			klog.Infof("Loaded %d epoch configs (NO VALIDATION)", len(configs))
 			klog.Info("Will check remote storage pieces for each epoch config")
 
-			// Check provider whitelist:
-			if len(providerWhitelist.slice) > 0 {
-				klog.Infof("Provider whitelist: %v", providerWhitelist.slice)
+			// Check provider allowlist:
+			if len(providerAllowlist.slice) > 0 {
+				klog.Infof("Provider allowlist: %v", providerAllowlist.slice)
 			} else {
-				klog.Infof("Provider whitelist: <empty>")
+				klog.Infof("Provider allowlist: <empty>")
 			}
 
 			// Check deals:
@@ -144,7 +143,7 @@ func newCmd_check_deals() *cli.Command {
 						epoch,
 						metadata,
 						dealRegistry,
-						providerWhitelist,
+						providerAllowlist,
 						&dm,
 					)
 					if err != nil {
@@ -172,7 +171,7 @@ func checkAllPieces(
 	epoch uint64,
 	meta *splitcarfetcher.Metadata,
 	dealRegistry *splitcarfetcher.DealRegistry,
-	providerWhitelist commaSeparatedStringSliceFlag,
+	providerAllowlist commaSeparatedStringSliceFlag,
 	dm *splitcarfetcher.MinerInfoCache,
 ) error {
 	errs := make([]error, 0)
@@ -191,9 +190,9 @@ func checkAllPieces(
 				piece.CommP,
 				minerID,
 			)
-			if len(providerWhitelist.slice) > 0 {
-				if !providerWhitelist.Has(minerID.String()) {
-					klog.Infof("skipping piece %d/%d with CID %s, because miner %s is not in the whitelist", pieceIndex+1, numPieces, piece.CommP, minerID)
+			if len(providerAllowlist.slice) > 0 {
+				if !providerAllowlist.Has(minerID.String()) {
+					klog.Infof("skipping piece %d/%d with CID %s, because miner %s is not in the allowlist", pieceIndex+1, numPieces, piece.CommP, minerID)
 					return nil
 				}
 			}
