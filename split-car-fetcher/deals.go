@@ -9,6 +9,7 @@ import (
 
 	"github.com/filecoin-project/go-address"
 	"github.com/ipfs/go-cid"
+	"k8s.io/klog/v2"
 )
 
 // provider,deal_uuid,file_name,url,commp_piece_cid,file_size,padded_size,payload_cid
@@ -97,6 +98,11 @@ func DealsFromCSV(path string) (*DealRegistry, error) {
 			FileSize:       fileSize,
 			PaddedFileSize: paddedFileSize,
 			PayloadCID:     record[7],
+		}
+
+		// if the same piece CID is associated with multiple deals, the last one wins, but print a warning
+		if _, ok := registry.pieceToDeal[deal.CommpPieceCID]; ok {
+			klog.Warningf("WARNING: piece CID %s is associated with multiple deals, the last one wins\n", deal.CommpPieceCID)
 		}
 
 		registry.pieceToDeal[deal.CommpPieceCID] = deal

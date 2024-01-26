@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/anjor/carlet"
@@ -16,9 +17,39 @@ import (
 	"k8s.io/klog/v2"
 )
 
+type commaSeparatedStringSliceFlag struct {
+	slice []string
+}
+
+func (f *commaSeparatedStringSliceFlag) String() string {
+	return fmt.Sprintf("%v", f.slice)
+}
+
+func (f *commaSeparatedStringSliceFlag) Set(value string) error {
+	// split by ",":
+	split := strings.Split(value, ",")
+	for _, item := range split {
+		// trim spaces:
+		item = strings.TrimSpace(item)
+		f.slice = append(f.slice, item)
+	}
+	return nil
+}
+
+// Has
+func (f *commaSeparatedStringSliceFlag) Has(value string) bool {
+	for _, item := range f.slice {
+		if item == value {
+			return true
+		}
+	}
+	return false
+}
+
 func newCmd_check_deals() *cli.Command {
 	var includePatterns cli.StringSlice
 	var excludePatterns cli.StringSlice
+	var providerWhitelist commaSeparatedStringSliceFlag
 	return &cli.Command{
 		Name:        "check-deals",
 		Description: "Validate remote split car retrieval for the given config files",
@@ -38,6 +69,12 @@ func newCmd_check_deals() *cli.Command {
 				Usage:       "Exclude files or dirs matching the given glob patterns",
 				Value:       cli.NewStringSlice(".git"),
 				Destination: &excludePatterns,
+			},
+			// provider-whitelist
+			&cli.GenericFlag{
+				Name:  "provider-whitelist",
+				Usage: "Whitelist of providers to check",
+				Value: &providerWhitelist,
 			},
 		},
 		Action: func(c *cli.Context) error {
@@ -68,6 +105,13 @@ func newCmd_check_deals() *cli.Command {
 			configs.SortByEpoch()
 			klog.Infof("Loaded %d epoch configs (NO VALIDATION)", len(configs))
 			klog.Info("Will check remote storage pieces for each epoch config")
+
+			// Check provider whitelist:
+			if len(providerWhitelist.slice) > 0 {
+				klog.Infof("Provider whitelist: %v", providerWhitelist.slice)
+			} else {
+				klog.Infof("Provider whitelist: <empty>")
+			}
 
 			// Check deals:
 			for _, config := range configs {
@@ -100,6 +144,7 @@ func newCmd_check_deals() *cli.Command {
 						epoch,
 						metadata,
 						dealRegistry,
+						providerWhitelist,
 						&dm,
 					)
 					if err != nil {
@@ -127,6 +172,7 @@ func checkAllPieces(
 	epoch uint64,
 	meta *splitcarfetcher.Metadata,
 	dealRegistry *splitcarfetcher.DealRegistry,
+	providerWhitelist commaSeparatedStringSliceFlag,
 	dm *splitcarfetcher.MinerInfoCache,
 ) error {
 	errs := make([]error, 0)
@@ -145,6 +191,12 @@ func checkAllPieces(
 				piece.CommP,
 				minerID,
 			)
+			if len(providerWhitelist.slice) > 0 {
+				if !providerWhitelist.Has(minerID.String()) {
+					klog.Infof("skipping piece %d/%d with CID %s, because miner %s is not in the whitelist", pieceIndex+1, numPieces, piece.CommP, minerID)
+					return nil
+				}
+			}
 			minerInfo, err := dm.GetProviderInfo(ctx, minerID)
 			if err != nil {
 				return fmt.Errorf("failed to get miner info for miner %s, for piece %s: %w", minerID, piece.CommP, err)
