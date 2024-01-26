@@ -37,7 +37,7 @@ func TestOpen_InvalidMagic(t *testing.T) {
 func TestOpen_HeaderOnly(t *testing.T) {
 	buf := concatBytes(
 		// Magic
-		[]byte{'r', 'd', 'c', 'e', 'c', 'i', 'd', 'x'},
+		[]byte{'c', 'o', 'm', 'p', 'i', 's', 'z', 'd'},
 		// header size
 		i32tob(30),
 		// FileSize

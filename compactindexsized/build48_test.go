@@ -166,7 +166,7 @@ func TestBuilder48(t *testing.T) {
 	expected := concatBytes(
 		// --- File header
 		// magic
-		[]byte{0x72, 0x64, 0x63, 0x65, 0x63, 0x69, 0x64, 0x78},
+		[]byte{'c', 'o', 'm', 'p', 'i', 's', 'z', 'd'},
 		// header size
 		i32tob(31),
 		// value size (36 bytes in this case)
