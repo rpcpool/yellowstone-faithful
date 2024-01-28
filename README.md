@@ -49,6 +49,7 @@ To run a Faithful RPC server you need to specify configuration files for the epo
 
 ```yml
 epoch: 0 # epoch number (required)
+version: 1 # version number (required)
 data: # data section (required)
   car:
     # Source the data from a CAR file (car-mode).
