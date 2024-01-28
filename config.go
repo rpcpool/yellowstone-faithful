@@ -12,7 +12,14 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 )
 
+const ConfigVersion = 1
+
 type URI string
+
+// String() returns the URI as a string.
+func (u URI) String() string {
+	return string(u)
+}
 
 // IsZero returns true if the URI is empty.
 func (u URI) IsZero() bool {
@@ -93,10 +100,15 @@ func hashFileSha256(filePath string) (string, error) {
 	return fmt.Sprintf("%x", h.Sum(nil)), nil
 }
 
+type PieceURLInfo struct {
+	URI URI `json:"uri" yaml:"uri"` // URL to the piece.
+}
+
 type Config struct {
 	originalFilepath string
 	hashOfConfigFile string
 	Epoch            *uint64 `json:"epoch" yaml:"epoch"`
+	Version          *uint64 `json:"version" yaml:"version"`
 	Data             struct {
 		Car *struct {
 			URI        URI `json:"uri" yaml:"uri"`
@@ -107,6 +119,7 @@ type Config struct {
 				Deals struct {
 					URI URI `json:"uri" yaml:"uri"` // Local path to the deals file.
 				} `json:"deals" yaml:"deals"`
+				PieceToURI map[cid.Cid]PieceURLInfo `json:"piece_to_uri" yaml:"piece_to_uri"` // Map of piece CID to URL.
 			} `json:"from_pieces" yaml:"from_pieces"`
 		} `json:"car" yaml:"car"`
 		Filecoin *struct {
@@ -173,8 +186,12 @@ func (c *Config) IsFilecoinMode() bool {
 	return c.Data.Filecoin != nil && c.Data.Filecoin.Enable
 }
 
-func (c *Config) IsSplitCarMode() bool {
-	return c.Data.Car != nil && c.Data.Car.FromPieces != nil && !c.Data.Car.FromPieces.Metadata.URI.IsZero() && !c.Data.Car.FromPieces.Deals.URI.IsZero()
+func (c *Config) IsCarFromPieces() bool {
+	if c.Data.Car == nil || c.Data.Car.FromPieces == nil {
+		return false
+	}
+	fromPieces := c.Data.Car.FromPieces
+	return !fromPieces.Metadata.URI.IsZero() && (!fromPieces.Deals.URI.IsZero() || len(fromPieces.PieceToURI) > 0)
 }
 
 type ConfigSlice []*Config
@@ -223,6 +240,12 @@ func (c *Config) Validate() error {
 	if c.Epoch == nil {
 		return fmt.Errorf("epoch must be set")
 	}
+	if c.Version == nil {
+		return fmt.Errorf("version must be set")
+	}
+	if *c.Version != ConfigVersion {
+		return fmt.Errorf("version must be %d", ConfigVersion)
+	}
 	// Distinguish between CAR-mode and Filecoin-mode.
 	// In CAR-mode, the data is fetched from a CAR file (local or remote).
 	// In Filecoin-mode, the data is fetched from Filecoin directly (by CID via Lassie).
@@ -254,11 +277,27 @@ func (c *Config) Validate() error {
 				}
 			}
 			{
-				if c.Data.Car.FromPieces.Deals.URI.IsZero() {
-					return fmt.Errorf("data.car.from_pieces.deals.uri must be set")
+				if c.Data.Car.FromPieces.Deals.URI.IsZero() && len(c.Data.Car.FromPieces.PieceToURI) == 0 {
+					return fmt.Errorf("data.car.from_pieces.deals.uri or data.car.from_pieces.piece_to_uri must be set")
 				}
-				if !c.Data.Car.FromPieces.Deals.URI.IsLocal() {
+				if !c.Data.Car.FromPieces.Deals.URI.IsZero() && len(c.Data.Car.FromPieces.PieceToURI) > 0 {
+					return fmt.Errorf("data.car.from_pieces.deals.uri and data.car.from_pieces.piece_to_uri cannot both be set")
+				}
+				if !c.Data.Car.FromPieces.Deals.URI.IsZero() && !c.Data.Car.FromPieces.Deals.URI.IsLocal() {
 					return fmt.Errorf("data.car.from_pieces.deals.uri must be a local file")
+				}
+				if len(c.Data.Car.FromPieces.PieceToURI) > 0 {
+					for pieceCID, uri := range c.Data.Car.FromPieces.PieceToURI {
+						if !pieceCID.Defined() {
+							return fmt.Errorf("data.car.from_pieces.piece_to_uri[%s] must be a valid CID", pieceCID)
+						}
+						if uri.URI.IsZero() {
+							return fmt.Errorf("data.car.from_pieces.piece_to_uri[%s].uri must be set", pieceCID)
+						}
+						if !uri.URI.IsRemoteWeb() {
+							return fmt.Errorf("data.car.from_pieces.piece_to_uri[%s].uri must be a remote web URI", pieceCID)
+						}
+					}
 				}
 			}
 		}
@@ -340,7 +379,7 @@ func (c *Config) Validate() error {
 				if !c.Data.Car.FromPieces.Metadata.URI.IsValid() {
 					return fmt.Errorf("data.car.from_pieces.metadata.uri is invalid")
 				}
-				if !c.Data.Car.FromPieces.Deals.URI.IsValid() {
+				if !c.Data.Car.FromPieces.Deals.URI.IsZero() && !c.Data.Car.FromPieces.Deals.URI.IsValid() {
 					return fmt.Errorf("data.car.from_pieces.deals.uri is invalid")
 				}
 			} else {

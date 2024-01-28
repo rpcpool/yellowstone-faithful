@@ -121,7 +121,7 @@ func newCmd_check_deals() *cli.Command {
 				epoch := *config.Epoch
 				isLassieMode := config.IsFilecoinMode()
 				isCarMode := !isLassieMode
-				if isCarMode && config.IsSplitCarMode() {
+				if isCarMode && config.IsCarFromPieces() {
 					klog.Infof("Checking pieces for epoch %d from %q", epoch, config.ConfigFilepath())
 
 					metadata, err := splitcarfetcher.MetadataFromYaml(string(config.Data.Car.FromPieces.Metadata.URI))
