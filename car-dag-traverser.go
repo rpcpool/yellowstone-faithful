@@ -13,7 +13,7 @@ import (
 	"github.com/ipld/go-car"
 	"github.com/ipld/go-car/util"
 	carv2 "github.com/ipld/go-car/v2"
-	"github.com/rpcpool/yellowstone-faithful/compactindex"
+	"github.com/rpcpool/yellowstone-faithful/indexes"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
 	"k8s.io/klog/v2"
@@ -47,7 +47,7 @@ func dirExists(path string) (bool, error) {
 	return true, nil
 }
 
-func openCarReaderWithCidIndex(carPath string, indexFilePath string) (*SimpleIterator, error) {
+func openCarReaderWithCidToOffsetAndSizeIndex(carPath string, indexFilePath string) (*SimpleIterator, error) {
 	// Check if the CAR file exists:
 	exists, err := fileExists(carPath)
 	if err != nil {
@@ -82,13 +82,8 @@ func openCarReaderWithCidIndex(carPath string, indexFilePath string) (*SimpleIte
 		return nil, fmt.Errorf("CAR file has %d roots, expected 1", len(roots))
 	}
 
-	indexFile, err := os.Open(indexFilePath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open index file: %w", err)
-	}
-
 	klog.Infof("Reading index from %s", indexFilePath)
-	c2o, err := compactindex.Open(indexFile)
+	c2o, err := indexes.Open_CidToOffsetAndSize(indexFilePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open index: %w", err)
 	}
@@ -98,9 +93,8 @@ func openCarReaderWithCidIndex(carPath string, indexFilePath string) (*SimpleIte
 	}
 
 	iter := &SimpleIterator{
-		c2o:       c2o,
-		cr:        cr,
-		indexFile: indexFile,
+		c2o: c2o,
+		cr:  cr,
 	}
 
 	// Try finding the root CID in the index;
@@ -126,18 +120,16 @@ func openCarReaderWithCidIndex(carPath string, indexFilePath string) (*SimpleIte
 }
 
 type SimpleIterator struct {
-	c2o       *compactindex.DB // index from cid to offset in the CAR file
-	cr        *carv2.Reader    // the CAR file
-	indexFile *os.File         // the index file
+	c2o *indexes.CidToOffsetAndSize_Reader // index from cid to offset in the CAR file
+	cr  *carv2.Reader                      // the CAR file
 }
 
 func NewSimpleCarIterator(carPath string, indexFilePath string) (*SimpleIterator, error) {
-	return openCarReaderWithCidIndex(carPath, indexFilePath)
+	return openCarReaderWithCidToOffsetAndSizeIndex(carPath, indexFilePath)
 }
 
 // Close closes the underlying resources.
 func (t *SimpleIterator) Close() error {
-	t.indexFile.Close()
 	return t.cr.Close()
 }
 
@@ -153,23 +145,13 @@ func (t *SimpleIterator) Get(ctx context.Context, c cid.Cid) (*blocks.BasicBlock
 	return node, err
 }
 
-func newOffsetFinderFunc(c2o *compactindex.DB) func(ctx context.Context, c cid.Cid) (uint64, error) {
+func newOffsetFinderFunc(c2o *indexes.CidToOffsetAndSize_Reader) func(ctx context.Context, c cid.Cid) (uint64, error) {
 	return func(ctx context.Context, c cid.Cid) (uint64, error) {
-		bucket, err := c2o.LookupBucket(c.Bytes())
+		oas, err := c2o.Get(c)
 		if err != nil {
-			if err == compactindex.ErrNotFound {
-				return 0, ErrNotFound
-			}
-			return 0, fmt.Errorf("failed to lookup bucket: %w", err)
+			return 0, fmt.Errorf("failed to get offset and size: %w", err)
 		}
-		offset, err := bucket.Lookup(c.Bytes())
-		if err != nil {
-			if err == compactindex.ErrNotFound {
-				return 0, ErrNotFound
-			}
-			return 0, fmt.Errorf("failed to lookup offset: %w", err)
-		}
-		return offset, nil
+		return oas.Offset, nil
 	}
 }
 

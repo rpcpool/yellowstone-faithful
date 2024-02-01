@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"crypto/rand"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"sort"
@@ -12,7 +11,9 @@ import (
 	"time"
 
 	"github.com/goware/urlx"
+	"github.com/libp2p/go-reuseport"
 	"github.com/mr-tron/base58"
+	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"github.com/sourcegraph/jsonrpc2"
 	"github.com/valyala/fasthttp"
 	"k8s.io/klog/v2"
@@ -124,6 +125,7 @@ func (m *MultiEpoch) CountEpochs() int {
 	return len(m.epochs)
 }
 
+// GetEpochNumbers returns a list of epoch numbers, sorted from most recent to oldest.
 func (m *MultiEpoch) GetEpochNumbers() []uint64 {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -137,7 +139,7 @@ func (m *MultiEpoch) GetEpochNumbers() []uint64 {
 	return epochNumbers
 }
 
-func (m *MultiEpoch) GetFirstAvailableEpoch() (*Epoch, error) {
+func (m *MultiEpoch) GetMostRecentAvailableEpoch() (*Epoch, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	numbers := m.GetEpochNumbers()
@@ -147,7 +149,33 @@ func (m *MultiEpoch) GetFirstAvailableEpoch() (*Epoch, error) {
 	return nil, fmt.Errorf("no epochs available")
 }
 
-func (m *MultiEpoch) GetFirstAvailableEpochNumber() (uint64, error) {
+func (m *MultiEpoch) GetOldestAvailableEpoch() (*Epoch, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	numbers := m.GetEpochNumbers()
+	if len(numbers) > 0 {
+		return m.epochs[numbers[len(numbers)-1]], nil
+	}
+	return nil, fmt.Errorf("no epochs available")
+}
+
+func (m *MultiEpoch) GetFirstAvailableBlock(ctx context.Context) (*ipldbindcode.Block, error) {
+	oldestEpoch, err := m.GetOldestAvailableEpoch()
+	if err != nil {
+		return nil, err
+	}
+	return oldestEpoch.GetFirstAvailableBlock(ctx)
+}
+
+func (m *MultiEpoch) GetMostRecentAvailableBlock(ctx context.Context) (*ipldbindcode.Block, error) {
+	mostRecentEpoch, err := m.GetMostRecentAvailableEpoch()
+	if err != nil {
+		return nil, err
+	}
+	return mostRecentEpoch.GetMostRecentAvailableBlock(ctx)
+}
+
+func (m *MultiEpoch) GetMostRecentAvailableEpochNumber() (uint64, error) {
 	numbers := m.GetEpochNumbers()
 	if len(numbers) > 0 {
 		return numbers[0], nil
@@ -212,7 +240,12 @@ func (m *MultiEpoch) ListenAndServe(ctx context.Context, listenOn string, lsConf
 			klog.Errorf("Error while shutting down RPC server: %s", err)
 		}
 	}()
-	return s.ListenAndServe(listenOn)
+	ln, err := reuseport.Listen("tcp4", listenOn)
+	if err != nil {
+		klog.Fatalf("error in reuseport listener: %v", err)
+		return err
+	}
+	return s.Serve(ln)
 }
 
 func randomRequestID() string {
@@ -276,7 +309,7 @@ func newMultiEpochHandler(handler *MultiEpoch, lsConf *ListenerConfig) func(ctx 
 
 		// parse request
 		var rpcRequest jsonrpc2.Request
-		if err := json.Unmarshal(body, &rpcRequest); err != nil {
+		if err := fasterJson.Unmarshal(body, &rpcRequest); err != nil {
 			klog.Errorf("[%s] failed to parse request body: %v", err)
 			replyJSON(reqCtx, http.StatusBadRequest, jsonrpc2.Response{
 				Error: &jsonrpc2.Error{
@@ -417,7 +450,7 @@ func sanitizeMethod(method string) string {
 
 func isValidLocalMethod(method string) bool {
 	switch method {
-	case "getBlock", "getTransaction", "getSignaturesForAddress", "getBlockTime", "getGenesisHash":
+	case "getBlock", "getTransaction", "getSignaturesForAddress", "getBlockTime", "getGenesisHash", "getFirstAvailableBlock", "getSlot":
 		return true
 	default:
 		return false
@@ -437,6 +470,10 @@ func (ser *MultiEpoch) handleRequest(ctx context.Context, conn *requestContext, 
 		return ser.handleGetBlockTime(ctx, conn, req)
 	case "getGenesisHash":
 		return ser.handleGetGenesisHash(ctx, conn, req)
+	case "getFirstAvailableBlock":
+		return ser.handleGetFirstAvailableBlock(ctx, conn, req)
+	case "getSlot":
+		return ser.handleGetSlot(ctx, conn, req)
 	default:
 		return &jsonrpc2.Error{
 			Code:    jsonrpc2.CodeMethodNotFound,

@@ -20,6 +20,26 @@ const (
 	KindDataFrame
 )
 
+type KindSlice []Kind
+
+func (ks KindSlice) Has(k Kind) bool {
+	for _, kind := range ks {
+		if kind == k {
+			return true
+		}
+	}
+	return false
+}
+
+func (ks KindSlice) HasAny(kinds ...Kind) bool {
+	for _, kind := range kinds {
+		if ks.Has(kind) {
+			return true
+		}
+	}
+	return false
+}
+
 // String returns the string representation of the Kind.
 func (k Kind) String() string {
 	switch k {
@@ -127,10 +147,10 @@ func DecodeDataFrame(dataFrameRaw []byte) (*ipldbindcode.DataFrame, error) {
 }
 
 func DecodeAny(anyRaw []byte) (any, error) {
-	if len(anyRaw) == 0 {
-		return nil, fmt.Errorf("empty bytes")
+	kind, err := GetKind(anyRaw)
+	if err != nil {
+		return nil, err
 	}
-	kind := Kind(anyRaw[1])
 
 	switch kind {
 	case KindTransaction:
@@ -150,4 +170,12 @@ func DecodeAny(anyRaw []byte) (any, error) {
 	default:
 		return nil, fmt.Errorf("unknown kind %d", int(kind))
 	}
+}
+
+func GetKind(anyRaw []byte) (Kind, error) {
+	if len(anyRaw) == 0 {
+		return Kind(0), fmt.Errorf("empty bytes")
+	}
+	kind := Kind(anyRaw[1])
+	return kind, nil
 }

@@ -1,9 +1,15 @@
 package ipldbindcode
 
 import (
+	"encoding/json"
 	"fmt"
 	"hash/crc64"
 	"hash/fnv"
+	"strconv"
+	"strings"
+
+	"github.com/ipfs/go-cid"
+	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 )
 
 // DataFrame.HasHash returns whether the 'Hash' field is present.
@@ -13,11 +19,11 @@ func (n DataFrame) HasHash() bool {
 
 // GetHash returns the value of the 'Hash' field and
 // a flag indicating whether the field has a value.
-func (n DataFrame) GetHash() (int, bool) {
+func (n DataFrame) GetHash() (uint64, bool) {
 	if n.Hash == nil || *n.Hash == nil {
 		return 0, false
 	}
-	return **n.Hash, true
+	return uint64(**n.Hash), true
 }
 
 // HasIndex returns whether the 'Index' field is present.
@@ -85,10 +91,10 @@ func checksumCrc64(buf []byte) uint64 {
 // VerifyHash verifies that the provided data matches the provided hash.
 // In case of DataFrames, the hash is stored in the 'Hash' field, and
 // it is the hash of the concatenated 'Data' fields of all the DataFrames.
-func VerifyHash(data []byte, hash int) error {
-	if checksumCrc64(data) != uint64(hash) {
+func VerifyHash(data []byte, hash uint64) error {
+	if checksumCrc64(data) != (hash) {
 		// Maybe it's the legacy checksum function?
-		if checksumFnv(data) != uint64(hash) {
+		if checksumFnv(data) != (hash) {
 			return fmt.Errorf("data hash mismatch")
 		}
 	}
@@ -118,4 +124,88 @@ func (n Block) GetBlockHeight() (uint64, bool) {
 		return 0, false
 	}
 	return uint64(**n.Meta.Block_height), true
+}
+
+// DataFrame.MarshalJSON implements the json.Marshaler interface.
+func (n DataFrame) MarshalJSON() ([]byte, error) {
+	out := new(strings.Builder)
+	out.WriteString(`{"kind":`)
+	out.WriteString(fmt.Sprintf("%d", n.Kind))
+	if n.Hash != nil && *n.Hash != nil {
+		out.WriteString(`,"hash":`)
+		out.WriteString(fmt.Sprintf(`"%d"`, uint64(**n.Hash)))
+	} else {
+		out.WriteString(`,"hash":null`)
+	}
+
+	if n.Index != nil && *n.Index != nil {
+		out.WriteString(`,"index":`)
+		out.WriteString(fmt.Sprintf("%d", **n.Index))
+	} else {
+		out.WriteString(`,"index":null`)
+	}
+	if n.Total != nil && *n.Total != nil {
+		out.WriteString(`,"total":`)
+		out.WriteString(fmt.Sprintf("%d", **n.Total))
+	} else {
+		out.WriteString(`,"total":null`)
+	}
+	out.WriteString(`,"data":`)
+	out.WriteString(fmt.Sprintf("%q", n.Data.String()))
+	if n.Next != nil && *n.Next != nil {
+		out.WriteString(`,"next":`)
+		nextAsJSON, err := json.Marshal(**n.Next)
+		if err != nil {
+			return nil, err
+		}
+		out.Write(nextAsJSON)
+	} else {
+		out.WriteString(`,"next":null`)
+	}
+	out.WriteString("}")
+	return []byte(out.String()), nil
+}
+
+// DataFrame.UnmarshalJSON implements the json.Unmarshaler interface.
+func (n *DataFrame) UnmarshalJSON(data []byte) error {
+	// We have to use a custom unmarshaler because we need to
+	// unmarshal the 'data' field as a string, and then convert
+	// it to a byte slice.
+	type Alias DataFrame
+
+	type CidObj map[string]string
+	aux := &struct {
+		Data string   `json:"data"`
+		Hash string   `json:"hash"`
+		Next []CidObj `json:"next"`
+		*Alias
+	}{
+		Alias: (*Alias)(n),
+	}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	n.Data.FromString(aux.Data)
+	if aux.Hash != "" {
+		hash, err := strconv.ParseUint(aux.Hash, 10, 64)
+		if err != nil {
+			return err
+		}
+		h := int(hash)
+		hp := &h
+		n.Hash = &hp
+	}
+	if len(aux.Next) > 0 {
+		next := List__Link{}
+		for _, c := range aux.Next {
+			decoded, err := cid.Decode(c["/"])
+			if err != nil {
+				return err
+			}
+			next = append(next, cidlink.Link{Cid: decoded})
+		}
+		nextP := &next
+		n.Next = &nextP
+	}
+	return nil
 }

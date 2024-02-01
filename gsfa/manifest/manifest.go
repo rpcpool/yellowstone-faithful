@@ -1,12 +1,15 @@
 package manifest
 
 import (
+	"bufio"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"sync"
+
+	"github.com/rpcpool/yellowstone-faithful/indexmeta"
 )
 
 type Manifest struct {
@@ -17,18 +20,25 @@ type Manifest struct {
 
 var (
 	_MAGIC   = [...]byte{'g', 's', 'f', 'a', 'm', 'n', 'f', 's'}
-	_Version = uint64(1)
+	_Version = uint64(2)
 )
 
-var headerLen = len(_MAGIC) + 8 // 8 bytes for the version
+var headerLenWithoutMeta = len(_MAGIC) + 8 // 8 bytes for the version
 
 type Header struct {
-	version uint64
+	version      uint64
+	metaByteSize int64
+	meta         indexmeta.Meta
 }
 
 // Version returns the version of the manifest.
 func (h *Header) Version() uint64 {
 	return h.version
+}
+
+// Meta returns the metadata of the manifest.
+func (h *Header) Meta() indexmeta.Meta {
+	return h.meta
 }
 
 func readHeader(file *os.File) (*Header, error) {
@@ -50,12 +60,22 @@ func readHeader(file *os.File) (*Header, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Header{
+	header := &Header{
 		version: version,
-	}, nil
+	}
+	if version >= 2 {
+		var meta indexmeta.Meta
+		err = meta.UnmarshalWithDecoder(bufio.NewReader(file))
+		if err != nil {
+			return nil, err
+		}
+		header.metaByteSize = int64(len(meta.Bytes()))
+		header.meta = meta
+	}
+	return header, nil
 }
 
-func writeHeader(file *os.File) error {
+func writeHeader(file *os.File, meta indexmeta.Meta, version uint64) error {
 	_, err := file.Seek(0, io.SeekStart)
 	if err != nil {
 		return err
@@ -64,7 +84,12 @@ func writeHeader(file *os.File) error {
 	if err != nil {
 		return err
 	}
-	err = binary.Write(file, binary.LittleEndian, _Version)
+	err = binary.Write(file, binary.LittleEndian, version)
+	if err != nil {
+		return err
+	}
+	metaBytes := meta.Bytes()
+	_, err = file.Write(metaBytes)
 	if err != nil {
 		return err
 	}
@@ -72,7 +97,7 @@ func writeHeader(file *os.File) error {
 }
 
 // NewManifest creates a new manifest or opens an existing one.
-func NewManifest(filename string) (*Manifest, error) {
+func NewManifest(filename string, meta indexmeta.Meta) (*Manifest, error) {
 	file, err := os.OpenFile(filename, os.O_CREATE|os.O_RDWR, 0o644)
 	if err != nil {
 		return nil, err
@@ -85,16 +110,21 @@ func NewManifest(filename string) (*Manifest, error) {
 		return nil, err
 	}
 	if currentFileSize == 0 {
-		err = writeHeader(file)
+		err = writeHeader(file, meta, _Version)
 		if err != nil {
 			return nil, err
+		}
+		man.header = &Header{
+			version:      _Version,
+			metaByteSize: int64(len(meta.Bytes())),
+			meta:         meta,
 		}
 	} else {
 		header, err := readHeader(file)
 		if err != nil {
 			return nil, err
 		}
-		if header.Version() != _Version {
+		if header.Version() != _Version && header.Version() != 1 {
 			return nil, fmt.Errorf("unsupported manifest version: %d", header.Version())
 		}
 		man.header = header
@@ -104,7 +134,8 @@ func NewManifest(filename string) (*Manifest, error) {
 	if err != nil {
 		return nil, err
 	}
-	if currentFileSize > 0 && (currentFileSize-int64(headerLen))%16 != 0 {
+	dataSizeWithoutHeaderAndMeta := currentFileSize - int64(headerLenWithoutMeta) - man.header.metaByteSize
+	if currentFileSize > 0 && (dataSizeWithoutHeaderAndMeta)%16 != 0 {
 		return nil, fmt.Errorf("manifest is corrupt: size=%d", currentFileSize)
 	}
 	return man, nil
@@ -121,7 +152,13 @@ func (m *Manifest) close() (err error) {
 	if err != nil {
 		return err
 	}
+	m.file = nil
+	m.header = nil
 	return
+}
+
+func (m *Manifest) Meta() indexmeta.Meta {
+	return m.header.meta
 }
 
 // Flush flushes the cache to disk.
@@ -154,7 +191,11 @@ func (m *Manifest) getContentLength() (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	return currentFileSize - int64(headerLen), nil
+	return currentFileSize - int64(headerLenWithoutMeta) - m.header.metaByteSize, nil
+}
+
+func (m *Manifest) Version() uint64 {
+	return m.header.version
 }
 
 // Put appends the given uint64 tuple to the file.
@@ -162,7 +203,7 @@ func (m *Manifest) Put(key, value uint64) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.header == nil {
-		err := writeHeader(m.file)
+		err := writeHeader(m.file, indexmeta.Meta{}, _Version)
 		if err != nil {
 			return err
 		}
@@ -201,7 +242,7 @@ func (m *Manifest) getContentReader() (io.Reader, int64, error) {
 	if err != nil {
 		return nil, -1, err
 	}
-	return io.NewSectionReader(m.file, int64(headerLen), currentContentSize), currentContentSize, nil
+	return io.NewSectionReader(m.file, int64(headerLenWithoutMeta)+m.header.metaByteSize, currentContentSize), currentContentSize, nil
 }
 
 // readAllContent reads all the uint64 tuples from the file.

@@ -14,6 +14,8 @@ import (
 	jsoniter "github.com/json-iterator/go"
 	"github.com/mostynb/zstdpool-freelist"
 	"github.com/mr-tron/base58"
+	"github.com/rpcpool/yellowstone-faithful/third_party/solana_proto/confirmed_block"
+	"github.com/rpcpool/yellowstone-faithful/txstatus"
 	"github.com/sourcegraph/jsonrpc2"
 	"github.com/valyala/fasthttp"
 )
@@ -164,7 +166,7 @@ func (req *GetBlockRequest) Validate() error {
 		solana.EncodingBase64,
 		solana.EncodingBase64Zstd,
 		solana.EncodingJSON,
-		// solana.EncodingJSONParsed, // TODO: add support for this
+		solana.EncodingJSONParsed,
 	) {
 		return fmt.Errorf("unsupported encoding")
 	}
@@ -173,7 +175,7 @@ func (req *GetBlockRequest) Validate() error {
 
 func parseGetBlockRequest(raw *json.RawMessage) (*GetBlockRequest, error) {
 	var params []any
-	if err := json.Unmarshal(*raw, &params); err != nil {
+	if err := fasterJson.Unmarshal(*raw, &params); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal params: %w", err)
 	}
 	if len(params) < 1 {
@@ -292,7 +294,7 @@ func (req *GetTransactionRequest) Validate() error {
 		solana.EncodingBase64,
 		solana.EncodingBase64Zstd,
 		solana.EncodingJSON,
-		// solana.EncodingJSONParsed, // TODO: add support for this
+		solana.EncodingJSONParsed, // TODO: add support for this
 	) {
 		return fmt.Errorf("unsupported encoding")
 	}
@@ -310,7 +312,7 @@ func isAnyEncodingOf(s solana.EncodingType, anyOf ...solana.EncodingType) bool {
 
 func parseGetTransactionRequest(raw *json.RawMessage) (*GetTransactionRequest, error) {
 	var params []any
-	if err := json.Unmarshal(*raw, &params); err != nil {
+	if err := fasterJson.Unmarshal(*raw, &params); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal params: %w", err)
 	}
 	if len(params) < 1 {
@@ -377,6 +379,7 @@ var zstdEncoderPool = zstdpool.NewEncoderPool()
 func encodeTransactionResponseBasedOnWantedEncoding(
 	encoding solana.EncodingType,
 	tx solana.Transaction,
+	meta any,
 ) (any, error) {
 	switch encoding {
 	case solana.EncodingBase58, solana.EncodingBase64, solana.EncodingBase64Zstd:
@@ -386,9 +389,99 @@ func encodeTransactionResponseBasedOnWantedEncoding(
 		}
 		return encodeBytesResponseBasedOnWantedEncoding(encoding, txBuf)
 	case solana.EncodingJSONParsed:
-		return nil, fmt.Errorf("unsupported encoding")
+		if !txstatus.IsEnabled() {
+			return nil, fmt.Errorf("unsupported encoding")
+		}
+
+		parsedInstructions := make([]json.RawMessage, 0)
+
+		for _, inst := range tx.Message.Instructions {
+			programId, _ := tx.ResolveProgramIDIndex(inst.ProgramIDIndex)
+			instrParams := txstatus.Parameters{
+				ProgramID: programId,
+				Instruction: txstatus.CompiledInstruction{
+					ProgramIDIndex: uint8(inst.ProgramIDIndex),
+					Accounts: func() []uint8 {
+						out := make([]uint8, len(inst.Accounts))
+						for i, v := range inst.Accounts {
+							out[i] = uint8(v)
+						}
+						return out
+					}(),
+					Data: inst.Data,
+				},
+				AccountKeys: txstatus.AccountKeys{
+					StaticKeys: tx.Message.AccountKeys,
+					// TODO: test this:
+					DynamicKeys: func() *txstatus.LoadedAddresses {
+						switch v := meta.(type) {
+						case *confirmed_block.TransactionStatusMeta:
+							return &txstatus.LoadedAddresses{
+								Writable: func() []solana.PublicKey {
+									out := make([]solana.PublicKey, len(v.LoadedWritableAddresses))
+									for i, v := range v.LoadedWritableAddresses {
+										out[i] = solana.PublicKeyFromBytes(v)
+									}
+									return out
+								}(),
+								Readonly: func() []solana.PublicKey {
+									out := make([]solana.PublicKey, len(v.LoadedReadonlyAddresses))
+									for i, v := range v.LoadedReadonlyAddresses {
+										out[i] = solana.PublicKeyFromBytes(v)
+									}
+									return out
+								}(),
+							}
+						default:
+							return nil
+						}
+					}(),
+				},
+				StackHeight: nil,
+			}
+
+			parsedInstructionJSON, err := instrParams.ParseInstruction()
+			if err != nil || parsedInstructionJSON == nil || !strings.HasPrefix(strings.TrimSpace(string(parsedInstructionJSON)), "{") {
+				nonParseadInstructionJSON := map[string]any{
+					"accounts": func() []string {
+						out := make([]string, len(inst.Accounts))
+						for i, v := range inst.Accounts {
+							if v >= uint16(len(tx.Message.AccountKeys)) {
+								continue
+							}
+							out[i] = tx.Message.AccountKeys[v].String()
+						}
+						// TODO: validate that the order is correct
+						switch v := meta.(type) {
+						case *confirmed_block.TransactionStatusMeta:
+							for _, wr := range v.LoadedWritableAddresses {
+								out = append(out, solana.PublicKeyFromBytes(wr).String())
+							}
+							for _, ro := range v.LoadedReadonlyAddresses {
+								out = append(out, solana.PublicKeyFromBytes(ro).String())
+							}
+						}
+						return out
+					}(),
+					"data":        base58.Encode(inst.Data),
+					"programId":   programId.String(),
+					"stackHeight": nil,
+				}
+				asRaw, _ := jsoniter.ConfigCompatibleWithStandardLibrary.Marshal(nonParseadInstructionJSON)
+				parsedInstructions = append(parsedInstructions, asRaw)
+			} else {
+				parsedInstructions = append(parsedInstructions, parsedInstructionJSON)
+			}
+		}
+
+		resp, err := txstatus.FromTransaction(tx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert transaction to txstatus.Transaction: %w", err)
+		}
+		resp.Message.Instructions = parsedInstructions
+
+		return resp, nil
 	case solana.EncodingJSON:
-		// TODO: add support for this
 		return tx, nil
 	default:
 		return nil, fmt.Errorf("unsupported encoding")
@@ -418,7 +511,7 @@ func encodeBytesResponseBasedOnWantedEncoding(
 
 func parseGetBlockTimeRequest(raw *json.RawMessage) (uint64, error) {
 	var params []any
-	if err := json.Unmarshal(*raw, &params); err != nil {
+	if err := fasterJson.Unmarshal(*raw, &params); err != nil {
 		return 0, fmt.Errorf("failed to unmarshal params: %w", err)
 	}
 	if len(params) < 1 {

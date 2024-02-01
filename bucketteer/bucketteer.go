@@ -12,7 +12,7 @@ func Magic() [8]byte {
 	return _Magic
 }
 
-const Version = uint64(1)
+const Version = uint64(2)
 
 func sortWithCompare[T any](a []T, compare func(i, j int) int) {
 	sort.Slice(a, func(i, j int) bool {

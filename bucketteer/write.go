@@ -5,16 +5,24 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"math"
 	"os"
 	"sort"
 
 	bin "github.com/gagliardetto/binary"
+	"github.com/rpcpool/yellowstone-faithful/indexmeta"
 )
 
 type Writer struct {
 	destination    *os.File
 	writer         *bufio.Writer
-	prefixToHashes map[[2]byte][]uint64 // prefix -> hashes
+	prefixToHashes *prefixToHashes // prefix -> hashes
+}
+
+type prefixToHashes [math.MaxUint16 + 1][]uint64 // prefix -> hashes
+
+func newPrefixToHashes() *prefixToHashes {
+	return &prefixToHashes{}
 }
 
 const (
@@ -31,7 +39,7 @@ func NewWriter(path string) (*Writer, error) {
 	if ok, err := fileIsBlank(path); err != nil {
 		return nil, err
 	} else if !ok {
-		return nil, fmt.Errorf("file is not blank")
+		return nil, fmt.Errorf("file already exists and is not empty: %s", path)
 	}
 	file, err := os.Create(path)
 	if err != nil {
@@ -40,7 +48,7 @@ func NewWriter(path string) (*Writer, error) {
 	return &Writer{
 		writer:         bufio.NewWriterSize(file, writeBufSize),
 		destination:    file,
-		prefixToHashes: make(map[[2]byte][]uint64),
+		prefixToHashes: newPrefixToHashes(),
 	}, nil
 }
 
@@ -49,7 +57,7 @@ func NewWriter(path string) (*Writer, error) {
 func (b *Writer) Put(sig [64]byte) {
 	var prefix [2]byte
 	copy(prefix[:], sig[:2])
-	b.prefixToHashes[prefix] = append(b.prefixToHashes[prefix], Hash(sig))
+	b.prefixToHashes[prefixToUint16(prefix)] = append(b.prefixToHashes[prefixToUint16(prefix)], Hash(sig))
 }
 
 // Has returns true if the Bucketteer has seen the given signature.
@@ -57,7 +65,7 @@ func (b *Writer) Has(sig [64]byte) bool {
 	var prefix [2]byte
 	copy(prefix[:], sig[:2])
 	hash := Hash(sig)
-	for _, h := range b.prefixToHashes[prefix] {
+	for _, h := range b.prefixToHashes[prefixToUint16(prefix)] {
 		if h == hash {
 			return true
 		}
@@ -70,7 +78,7 @@ func (b *Writer) Close() error {
 }
 
 // Seal writes the Bucketteer's state to the given writer.
-func (b *Writer) Seal(meta map[string]string) (int64, error) {
+func (b *Writer) Seal(meta indexmeta.Meta) (int64, error) {
 	// truncate file and seek to beginning:
 	if err := b.destination.Truncate(0); err != nil {
 		return 0, err
@@ -89,8 +97,8 @@ func createHeader(
 	magic [8]byte,
 	version uint64,
 	headerSizeIn uint32,
-	meta map[string]string,
-	prefixToOffset map[[2]byte]uint64,
+	meta indexmeta.Meta,
+	prefixToOffset bucketToOffset,
 ) ([]byte, error) {
 	tmpHeaderBuf := new(bytes.Buffer)
 	headerWriter := bin.NewBorshEncoder(tmpHeaderBuf)
@@ -113,18 +121,12 @@ func createHeader(
 	}
 	// write meta
 	{
-		// write num meta entries
-		if err := headerWriter.WriteUint64(uint64(len(meta)), binary.LittleEndian); err != nil {
-			return nil, err
+		metaBuf, err := meta.MarshalBinary()
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal metadata: %w", err)
 		}
-		// write meta entries
-		for k, v := range meta {
-			if err := headerWriter.WriteString(k); err != nil {
-				return nil, err
-			}
-			if err := headerWriter.WriteString(v); err != nil {
-				return nil, err
-			}
+		if _, err := headerWriter.Write(metaBuf); err != nil {
+			return nil, fmt.Errorf("failed to write metadata: %w", err)
 		}
 	}
 	// write num buckets
@@ -132,13 +134,13 @@ func createHeader(
 		return nil, err
 	}
 
-	prefixes := getSortedPrefixes(prefixToOffset)
 	// write prefix+offset pairs
-	for _, prefix := range prefixes {
+	for prefixAsUint16 := range prefixToOffset {
+		prefix := uint16ToPrefix(uint16(prefixAsUint16))
 		if _, err := headerWriter.Write(prefix[:]); err != nil {
 			return nil, err
 		}
-		offset := prefixToOffset[prefix]
+		offset := prefixToOffset[prefixAsUint16]
 		if err := headerWriter.WriteUint64(offset, binary.LittleEndian); err != nil {
 			return nil, err
 		}
@@ -161,27 +163,15 @@ func overwriteFileContentAt(
 	return err
 }
 
-func getSortedPrefixes[K any](prefixToHashes map[[2]byte]K) [][2]byte {
-	prefixes := make([][2]byte, 0, len(prefixToHashes))
-	for prefix := range prefixToHashes {
-		prefixes = append(prefixes, prefix)
-	}
-	sort.Slice(prefixes, func(i, j int) bool {
-		return bytes.Compare(prefixes[i][:], prefixes[j][:]) < 0
-	})
-	return prefixes
-}
-
 func seal(
 	out *bufio.Writer,
-	prefixToHashes map[[2]byte][]uint64,
-	meta map[string]string,
+	prefixToHashes *prefixToHashes,
+	meta indexmeta.Meta,
 ) ([]byte, int64, error) {
-	prefixes := getSortedPrefixes(prefixToHashes)
-	prefixToOffset := make(map[[2]byte]uint64, len(prefixes))
-	for _, prefix := range prefixes {
+	prefixToOffset := bucketToOffset{}
+	for prefixAsUint16 := range prefixToHashes {
 		// initialize all offsets to 0:
-		prefixToOffset[prefix] = 0
+		prefixToOffset[prefixAsUint16] = 0
 	}
 
 	totalWritten := int64(0)
@@ -203,7 +193,7 @@ func seal(
 	totalWritten += int64(headerSize)
 
 	previousOffset := uint64(0)
-	for _, prefix := range prefixes {
+	for prefix := range prefixToHashes {
 		entries := getCleanSet(prefixToHashes[prefix])
 		if len(entries) != len(prefixToHashes[prefix]) {
 			panic(fmt.Sprintf("duplicate hashes for prefix %v", prefix))

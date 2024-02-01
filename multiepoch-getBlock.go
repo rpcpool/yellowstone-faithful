@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -16,13 +15,16 @@ import (
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-car/util"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
-	"github.com/rpcpool/yellowstone-faithful/compactindex36"
+	jsoniter "github.com/json-iterator/go"
+	"github.com/rpcpool/yellowstone-faithful/compactindexsized"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	solanablockrewards "github.com/rpcpool/yellowstone-faithful/solana-block-rewards"
 	"github.com/sourcegraph/jsonrpc2"
 	"golang.org/x/sync/errgroup"
 	"k8s.io/klog/v2"
 )
+
+var fasterJson = jsoniter.ConfigCompatibleWithStandardLibrary
 
 func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContext, req *jsonrpc2.Request) (*jsonrpc2.Error, error) {
 	tim := newTimer()
@@ -54,7 +56,7 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 
 	block, err := epochHandler.GetBlock(WithSubrapghPrefetch(ctx, true), slot)
 	if err != nil {
-		if errors.Is(err, compactindex36.ErrNotFound) {
+		if errors.Is(err, compactindexsized.ErrNotFound) {
 			return &jsonrpc2.Error{
 				Code:    CodeNotFound,
 				Message: fmt.Sprintf("Slot %d was skipped, or missing in long-term storage", slot),
@@ -115,10 +117,11 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 				var blockOffset, parentOffset uint64
 				wg := new(errgroup.Group)
 				wg.Go(func() (err error) {
-					blockOffset, err = epochHandler.FindOffsetFromCid(ctx, blockCid)
+					offsetAndSize, err := epochHandler.FindOffsetAndSizeFromCid(ctx, blockCid)
 					if err != nil {
 						return err
 					}
+					blockOffset = offsetAndSize.Offset
 					return nil
 				})
 				wg.Go(func() (err error) {
@@ -127,10 +130,11 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 						parentOffset = epochHandler.carHeaderSize
 						return nil
 					}
-					parentOffset, err = epochHandler.FindOffsetFromCid(ctx, parentBlockCid)
+					offsetAndSize, err := epochHandler.FindOffsetAndSizeFromCid(ctx, parentBlockCid)
 					if err != nil {
 						return err
 					}
+					parentOffset = offsetAndSize.Offset
 					return nil
 				})
 				err = wg.Wait()
@@ -162,7 +166,7 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 				if !parentIsInPreviousEpoch && !gotCid.Equals(parentBlockCid) {
 					return fmt.Errorf("CID mismatch: expected %s, got %s", parentBlockCid, gotCid)
 				}
-				epochHandler.putNodeInCache(gotCid, data)
+				epochHandler.GetCache().PutRawCarObject(gotCid, data)
 
 				for {
 					gotCid, data, err = util.ReadNode(br)
@@ -175,7 +179,7 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 					if gotCid.Equals(blockCid) {
 						break
 					}
-					epochHandler.putNodeInCache(gotCid, data)
+					epochHandler.GetCache().PutRawCarObject(gotCid, data)
 				}
 			}
 			return nil
@@ -279,7 +283,7 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 		} else {
 			{
 				// encode rewards as JSON, then decode it as a map
-				buf, err := json.Marshal(actualRewards)
+				buf, err := fasterJson.Marshal(actualRewards)
 				if err != nil {
 					return &jsonrpc2.Error{
 						Code:    jsonrpc2.CodeInternalError,
@@ -287,7 +291,7 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 					}, fmt.Errorf("failed to encode rewards: %v", err)
 				}
 				var m map[string]any
-				err = json.Unmarshal(buf, &m)
+				err = fasterJson.Unmarshal(buf, &m)
 				if err != nil {
 					return &jsonrpc2.Error{
 						Code:    jsonrpc2.CodeInternalError,
@@ -374,7 +378,7 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 				}
 				txResp.Meta = meta
 
-				encodedTx, err := encodeTransactionResponseBasedOnWantedEncoding(*params.Options.Encoding, tx)
+				encodedTx, err := encodeTransactionResponseBasedOnWantedEncoding(*params.Options.Encoding, tx, meta)
 				if err != nil {
 					return &jsonrpc2.Error{
 						Code:    jsonrpc2.CodeInternalError,
@@ -394,7 +398,9 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 	tim.time("get transactions")
 	var blockResp GetBlockResponse
 	blockResp.Transactions = allTransactions
-	blockResp.BlockTime = &blocktime
+	if blocktime != 0 {
+		blockResp.BlockTime = &blocktime
+	}
 	blockResp.Blockhash = lastEntryHash.String()
 	blockResp.ParentSlot = uint64(block.Meta.Parent_slot)
 	blockResp.Rewards = rewards

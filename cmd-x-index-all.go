@@ -11,26 +11,30 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/dustin/go-humanize"
-	"github.com/gagliardetto/solana-go"
 	"github.com/ipfs/go-cid"
 	carv1 "github.com/ipld/go-car"
 	"github.com/rpcpool/yellowstone-faithful/bucketteer"
-	"github.com/rpcpool/yellowstone-faithful/compactindex"
-	"github.com/rpcpool/yellowstone-faithful/compactindex36"
+	"github.com/rpcpool/yellowstone-faithful/indexes"
+	"github.com/rpcpool/yellowstone-faithful/indexmeta"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
 	"github.com/urfave/cli/v2"
+	"golang.org/x/sync/errgroup"
 	"k8s.io/klog/v2"
 )
 
 func newCmd_Index_all() *cli.Command {
 	var verify bool
+	var network indexes.Network
 	return &cli.Command{
 		Name:        "all",
+		Usage:       "Create all the necessary indexes for a Solana epoch.",
 		Description: "Given a CAR file containing a Solana epoch, create all the necessary indexes and save them in the specified index dir.",
 		ArgsUsage:   "<car-path> <index-dir>",
 		Before: func(c *cli.Context) error {
+			if network == "" {
+				network = indexes.NetworkMainnet
+			}
 			return nil
 		},
 		Flags: []cli.Flag{
@@ -43,6 +47,17 @@ func newCmd_Index_all() *cli.Command {
 				Name:  "tmp-dir",
 				Usage: "temporary directory to use for storing intermediate files",
 				Value: "",
+			},
+			&cli.StringFlag{
+				Name:  "network",
+				Usage: "the cluster of the epoch; one of: mainnet, testnet, devnet",
+				Action: func(c *cli.Context, s string) error {
+					network = indexes.Network(s)
+					if !indexes.IsValidNetwork(network) {
+						return fmt.Errorf("invalid network: %q", network)
+					}
+					return nil
+				},
 			},
 		},
 		Subcommands: []*cli.Command{},
@@ -69,14 +84,27 @@ func newCmd_Index_all() *cli.Command {
 					klog.Infof("Took %s", time.Since(startedAt))
 				}()
 				klog.Infof("Creating all indexes for %s", carPath)
-				indexPaths, err := createAllIndexes(context.Background(), tmpDir, carPath, indexDir)
+				klog.Infof("Indexes will be saved in %s", indexDir)
+
+				indexPaths, numTotalItems, err := createAllIndexes(
+					c.Context,
+					network,
+					tmpDir,
+					carPath,
+					indexDir,
+				)
 				if err != nil {
 					return err
 				}
 				klog.Info("Indexes created:")
-				veryPlainSdumpConfig.Dump(indexPaths)
+				fmt.Println(indexPaths.String())
 				if verify {
-					return verifyAllIndexes(context.Background(), carPath, indexPaths)
+					return verifyAllIndexes(
+						context.Background(),
+						carPath,
+						indexPaths,
+						numTotalItems,
+					)
 				}
 				klog.Info("Skipping verification.")
 			}
@@ -85,44 +113,35 @@ func newCmd_Index_all() *cli.Command {
 	}
 }
 
-var veryPlainSdumpConfig = spew.ConfigState{
-	Indent:                  "  ",
-	DisablePointerAddresses: true,
-	DisableCapacities:       true,
-	DisableMethods:          true,
-	DisablePointerMethods:   true,
-	ContinueOnMethod:        true,
-	SortKeys:                true,
-}
-
 func createAllIndexes(
 	ctx context.Context,
+	network indexes.Network,
 	tmpDir string,
 	carPath string,
 	indexDir string,
-) (*IndexPaths, error) {
+) (*IndexPaths, uint64, error) {
 	// Check if the CAR file exists:
 	exists, err := fileExists(carPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to check if CAR file exists: %w", err)
+		return nil, 0, fmt.Errorf("failed to check if CAR file exists: %w", err)
 	}
 	if !exists {
-		return nil, fmt.Errorf("CAR file %q does not exist", carPath)
+		return nil, 0, fmt.Errorf("CAR file %q does not exist", carPath)
 	}
 
 	carFile, err := os.Open(carPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open car file: %w", err)
+		return nil, 0, fmt.Errorf("failed to open car file: %w", err)
 	}
 	defer carFile.Close()
 
 	rd, err := newCarReader(carFile)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create car reader: %w", err)
+		return nil, 0, fmt.Errorf("failed to create car reader: %w", err)
 	}
 	// check it has 1 root
 	if len(rd.header.Roots) != 1 {
-		return nil, fmt.Errorf("car file must have exactly 1 root, but has %d", len(rd.header.Roots))
+		return nil, 0, fmt.Errorf("car file must have exactly 1 root, but has %d", len(rd.header.Roots))
 	}
 	// print roots:
 	for _, root := range rd.header.Roots {
@@ -131,16 +150,16 @@ func createAllIndexes(
 	rootCID := rd.header.Roots[0]
 
 	klog.Infof("Getting car file size")
-	targetFileSize, err := getFileSize(carPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get car file size: %w", err)
-	}
 
 	klog.Infof("Counting items in car file...")
-	numItems, err := carCountItemsByFirstByte(carPath)
+	numItems, epochObject, err := carCountItemsByFirstByte(carPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to count items in car file: %w", err)
+		return nil, 0, fmt.Errorf("failed to count items in car file: %w", err)
 	}
+	if epochObject == nil {
+		return nil, 0, fmt.Errorf("failed to find epoch object in the car file")
+	}
+	fmt.Println()
 	klog.Infof("Found items in car file:")
 	numTotalItems := uint64(0)
 	var kinds []byte
@@ -153,45 +172,51 @@ func createAllIndexes(
 	}
 	klog.Infof("Total: %s items", humanize.Comma(int64(numTotalItems)))
 
-	cid_to_offset, err := NewBuilder_CidToOffset(
+	epoch := uint64(epochObject.Epoch)
+	klog.Infof("This CAR file is for epoch %d and cluster %s", epoch, network)
+
+	cid_to_offset_and_size, err := NewBuilder_CidToOffset(
+		epoch,
+		rootCID,
+		network,
 		tmpDir,
-		indexDir,
 		numTotalItems,
-		targetFileSize,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create cid_to_offset index: %w", err)
+		return nil, 0, fmt.Errorf("failed to create cid_to_offset_and_size index: %w", err)
 	}
-	defer cid_to_offset.Close()
+	defer cid_to_offset_and_size.Close()
 
 	slot_to_cid, err := NewBuilder_SlotToCid(
+		epoch,
+		rootCID,
+		network,
 		tmpDir,
-		indexDir,
 		numItems[byte(iplddecoders.KindBlock)],
-		targetFileSize,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create slot_to_cid index: %w", err)
+		return nil, 0, fmt.Errorf("failed to create slot_to_cid index: %w", err)
 	}
 	defer slot_to_cid.Close()
 
 	sig_to_cid, err := NewBuilder_SignatureToCid(
+		epoch,
+		rootCID,
+		network,
 		tmpDir,
-		indexDir,
 		numItems[byte(iplddecoders.KindTransaction)],
-		targetFileSize,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create sig_to_cid index: %w", err)
+		return nil, 0, fmt.Errorf("failed to create sig_to_cid index: %w", err)
 	}
 	defer sig_to_cid.Close()
 
-	sigExistsFilepath := formatSigExistsIndexFilePath(indexDir, carPath, rootCID.String())
+	sigExistsFilepath := formatSigExistsIndexFilePath(indexDir, epoch, rootCID, network)
 	sig_exists, err := bucketteer.NewWriter(
 		sigExistsFilepath,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create sig_exists index: %w", err)
+		return nil, 0, fmt.Errorf("failed to create sig_exists index: %w", err)
 	}
 	defer sig_exists.Close()
 
@@ -199,7 +224,7 @@ func createAllIndexes(
 	{
 		var buf bytes.Buffer
 		if err = carv1.WriteHeader(rd.header, &buf); err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		totalOffset = uint64(buf.Len())
 	}
@@ -209,20 +234,22 @@ func createAllIndexes(
 	numIndexedTransactions := uint64(0)
 	lastCheckpoint := time.Now()
 	klog.Infof("Indexing...")
+	var eta time.Duration
+	startedAt := time.Now()
 	for {
 		_cid, sectionLength, block, err := rd.NextNode()
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				break
 			}
-			return nil, err
+			return nil, 0, err
 		}
 
 		// klog.Infof("key: %s, offset: %d", bin.FormatByteSlice(c.Bytes()), totalOffset)
 
-		err = cid_to_offset.Put(_cid, totalOffset)
+		err = cid_to_offset_and_size.Put(_cid, totalOffset, sectionLength)
 		if err != nil {
-			return nil, fmt.Errorf("failed to index cid to offset: %w", err)
+			return nil, 0, fmt.Errorf("failed to index cid to offset: %w", err)
 		}
 		numIndexedOffsets++
 
@@ -232,12 +259,12 @@ func createAllIndexes(
 			{
 				block, err := iplddecoders.DecodeBlock(block.RawData())
 				if err != nil {
-					return nil, fmt.Errorf("failed to decode block: %w", err)
+					return nil, 0, fmt.Errorf("failed to decode block: %w", err)
 				}
 
 				err = slot_to_cid.Put(uint64(block.Slot), _cid)
 				if err != nil {
-					return nil, fmt.Errorf("failed to index slot to cid: %w", err)
+					return nil, 0, fmt.Errorf("failed to index slot to cid: %w", err)
 				}
 				numIndexedBlocks++
 			}
@@ -245,17 +272,17 @@ func createAllIndexes(
 			{
 				txNode, err := iplddecoders.DecodeTransaction(block.RawData())
 				if err != nil {
-					return nil, fmt.Errorf("failed to decode transaction: %w", err)
+					return nil, 0, fmt.Errorf("failed to decode transaction: %w", err)
 				}
 
 				sig, err := readFirstSignature(txNode.Data.Bytes())
 				if err != nil {
-					return nil, fmt.Errorf("failed to read signature: %w", err)
+					return nil, 0, fmt.Errorf("failed to read signature: %w", err)
 				}
 
 				err = sig_to_cid.Put(sig, _cid)
 				if err != nil {
-					return nil, fmt.Errorf("failed to index signature to cid: %w", err)
+					return nil, 0, fmt.Errorf("failed to index signature to cid: %w", err)
 				}
 
 				sig_exists.Put(sig)
@@ -266,25 +293,35 @@ func createAllIndexes(
 
 		totalOffset += sectionLength
 
-		if numIndexedOffsets%100_000 == 0 {
-			printToStderr(".")
-		}
-		if numIndexedOffsets%10_000_000 == 0 {
-			timeFor10_000_000 := time.Since(lastCheckpoint)
-			howMany10_000_000 := ((numTotalItems - numIndexedOffsets) / 10_000_000) + 1
-			eta := timeFor10_000_000 * time.Duration(howMany10_000_000)
-
-			printToStderr(
-				"\n" + greenBackground(
-					fmt.Sprintf(" %s (%s) ",
-						humanize.Comma(int64(numIndexedOffsets)),
-						time.Since(lastCheckpoint),
-					),
-				) + "ETA: " + eta.String() + "\n",
-			)
+		if numIndexedOffsets%1_000_000 == 0 && numIndexedOffsets > 0 {
+			timeForChunk := time.Since(lastCheckpoint)
+			numChunksLeft := ((numTotalItems - numIndexedOffsets) / 1_000_000) + 1
+			eta = timeForChunk * time.Duration(numChunksLeft)
 			lastCheckpoint = time.Now()
 		}
+		if numIndexedOffsets%100_000 == 0 {
+			var etaString string
+			if eta > 0 {
+				etaString = fmt.Sprintf(" ETA: %s   ", eta.Truncate(time.Second).String())
+			} else {
+				etaString = ", ETA: ---   "
+			}
+			printToStderr(
+				fmt.Sprintf("\rIndexing: %s/%s items [%s%%] %s",
+					humanize.Comma(int64(numIndexedOffsets)),
+					humanize.Comma(int64(numTotalItems)),
+					humanize.CommafWithDigits(float64(numIndexedOffsets)/float64(numTotalItems)*100, 2),
+					etaString,
+				),
+			)
+		}
 	}
+	printToStderr(
+		fmt.Sprintf("\rIndexed %s items in %s                           \n",
+			humanize.Comma(int64(numIndexedOffsets)),
+			time.Since(startedAt).Truncate(time.Second),
+		),
+	)
 	printToStderr("\n")
 	klog.Infof(
 		"Indexed %s offsets, %s blocks, %s transactions",
@@ -293,55 +330,73 @@ func createAllIndexes(
 		humanize.Comma(int64(numIndexedTransactions)),
 	)
 
-	klog.Infof("Preparing to seal indexes...")
+	klog.Infof("Preparing to seal indexes (DO NOT EXIT)...")
 
 	paths := &IndexPaths{}
 	paths.SignatureExists = sigExistsFilepath
 
-	klog.Infof("Root CID: %s", rootCID)
-
 	{
+		wg := new(errgroup.Group)
+
 		// seal the indexes
-		{
-			klog.Infof("Sealing cid_to_offset index...")
-			paths.CidToOffset, err = cid_to_offset.Seal(ctx, carPath, rootCID)
+		wg.Go(func() error {
+			klog.Infof("Sealing cid_to_offset_and_size index...")
+			err = cid_to_offset_and_size.Seal(ctx, indexDir)
 			if err != nil {
-				return nil, fmt.Errorf("failed to seal cid_to_offset index: %w", err)
+				return fmt.Errorf("failed to seal cid_to_offset_and_size index: %w", err)
 			}
-			klog.Infof("Successfully sealed cid_to_offset index: %s", paths.CidToOffset)
-		}
+			paths.CidToOffsetAndSize = cid_to_offset_and_size.GetFilepath()
+			klog.Infof("Successfully sealed cid_to_offset_and_size index: %s", paths.CidToOffsetAndSize)
+			return nil
+		})
 
-		{
+		wg.Go(func() error {
 			klog.Infof("Sealing slot_to_cid index...")
-			paths.SlotToCid, err = slot_to_cid.Seal(ctx, carPath, rootCID)
+			err = slot_to_cid.Seal(ctx, indexDir)
 			if err != nil {
-				return nil, fmt.Errorf("failed to seal slot_to_cid index: %w", err)
+				return fmt.Errorf("failed to seal slot_to_cid index: %w", err)
 			}
+			paths.SlotToCid = slot_to_cid.GetFilepath()
 			klog.Infof("Successfully sealed slot_to_cid index: %s", paths.SlotToCid)
-		}
+			return nil
+		})
 
-		{
+		wg.Go(func() error {
 			klog.Infof("Sealing sig_to_cid index...")
-			paths.SignatureToCid, err = sig_to_cid.Seal(ctx, carPath, rootCID)
+			err = sig_to_cid.Seal(ctx, indexDir)
 			if err != nil {
-				return nil, fmt.Errorf("failed to seal sig_to_cid index: %w", err)
+				return fmt.Errorf("failed to seal sig_to_cid index: %w", err)
 			}
+			paths.SignatureToCid = sig_to_cid.GetFilepath()
 			klog.Infof("Successfully sealed sig_to_cid index: %s", paths.SignatureToCid)
-		}
+			return nil
+		})
 
-		{
+		wg.Go(func() error {
 			klog.Infof("Sealing sig_exists index...")
-			meta := map[string]string{
-				"root_cid": rootCID.String(),
+			meta := indexmeta.Meta{}
+			if err := meta.AddUint64(indexmeta.MetadataKey_Epoch, epoch); err != nil {
+				return fmt.Errorf("failed to add epoch to sig_exists index metadata: %w", err)
+			}
+			if err := meta.AddCid(indexmeta.MetadataKey_RootCid, rootCID); err != nil {
+				return fmt.Errorf("failed to add root cid to sig_exists index metadata: %w", err)
+			}
+			if err := meta.AddString(indexmeta.MetadataKey_Network, string(network)); err != nil {
+				return fmt.Errorf("failed to add network to sig_exists index metadata: %w", err)
 			}
 			if _, err = sig_exists.Seal(meta); err != nil {
-				return nil, fmt.Errorf("failed to seal sig_exists index: %w", err)
+				return fmt.Errorf("failed to seal sig_exists index: %w", err)
 			}
 			klog.Infof("Successfully sealed sig_exists index: %s", paths.SignatureExists)
+			return nil
+		})
+
+		if err := wg.Wait(); err != nil {
+			return nil, 0, err
 		}
 	}
 
-	return paths, nil
+	return paths, numTotalItems, nil
 }
 
 func greenBackground(s string) string {
@@ -353,188 +408,111 @@ func blackText(s string) string {
 }
 
 type IndexPaths struct {
-	CidToOffset     string
-	SlotToCid       string
-	SignatureToCid  string
-	SignatureExists string
+	CidToOffsetAndSize string
+	SlotToCid          string
+	SignatureToCid     string
+	SignatureExists    string
 }
 
-type Builder_CidToOffset struct {
-	tmpDir   string
-	indexDir string
-	carPath  string
-	index    *compactindex.Builder
+// IndexPaths.String
+func (p *IndexPaths) String() string {
+	var builder bytes.Buffer
+	builder.WriteString("  cid_to_offset_and_size:\n    uri: ")
+	builder.WriteString(quoteSingle(p.CidToOffsetAndSize))
+	builder.WriteString("\n")
+	builder.WriteString("  slot_to_cid:\n    uri: ")
+	builder.WriteString(quoteSingle(p.SlotToCid))
+	builder.WriteString("\n")
+	builder.WriteString("  sig_to_cid:\n    uri: ")
+	builder.WriteString(quoteSingle(p.SignatureToCid))
+	builder.WriteString("\n")
+	builder.WriteString("  sig_exists:\n    uri: ")
+	builder.WriteString(quoteSingle(p.SignatureExists))
+	builder.WriteString("\n")
+	return builder.String()
+}
+
+func quoteSingle(s string) string {
+	return fmt.Sprintf("'%s'", s)
 }
 
 func NewBuilder_CidToOffset(
+	epoch uint64,
+	rootCid cid.Cid,
+	network indexes.Network,
 	tmpDir string,
-	indexDir string,
 	numItems uint64,
-	targetFileSize uint64,
-) (*Builder_CidToOffset, error) {
+) (*indexes.CidToOffsetAndSize_Writer, error) {
 	tmpDir = filepath.Join(tmpDir, "index-cid-to-offset-"+time.Now().Format("20060102-150405.000000000")+fmt.Sprintf("-%d", rand.Int63()))
 	if err := os.MkdirAll(tmpDir, 0o755); err != nil {
-		return nil, fmt.Errorf("failed to create cid_to_offset tmp dir: %w", err)
+		return nil, fmt.Errorf("failed to create cid_to_offset_and_size tmp dir: %w", err)
 	}
-	index, err := compactindex.NewBuilder(
+	index, err := indexes.NewWriter_CidToOffsetAndSize(
+		epoch,
+		rootCid,
+		network,
 		tmpDir,
-		uint(numItems),
-		(targetFileSize),
+		numItems,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create cid_to_offset index: %w", err)
+		return nil, fmt.Errorf("failed to create cid-to-offset-and-size index: %w", err)
 	}
-	return &Builder_CidToOffset{
-		tmpDir:   tmpDir,
-		indexDir: indexDir,
-		index:    index,
-	}, nil
-}
-
-func (b *Builder_CidToOffset) Put(c cid.Cid, offset uint64) error {
-	return b.index.Insert(c.Bytes(), offset)
-}
-
-func (b *Builder_CidToOffset) Close() error {
-	return b.index.Close()
-}
-
-func (b *Builder_CidToOffset) Seal(ctx context.Context, carPath string, rootCid cid.Cid) (string, error) {
-	indexFilePath := filepath.Join(b.indexDir, fmt.Sprintf("%s.%s.cid-to-offset.index", filepath.Base(carPath), rootCid.String()))
-	klog.Infof("Creating cid_to_offset index file at %s", indexFilePath)
-	targetFile, err := os.Create(indexFilePath)
-	if err != nil {
-		return "", fmt.Errorf("failed to create cid_to_offset index file: %w", err)
-	}
-	defer targetFile.Close()
-
-	klog.Infof("Sealing cid_to_offset index...")
-	if err = b.index.Seal(ctx, targetFile); err != nil {
-		return "", fmt.Errorf("failed to seal cid_to_offset index: %w", err)
-	}
-	return indexFilePath, nil
-}
-
-type Builder_SignatureToCid struct {
-	tmpDir   string
-	indexDir string
-	carPath  string
-	index    *compactindex36.Builder
+	return index, nil
 }
 
 func NewBuilder_SignatureToCid(
+	epoch uint64,
+	rootCid cid.Cid,
+	network indexes.Network,
 	tmpDir string,
-	indexDir string,
 	numItems uint64,
-	targetFileSize uint64,
-) (*Builder_SignatureToCid, error) {
+) (*indexes.SigToCid_Writer, error) {
 	tmpDir = filepath.Join(tmpDir, "index-sig-to-cid-"+time.Now().Format("20060102-150405.000000000")+fmt.Sprintf("-%d", rand.Int63()))
 	if err := os.MkdirAll(tmpDir, 0o755); err != nil {
 		return nil, fmt.Errorf("failed to create sig_to_cid tmp dir: %w", err)
 	}
-	index, err := compactindex36.NewBuilder(
+	index, err := indexes.NewWriter_SigToCid(
+		epoch,
+		rootCid,
+		network,
 		tmpDir,
-		uint(numItems),
-		(targetFileSize),
+		numItems,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create sig_to_cid index: %w", err)
 	}
-	return &Builder_SignatureToCid{
-		tmpDir:   tmpDir,
-		indexDir: indexDir,
-		index:    index,
-	}, nil
-}
-
-func (b *Builder_SignatureToCid) Put(signature solana.Signature, cid cid.Cid) error {
-	var buf [36]byte
-	copy(buf[:], cid.Bytes()[:36])
-	return b.index.Insert(signature[:], buf)
-}
-
-func (b *Builder_SignatureToCid) Close() error {
-	return b.index.Close()
-}
-
-func (b *Builder_SignatureToCid) Seal(ctx context.Context, carPath string, rootCid cid.Cid) (string, error) {
-	indexFilePath := filepath.Join(b.indexDir, fmt.Sprintf("%s.%s.sig-to-cid.index", filepath.Base(carPath), rootCid.String()))
-	klog.Infof("Creating sig_to_cid index file at %s", indexFilePath)
-	targetFile, err := os.Create(indexFilePath)
-	if err != nil {
-		return "", fmt.Errorf("failed to create sig_to_cid index file: %w", err)
-	}
-	defer targetFile.Close()
-
-	klog.Infof("Sealing sig_to_cid index...")
-	if err = b.index.Seal(ctx, targetFile); err != nil {
-		return "", fmt.Errorf("failed to seal sig_to_cid index: %w", err)
-	}
-	return indexFilePath, nil
-}
-
-type Builder_SlotToCid struct {
-	tmpDir   string
-	indexDir string
-	carPath  string
-	index    *compactindex36.Builder
+	return index, nil
 }
 
 func NewBuilder_SlotToCid(
+	epoch uint64,
+	rootCid cid.Cid,
+	network indexes.Network,
 	tmpDir string,
-	indexDir string,
 	numItems uint64,
-	targetFileSize uint64,
-) (*Builder_SlotToCid, error) {
+) (*indexes.SlotToCid_Writer, error) {
 	tmpDir = filepath.Join(tmpDir, "index-slot-to-cid-"+time.Now().Format("20060102-150405.000000000")+fmt.Sprintf("-%d", rand.Int63()))
 	if err := os.MkdirAll(tmpDir, 0o755); err != nil {
 		return nil, fmt.Errorf("failed to create slot_to_cid tmp dir: %w", err)
 	}
-	index, err := compactindex36.NewBuilder(
+	index, err := indexes.NewWriter_SlotToCid(
+		epoch,
+		rootCid,
+		network,
 		tmpDir,
-		uint(numItems),
-		(targetFileSize),
+		numItems,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create slot_to_cid index: %w", err)
 	}
-	return &Builder_SlotToCid{
-		tmpDir:   tmpDir,
-		indexDir: indexDir,
-		index:    index,
-	}, nil
-}
-
-func (b *Builder_SlotToCid) Put(slot uint64, cid cid.Cid) error {
-	var buf [36]byte
-	copy(buf[:], cid.Bytes()[:36])
-	return b.index.Insert(uint64ToLeBytes(slot), buf)
-}
-
-func (b *Builder_SlotToCid) Close() error {
-	return b.index.Close()
-}
-
-func (b *Builder_SlotToCid) Seal(ctx context.Context, carPath string, rootCid cid.Cid) (string, error) {
-	indexFilePath := filepath.Join(b.indexDir, fmt.Sprintf("%s.%s.slot-to-cid.index", filepath.Base(carPath), rootCid.String()))
-	klog.Infof("Creating slot_to_cid index file at %s", indexFilePath)
-	targetFile, err := os.Create(indexFilePath)
-	if err != nil {
-		return "", fmt.Errorf("failed to create slot_to_cid index file: %w", err)
-	}
-	defer targetFile.Close()
-
-	klog.Infof("Sealing index...")
-	if err = b.index.Seal(ctx, targetFile); err != nil {
-		return "", fmt.Errorf("failed to seal slot_to_cid index: %w", err)
-	}
-	return indexFilePath, nil
+	return index, nil
 }
 
 func verifyAllIndexes(
 	ctx context.Context,
 	carPath string,
 	indexes *IndexPaths,
+	numTotalItems uint64,
 ) error {
 	// Check if the CAR file exists:
 	exists, err := fileExists(carPath)
@@ -560,13 +538,13 @@ func verifyAllIndexes(
 		return fmt.Errorf("car file must have exactly 1 root, but has %d", len(rd.header.Roots))
 	}
 
-	cid_to_offset, err := OpenIndex_CidToOffset(
-		indexes.CidToOffset,
+	cid_to_offset_and_size, err := OpenIndex_CidToOffset(
+		indexes.CidToOffsetAndSize,
 	)
 	if err != nil {
-		return fmt.Errorf("failed to open cid_to_offset index: %w", err)
+		return fmt.Errorf("failed to open cid_to_offset_and_size index: %w", err)
 	}
-	defer cid_to_offset.Close()
+	defer cid_to_offset_and_size.Close()
 
 	slot_to_cid, err := OpenIndex_SlotToCid(
 		indexes.SlotToCid,
@@ -609,6 +587,8 @@ func verifyAllIndexes(
 	numIndexedTransactions := uint64(0)
 	klog.Infof("Verifying indexes...")
 	lastCheckpoint := time.Now()
+	var eta time.Duration
+	startedAt := time.Now()
 	for {
 		_cid, sectionLength, block, err := rd.NextNode()
 		if err != nil {
@@ -620,12 +600,15 @@ func verifyAllIndexes(
 
 		// klog.Infof("key: %s, offset: %d", bin.FormatByteSlice(c.Bytes()), totalOffset)
 
-		offset, err := cid_to_offset.Get(_cid)
+		offset, err := cid_to_offset_and_size.Get(_cid)
 		if err != nil {
 			return fmt.Errorf("failed to lookup offset for %s: %w", _cid, err)
 		}
-		if offset != totalOffset {
+		if offset.Offset != totalOffset {
 			return fmt.Errorf("offset mismatch for %s: %d != %d", _cid, offset, totalOffset)
+		}
+		if offset.Size != sectionLength {
+			return fmt.Errorf("length mismatch for %s: %d != %d", _cid, offset, sectionLength)
 		}
 
 		numIndexedOffsets++
@@ -681,136 +664,76 @@ func verifyAllIndexes(
 
 		totalOffset += sectionLength
 
-		if numIndexedOffsets%100_000 == 0 {
-			printToStderr(".")
-		}
-		if numIndexedOffsets%1_000_000 == 0 {
-			printToStderr(
-				"\n" + greenBackground(
-					fmt.Sprintf(" %s (%s) ",
-						humanize.Comma(int64(numIndexedOffsets)),
-						time.Since(lastCheckpoint),
-					),
-				) + "\n",
-			)
+		if numIndexedOffsets%1_000_000 == 0 && numIndexedOffsets > 0 && numTotalItems > 0 {
+			timeForChunk := time.Since(lastCheckpoint)
+			numChunksLeft := ((numTotalItems - numIndexedOffsets) / 1_000_000) + 1
+			eta = timeForChunk * time.Duration(numChunksLeft)
 			lastCheckpoint = time.Now()
 		}
+		if numIndexedOffsets%100_000 == 0 {
+			if numTotalItems > 0 {
+				var etaString string
+				if eta > 0 {
+					etaString = fmt.Sprintf(", ETA: %s   ", eta.Truncate(time.Second).String())
+				} else {
+					etaString = ", ETA: ---   "
+				}
+				printToStderr(
+					fmt.Sprintf("\rVerifying index: %s/%s items [%s%%] %s",
+						humanize.Comma(int64(numIndexedOffsets)),
+						humanize.Comma(int64(numTotalItems)),
+						humanize.CommafWithDigits(float64(numIndexedOffsets)/float64(numTotalItems)*100, 2),
+						etaString,
+					),
+				)
+			} else {
+				printToStderr(
+					fmt.Sprintf("\rVerifying index: %s items",
+						humanize.Comma(int64(numIndexedOffsets)),
+					),
+				)
+			}
+		}
 	}
-	printToStderr("\n")
-	klog.Infof(
-		"Verified %s offsets, %s blocks, %s transactions",
-		humanize.Comma(int64(numIndexedOffsets)),
-		humanize.Comma(int64(numIndexedBlocks)),
-		humanize.Comma(int64(numIndexedTransactions)),
-	)
+
+	printToStderr(
+		fmt.Sprintf(
+			"\rVerified %s offsets, %s blocks, %s transactions in %s\n",
+			humanize.Comma(int64(numIndexedOffsets)),
+			humanize.Comma(int64(numIndexedBlocks)),
+			humanize.Comma(int64(numIndexedTransactions)),
+			time.Since(startedAt).Truncate(time.Second),
+		))
 
 	return nil
 }
 
-type Index_CidToOffset struct {
-	file *os.File
-	db   *compactindex.DB
-}
-
 func OpenIndex_CidToOffset(
 	indexFilePath string,
-) (*Index_CidToOffset, error) {
-	indexFile, err := os.Open(indexFilePath)
+) (*indexes.CidToOffsetAndSize_Reader, error) {
+	index, err := indexes.Open_CidToOffsetAndSize(indexFilePath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open index file: %w", err)
+		return nil, fmt.Errorf("failed to open cid_to_offset_and_size index: %w", err)
 	}
-
-	index, err := compactindex.Open(indexFile)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open index: %w", err)
-	}
-
-	return &Index_CidToOffset{
-		file: indexFile,
-		db:   index,
-	}, nil
-}
-
-func (i *Index_CidToOffset) Get(cid_ cid.Cid) (uint64, error) {
-	offset, err := findOffsetFromCid(i.db, cid_)
-	if err != nil {
-		return 0, fmt.Errorf("failed to lookup offset for %s: %w", cid_, err)
-	}
-	return offset, nil
-}
-
-func (i *Index_CidToOffset) Close() error {
-	return i.file.Close()
-}
-
-type Index_SlotToCid struct {
-	file *os.File
-	db   *compactindex36.DB
+	return index, nil
 }
 
 func OpenIndex_SlotToCid(
 	indexFilePath string,
-) (*Index_SlotToCid, error) {
-	indexFile, err := os.Open(indexFilePath)
+) (*indexes.SlotToCid_Reader, error) {
+	index, err := indexes.Open_SlotToCid(indexFilePath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open index file: %w", err)
+		return nil, fmt.Errorf("failed to open slot_to_cid index: %w", err)
 	}
-
-	index, err := compactindex36.Open(indexFile)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open index: %w", err)
-	}
-
-	return &Index_SlotToCid{
-		file: indexFile,
-		db:   index,
-	}, nil
-}
-
-func (i *Index_SlotToCid) Get(slot uint64) (cid.Cid, error) {
-	cid_, err := findCidFromSlot(i.db, slot)
-	if err != nil {
-		return cid.Undef, fmt.Errorf("failed to lookup cid for slot %d: %w", slot, err)
-	}
-	return cid_, nil
-}
-
-func (i *Index_SlotToCid) Close() error {
-	return i.file.Close()
-}
-
-type Index_SigToCid struct {
-	file *os.File
-	db   *compactindex36.DB
+	return index, nil
 }
 
 func OpenIndex_SigToCid(
 	indexFilePath string,
-) (*Index_SigToCid, error) {
-	indexFile, err := os.Open(indexFilePath)
+) (*indexes.SigToCid_Reader, error) {
+	index, err := indexes.Open_SigToCid(indexFilePath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open index file: %w", err)
+		return nil, fmt.Errorf("failed to open sig_to_cid index: %w", err)
 	}
-
-	index, err := compactindex36.Open(indexFile)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open index: %w", err)
-	}
-
-	return &Index_SigToCid{
-		file: indexFile,
-		db:   index,
-	}, nil
-}
-
-func (i *Index_SigToCid) Get(sig solana.Signature) (cid.Cid, error) {
-	cid_, err := findCidFromSignature(i.db, sig)
-	if err != nil {
-		return cid.Undef, fmt.Errorf("failed to lookup cid for sig %x: %w", sig, err)
-	}
-	return cid_, nil
-}
-
-func (i *Index_SigToCid) Close() error {
-	return i.file.Close()
+	return index, nil
 }

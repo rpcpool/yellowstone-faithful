@@ -12,7 +12,14 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 )
 
+const ConfigVersion = 1
+
 type URI string
+
+// String() returns the URI as a string.
+func (u URI) String() string {
+	return string(u)
+}
 
 // IsZero returns true if the URI is empty.
 func (u URI) IsZero() bool {
@@ -93,13 +100,27 @@ func hashFileSha256(filePath string) (string, error) {
 	return fmt.Sprintf("%x", h.Sum(nil)), nil
 }
 
+type PieceURLInfo struct {
+	URI URI `json:"uri" yaml:"uri"` // URL to the piece.
+}
+
 type Config struct {
 	originalFilepath string
 	hashOfConfigFile string
 	Epoch            *uint64 `json:"epoch" yaml:"epoch"`
+	Version          *uint64 `json:"version" yaml:"version"`
 	Data             struct {
 		Car *struct {
-			URI URI `json:"uri" yaml:"uri"`
+			URI        URI `json:"uri" yaml:"uri"`
+			FromPieces *struct {
+				Metadata struct {
+					URI URI `json:"uri" yaml:"uri"` // Local path to the metadata file.
+				} `json:"metadata" yaml:"metadata"`
+				Deals struct {
+					URI URI `json:"uri" yaml:"uri"` // Local path to the deals file.
+				} `json:"deals" yaml:"deals"`
+				PieceToURI map[cid.Cid]PieceURLInfo `json:"piece_to_uri" yaml:"piece_to_uri"` // Map of piece CID to URL.
+			} `json:"from_pieces" yaml:"from_pieces"`
 		} `json:"car" yaml:"car"`
 		Filecoin *struct {
 			// Enable enables Filecoin mode. If false, or if this section is not present, CAR mode is used.
@@ -109,9 +130,12 @@ type Config struct {
 		} `json:"filecoin" yaml:"filecoin"`
 	} `json:"data" yaml:"data"`
 	Indexes struct {
+		CidToOffsetAndSize struct {
+			URI URI `json:"uri" yaml:"uri"`
+		} `json:"cid_to_offset_and_size" yaml:"cid_to_offset_and_size"` // Latest index version. Includes offset and size.
 		CidToOffset struct {
 			URI URI `json:"uri" yaml:"uri"`
-		} `json:"cid_to_offset" yaml:"cid_to_offset"`
+		} `json:"cid_to_offset" yaml:"cid_to_offset"` // Legacy	index, deprecated. Only includes offset.
 		SlotToCid struct {
 			URI URI `json:"uri" yaml:"uri"`
 		} `json:"slot_to_cid" yaml:"slot_to_cid"`
@@ -128,6 +152,12 @@ type Config struct {
 	Genesis struct {
 		URI URI `json:"uri" yaml:"uri"`
 	} `json:"genesis" yaml:"genesis"`
+}
+
+// IsDeprecatedIndexes returns true if the config is using the deprecated indexes version.
+func (c *Config) IsDeprecatedIndexes() bool {
+	// CidToOffsetAndSize is not set and CidToOffset is set.
+	return c.Indexes.CidToOffsetAndSize.URI.IsZero() && !c.Indexes.CidToOffset.URI.IsZero()
 }
 
 func (c *Config) ConfigFilepath() string {
@@ -154,6 +184,14 @@ func (c *Config) IsSameHashAsFile(filepath string) bool {
 // This means that the data is going to be fetched from Filecoin directly (by CID).
 func (c *Config) IsFilecoinMode() bool {
 	return c.Data.Filecoin != nil && c.Data.Filecoin.Enable
+}
+
+func (c *Config) IsCarFromPieces() bool {
+	if c.Data.Car == nil || c.Data.Car.FromPieces == nil {
+		return false
+	}
+	fromPieces := c.Data.Car.FromPieces
+	return !fromPieces.Metadata.URI.IsZero() && (!fromPieces.Deals.URI.IsZero() || len(fromPieces.PieceToURI) > 0)
 }
 
 type ConfigSlice []*Config
@@ -202,6 +240,12 @@ func (c *Config) Validate() error {
 	if c.Epoch == nil {
 		return fmt.Errorf("epoch must be set")
 	}
+	if c.Version == nil {
+		return fmt.Errorf("version must be set")
+	}
+	if *c.Version != ConfigVersion {
+		return fmt.Errorf("version must be %d", ConfigVersion)
+	}
 	// Distinguish between CAR-mode and Filecoin-mode.
 	// In CAR-mode, the data is fetched from a CAR file (local or remote).
 	// In Filecoin-mode, the data is fetched from Filecoin directly (by CID via Lassie).
@@ -211,17 +255,70 @@ func (c *Config) Validate() error {
 		if c.Data.Car == nil {
 			return fmt.Errorf("car-mode=true; data.car must be set")
 		}
-		if c.Data.Car.URI.IsZero() {
-			return fmt.Errorf("data.car.uri must be set")
+		if c.Data.Car.URI.IsZero() && c.Data.Car.FromPieces == nil {
+			return fmt.Errorf("data.car.uri or data.car.from_pieces must be set")
 		}
-		if err := isSupportedURI(c.Data.Car.URI, "data.car.uri"); err != nil {
-			return err
+		if !c.Data.Car.URI.IsZero() {
+			if err := isSupportedURI(c.Data.Car.URI, "data.car.uri"); err != nil {
+				return err
+			}
 		}
-		if c.Indexes.CidToOffset.URI.IsZero() {
-			return fmt.Errorf("indexes.cid_to_offset.uri must be set")
+		// can't have both:
+		if !c.Data.Car.URI.IsZero() && c.Data.Car.FromPieces != nil {
+			return fmt.Errorf("data.car.uri and data.car.from_pieces cannot both be set")
 		}
-		if err := isSupportedURI(c.Indexes.CidToOffset.URI, "indexes.cid_to_offset.uri"); err != nil {
-			return err
+		if c.Data.Car.FromPieces != nil {
+			{
+				if c.Data.Car.FromPieces.Metadata.URI.IsZero() {
+					return fmt.Errorf("data.car.from_pieces.metadata.uri must be set")
+				}
+				if !c.Data.Car.FromPieces.Metadata.URI.IsLocal() {
+					return fmt.Errorf("data.car.from_pieces.metadata.uri must be a local file")
+				}
+			}
+			{
+				if c.Data.Car.FromPieces.Deals.URI.IsZero() && len(c.Data.Car.FromPieces.PieceToURI) == 0 {
+					return fmt.Errorf("data.car.from_pieces.deals.uri or data.car.from_pieces.piece_to_uri must be set")
+				}
+				if !c.Data.Car.FromPieces.Deals.URI.IsZero() && len(c.Data.Car.FromPieces.PieceToURI) > 0 {
+					return fmt.Errorf("data.car.from_pieces.deals.uri and data.car.from_pieces.piece_to_uri cannot both be set")
+				}
+				if !c.Data.Car.FromPieces.Deals.URI.IsZero() && !c.Data.Car.FromPieces.Deals.URI.IsLocal() {
+					return fmt.Errorf("data.car.from_pieces.deals.uri must be a local file")
+				}
+				if len(c.Data.Car.FromPieces.PieceToURI) > 0 {
+					for pieceCID, uri := range c.Data.Car.FromPieces.PieceToURI {
+						if !pieceCID.Defined() {
+							return fmt.Errorf("data.car.from_pieces.piece_to_uri[%s] must be a valid CID", pieceCID)
+						}
+						if uri.URI.IsZero() {
+							return fmt.Errorf("data.car.from_pieces.piece_to_uri[%s].uri must be set", pieceCID)
+						}
+						if !uri.URI.IsRemoteWeb() {
+							return fmt.Errorf("data.car.from_pieces.piece_to_uri[%s].uri must be a remote web URI", pieceCID)
+						}
+					}
+				}
+			}
+		}
+		// CidToOffsetAndSize and CidToOffset cannot be both set or both unset.
+		if !c.Indexes.CidToOffsetAndSize.URI.IsZero() && !c.Indexes.CidToOffset.URI.IsZero() {
+			return fmt.Errorf("indexes.cid_to_offset_and_size.uri and indexes.cid_to_offset.uri cannot both be set")
+		}
+		if c.Indexes.CidToOffsetAndSize.URI.IsZero() && c.Indexes.CidToOffset.URI.IsZero() {
+			return fmt.Errorf("indexes.cid_to_offset_and_size.uri and indexes.cid_to_offset.uri cannot both be unset")
+		}
+		// validate CidToOffsetAndSize URI:
+		if !c.Indexes.CidToOffsetAndSize.URI.IsZero() {
+			if err := isSupportedURI(c.Indexes.CidToOffsetAndSize.URI, "indexes.cid_to_offset_and_size.uri"); err != nil {
+				return err
+			}
+		}
+		// validate CidToOffset URI:
+		if !c.Indexes.CidToOffset.URI.IsZero() {
+			if err := isSupportedURI(c.Indexes.CidToOffset.URI, "indexes.cid_to_offset.uri"); err != nil {
+				return err
+			}
 		}
 	} else {
 		if c.Data.Filecoin == nil {
@@ -231,7 +328,6 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("data.filecoin.root_cid must be set")
 		}
 		// validate providers:
-
 		for providerIndex, provider := range c.Data.Filecoin.Providers {
 			if provider == "" {
 				return fmt.Errorf("data.filecoin.providers must not be empty")
@@ -273,11 +369,23 @@ func (c *Config) Validate() error {
 	{
 		// check that the URIs are valid
 		if isCarMode {
-			if !c.Data.Car.URI.IsValid() {
-				return fmt.Errorf("data.car.uri is invalid")
+			if !c.Indexes.CidToOffsetAndSize.URI.IsZero() && !c.Indexes.CidToOffsetAndSize.URI.IsValid() {
+				return fmt.Errorf("indexes.cid_to_offset_and_size.uri is invalid")
 			}
-			if !c.Indexes.CidToOffset.URI.IsValid() {
+			if !c.Indexes.CidToOffset.URI.IsZero() && !c.Indexes.CidToOffset.URI.IsValid() {
 				return fmt.Errorf("indexes.cid_to_offset.uri is invalid")
+			}
+			if c.Data.Car.FromPieces != nil {
+				if !c.Data.Car.FromPieces.Metadata.URI.IsValid() {
+					return fmt.Errorf("data.car.from_pieces.metadata.uri is invalid")
+				}
+				if !c.Data.Car.FromPieces.Deals.URI.IsZero() && !c.Data.Car.FromPieces.Deals.URI.IsValid() {
+					return fmt.Errorf("data.car.from_pieces.deals.uri is invalid")
+				}
+			} else {
+				if !c.Data.Car.URI.IsValid() {
+					return fmt.Errorf("data.car.uri is invalid")
+				}
 			}
 		}
 		if !c.Indexes.SlotToCid.URI.IsValid() {

@@ -5,17 +5,23 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/rpcpool/yellowstone-faithful/indexes"
 	"github.com/urfave/cli/v2"
 	"k8s.io/klog/v2"
 )
 
 func newCmd_Index_sig2cid() *cli.Command {
 	var verify bool
+	var epoch uint64
+	var network indexes.Network
 	return &cli.Command{
 		Name:        "sig-to-cid",
 		Description: "Given a CAR file containing a Solana epoch, create an index of the file that maps transaction signatures to CIDs.",
 		ArgsUsage:   "<car-path> <index-dir>",
 		Before: func(c *cli.Context) error {
+			if network == "" {
+				network = indexes.NetworkMainnet
+			}
 			return nil
 		},
 		Flags: []cli.Flag{
@@ -28,6 +34,23 @@ func newCmd_Index_sig2cid() *cli.Command {
 				Name:  "tmp-dir",
 				Usage: "temporary directory to use for storing intermediate files",
 				Value: "",
+			},
+			&cli.Uint64Flag{
+				Name:        "epoch",
+				Usage:       "the epoch of the CAR file",
+				Destination: &epoch,
+				Required:    true,
+			},
+			&cli.StringFlag{
+				Name:  "network",
+				Usage: "the cluster of the epoch; one of: mainnet, testnet, devnet",
+				Action: func(c *cli.Context, s string) error {
+					network = indexes.Network(s)
+					if !indexes.IsValidNetwork(network) {
+						return fmt.Errorf("invalid network: %q", network)
+					}
+					return nil
+				},
 			},
 		},
 		Subcommands: []*cli.Command{},
@@ -50,6 +73,8 @@ func newCmd_Index_sig2cid() *cli.Command {
 				klog.Infof("Creating Sig-to-CID index for %s", carPath)
 				indexFilepath, err := CreateIndex_sig2cid(
 					context.TODO(),
+					epoch,
+					network,
 					tmpDir,
 					carPath,
 					indexDir,

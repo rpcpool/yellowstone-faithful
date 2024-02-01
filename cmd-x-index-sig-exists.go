@@ -16,9 +16,12 @@ import (
 	"github.com/davecgh/go-spew/spew"
 	"github.com/dustin/go-humanize"
 	"github.com/gagliardetto/solana-go"
+	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-libipfs/blocks"
 	"github.com/ipld/go-car"
 	"github.com/rpcpool/yellowstone-faithful/bucketteer"
+	"github.com/rpcpool/yellowstone-faithful/indexes"
+	"github.com/rpcpool/yellowstone-faithful/indexmeta"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
 	"github.com/rpcpool/yellowstone-faithful/readahead"
 	concurrently "github.com/tejzpr/ordered-concurrently/v3"
@@ -28,11 +31,16 @@ import (
 
 func newCmd_Index_sigExists() *cli.Command {
 	var verify bool
+	var epoch uint64
+	var network indexes.Network
 	return &cli.Command{
 		Name:        "sig-exists",
 		Description: "Create sig-exists index from a CAR file",
 		ArgsUsage:   "<car-path> <index-dir>",
 		Before: func(c *cli.Context) error {
+			if network == "" {
+				network = indexes.NetworkMainnet
+			}
 			return nil
 		},
 		Flags: []cli.Flag{
@@ -52,6 +60,23 @@ func newCmd_Index_sigExists() *cli.Command {
 				Name:        "verify",
 				Usage:       "verify the index after creating it",
 				Destination: &verify,
+			},
+			&cli.Uint64Flag{
+				Name:        "epoch",
+				Usage:       "epoch",
+				Destination: &epoch,
+				Required:    true,
+			},
+			&cli.StringFlag{
+				Name:        "network",
+				Usage:       "network",
+				Destination: (*string)(&network),
+				Action: func(c *cli.Context, v string) error {
+					if !indexes.IsValidNetwork(indexes.Network(v)) {
+						return fmt.Errorf("invalid network: %s", v)
+					}
+					return nil
+				},
 			},
 		},
 		Action: func(c *cli.Context) error {
@@ -98,7 +123,7 @@ func newCmd_Index_sigExists() *cli.Command {
 			}
 
 			klog.Infof("Creating sig-exists index for %s", carPath)
-			indexFilePath := formatSigExistsIndexFilePath(indexDir, carPath, rootCID.String())
+			indexFilePath := formatSigExistsIndexFilePath(indexDir, epoch, rootCID, network)
 			index, err := bucketteer.NewWriter(
 				indexFilePath,
 			)
@@ -204,11 +229,17 @@ func newCmd_Index_sigExists() *cli.Command {
 
 			klog.Info("Sealing index...")
 			sealingStartedAt := time.Now()
-			_, err = index.Seal(
-				map[string]string{
-					"root_cid": rootCID.String(),
-				},
-			)
+			meta := indexmeta.Meta{}
+			if err := meta.AddUint64(indexmeta.MetadataKey_Epoch, epoch); err != nil {
+				return fmt.Errorf("failed to add epoch to sig_exists index metadata: %w", err)
+			}
+			if err := meta.AddCid(indexmeta.MetadataKey_RootCid, rootCID); err != nil {
+				return fmt.Errorf("failed to add root cid to sig_exists index metadata: %w", err)
+			}
+			if err := meta.AddString(indexmeta.MetadataKey_Network, string(network)); err != nil {
+				return fmt.Errorf("failed to add network to sig_exists index metadata: %w", err)
+			}
+			_, err = index.Seal(meta)
 			if err != nil {
 				return fmt.Errorf("error while sealing index: %w", err)
 			}
@@ -234,8 +265,21 @@ func newCmd_Index_sigExists() *cli.Command {
 	}
 }
 
-func formatSigExistsIndexFilePath(indexDir string, carPath string, rootCID string) string {
-	return filepath.Join(indexDir, fmt.Sprintf("%s.%s.sig-exists.index", filepath.Base(carPath), rootCID))
+func formatSigExistsIndexFilePath(indexDir string, epoch uint64, rootCID cid.Cid, network indexes.Network) string {
+	return filepath.Join(
+		indexDir,
+		formatFilename_SigExists(epoch, rootCID, network),
+	)
+}
+
+func formatFilename_SigExists(epoch uint64, rootCid cid.Cid, network indexes.Network) string {
+	return fmt.Sprintf(
+		"epoch-%d-%s-%s-%s",
+		epoch,
+		rootCid.String(),
+		network,
+		"sig-exists.index",
+	)
 }
 
 var classicSpewConfig = spew.ConfigState{

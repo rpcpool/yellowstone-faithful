@@ -13,17 +13,23 @@ import (
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/dustin/go-humanize"
-	"github.com/ipfs/go-cid"
 	carv1 "github.com/ipld/go-car"
 	"github.com/ipld/go-car/util"
 	carv2 "github.com/ipld/go-car/v2"
-	"github.com/rpcpool/yellowstone-faithful/compactindex"
+	"github.com/rpcpool/yellowstone-faithful/indexes"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
 	"k8s.io/klog/v2"
 )
 
 // CreateIndex_cid2offset creates an index file that maps CIDs to offsets in the CAR file.
-func CreateIndex_cid2offset(ctx context.Context, tmpDir string, carPath string, indexDir string) (string, error) {
+func CreateIndex_cid2offset(
+	ctx context.Context,
+	epoch uint64,
+	network indexes.Network,
+	tmpDir string,
+	carPath string,
+	indexDir string,
+) (string, error) {
 	// Check if the CAR file exists:
 	exists, err := fileExists(carPath)
 	if err != nil {
@@ -66,11 +72,15 @@ func CreateIndex_cid2offset(ctx context.Context, tmpDir string, carPath string, 
 		return "", fmt.Errorf("failed to create tmp dir: %w", err)
 	}
 
+	rootCid := rd.header.Roots[0]
+
 	klog.Infof("Creating builder with %d items and target file size %d", numItems, targetFileSize)
-	c2o, err := compactindex.NewBuilder(
+	c2o, err := indexes.NewWriter_CidToOffsetAndSize(
+		epoch,
+		rootCid,
+		network,
 		tmpDir,
-		uint(numItems),
-		(targetFileSize),
+		numItems, // TODO: what if the number of real items is less than this?
 	)
 	if err != nil {
 		return "", fmt.Errorf("failed to open index store: %w", err)
@@ -97,7 +107,7 @@ func CreateIndex_cid2offset(ctx context.Context, tmpDir string, carPath string, 
 
 		// klog.Infof("key: %s, offset: %d", bin.FormatByteSlice(c.Bytes()), totalOffset)
 
-		err = c2o.Insert(c.Bytes(), uint64(totalOffset))
+		err = c2o.Put(c, totalOffset, sectionLength)
 		if err != nil {
 			return "", fmt.Errorf("failed to put cid to offset: %w", err)
 		}
@@ -110,24 +120,12 @@ func CreateIndex_cid2offset(ctx context.Context, tmpDir string, carPath string, 
 		}
 	}
 
-	rootCID := rd.header.Roots[0]
-
-	// Use the car file name and root CID to name the index file:
-	indexFilePath := filepath.Join(indexDir, fmt.Sprintf("%s.%s.cid-to-offset.index", filepath.Base(carPath), rootCID.String()))
-	// TODO: check if the index file already exists and if so, return an error (before doing all the work above)
-
-	klog.Infof("Creating index file at %s", indexFilePath)
-	targetFile, err := os.Create(indexFilePath)
-	if err != nil {
-		return "", fmt.Errorf("failed to create index file: %w", err)
-	}
-	defer targetFile.Close()
-
 	klog.Infof("Sealing index...")
-	if err = c2o.Seal(ctx, targetFile); err != nil {
+	if err = c2o.Seal(ctx, indexDir); err != nil {
 		return "", fmt.Errorf("failed to seal index: %w", err)
 	}
-	klog.Infof("Index created; %d items indexed", numItemsIndexed)
+	indexFilePath := c2o.GetFilepath()
+	klog.Infof("Index created at %s; %d items indexed", indexFilePath, numItemsIndexed)
 	return indexFilePath, nil
 }
 
@@ -168,20 +166,14 @@ func VerifyIndex_cid2offset(ctx context.Context, carPath string, indexFilePath s
 		return fmt.Errorf("car file must have exactly 1 root, but has %d", len(rd.header.Roots))
 	}
 
-	indexFile, err := os.Open(indexFilePath)
-	if err != nil {
-		return fmt.Errorf("failed to open index file: %w", err)
-	}
-	defer indexFile.Close()
-
-	c2o, err := compactindex.Open(indexFile)
+	c2o, err := indexes.Open_CidToOffsetAndSize(indexFilePath)
 	if err != nil {
 		return fmt.Errorf("failed to open index: %w", err)
 	}
 	{
 		// find root cid
 		rootCID := rd.header.Roots[0]
-		offset, err := findOffsetFromCid(c2o, rootCID)
+		offset, err := c2o.Get(rootCID)
 		if err != nil {
 			return fmt.Errorf("failed to get offset from index: %w", err)
 		}
@@ -195,7 +187,7 @@ func VerifyIndex_cid2offset(ctx context.Context, carPath string, indexFilePath s
 		if err != nil {
 			return fmt.Errorf("failed to open CAR data reader: %w", err)
 		}
-		dr.Seek(int64(offset), io.SeekStart)
+		dr.Seek(int64(offset.Offset), io.SeekStart)
 		br := bufio.NewReader(dr)
 
 		gotCid, data, err := util.ReadNode(br)
@@ -239,27 +231,18 @@ func VerifyIndex_cid2offset(ctx context.Context, carPath string, indexFilePath s
 		if numItems%100000 == 0 {
 			printToStderr(".")
 		}
-		offset, err := findOffsetFromCid(c2o, c)
+		offset, err := c2o.Get(c)
 		if err != nil {
 			return fmt.Errorf("failed to lookup offset for %s: %w", c, err)
 		}
-		if offset != totalOffset {
+		if offset.Offset != totalOffset {
 			return fmt.Errorf("offset mismatch for %s: %d != %d", c, offset, totalOffset)
+		}
+		if offset.Size != sectionLen {
+			return fmt.Errorf("length mismatch for %s: %d != %d", c, offset, sectionLen)
 		}
 
 		totalOffset += sectionLen
 	}
 	return nil
-}
-
-func findOffsetFromCid(db *compactindex.DB, c cid.Cid) (uint64, error) {
-	bucket, err := db.LookupBucket(c.Bytes())
-	if err != nil {
-		return 0, fmt.Errorf("failed to lookup bucket for %s: %w", c, err)
-	}
-	offset, err := bucket.Lookup(c.Bytes())
-	if err != nil {
-		return 0, fmt.Errorf("failed to lookup offset for %s: %w", c, err)
-	}
-	return offset, nil
 }

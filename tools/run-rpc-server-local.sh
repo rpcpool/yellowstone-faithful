@@ -26,8 +26,5 @@ fi
 EPOCH_DIR=${2:-.}
 
 set -x
-faithful-cli rpc-server-car --listen ":7999" \
-     ${EPOCH_DIR}/epoch-${EPOCH}.car \
-     ${EPOCH_DIR}/epoch-${EPOCH}.car.*.cid-to-offset.index \
-     ${EPOCH_DIR}/epoch-${EPOCH}.car.*.slot-to-cid.index \
-     ${EPOCH_DIR}/epoch-${EPOCH}.car.*.sig-to-cid.index
+faithful-cli rpc --listen ":7999" \
+     ${EPOCH_DIR}/epoch-${EPOCH}.yml

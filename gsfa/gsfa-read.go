@@ -12,6 +12,7 @@ import (
 	"github.com/rpcpool/yellowstone-faithful/gsfa/manifest"
 	"github.com/rpcpool/yellowstone-faithful/gsfa/offsetstore"
 	"github.com/rpcpool/yellowstone-faithful/gsfa/sff"
+	"github.com/rpcpool/yellowstone-faithful/indexmeta"
 )
 
 type GsfaReader struct {
@@ -67,7 +68,7 @@ func NewGsfaReader(indexRootDir string) (*GsfaReader, error) {
 		index.sff = sff
 	}
 	{
-		man, err := manifest.NewManifest(filepath.Join(indexRootDir, "manifest"))
+		man, err := manifest.NewManifest(filepath.Join(indexRootDir, "manifest"), indexmeta.Meta{})
 		if err != nil {
 			return nil, err
 		}
@@ -93,6 +94,14 @@ func (index *GsfaReader) Close() error {
 		index.ll.Close(),
 		index.sff.Close(),
 	)
+}
+
+func (index *GsfaReader) Meta() indexmeta.Meta {
+	return index.man.Meta()
+}
+
+func (index *GsfaReader) Version() uint64 {
+	return index.man.Version()
 }
 
 func (index *GsfaReader) Get(

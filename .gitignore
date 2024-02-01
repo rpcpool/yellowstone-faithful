@@ -2,3 +2,4 @@
 /bin/
 *.car
 _site
+/.cargo

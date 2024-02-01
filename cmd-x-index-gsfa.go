@@ -16,9 +16,12 @@ import (
 	"github.com/dustin/go-humanize"
 	bin "github.com/gagliardetto/binary"
 	"github.com/gagliardetto/solana-go"
+	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-libipfs/blocks"
 	"github.com/ipld/go-car"
 	"github.com/rpcpool/yellowstone-faithful/gsfa"
+	"github.com/rpcpool/yellowstone-faithful/indexes"
+	"github.com/rpcpool/yellowstone-faithful/indexmeta"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
 	"github.com/rpcpool/yellowstone-faithful/readahead"
@@ -28,11 +31,16 @@ import (
 )
 
 func newCmd_Index_gsfa() *cli.Command {
+	var epoch uint64
+	var network indexes.Network
 	return &cli.Command{
 		Name:        "gsfa",
 		Description: "Create GSFA index from a CAR file",
 		ArgsUsage:   "<car-path> <index-dir>",
 		Before: func(c *cli.Context) error {
+			if network == "" {
+				network = indexes.NetworkMainnet
+			}
 			return nil
 		},
 		Flags: []cli.Flag{
@@ -52,6 +60,23 @@ func newCmd_Index_gsfa() *cli.Command {
 				Name:  "w",
 				Usage: "number of workers",
 				Value: uint(runtime.NumCPU()) * 3,
+			},
+			&cli.Uint64Flag{
+				Name:        "epoch",
+				Usage:       "epoch",
+				Destination: &epoch,
+				Required:    true,
+			},
+			&cli.StringFlag{
+				Name:        "network",
+				Usage:       "network",
+				Destination: (*string)(&network),
+				Action: func(c *cli.Context, v string) error {
+					if !indexes.IsValidNetwork(indexes.Network(v)) {
+						return fmt.Errorf("invalid network: %s", v)
+					}
+					return nil
+				},
 			},
 		},
 		Action: func(c *cli.Context) error {
@@ -99,7 +124,11 @@ func newCmd_Index_gsfa() *cli.Command {
 			rootCID := rd.Header.Roots[0]
 
 			// Use the car file name and root CID to name the gsfa index dir:
-			gsfaIndexDir := filepath.Join(indexDir, fmt.Sprintf("%s-%s-gsfa-index", filepath.Base(carPath), rootCID.String()))
+			gsfaIndexDir := filepath.Join(indexDir, formatIndexDirname_gsfa(
+				epoch,
+				rootCID,
+				network,
+			))
 			klog.Infof("Creating gsfa index dir at %s", gsfaIndexDir)
 			err = os.Mkdir(gsfaIndexDir, 0o755)
 			if err != nil {
@@ -112,9 +141,20 @@ func newCmd_Index_gsfa() *cli.Command {
 			}
 			klog.Infof("Will flush to index every %s transactions", humanize.Comma(int64(flushEvery)))
 
+			meta := indexmeta.Meta{}
+			if err := meta.AddUint64(indexmeta.MetadataKey_Epoch, epoch); err != nil {
+				return fmt.Errorf("failed to add epoch to sig_exists index metadata: %w", err)
+			}
+			if err := meta.AddCid(indexmeta.MetadataKey_RootCid, rootCID); err != nil {
+				return fmt.Errorf("failed to add root cid to sig_exists index metadata: %w", err)
+			}
+			if err := meta.AddString(indexmeta.MetadataKey_Network, string(network)); err != nil {
+				return fmt.Errorf("failed to add network to sig_exists index metadata: %w", err)
+			}
 			accu, err := gsfa.NewGsfaWriter(
 				gsfaIndexDir,
 				flushEvery,
+				meta,
 			)
 			if err != nil {
 				return fmt.Errorf("error while opening gsfa index writer: %w", err)
@@ -222,6 +262,16 @@ func newCmd_Index_gsfa() *cli.Command {
 			return nil
 		},
 	}
+}
+
+func formatIndexDirname_gsfa(epoch uint64, rootCid cid.Cid, network indexes.Network) string {
+	return fmt.Sprintf(
+		"epoch-%d-%s-%s-%s",
+		epoch,
+		rootCid.String(),
+		network,
+		"gsfa.indexdir",
+	)
 }
 
 type TransactionWithSlot struct {

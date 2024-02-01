@@ -23,7 +23,7 @@ It can query data from multiple locations:
 
 ## Quickstart: RPC server from old-faithful.net
 
-The Quickstart RPC server is useful for testing and development. It allows you to spin up an RPC server that hosts a single epoch, either from Filecoin or from CAR files/indexes hosted locally on filesystem or on a separate HTTP endpoint. The quickstart server is available with the commands `faithful-cli rpc-server-car` and `faithful-cli rpc-server-filecoin`.  
+The Quickstart RPC server is useful for testing and development. It allows you to spin up an RPC server that hosts a single epoch, either from Filecoin or from CAR files/indexes hosted locally on filesystem or on a separate HTTP endpoint. The quickstart server is available with the commands `faithful-cli rpc`.  
 
 We are hosting data on old-faithful.net for testing and cloning purposes. This allows you to run a sample test server without downloading any data. There is a simple tool that you can run for this available from [https://github.com/rpcpool/yellowstone-faithful/tree/main/tools](https://github.com/rpcpool/yellowstone-faithful/tree/main/tools). You can run a fully remote server like this:
 

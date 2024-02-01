@@ -15,6 +15,116 @@ This repo provides the `faithful-cli` command line interface. This tool allows y
   - getBlock
   - getTransaction
   - getSignaturesForAddress
+  - getBlockTime
+  - getGenesisHash (for epoch 0)
+  - getFirstAvailableBlock
+  - getSlot
+  - getVersion
+
+## RPC server
+
+The RPC server is available via the `faithful-cli rpc` command. 
+
+The command accepts a list of [epoch config files](#epoch-configuration-files) and dirs as arguments. Each config file is specific for an epoch and provides the location of the block/transaction data and the indexes for that epoch. The indexes are used to map Solana block numbers, transaction signatures and addresses to their respective CIDs. The indexes are generated from the CAR file and can be generated via the `faithful-cli index` command (see [Index generation](#index-generation)).
+
+It supports the following flags:
+
+- `--listen`: The address to listen on, e.g. `--listen=:8888`
+- `--include`: You can specify one or more (reuse the same flag multiple times) glob patterns to include files or dirs that match them, e.g. `--include=/path/epoch-*.yml`.
+- `--exclude`: You can specify one or more (reuse the same flag multiple times) glob patterns to exclude files or dirs that match them, e.g. `--exclude=/something-*/epoch-*.yml`.
+- `--debug`: Enable debug logging.
+- `--proxy`: Proxy requests to a downstream RPC server if the data can't be found in the archive, e.g. `--proxy=/path/to/my-rpc.json`. See [RPC server proxying](#rpc-server-proxying) for more details.
+- `--gsfa-only-signatures`: When enabled, the RPC server will only return signatures for getSignaturesForAddress requests instead of the full transaction data.
+- `--watch`: When specified, all the provided epoch files and dirs will be watched for changes and the RPC server will automatically reload the data when changes are detected. Usage: `--watch` (boolean flag). This is useful when you want to provide just a folder and then add new epochs to it without having to restart the server.
+- `--epoch-load-concurrency=2`: How many epochs to load in parallel when starting the RPC server. Defaults to number of CPUs. This is useful when you have a lot of epochs and want to speed up the initial load time.
+- `--max-cache=<megabytes>`: How much memory to use for caching. Defaults to 0 (no limit). This is useful when you want to limit the memory usage of the RPC server.
+
+NOTES:
+
+- By default, the RPC server doesn't support the `jsonParsed` format. You need to build the RPC server with the `make jsonParsed-linux` flag to enable this.
+
+## Epoch configuration files
+
+To run a Faithful RPC server you need to specify configuration files for the epoch(s) you want to host. An epoch config file looks like this:
+
+```yml
+epoch: 0 # epoch number (required)
+version: 1 # version number (required)
+data: # data section (required)
+  car:
+    # Source the data from a CAR file (car-mode).
+    # The URI can be a local filepath or an HTTP url.
+    # This makes the indexes.cid_to_offset_and_size required.
+    # If you are running in filecoin-mode, you can omit the car section entirely.
+    uri: /media/runner/solana/cars/epoch-0.car
+  filecoin:
+    # filecoin-mode section: source the data directly from filecoin.
+    # If you are running in car-mode, you can omit this section.
+    # if enable=true, then the data will be sourced from filecoin.
+    # if enable=false, then the data will be sourced from a CAR file (see 'car' section above).
+    enable: false
+genesis: # genesis section (required for epoch 0 only)
+  # Local filepath to the genesis tarball.
+  # You can download the genesis tarball from
+  # wget https://api.mainnet-beta.solana.com/genesis.tar.bz2
+  uri: /media/runner/solana/genesis.tar.bz2
+indexes: # indexes section (required)
+  cid_to_offset_and_size:
+    # Required when using a CAR file; you can provide either a local filepath or a HTTP url.
+    # Not used when running in filecoin-mode.
+    uri: '/media/runner/solana/indexes/epoch-0/epoch-0-bafyreifljyxj55v6jycjf2y7tdibwwwqx75eqf5mn2thip2sswyc536zqq-mainnet-cid-to-offset-and-size.index'
+  slot_to_cid:
+    # required (always); you can provide either a local filepath or a HTTP url:
+    uri: '/media/runner/solana/indexes/epoch-0/epoch-0-bafyreifljyxj55v6jycjf2y7tdibwwwqx75eqf5mn2thip2sswyc536zqq-mainnet-slot-to-cid.index'
+  sig_to_cid:
+    # required (always); you can provide either a local filepath or a HTTP url:
+    uri: '/media/runner/solana/indexes/epoch-0/epoch-0-bafyreifljyxj55v6jycjf2y7tdibwwwqx75eqf5mn2thip2sswyc536zqq-mainnet-sig-to-cid.index'
+  sig_exists:
+    # required (always); you can provide either a local filepath or a HTTP url:
+    uri: '/media/runner/solana/indexes/epoch-0/epoch-0-bafyreifljyxj55v6jycjf2y7tdibwwwqx75eqf5mn2thip2sswyc536zqq-mainnet-sig-exists.index'
+  gsfa: # getSignaturesForAddress index
+    # optional; must be a local directory path.
+    uri: '/media/runner/solana/indexes/epoch-0/gsfa/epoch-0-bafyreifljyxj55v6jycjf2y7tdibwwwqx75eqf5mn2thip2sswyc536zqq-gsfa.indexdir'
+```
+
+NOTES:
+
+- The `uri` parameter supports both HTTP URIs as well as file based ones (where not specified otherwise).
+- If you specify an HTTP URI, you need to make sure that the url supports HTTP Range requests. S3 or similar APIs will support this.
+
+## Index generation
+
+To run the old-faithful RPC server you need to generate indexes for the CAR files. You can do this via the `faithful-cli index` command.
+
+- `faithful-cli index all <car-file> <output-dir>`: Generate all **required** indexes for a CAR file.
+- `faithful-cli index gsfa <car-file> <output-dir>`: Generate the gsfa index for a CAR file.
+
+NOTES:
+
+- You need to have the CAR file available locally.
+- The `cid_to_offset_and_size` index has an older version, which you can specify with `cid_to_offset` instead of `cid_to_offset_and_size`.
+
+Flags:
+
+- `--tmp-dir=/path/to/tmp/dir`: Where to store temporary files. Defaults to the system temp dir. (optional)
+- `--verify`: Verify the indexes after generation. (optional)
+- `--network=<network>`: Which network to use for the gsfa index. Defaults to `mainnet` (other options: `testnet`, `devnet`). (optional)
+
+## RPC server proxying
+
+The RPC server provides a proxy mode which allows it to forward traffic it can't serve to a downstream RPC server. To configure this, simply provide the command line argument `--proxy=/path/to/faithful-proxy-config.json` pointing it to a config file. The config file should look like this:
+
+```json
+{
+	"target": "https://api.mainnet-beta.solana.com",
+	"headers": {
+		"My-Header": "My-Value"
+	},
+	"proxyFailedRequests": true
+}
+```
+
+The `proxyFailedRequests` flag will make the RPC server proxy not only RPC methods that it doesn't support, but also retry requests that failed to be served from the archives (e.g. a `getBlock` request that failed to be served from the archives because that epoch is not available).
 
 ### RPC server from old-faithful.net
 
@@ -47,19 +157,15 @@ $ ../tools/download-gsfa.sh 0 ./epoch0
 
 If you have a local copy of a CAR archive and the indexes and run a RPC server servicing data from them. For example:
 
-```
-/usr/local/bin/faithful-cli rpc-server-car \
+```bash
+/usr/local/bin/faithful-cli rpc \
     --listen $PORT \
-    epoch-455.car \
-    epoch-455.car.*.cid-to-offset.index \
-    epoch-455.car.*.slot-to-cid.index \
-    epoch-455.car.*.sig-to-cid.index \
-    epoch-455.car-*-gsfa-index
+    /path/to/epoch-455.yml
 ```
 
 You can download the CAR files either via Filecoin or via the bucket provided by Triton. There are helper scripts in the `tools` folder. To download the full epoch data:
 
-```
+```bash
 $ mkdir epoch0
 $ cd epoch0
 $ ../tools/download-epoch.sh 0
@@ -68,7 +174,7 @@ $ ../tools/download-gsfa.sh 0
 ```
 
 Once files are downloaded there are also utility scripts to run the server:
-```
+```bash
 $ ./tools/run-rpc-server-local.sh 0 ./epoch0
 ```
 
@@ -80,15 +186,16 @@ The filecoin RPC server allows provide getBlock, getTransaction and getSignature
 
 You can run it in the following way:
 
-```
-faithful-cli rpc-server-filecoin -config 455.yml
+```bash
+faithful-cli rpc 455.yml
 ```
 
 The config file points faithful to the location of the required indexes (`455.yaml`):
-```
+```bash
 indexes:
   slot_to_cid: './epoch-455.car.bafyreibkequ55hyrhyk6f24ctsofzri6bjykh76jxl3zju4oazu3u3ru7y.slot-to-cid.index'
   sig_to_cid: './epoch-455.car.bafyreibkequ55hyrhyk6f24ctsofzri6bjykh76jxl3zju4oazu3u3ru7y.sig-to-cid.index'
+  sig_exists: './epoch-455.car.bafyreibkequ55hyrhyk6f24ctsofzri6bjykh76jxl3zju4oazu3u3ru7y.sig-exists.index'
   gsfa: './epoch-455.car.gsfa.index'
 ```
 
@@ -96,8 +203,8 @@ Due to latency in fetching signatures, typically the getSignaturesForAddress ind
 
 There is a mode in which you can use a remote gSFA index, which limits it to only return signatures and not additional transaction meta data. In this mode, you can use a remote gSFA index. To enable this mode run faithful-cli in the following way:
 
-```
-faithful-cli rpc-server-filecoin -config 455.yml -gsfa-only-signatures=true
+```bash
+faithful-cli rpc -gsfa-only-signatures=true 455.yml 
 ```
 
 ### Filecoin fetch via CID
@@ -110,7 +217,7 @@ The production RPC server is accessible via `faithful-cli rpc`. More documentati
 
 ### Limitations
 
-The testing server (`rpc-server-car` and `rpc-server-filecoin`) only supports single Epoch access. The production server supports handling a full set of epochs.
+The (deprecated) testing server (`rpc-server-car` and `rpc-server-filecoin`) only supports single Epoch access. The production server supports handling a full set of epochs.
 
 Filecoin retrievals without a CDN can also be slow. We are working on integration with Filecoin CDNs and other caching solutions. Fastest retrievals will happen if you service from local disk.
 
@@ -127,8 +234,8 @@ Indexes will be needed to map Solana's block numbers, transaction signatures and
  - slot-to-cid: Lookup a CID based on a slot number
  - tx-to-cid: Lookup a CID based on a transaction signature
  - gsfa: An index mapping Solana addresses to a list of singatures
- - cid-to-offset: Index for a specific CAR file, used by the local rpc server (see above) to find CIDs in a car file
- - sig-exists: An index to speed up lookups for signatures when using multiepoch support in the production server
+ - cid-to-offset-and-size: Index for a specific CAR file, used by the local rpc server (see above) to find CIDs in a car file
+ - sig-exists: An index to speed up lookups for signatures when using multiepoch support in the production server.
 
 ### Archive access
 
@@ -142,7 +249,7 @@ The data that you will need to be able to run a local RPC server is:
   1) the Epoch car file containing all the data for that epoch
   2) the slot-to-cid index for that epoch
   3) the tx-to-cid index for that epoch
-  4) the cid-to-offset index for that epoch car file
+  4) the cid-to-offset-and-size index for that epoch car file
   5) the sig-exists index for that epoch (optional, but important to speed up multiepoch fetches)
   6) Optionally (if you want to support getSignaturesForAddress): the gsfa index
 
@@ -180,7 +287,7 @@ The data generation flow is illustrated below:
 Once you have downloaded rocksdb ledger archives you can run the Radiance tool to generate a car file for an epoch. Make sure you have all the slots available in rocksdb ledger archive for the epoch. You may need to download multiple ledger snapshots in order to have a full set of slots available. Once you know you have a rocksdb that covers all the slots for the epoch run the radiance tool like follows:
 
 ```
-radiance car create2 107 --db=46223992/rocksdb --out=/storage/car/epoch-107.car
+radiance car create 107 --db=46223992/rocksdb --out=/storage/car/epoch-107.car
 ```
 
 This will produce a car file called epoch-107.car containing all the blocks and transactions for that epoch.
@@ -189,36 +296,36 @@ This will produce a car file called epoch-107.car containing all the blocks and 
 
 Once the radiance tooling has been used to prepare a car file (or if you have downloaded a car file externally) you can generate indexes from this car file by using the `faithful-cli`:
 
-```
+```bash
 NAME:
-   faithful index
+   faithful CLI index - Create various kinds of indexes for CAR files.
 
 USAGE:
-   faithful index command [command options] [arguments...]
+   faithful CLI index command [command options] [arguments...]
 
 DESCRIPTION:
    Create various kinds of indexes for CAR files.
 
 COMMANDS:
-   cid-to-offset
-   slot-to-cid
-   sig-to-cid
-   all
-   gsfa
-   sig-exists
+   cid-to-offset  
+   slot-to-cid    
+   sig-to-cid     
+   all            Create all the necessary indexes for a Solana epoch.
+   gsfa           
+   sig-exists     
    help, h        Shows a list of commands or help for one command
 
 OPTIONS:
    --help, -h  show help
 ```
 
-For example, to generate the three indexes cid-to-offset, slot-to-cid, sig-to-cid, sig-exists you would run:
+For example, to generate the three indexes cid-to-offset-and-size, slot-to-cid, sig-to-cid, sig-exists you would run:
 
-```
-faithful-cli index all epoch-107.car .
+```bash
+faithful-cli index all epoch-107.car /storage/indexes/epoch-107
 ```
 
-This would generate the indexes in the current dir for epoch-107.
+This would generate the indexes in `/storage/indexes/epoch-107` for epoch-107.
 
 ## Contributing
 

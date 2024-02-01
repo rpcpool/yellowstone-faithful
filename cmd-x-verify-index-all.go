@@ -34,11 +34,12 @@ func newCmd_VerifyIndex_all() *cli.Command {
 					context.TODO(),
 					carPath,
 					&IndexPaths{
-						CidToOffset:     indexFilePathCid2Offset,
-						SlotToCid:       indexFilePathSlot2Cid,
-						SignatureToCid:  indexFilePathSig2Cid,
-						SignatureExists: indexFilePathSigExists,
+						CidToOffsetAndSize: indexFilePathCid2Offset,
+						SlotToCid:          indexFilePathSlot2Cid,
+						SignatureToCid:     indexFilePathSig2Cid,
+						SignatureExists:    indexFilePathSigExists,
 					},
+					0,
 				)
 				if err != nil {
 					return err

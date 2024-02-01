@@ -14,6 +14,7 @@ import (
 	"github.com/rpcpool/yellowstone-faithful/gsfa/manifest"
 	"github.com/rpcpool/yellowstone-faithful/gsfa/offsetstore"
 	"github.com/rpcpool/yellowstone-faithful/gsfa/sff"
+	"github.com/rpcpool/yellowstone-faithful/indexmeta"
 	"github.com/rpcpool/yellowstone-faithful/store"
 	"k8s.io/klog"
 )
@@ -40,6 +41,7 @@ var offsetstoreOptions = []store.Option{
 func NewGsfaWriter(
 	indexRootDir string,
 	flushEveryXSigs uint64,
+	meta indexmeta.Meta,
 ) (*GsfaWriter, error) {
 	// if exists and is dir, open.
 	// if exists and is not dir, error.
@@ -94,7 +96,7 @@ func NewGsfaWriter(
 		index.sff = sff
 	}
 	{
-		man, err := manifest.NewManifest(filepath.Join(indexRootDir, "manifest"))
+		man, err := manifest.NewManifest(filepath.Join(indexRootDir, "manifest"), meta)
 		if err != nil {
 			return nil, err
 		}

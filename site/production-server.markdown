@@ -16,13 +16,14 @@ The production server is available via the `faithful-cli rpc`  command.
 
 To run a Faithful RPC server you need to specify configuration files for the epoch(s) you want to host. For multi-epoch support you need to generate epoch config files for the epochs that you want to host. An epoch config file looks like this:
 
-```
+```yml
 data:
   car:
     uri: /faithful/493/epoch-493.car
   filecoin:
     enable: false
 epoch: 493
+version: 1
 indexes:
   cid_to_offset:
     uri: /faithful/493/epoch-493.car.bafyreidlbcsg46dn5mqppioijyqb5cn6j23rkcoazl7skif74kpa3lihxa.cid-to-offset.index
@@ -38,12 +39,13 @@ The `uri` parameter supports both HTTP URIs as well as file based ones.
 
 If you want you can also run the RPC server using some (or all) epochs via Filecoin:
 
-```
+```yml
 data:
   filecoin:
     enable: true
     root_cid: bafyreigq7w4bwspbsf7j4ykov34fcf6skrn663n4ywfalgxlhp7o5nes5a
 epoch: 494
+version: 1
 indexes:
   cid_to_offset:
     uri: /faithful/494/epoch-494.car.bafyreigq7w4bwspbsf7j4ykov34fcf6skrn663n4ywfalgxlhp7o5nes5a.cid-to-offset.index

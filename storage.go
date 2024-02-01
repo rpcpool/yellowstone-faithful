@@ -3,15 +3,12 @@ package main
 import (
 	"bytes"
 	"context"
-	"encoding/binary"
-	"errors"
 	"fmt"
 	"strings"
 
 	bin "github.com/gagliardetto/binary"
 	"github.com/gagliardetto/solana-go"
 	"github.com/ipfs/go-cid"
-	"github.com/ipld/go-car/util"
 	carv2 "github.com/ipld/go-car/v2"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
@@ -93,34 +90,14 @@ func readSectionFromReaderAt(reader ReaderAtCloser, offset uint64, length uint64
 	return data, nil
 }
 
-func readNodeFromReaderAt(reader ReaderAtCloser, wantedCid cid.Cid, offset uint64) ([]byte, error) {
+func readNodeFromReaderAtWithOffsetAndSize(reader ReaderAtCloser, wantedCid cid.Cid, offset uint64, length uint64) ([]byte, error) {
 	// read MaxVarintLen64 bytes
-	lenBuf := make([]byte, binary.MaxVarintLen64)
-	_, err := reader.ReadAt(lenBuf, int64(offset))
+	section := make([]byte, length)
+	_, err := reader.ReadAt(section, int64(offset))
 	if err != nil {
 		return nil, err
 	}
-	// read uvarint
-	dataLen, n := binary.Uvarint(lenBuf)
-	offset += uint64(n)
-	if dataLen > uint64(util.MaxAllowedSectionSize) { // Don't OOM
-		return nil, errors.New("malformed car; header is bigger than util.MaxAllowedSectionSize")
-	}
-	data := make([]byte, dataLen)
-	_, err = reader.ReadAt(data, int64(offset))
-	if err != nil {
-		return nil, err
-	}
-
-	n, gotCid, err := cid.CidFromReader(bytes.NewReader(data))
-	if err != nil {
-		return nil, err
-	}
-	// verify that the CID we read matches the one we expected.
-	if !gotCid.Equals(wantedCid) {
-		return nil, fmt.Errorf("CID mismatch: expected %s, got %s", wantedCid, gotCid)
-	}
-	return data[n:], nil
+	return parseNodeFromSection(section, wantedCid)
 }
 
 type GetBlockResponse struct {

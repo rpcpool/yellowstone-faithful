@@ -10,6 +10,7 @@ import (
 	"github.com/davecgh/go-spew/spew"
 	"github.com/dustin/go-humanize"
 	"github.com/gagliardetto/solana-go"
+	"github.com/rpcpool/yellowstone-faithful/indexmeta"
 )
 
 func workerRead(indexRoot string, pubkey string, limit int) error {
@@ -75,6 +76,7 @@ func workerDemoLoad(root string, numGlobalAccounts uint64, numSigs int) error {
 	accu, err := NewGsfaWriter(
 		root,
 		500_000,
+		indexmeta.Meta{},
 	)
 	if err != nil {
 		return fmt.Errorf("error while opening accumulator: %w", err)
@@ -122,6 +124,7 @@ func worker(root string) error {
 	accu, err := NewGsfaWriter(
 		root,
 		1000000,
+		indexmeta.Meta{},
 	)
 	if err != nil {
 		return fmt.Errorf("error while opening accumulator: %w", err)

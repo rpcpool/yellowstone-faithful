@@ -1,8 +1,7 @@
 package readahead
 
 import (
-	"bytes"
-	"errors"
+	"bufio"
 	"fmt"
 	"io"
 	"os"
@@ -17,7 +16,7 @@ const DefaultChunkSize = 12 * MiB
 
 type CachingReader struct {
 	file      io.ReadCloser
-	buffer    *bytes.Buffer
+	buffer    *bufio.Reader
 	chunkSize int
 }
 
@@ -34,7 +33,7 @@ func NewCachingReader(filePath string, chunkSize int) (*CachingReader, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &CachingReader{file: file, buffer: new(bytes.Buffer), chunkSize: chunkSize}, nil
+	return &CachingReader{file: file, buffer: bufio.NewReaderSize(file, chunkSize), chunkSize: chunkSize}, nil
 }
 
 func NewCachingReaderFromReader(file io.ReadCloser, chunkSize int) (*CachingReader, error) {
@@ -42,7 +41,7 @@ func NewCachingReaderFromReader(file io.ReadCloser, chunkSize int) (*CachingRead
 		chunkSize = DefaultChunkSize
 	}
 	chunkSize = alignValueToPageSize(chunkSize)
-	return &CachingReader{file: file, buffer: new(bytes.Buffer), chunkSize: chunkSize}, nil
+	return &CachingReader{file: file, buffer: bufio.NewReaderSize(file, chunkSize), chunkSize: chunkSize}, nil
 }
 
 func alignValueToPageSize(value int) int {
@@ -57,37 +56,7 @@ func (cr *CachingReader) Read(p []byte) (int, error) {
 	if len(p) == 0 {
 		return 0, nil
 	}
-
-	if len(p) > cr.chunkSize {
-		// read what we can from the buffer
-		n := copy(p, cr.buffer.Next(cr.chunkSize))
-		// read the rest directly from the file
-		n2, err := cr.file.Read(p[n:])
-		if err != nil && err != io.EOF {
-			return 0, fmt.Errorf("failed to read from file: %w", err)
-		}
-		return n + n2, nil
-	}
-
-	// Refill the buffer if needed
-	if cr.buffer.Len() < len(p) {
-		tmp := make([]byte, cr.chunkSize)
-		n, err := cr.file.Read(tmp)
-		if err != nil && err != io.EOF {
-			return 0, fmt.Errorf("failed to read from file: %w", err)
-		}
-		if n > 0 {
-			cr.buffer.Write(tmp[:n])
-		}
-		if errors.Is(err, io.EOF) && cr.buffer.Len() == 0 {
-			// If EOF is reached and buffer is empty, return EOF
-			return 0, io.EOF
-		}
-	}
-
-	// Read and discard bytes from the buffer
-	n := copy(p, cr.buffer.Next(len(p)))
-	return n, nil
+	return cr.buffer.Read(p)
 }
 
 func (cr *CachingReader) Close() error {

@@ -7,6 +7,7 @@ import (
 func newCmd_Index() *cli.Command {
 	return &cli.Command{
 		Name:        "index",
+		Usage:       "Create various kinds of indexes for CAR files.",
 		Description: "Create various kinds of indexes for CAR files.",
 		Before: func(c *cli.Context) error {
 			return nil

@@ -5,15 +5,45 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"math"
 
 	bin "github.com/gagliardetto/binary"
+	"github.com/rpcpool/yellowstone-faithful/indexmeta"
 	"golang.org/x/exp/mmap"
 )
 
 type Reader struct {
 	contentReader  io.ReaderAt
-	meta           map[string]string
-	prefixToOffset map[[2]byte]uint64
+	meta           *indexmeta.Meta
+	prefixToOffset *bucketToOffset
+}
+
+type bucketToOffset [math.MaxUint16 + 1]uint64
+
+func newUint16Layout() bucketToOffset {
+	var layout bucketToOffset
+	for i := 0; i <= math.MaxUint16; i++ {
+		layout[i] = math.MaxUint64
+	}
+	return layout
+}
+
+func newUint16LayoutPointer() *bucketToOffset {
+	var layout bucketToOffset
+	for i := 0; i <= math.MaxUint16; i++ {
+		layout[i] = math.MaxUint64
+	}
+	return &layout
+}
+
+func prefixToUint16(prefix [2]byte) uint16 {
+	return binary.LittleEndian.Uint16(prefix[:])
+}
+
+func uint16ToPrefix(num uint16) [2]byte {
+	var prefix [2]byte
+	binary.LittleEndian.PutUint16(prefix[:], num)
+	return prefix
 }
 
 // Open opens a Bucketteer file in read-only mode,
@@ -28,7 +58,7 @@ func Open(path string) (*Reader, error) {
 
 func NewReader(reader io.ReaderAt) (*Reader, error) {
 	r := &Reader{
-		prefixToOffset: make(map[[2]byte]uint64),
+		prefixToOffset: newUint16LayoutPointer(),
 	}
 	prefixToOffset, meta, headerTotalSize, err := readHeader(reader)
 	if err != nil {
@@ -47,14 +77,8 @@ func (r *Reader) Close() error {
 	return nil
 }
 
-func (r *Reader) Meta() map[string]string {
+func (r *Reader) Meta() *indexmeta.Meta {
 	return r.meta
-}
-
-// GetMeta returns the value of the given key.
-// Returns an empty string if the key does not exist.
-func (r *Reader) GetMeta(key string) string {
-	return r.meta[key]
 }
 
 func readHeaderSize(reader io.ReaderAt) (int64, error) {
@@ -67,7 +91,7 @@ func readHeaderSize(reader io.ReaderAt) (int64, error) {
 	return headerSize, nil
 }
 
-func readHeader(reader io.ReaderAt) (map[[2]byte]uint64, map[string]string, int64, error) {
+func readHeader(reader io.ReaderAt) (*bucketToOffset, *indexmeta.Meta, int64, error) {
 	// read header size:
 	headerSize, err := readHeaderSize(reader)
 	if err != nil {
@@ -102,24 +126,11 @@ func readHeader(reader io.ReaderAt) (map[[2]byte]uint64, map[string]string, int6
 			return nil, nil, 0, fmt.Errorf("expected version %d, got %d", Version, got)
 		}
 	}
-	{
-		// read meta:
-		numMeta, err := decoder.ReadUint64(bin.LE)
-		if err != nil {
-			return nil, nil, 0, err
-		}
-		meta := make(map[string]string, numMeta)
-		for i := uint64(0); i < numMeta; i++ {
-			key, err := decoder.ReadString()
-			if err != nil {
-				return nil, nil, 0, err
-			}
-			value, err := decoder.ReadString()
-			if err != nil {
-				return nil, nil, 0, err
-			}
-			meta[key] = value
-		}
+	// read meta:
+	var meta indexmeta.Meta
+	// read key-value pairs
+	if err := meta.UnmarshalWithDecoder(decoder); err != nil {
+		return nil, nil, 0, fmt.Errorf("failed to unmarshal metadata: %w", err)
 	}
 	// numPrefixes:
 	numPrefixes, err := decoder.ReadUint64(bin.LE)
@@ -127,7 +138,7 @@ func readHeader(reader io.ReaderAt) (map[[2]byte]uint64, map[string]string, int6
 		return nil, nil, 0, err
 	}
 	// prefix -> offset:
-	prefixToOffset := make(map[[2]byte]uint64, numPrefixes)
+	prefixToOffset := newUint16Layout()
 	for i := uint64(0); i < numPrefixes; i++ {
 		var prefix [2]byte
 		_, err := decoder.Read(prefix[:])
@@ -138,19 +149,19 @@ func readHeader(reader io.ReaderAt) (map[[2]byte]uint64, map[string]string, int6
 		if err != nil {
 			return nil, nil, 0, err
 		}
-		prefixToOffset[prefix] = offset
+		prefixToOffset[prefixToUint16(prefix)] = offset
 	}
-	return prefixToOffset, nil, headerSize + 4, err
+	return &prefixToOffset, &meta, headerSize + 4, err
 }
 
 func (r *Reader) Has(sig [64]byte) (bool, error) {
 	prefix := [2]byte{sig[0], sig[1]}
-	offset, ok := r.prefixToOffset[prefix]
-	if !ok {
+	offset := r.prefixToOffset[prefixToUint16(prefix)]
+	if offset == math.MaxUint64 {
 		return false, nil
 	}
 	// numHashes:
-	numHashesBuf := make([]byte, 4)
+	numHashesBuf := make([]byte, 4) // TODO: is uint32 enough? That's 4 billion hashes per bucket. RIght now an epoch can have 1 billion signatures.
 	_, err := r.contentReader.ReadAt(numHashesBuf, int64(offset))
 	if err != nil {
 		return false, err

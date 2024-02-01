@@ -22,6 +22,12 @@ func byteSliceAsIntegerSlice(b []byte) []uint64 {
 // adaptTransactionMetaToExpectedOutput adapts the transaction meta to the expected output
 // as per what solana RPC server returns.
 func adaptTransactionMetaToExpectedOutput(m map[string]any) map[string]any {
+	{
+		_, ok := m["blockTime"]
+		if !ok {
+			m["blockTime"] = nil
+		}
+	}
 	meta, ok := m["meta"].(map[string]any)
 	if !ok {
 		return m

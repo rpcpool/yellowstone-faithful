@@ -55,10 +55,9 @@ func main() {
 			newCmd_Index(),
 			newCmd_VerifyIndex(),
 			newCmd_XTraverse(),
-			newCmd_rpcServerCar(),
-			newCmd_rpcServerFilecoin(),
 			newCmd_Version(),
 			newCmd_rpc(),
+			newCmd_check_deals(),
 		},
 	}
 

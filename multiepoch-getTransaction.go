@@ -8,16 +8,19 @@ import (
 	"time"
 
 	"github.com/gagliardetto/solana-go"
-	"github.com/rpcpool/yellowstone-faithful/bucketteer"
-	"github.com/rpcpool/yellowstone-faithful/compactindex36"
+	"github.com/rpcpool/yellowstone-faithful/compactindexsized"
 	"github.com/sourcegraph/jsonrpc2"
 	"k8s.io/klog/v2"
 )
 
-func (multi *MultiEpoch) getAllBucketteers() map[uint64]*bucketteer.Reader {
+type SigExistsIndex interface {
+	Has(sig [64]byte) (bool, error)
+}
+
+func (multi *MultiEpoch) getAllBucketteers() map[uint64]SigExistsIndex {
 	multi.mu.RLock()
 	defer multi.mu.RUnlock()
-	bucketteers := make(map[uint64]*bucketteer.Reader)
+	bucketteers := make(map[uint64]SigExistsIndex)
 	for _, epoch := range multi.epochs {
 		if epoch.sigExists != nil {
 			bucketteers[epoch.Epoch()] = epoch.sigExists
@@ -82,7 +85,7 @@ func (multi *MultiEpoch) findEpochNumberFromSignature(ctx context.Context, sig s
 	}
 	return 0, ErrNotFound
 
-	// Search all epochs in parallel:
+	// TODO: Search all epochs in parallel:
 	wg := NewFirstResponse(ctx, multi.options.EpochSearchConcurrency)
 	for i := range numbers {
 		epochNumber := numbers[i]
@@ -163,7 +166,7 @@ func (multi *MultiEpoch) handleGetTransaction(ctx context.Context, conn *request
 
 	transactionNode, err := epochHandler.GetTransaction(WithSubrapghPrefetch(ctx, true), sig)
 	if err != nil {
-		if errors.Is(err, compactindex36.ErrNotFound) {
+		if errors.Is(err, compactindexsized.ErrNotFound) {
 			// NOTE: solana just returns null here in case of transaction not found
 			return &jsonrpc2.Error{
 				Code:    CodeNotFound,
@@ -213,7 +216,7 @@ func (multi *MultiEpoch) handleGetTransaction(ctx context.Context, conn *request
 		}
 		response.Meta = meta
 
-		encodedTx, err := encodeTransactionResponseBasedOnWantedEncoding(*params.Options.Encoding, tx)
+		encodedTx, err := encodeTransactionResponseBasedOnWantedEncoding(*params.Options.Encoding, tx, meta)
 		if err != nil {
 			return &jsonrpc2.Error{
 				Code:    jsonrpc2.CodeInternalError,

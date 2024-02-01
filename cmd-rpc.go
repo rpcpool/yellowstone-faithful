@@ -11,8 +11,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/allegro/bigcache/v3"
 	"github.com/davecgh/go-spew/spew"
 	"github.com/fsnotify/fsnotify"
+	hugecache "github.com/rpcpool/yellowstone-faithful/huge-cache"
 	"github.com/ryanuber/go-glob"
 	"github.com/urfave/cli/v2"
 	"golang.org/x/sync/errgroup"
@@ -28,8 +30,10 @@ func newCmd_rpc() *cli.Command {
 	var pathForProxyForUnknownRpcMethods string
 	var epochSearchConcurrency int
 	var epochLoadConcurrency int
+	var maxCacheSizeMB int
 	return &cli.Command{
 		Name:        "rpc",
+		Usage:       "Start a Solana JSON RPC server.",
 		Description: "Provide multiple epoch config files, and start a Solana JSON RPC that exposes getTransaction, getBlock, and (optionally) getSignaturesForAddress",
 		ArgsUsage:   "<one or more config files or directories containing config files (nested is fine)>",
 		Before: func(c *cli.Context) error {
@@ -90,6 +94,12 @@ func newCmd_rpc() *cli.Command {
 				Value:       runtime.NumCPU(),
 				Destination: &epochLoadConcurrency,
 			},
+			&cli.IntFlag{
+				Name:        "max-cache",
+				Usage:       "Maximum size of the cache in MB",
+				Value:       0,
+				Destination: &maxCacheSizeMB,
+			},
 		),
 		Action: func(c *cli.Context) error {
 			src := c.Args().Slice()
@@ -104,6 +114,13 @@ func newCmd_rpc() *cli.Command {
 			klog.Infof("Found %d config files:", len(configFiles))
 			for _, configFile := range configFiles {
 				fmt.Printf("  - %s\n", configFile)
+			}
+
+			conf := bigcache.DefaultConfig(5 * time.Minute)
+			conf.HardMaxCacheSize = maxCacheSizeMB
+			allCache, err := hugecache.NewWithConfig(c.Context, conf)
+			if err != nil {
+				return fmt.Errorf("failed to create cache: %w", err)
 			}
 
 			// Load configs:
@@ -130,7 +147,7 @@ func newCmd_rpc() *cli.Command {
 			for confIndex := range configs {
 				config := configs[confIndex]
 				wg.Go(func() error {
-					epoch, err := NewEpochFromConfig(config, c)
+					epoch, err := NewEpochFromConfig(config, c, allCache)
 					if err != nil {
 						return fmt.Errorf("failed to create epoch from config %q: %s", config.ConfigFilepath(), err.Error())
 					}
@@ -225,7 +242,7 @@ func newCmd_rpc() *cli.Command {
 								klog.Errorf("error loading config file %q: %s", event.Name, err.Error())
 								return
 							}
-							epoch, err := NewEpochFromConfig(config, c)
+							epoch, err := NewEpochFromConfig(config, c, allCache)
 							if err != nil {
 								klog.Errorf("error creating epoch from config file %q: %s", event.Name, err.Error())
 								return
@@ -247,7 +264,7 @@ func newCmd_rpc() *cli.Command {
 								klog.Errorf("error loading config file %q: %s", event.Name, err.Error())
 								return
 							}
-							epoch, err := NewEpochFromConfig(config, c)
+							epoch, err := NewEpochFromConfig(config, c, allCache)
 							if err != nil {
 								klog.Errorf("error creating epoch from config file %q: %s", event.Name, err.Error())
 								return

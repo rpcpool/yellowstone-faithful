@@ -13,13 +13,21 @@ import (
 	"github.com/ipfs/go-cid"
 	carv2 "github.com/ipld/go-car/v2"
 	"github.com/rpcpool/yellowstone-faithful/bucketteer"
-	"github.com/rpcpool/yellowstone-faithful/compactindex36"
+	"github.com/rpcpool/yellowstone-faithful/indexes"
+	"github.com/rpcpool/yellowstone-faithful/indexmeta"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"k8s.io/klog/v2"
 )
 
 // CreateIndex_sig2cid creates an index file that maps transaction signatures to CIDs.
-func CreateIndex_sig2cid(ctx context.Context, tmpDir string, carPath string, indexDir string) (string, error) {
+func CreateIndex_sig2cid(
+	ctx context.Context,
+	epoch uint64,
+	network indexes.Network,
+	tmpDir string,
+	carPath string,
+	indexDir string,
+) (string, error) {
 	// Check if the CAR file exists:
 	exists, err := fileExists(carPath)
 	if err != nil {
@@ -43,6 +51,7 @@ func CreateIndex_sig2cid(ctx context.Context, tmpDir string, carPath string, ind
 	if len(roots) != 1 {
 		return "", fmt.Errorf("CAR file has %d roots, expected 1", len(roots))
 	}
+	rootCid := roots[0]
 
 	// TODO: use another way to precisely count the number of solana Blocks in the CAR file.
 	klog.Infof("Counting items in car file...")
@@ -58,15 +67,18 @@ func CreateIndex_sig2cid(ctx context.Context, tmpDir string, carPath string, ind
 	}
 
 	klog.Infof("Creating builder with %d items", numItems)
-	c2o, err := compactindex36.NewBuilder(
+
+	sig2c, err := indexes.NewWriter_SigToCid(
+		epoch,
+		rootCid,
+		network,
 		tmpDir,
-		uint(numItems), // TODO: what if the number of real items is less than this?
-		(0),
+		numItems, // TODO: what if the number of real items is less than this?
 	)
 	if err != nil {
 		return "", fmt.Errorf("failed to open index store: %w", err)
 	}
-	defer c2o.Close()
+	defer sig2c.Close()
 
 	numItemsIndexed := uint64(0)
 	klog.Infof("Indexing...")
@@ -87,10 +99,7 @@ func CreateIndex_sig2cid(ctx context.Context, tmpDir string, carPath string, ind
 				return fmt.Errorf("failed to read signature: %w", err)
 			}
 
-			var buf [36]byte
-			copy(buf[:], c.Bytes()[:36])
-
-			err = c2o.Insert(sig[:], buf)
+			err = sig2c.Put(sig, c)
 			if err != nil {
 				return fmt.Errorf("failed to put cid to offset: %w", err)
 			}
@@ -105,23 +114,12 @@ func CreateIndex_sig2cid(ctx context.Context, tmpDir string, carPath string, ind
 		return "", fmt.Errorf("failed to index; error while iterating over blocks: %w", err)
 	}
 
-	rootCID := roots[0]
-
-	// Use the car file name and root CID to name the index file:
-	indexFilePath := filepath.Join(indexDir, fmt.Sprintf("%s.%s.sig-to-cid.index", filepath.Base(carPath), rootCID.String()))
-
-	klog.Infof("Creating index file at %s", indexFilePath)
-	targetFile, err := os.Create(indexFilePath)
-	if err != nil {
-		return "", fmt.Errorf("failed to create index file: %w", err)
-	}
-	defer targetFile.Close()
-
 	klog.Infof("Sealing index...")
-	if err = c2o.Seal(ctx, targetFile); err != nil {
+	if err = sig2c.Seal(ctx, indexDir); err != nil {
 		return "", fmt.Errorf("failed to seal index: %w", err)
 	}
-	klog.Infof("Index created; %d items indexed", numItemsIndexed)
+	indexFilePath := sig2c.GetFilepath()
+	klog.Infof("Index created at %s; %d items indexed", indexFilePath, numItemsIndexed)
 	return indexFilePath, nil
 }
 
@@ -162,13 +160,7 @@ func VerifyIndex_sig2cid(ctx context.Context, carPath string, indexFilePath stri
 		return fmt.Errorf("CAR file has %d roots, expected 1", len(roots))
 	}
 
-	indexFile, err := os.Open(indexFilePath)
-	if err != nil {
-		return fmt.Errorf("failed to open index file: %w", err)
-	}
-	defer indexFile.Close()
-
-	c2o, err := compactindex36.Open(indexFile)
+	c2o, err := indexes.Open_SigToCid(indexFilePath)
 	if err != nil {
 		return fmt.Errorf("failed to open index: %w", err)
 	}
@@ -188,7 +180,7 @@ func VerifyIndex_sig2cid(ctx context.Context, carPath string, indexFilePath stri
 				return fmt.Errorf("failed to read signature: %w", err)
 			}
 
-			got, err := findCidFromSignature(c2o, sig)
+			got, err := c2o.Get(sig)
 			if err != nil {
 				return fmt.Errorf("failed to find cid from signature: %w", err)
 			}
@@ -251,13 +243,9 @@ func VerifyIndex_sigExists(ctx context.Context, carPath string, indexFilePath st
 
 	// check root_cid matches
 	rootCID := roots[0]
-	storedRootCidString := sigExists.GetMeta("root_cid")
-	if storedRootCidString == "" {
-		return fmt.Errorf("index file does not have a root_cid meta")
-	}
-	storedRootCid, err := cid.Parse(storedRootCidString)
-	if err != nil {
-		return fmt.Errorf("failed to parse stored root cid: %w", err)
+	storedRootCid, ok := sigExists.Meta().GetCid(indexmeta.MetadataKey_RootCid)
+	if !ok {
+		return fmt.Errorf("index file does not have a root cid meta")
 	}
 	if !rootCID.Equals(storedRootCid) {
 		return fmt.Errorf("root CID mismatch: expected %s, got %s", rootCID, storedRootCid)
@@ -297,25 +285,6 @@ func VerifyIndex_sigExists(ctx context.Context, carPath string, indexFilePath st
 		return fmt.Errorf("failed to verify index; error while iterating over blocks: %w", err)
 	}
 	return nil
-}
-
-func findCidFromSignature(db *compactindex36.DB, sig solana.Signature) (cid.Cid, error) {
-	bucket, err := db.LookupBucket(sig[:])
-	if err != nil {
-		return cid.Cid{}, fmt.Errorf("failed to lookup bucket for %s: %w", sig, err)
-	}
-	got, err := bucket.Lookup(sig[:])
-	if err != nil {
-		return cid.Cid{}, fmt.Errorf("failed to lookup value for %s: %w", sig, err)
-	}
-	l, c, err := cid.CidFromBytes(got[:])
-	if err != nil {
-		return cid.Cid{}, fmt.Errorf("failed to parse cid from bytes: %w", err)
-	}
-	if l != 36 {
-		return cid.Cid{}, fmt.Errorf("unexpected cid length %d", l)
-	}
-	return c, nil
 }
 
 func readFirstSignature(buf []byte) (solana.Signature, error) {

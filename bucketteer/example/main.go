@@ -10,6 +10,7 @@ import (
 	"github.com/davecgh/go-spew/spew"
 	"github.com/dustin/go-humanize"
 	"github.com/rpcpool/yellowstone-faithful/bucketteer"
+	"github.com/rpcpool/yellowstone-faithful/indexmeta"
 	"golang.org/x/exp/mmap"
 )
 
@@ -60,7 +61,7 @@ func main() {
 
 		fmt.Println("writing to file...")
 		writeStartedAt := time.Now()
-		_, err = buWr.Seal(nil)
+		_, err = buWr.Seal(indexmeta.Meta{})
 		if err != nil {
 			panic(err)
 		}
@@ -97,7 +98,7 @@ func main() {
 	}
 	if true {
 		// now search for random signatures that are not in the Bucketteer:
-		numSearches := 100_000_000
+		numSearches := 10_000_000
 		fmt.Println(
 			"testing search for random signatures that are not in the Bucketteer (numSearches:",
 			humanize.Comma(int64(numSearches)),
