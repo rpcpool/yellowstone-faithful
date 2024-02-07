@@ -1,0 +1,291 @@
+#![recursion_limit = "512"]
+
+use solana_storage_proto;
+use std::env::args;
+use std::error::Error;
+
+use std::convert::TryInto;
+use std::sync::RwLock;
+
+// geyser:
+use core::panic;
+
+use crossbeam_channel::unbounded;
+use solana_accounts_db::stake_rewards::RewardInfo;
+use solana_geyser_plugin_manager::{self};
+use solana_rpc::optimistically_confirmed_bank_tracker::SlotNotification;
+use solana_rpc::transaction_notifier_interface::TransactionNotifier;
+use solana_sdk::reward_type::RewardType;
+
+use std::{convert::TryFrom, str::FromStr};
+
+mod block;
+mod dataframe;
+mod entry;
+mod epoch;
+mod node;
+mod rewards;
+mod subset;
+mod transaction;
+mod utils;
+
+fn main() -> Result<(), Box<dyn Error>> {
+    let file_path = args().nth(1).expect("no file given");
+    let _started_at = std::time::Instant::now();
+    let mut item_index = 0;
+    {
+        let mut reader = node::NodeReader::new(file_path.clone())?;
+        let header = reader.read_raw_header()?;
+        println!("Header bytes: {:?}", header);
+
+        let geyser_config_files = &[std::path::PathBuf::from(args().nth(2).unwrap())];
+
+        let (confirmed_bank_sender, confirmed_bank_receiver) = unbounded();
+        // drop(confirmed_bank_sender);
+        let service =
+            solana_geyser_plugin_manager::geyser_plugin_service::GeyserPluginService::new(
+                confirmed_bank_receiver,
+                geyser_config_files,
+            )
+            .unwrap_or_else(|err| panic!("Failed to create GeyserPluginService, error: {:?}", err));
+
+        let transaction_notifier = service
+            .get_transaction_notifier()
+            .ok_or_else(|| panic!("Failed to get transaction notifier from GeyserPluginService"))
+            .unwrap();
+
+        let entry_notifier_maybe = service.get_entry_notifier();
+        if entry_notifier_maybe.is_some() {
+            println!("Entry notifications enabled")
+        } else {
+            println!("None of the plugins have enabled entry notifications")
+        }
+
+        let block_meta_notifier_maybe = service.get_block_metadata_notifier();
+
+        let mut todo_previous_blockhash = solana_sdk::hash::Hash::default();
+        let mut todo_latest_entry_blockhash = solana_sdk::hash::Hash::default();
+        loop {
+            let nodes = reader.read_until_block()?;
+            // println!("Nodes: {:?}", nodes.get_cids());
+            let block = nodes.get_block()?;
+            println!("Slot: {:?}", block.slot);
+            // println!("Raw node: {:?}", raw_node);
+            let mut entry_index: usize = 0;
+            let mut this_block_executed_transaction_count: u64 = 0;
+            let mut this_block_entry_count: u64 = 0;
+            let mut this_block_rewards: solana_storage_proto::convert::generated::Rewards =
+                solana_storage_proto::convert::generated::Rewards::default();
+            nodes.each(|node_with_cid| -> Result<(), Box<dyn Error>> {
+                item_index += 1;
+                let node = node_with_cid.get_node();
+
+                match node {
+                    node::Node::Transaction(transaction) => {
+                        let parsed = transaction.as_parsed()?;
+
+                        {
+                            let reassembled_metadata =
+                                nodes.reassemble_dataframes(transaction.metadata.clone())?;
+
+                            let decompressed = utils::decompress_zstd(reassembled_metadata.clone())?;
+
+                            let metadata: solana_storage_proto::convert::generated::TransactionStatusMeta =
+                                prost::Message::decode(decompressed.as_slice()).or_else(|err| {
+                                    Err(Box::new(std::io::Error::new(
+                                        std::io::ErrorKind::Other,
+                                        std::format!("Error decoding metadata: {:?}", err),
+                                    )))
+                                })?;
+
+
+                            let as_native_metadata: solana_transaction_status::TransactionStatusMeta =
+                                metadata.try_into()?;
+
+                           {
+                                // TODO: use a real address loader
+                                let dummy_address_loader = MessageAddressLoader::new(solana_sdk::pubkey::Pubkey::default());
+                                let sanitized_tx= match  parsed.version() {
+                                    solana_sdk::transaction::TransactionVersion::Number(_)=> {
+                                        let message_hash = parsed.verify_and_hash_message()?;
+                                        let versioned_sanitized_tx= solana_sdk::transaction::SanitizedVersionedTransaction::try_from(parsed)?;
+                                        solana_sdk::transaction::SanitizedTransaction::try_new(
+                                            versioned_sanitized_tx,
+                                            message_hash,
+                                            false,
+                                            dummy_address_loader,
+                                        )
+                                    },
+                                    solana_sdk::transaction::TransactionVersion::Legacy(_legacy)=> {
+                                        solana_sdk::transaction::SanitizedTransaction::try_from_legacy_transaction(
+                                            parsed.into_legacy_transaction().unwrap() ,
+                                        )
+                                    },
+                                    _ => {
+                                        panic!("___ not supported version");
+                                    }
+                                };
+                                if sanitized_tx.is_err() {
+                                    panic!(
+                                        "Failed to create SanitizedTransaction, error: {:?}",
+                                        sanitized_tx.err()
+                                    );
+                                }
+                                let sanitized_tx = sanitized_tx.unwrap();
+
+                                transaction_notifier
+                                        .try_write()
+                                        .unwrap()
+                                        .notify_transaction(
+                                            block.slot,
+                                            transaction.index.unwrap() as usize,
+                                            sanitized_tx.signature(),
+                                            &as_native_metadata,
+                                            &sanitized_tx,
+                                        );
+                            }
+                        }
+
+                        // if parsed.version()
+                        //     == solana_sdk::transaction::TransactionVersion::Number(0)
+                        // {
+                        //     return Ok(());
+                        // }
+                    }
+                    node::Node::Entry(_entry) => {
+                        todo_latest_entry_blockhash = solana_sdk::hash::Hash::from(_entry.hash.to_bytes());
+                        this_block_executed_transaction_count += _entry.transactions.len() as u64;
+                        this_block_entry_count += 1;
+                        if entry_notifier_maybe.is_none() {
+                            return Ok(());
+                        }
+                        let entry_notifier = entry_notifier_maybe.as_ref().unwrap();
+                        // println!("___ Entry: {:?}", entry);
+                        let entry_summary=solana_entry::entry::EntrySummary {
+                            num_hashes: _entry.num_hashes,
+                            hash: solana_sdk::hash::Hash::from(_entry.hash.to_bytes()),
+                            num_transactions: _entry.transactions.len() as u64,
+                        };
+
+                        entry_notifier
+                            .try_write()
+                            .unwrap()
+                            .notify_entry(block.slot, entry_index  ,&entry_summary);
+                        entry_index+=1;
+                    }
+                    node::Node::Block(_block) => {
+                        // println!("___ Block: {:?}", block);
+                        let notification = SlotNotification::Root((block.slot, block.meta.parent_slot));
+                        confirmed_bank_sender.send(notification).unwrap();
+
+                        {
+                            if block_meta_notifier_maybe.is_none() {
+                                return Ok(());
+                            }
+                            let  rewards = RwLock::new(vec![]);
+                            {
+                                // convert this_block_rewards to rewards
+                                for this_block_reward in this_block_rewards.rewards.iter() {
+                                    let reward: RewardInfo = RewardInfo{
+                                        reward_type: match this_block_reward.reward_type {
+                                            0 => RewardType::Fee,
+                                            1 => RewardType::Rent,
+                                            2 => RewardType::Staking,
+                                            3 => RewardType::Voting,
+                                            _ => panic!("___ not supported reward type"),
+                                        },
+                                        lamports: this_block_reward.lamports,
+                                        post_balance: this_block_reward.post_balance,
+                                        // commission is Option<u8> , but this_block_reward.commission is string
+                                        commission: match this_block_reward.commission.parse::<u8>() {
+                                            Ok(commission) => Some(commission),
+                                            Err(_err) => None,
+                                        },
+                                    };
+                                    rewards.write().unwrap().push((solana_sdk::pubkey::Pubkey::from_str(&this_block_reward.pubkey)?, reward.into()));
+                                }
+                            }
+                            // if rewards.read().unwrap().len() > 0 {
+                            //  panic!("___ Rewards: {:?}", rewards.read().unwrap());
+                            // }
+                            let block_meta_notifier = block_meta_notifier_maybe.as_ref().unwrap();
+                            block_meta_notifier
+                                .try_write()
+                                .unwrap()
+                                .notify_block_metadata(
+                                     block.meta.parent_slot,
+                                     todo_previous_blockhash.to_string().as_str(),
+                                    block.slot,
+                                    todo_latest_entry_blockhash.to_string().as_str(),
+                                    &rewards,
+                                    Some(block.meta.blocktime as i64) ,
+                                    block.meta.block_height,
+                                    this_block_executed_transaction_count,
+                                    this_block_entry_count,
+                                );
+                        }
+                        todo_previous_blockhash = todo_latest_entry_blockhash;
+                    }
+                    node::Node::Subset(_subset) => {
+                        // println!("___ Subset: {:?}", subset);
+                    }
+                    node::Node::Epoch(epoch) => {
+                        println!("___ Epoch: {:?}", epoch);
+                    }
+                    node::Node::Rewards(rewards) => {
+                        println!("___ Rewards: {:?}", node_with_cid.get_cid());
+                        // println!("___ Next items: {:?}", rewards.data.next);
+
+                        if !rewards.is_complete() && false {
+                            let reassembled = nodes.reassemble_dataframes(rewards.data.clone())?;
+                            println!("___ reassembled: {:?}", reassembled.len());
+
+                            let decompressed = utils::decompress_zstd(reassembled)?;
+
+                            this_block_rewards= prost::Message::decode(decompressed.as_slice()).or_else(|err| {
+                                    Err(Box::new(std::io::Error::new(
+                                        std::io::ErrorKind::Other,
+                                        std::format!("Error decoding rewards: {:?}", err),
+                                    )))
+                                })?;
+                        }
+                    }
+                    node::Node::DataFrame(_) => {
+                        println!("___ DataFrame: {:?}", node_with_cid.get_cid());
+                    }
+                }
+                return Ok(());
+            })?;
+        }
+    }
+}
+
+pub struct MessageAddressLoader {
+    pub address: solana_sdk::pubkey::Pubkey,
+}
+
+impl MessageAddressLoader {
+    pub fn new(address: solana_sdk::pubkey::Pubkey) -> Self {
+        MessageAddressLoader { address }
+    }
+}
+
+impl solana_sdk::message::AddressLoader for MessageAddressLoader {
+    fn load_addresses(
+        self,
+        _lookups: &[solana_sdk::message::v0::MessageAddressTableLookup],
+    ) -> Result<solana_sdk::message::v0::LoadedAddresses, solana_sdk::message::AddressLoaderError>
+    {
+        let loaded_addresses = solana_sdk::message::v0::LoadedAddresses::default();
+        Ok(loaded_addresses)
+    }
+}
+
+// implement clone for MessageAddressLoader
+impl Clone for MessageAddressLoader {
+    fn clone(&self) -> Self {
+        MessageAddressLoader {
+            address: self.address,
+        }
+    }
+}
