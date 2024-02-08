@@ -44,7 +44,10 @@ func main() {
 		Version:     gitCommitSHA,
 		Description: "CLI to get, manage and interact with the Solana blockchain data stored in a CAR file or on Filecoin/IPFS.",
 		Flags:       NewKlogFlagSet(),
-		Action:      nil,
+		Before: func(cctx *cli.Context) error {
+			return nil
+		},
+		Action: nil,
 		Commands: []*cli.Command{
 			newCmd_DumpCar(),
 			fetchCmd,

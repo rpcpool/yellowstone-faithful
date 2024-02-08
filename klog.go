@@ -12,6 +12,10 @@ func NewKlogFlagSet() []cli.Flag {
 	fs := flag.NewFlagSet("klog", flag.PanicOnError)
 	klog.InitFlags(fs)
 
+	fs.Set("v", "2")
+	fs.Set("log_file_max_size", "1800")
+	fs.Set("logtostderr", "true")
+
 	return []cli.Flag{
 		// "log_dir", "", "If non-empty, write log files in this directory (no effect when -logtostderr=true)")
 		&cli.StringFlag{
@@ -73,10 +77,10 @@ func NewKlogFlagSet() []cli.Flag {
 		},
 		// "v", "number for the log level verbosity")
 		&cli.IntFlag{
-			Name:        "v",
-			Usage:       "number for the log level verbosity",
-			EnvVars:     []string{"FAITHFUL_V"},
-			DefaultText: "3",
+			Name:    "v",
+			Usage:   "number for the log level verbosity",
+			EnvVars: []string{"FAITHFUL_V"},
+			Value:   2,
 			Action: func(cctx *cli.Context, v int) error {
 				fs.Set("v", fmt.Sprint(v))
 				return nil

@@ -128,7 +128,7 @@ The `proxyFailedRequests` flag will make the RPC server proxy not only RPC metho
 
 ### Log Levels
 
-You can set the desired log verbosity level by using the `-v` flag. The levels are from 0 to 5, where 0 is the least verbose and 5 is the most verbose. The default level is 3.
+You can set the desired log verbosity level by using the `-v` flag. The levels are from 0 to 5, where 0 is the least verbose and 5 is the most verbose. The default level is 2.
 
 Example:
 
