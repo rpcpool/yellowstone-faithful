@@ -72,20 +72,22 @@ func loadFromYAML(configFilepath string, dst any) error {
 }
 
 type timer struct {
+	reqID string
 	start time.Time
 	prev  time.Time
 }
 
-func newTimer() *timer {
+func newTimer(reqID string) *timer {
 	now := time.Now()
 	return &timer{
+		reqID: reqID,
 		start: now,
 		prev:  now,
 	}
 }
 
 func (t *timer) time(name string) {
-	klog.V(2).Infof("TIMED: %s: %s (overall %s)", name, time.Since(t.prev), time.Since(t.start))
+	klog.V(4).Infof("[%s]: %q: %s (overall %s)", t.reqID, name, time.Since(t.prev), time.Since(t.start))
 	t.prev = time.Now()
 }
 

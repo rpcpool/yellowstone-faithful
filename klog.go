@@ -9,7 +9,7 @@ import (
 )
 
 func NewKlogFlagSet() []cli.Flag {
-	fs := flag.NewFlagSet("", flag.PanicOnError)
+	fs := flag.NewFlagSet("klog", flag.PanicOnError)
 	klog.InitFlags(fs)
 
 	return []cli.Flag{
@@ -39,9 +39,10 @@ func NewKlogFlagSet() []cli.Flag {
 		},
 		// "log_file_max_size", 1800,
 		&cli.Uint64Flag{
-			Name:    "log_file_max_size",
-			Usage:   "Defines the maximum size a log file can grow to (no effect when -logtostderr=true). Unit is megabytes. If the value is 0, the maximum file size is unlimited.",
-			EnvVars: []string{"FAITHFUL_LOG_FILE_MAX_SIZE"},
+			Name:        "log_file_max_size",
+			Usage:       "Defines the maximum size a log file can grow to (no effect when -logtostderr=true). Unit is megabytes. If the value is 0, the maximum file size is unlimited.",
+			EnvVars:     []string{"FAITHFUL_LOG_FILE_MAX_SIZE"},
+			DefaultText: "1800",
 			Action: func(cctx *cli.Context, v uint64) error {
 				fs.Set("log_file_max_size", fmt.Sprint(v))
 				return nil
@@ -50,9 +51,10 @@ func NewKlogFlagSet() []cli.Flag {
 
 		// "logtostderr", true, "log to standard error instead of files")
 		&cli.BoolFlag{
-			Name:    "logtostderr",
-			Usage:   "log to standard error instead of files",
-			EnvVars: []string{"FAITHFUL_LOGTOSTDERR"},
+			Name:        "logtostderr",
+			Usage:       "log to standard error instead of files",
+			EnvVars:     []string{"FAITHFUL_LOGTOSTDERR"},
+			DefaultText: "true",
 			Action: func(cctx *cli.Context, v bool) error {
 				fs.Set("logtostderr", fmt.Sprint(v))
 				return nil
@@ -60,9 +62,10 @@ func NewKlogFlagSet() []cli.Flag {
 		},
 		// "alsologtostderr", false, "log to standard error as well as files (no effect when -logtostderr=true)")
 		&cli.BoolFlag{
-			Name:    "alsologtostderr",
-			Usage:   "log to standard error as well as files (no effect when -logtostderr=true)",
-			EnvVars: []string{"FAITHFUL_ALSOLOGTOSTDERR"},
+			Name:        "alsologtostderr",
+			Usage:       "log to standard error as well as files (no effect when -logtostderr=true)",
+			EnvVars:     []string{"FAITHFUL_ALSOLOGTOSTDERR"},
+			DefaultText: "false",
 			Action: func(cctx *cli.Context, v bool) error {
 				fs.Set("alsologtostderr", fmt.Sprint(v))
 				return nil
@@ -70,9 +73,10 @@ func NewKlogFlagSet() []cli.Flag {
 		},
 		// "v", "number for the log level verbosity")
 		&cli.IntFlag{
-			Name:    "v",
-			Usage:   "number for the log level verbosity",
-			EnvVars: []string{"FAITHFUL_V"},
+			Name:        "v",
+			Usage:       "number for the log level verbosity",
+			EnvVars:     []string{"FAITHFUL_V"},
+			DefaultText: "3",
 			Action: func(cctx *cli.Context, v int) error {
 				fs.Set("v", fmt.Sprint(v))
 				return nil
@@ -125,7 +129,9 @@ func NewKlogFlagSet() []cli.Flag {
 			Usage:   "logs at or above this threshold go to stderr when writing to files and stderr (no effect when -logtostderr=true or -alsologtostderr=false)",
 			EnvVars: []string{"FAITHFUL_STDERRTHRESHOLD"},
 			Action: func(cctx *cli.Context, v string) error {
-				fs.Set("stderrthreshold", v)
+				if v != "" {
+					fs.Set("stderrthreshold", v)
+				}
 				return nil
 			},
 		},
@@ -135,7 +141,9 @@ func NewKlogFlagSet() []cli.Flag {
 			Usage:   "comma-separated list of pattern=N settings for file-filtered logging",
 			EnvVars: []string{"FAITHFUL_VMODULE"},
 			Action: func(cctx *cli.Context, v string) error {
-				fs.Set("vmodule", v)
+				if v != "" {
+					fs.Set("vmodule", v)
+				}
 				return nil
 			},
 		},
@@ -145,7 +153,9 @@ func NewKlogFlagSet() []cli.Flag {
 			Usage:   "when logging hits line file:N, emit a stack trace",
 			EnvVars: []string{"FAITHFUL_LOG_BACKTRACE_AT"},
 			Action: func(cctx *cli.Context, v string) error {
-				fs.Set("log_backtrace_at", v)
+				if v != "" {
+					fs.Set("log_backtrace_at", v)
+				}
 				return nil
 			},
 		},

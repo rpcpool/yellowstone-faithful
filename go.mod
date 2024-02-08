@@ -16,7 +16,7 @@ require (
 	github.com/gagliardetto/binary v0.7.8
 	github.com/gagliardetto/solana-go v1.8.4
 	github.com/golang/protobuf v1.5.3 // indirect
-	github.com/google/uuid v1.3.0
+	github.com/google/uuid v1.6.0
 	github.com/hannahhoward/go-pubsub v1.0.0 // indirect
 	github.com/ipfs/go-blockservice v0.5.0 // indirect
 	github.com/ipfs/go-cid v0.4.1

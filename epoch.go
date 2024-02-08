@@ -301,7 +301,7 @@ func NewEpochFromConfig(
 						if !ok {
 							return nil, fmt.Errorf("failed to find miner for piece CID %s", piece.CommP)
 						}
-						klog.V(2).Infof("piece CID %s is stored on miner %s", piece.CommP, minerID)
+						klog.V(3).Infof("piece CID %s is stored on miner %s", piece.CommP, minerID)
 						minerInfo, err := minerInfo.GetProviderInfo(c.Context, minerID)
 						if err != nil {
 							return nil, fmt.Errorf("failed to get miner info for miner %s, for piece %s: %w", minerID, piece.CommP, err)
@@ -309,7 +309,7 @@ func NewEpochFromConfig(
 						if len(minerInfo.Multiaddrs) == 0 {
 							return nil, fmt.Errorf("miner %s has no multiaddrs", minerID)
 						}
-						klog.V(2).Infof("miner info: %s", spew.Sdump(minerInfo))
+						klog.V(3).Infof("miner info: %s", spew.Sdump(minerInfo))
 						// extract the IP address from the multiaddr:
 						split := multiaddr.Split(minerInfo.Multiaddrs[0])
 						if len(split) < 2 {
@@ -330,7 +330,7 @@ func NewEpochFromConfig(
 							return nil, fmt.Errorf("invalid multiaddr: %s", minerInfo.Multiaddrs[0])
 						}
 						minerIP := fmt.Sprintf("%s:%s", ip, port)
-						klog.V(2).Infof("piece CID %s is stored on miner %s (%s)", piece.CommP, minerID, minerIP)
+						klog.V(3).Infof("piece CID %s is stored on miner %s (%s)", piece.CommP, minerID, minerIP)
 						formattedURL := fmt.Sprintf("http://%s/piece/%s", minerIP, piece.CommP.String())
 						return splitcarfetcher.NewRemoteFileSplitCarReader(
 							piece.CommP.String(),
@@ -425,12 +425,12 @@ func NewEpochFromConfig(
 			}
 			ep.onClose = append(ep.onClose, sigExists.Close)
 
-			{
-				// warm up the cache
-				for i := 0; i < 100_000; i++ {
-					sigExists.Has(newRandomSignature())
-				}
-			}
+			// {
+			// 	// warm up the cache
+			// 	for i := 0; i < 10; i++ {
+			// 		sigExists.Has(newRandomSignature())
+			// 	}
+			// }
 
 			ep.sigExists = sigExists
 		} else {
@@ -440,12 +440,12 @@ func NewEpochFromConfig(
 			}
 			ep.onClose = append(ep.onClose, sigExists.Close)
 
-			{
-				// warm up the cache
-				for i := 0; i < 100_000; i++ {
-					sigExists.Has(newRandomSignature())
-				}
-			}
+			// {
+			// 	// warm up the cache
+			// 	for i := 0; i < 10; i++ {
+			// 		sigExists.Has(newRandomSignature())
+			// 	}
+			// }
 
 			ep.sigExists = sigExists
 

@@ -26,8 +26,24 @@ import (
 
 var fasterJson = jsoniter.ConfigCompatibleWithStandardLibrary
 
+type MyContextKey string
+
+const requestIDKey = MyContextKey("requestID")
+
+func setRequestIDToContext(ctx context.Context, id string) context.Context {
+	return context.WithValue(ctx, requestIDKey, id)
+}
+
+func getRequestIDFromContext(ctx context.Context) string {
+	id, ok := ctx.Value(requestIDKey).(string)
+	if !ok {
+		return ""
+	}
+	return id
+}
+
 func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContext, req *jsonrpc2.Request) (*jsonrpc2.Error, error) {
-	tim := newTimer()
+	tim := newTimer(getRequestIDFromContext(ctx))
 	params, err := parseGetBlockRequest(req.Params)
 	if err != nil {
 		return &jsonrpc2.Error{
