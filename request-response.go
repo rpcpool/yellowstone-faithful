@@ -294,7 +294,7 @@ func (req *GetTransactionRequest) Validate() error {
 		solana.EncodingBase64,
 		solana.EncodingBase64Zstd,
 		solana.EncodingJSON,
-		solana.EncodingJSONParsed, // TODO: add support for this
+		solana.EncodingJSONParsed,
 	) {
 		return fmt.Errorf("unsupported encoding")
 	}

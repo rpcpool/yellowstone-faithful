@@ -329,12 +329,11 @@ func newCmd_rpc() *cli.Command {
 	}
 }
 
-// TODO:
-// - [ ] get the list of provided arguments, and distinguish between files and directories
-// - [ ] load all the config files, etc.
-// - [ ] start a goroutine that monitors the config files for changes
-// - [ ] when a config file changes, reload it and update the epoch
-// - [ ] start a goroutine that monitors the directories and subdirectories for changes (new files, deleted files, etc.)
+// - get the list of provided arguments, and distinguish between files and directories
+// - load all the config files, etc.
+// - start a goroutine that monitors the config files for changes
+// - when a config file changes, reload it and update the epoch
+// - start a goroutine that monitors the directories and subdirectories for changes (new files, deleted files, etc.)
 // - is only watching directories sufficient? or do we need to watch files too?
 func onFileChanged(ctx context.Context, dirs []string, callback func(fsnotify.Event)) error {
 	// monitor a directory for file changes
