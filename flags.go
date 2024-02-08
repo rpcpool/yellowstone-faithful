@@ -37,10 +37,10 @@ const (
 // FlagVerbose enables verbose mode, which shows info information about
 // operations invoked in the CLI.
 var FlagVerbose = &cli.BoolFlag{
-	Name:    "verbose",
-	Aliases: []string{"v"},
-	Usage:   "enable verbose mode for logging",
-	Action:  setLogLevel("INFO"),
+	Name: "verbose",
+	// Aliases: []string{"v"},
+	Usage:  "enable verbose mode for logging",
+	Action: setLogLevel("INFO"),
 }
 
 // FlagVeryVerbose enables very verbose mode, which shows debug information about

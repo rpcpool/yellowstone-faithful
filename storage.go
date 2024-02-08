@@ -24,7 +24,6 @@ import (
 func openIndexStorage(
 	ctx context.Context,
 	where string,
-	debug bool,
 ) (ReaderAtCloser, error) {
 	where = strings.TrimSpace(where)
 	if strings.HasPrefix(where, "http://") || strings.HasPrefix(where, "https://") {
@@ -33,7 +32,7 @@ func openIndexStorage(
 		if err != nil {
 			return nil, fmt.Errorf("failed to open remote index file: %w", err)
 		}
-		if !debug {
+		if !klog.V(5).Enabled() {
 			return rac, nil
 		}
 		return &readCloserWrapper{
@@ -48,7 +47,7 @@ func openIndexStorage(
 	if err != nil {
 		return nil, fmt.Errorf("failed to open local index file: %w", err)
 	}
-	if !debug {
+	if !klog.V(5).Enabled() {
 		return rac, nil
 	}
 	return &readCloserWrapper{

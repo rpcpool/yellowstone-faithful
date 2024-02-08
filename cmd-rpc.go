@@ -54,12 +54,6 @@ func newCmd_rpc() *cli.Command {
 				Value:       false,
 				Destination: &gsfaOnlySignatures,
 			},
-			&cli.BoolFlag{
-				Name:        "debug",
-				Usage:       "Enable debug logging",
-				Value:       false,
-				Destination: &DebugMode,
-			},
 			&cli.StringSliceFlag{
 				Name:        "include",
 				Usage:       "Include files or dirs matching the given glob patterns",
@@ -224,20 +218,20 @@ func newCmd_rpc() *cli.Command {
 
 				err = onFileChanged(ctx, dirs, func(event fsnotify.Event) {
 					if !isJSONFile(event.Name) && !isYAMLFile(event.Name) {
-						klog.Infof("File %q is not a JSON or YAML file; do nothing", event.Name)
+						klog.V(1).Infof("File %q is not a JSON or YAML file; do nothing", event.Name)
 						return
 					}
-					klog.Infof("File event: name=%q, op=%q", event.Name, event.Op)
+					klog.V(1).Infof("File event: name=%q, op=%q", event.Name, event.Op)
 
 					if event.Op != fsnotify.Remove && multi.HasEpochWithSameHashAsFile(event.Name) {
-						klog.Infof("Epoch with same hash as file %q is already loaded; do nothing", event.Name)
+						klog.V(1).Infof("Epoch with same hash as file %q is already loaded; do nothing", event.Name)
 						return
 					}
 					// register the file as being processed
 					mu.Lock()
 					_, ok := fileProcessingTracker[event.Name]
 					if ok {
-						klog.Infof("File %q is already being processed; do nothing", event.Name)
+						klog.V(1).Infof("File %q is already being processed; do nothing", event.Name)
 						mu.Unlock()
 						return
 					}
@@ -254,7 +248,7 @@ func newCmd_rpc() *cli.Command {
 					case fsnotify.Write:
 						{
 							startedAt := time.Now()
-							klog.Infof("File %q was modified; processing...", event.Name)
+							klog.V(1).Infof("File %q was modified; processing...", event.Name)
 							// find the config file, load it, and update the epoch (replace)
 							config, err := LoadConfig(event.Name)
 							if err != nil {
@@ -271,12 +265,12 @@ func newCmd_rpc() *cli.Command {
 								klog.Errorf("error replacing epoch %d: %s", epoch.Epoch(), err.Error())
 								return
 							}
-							klog.Infof("Epoch %d added/replaced in %s", epoch.Epoch(), time.Since(startedAt))
+							klog.V(1).Infof("Epoch %d added/replaced in %s", epoch.Epoch(), time.Since(startedAt))
 						}
 					case fsnotify.Create:
 						{
 							startedAt := time.Now()
-							klog.Infof("File %q was created; processing...", event.Name)
+							klog.V(1).Infof("File %q was created; processing...", event.Name)
 							// find the config file, load it, and add it to the multi-epoch (if not already added)
 							config, err := LoadConfig(event.Name)
 							if err != nil {
@@ -293,25 +287,25 @@ func newCmd_rpc() *cli.Command {
 								klog.Errorf("error adding epoch %d: %s", epoch.Epoch(), err.Error())
 								return
 							}
-							klog.Infof("Epoch %d added in %s", epoch.Epoch(), time.Since(startedAt))
+							klog.V(1).Infof("Epoch %d added in %s", epoch.Epoch(), time.Since(startedAt))
 						}
 					case fsnotify.Remove:
 						{
 							startedAt := time.Now()
-							klog.Infof("File %q was removed; processing...", event.Name)
+							klog.V(1).Infof("File %q was removed; processing...", event.Name)
 							// find the epoch that corresponds to this file, and remove it (if any)
 							epNumber, err := multi.RemoveEpochByConfigFilepath(event.Name)
 							if err != nil {
 								klog.Errorf("error removing epoch for config file %q: %s", event.Name, err.Error())
 							}
-							klog.Infof("Epoch %d removed in %s", epNumber, time.Since(startedAt))
+							klog.V(1).Infof("Epoch %d removed in %s", epNumber, time.Since(startedAt))
 						}
 					case fsnotify.Rename:
-						klog.Infof("File %q was renamed; do nothing", event.Name)
+						klog.V(1).Infof("File %q was renamed; do nothing", event.Name)
 					case fsnotify.Chmod:
-						klog.Infof("File %q had its permissions changed; do nothing", event.Name)
+						klog.V(1).Infof("File %q had its permissions changed; do nothing", event.Name)
 					default:
-						klog.Infof("File %q had an unknown event %q; do nothing", event.Name, event.Op)
+						klog.V(1).Infof("File %q had an unknown event %q; do nothing", event.Name, event.Op)
 					}
 				})
 				if err != nil {
