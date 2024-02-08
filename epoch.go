@@ -313,7 +313,7 @@ func NewEpochFromConfig(
 						if len(minerInfo.Multiaddrs) == 0 {
 							return nil, fmt.Errorf("miner %s has no multiaddrs", minerID)
 						}
-						spew.Dump(minerInfo)
+						klog.Infof("miner info: %s", spew.Sdump(minerInfo))
 						// extract the IP address from the multiaddr:
 						split := multiaddr.Split(minerInfo.Multiaddrs[0])
 						if len(split) < 2 {
