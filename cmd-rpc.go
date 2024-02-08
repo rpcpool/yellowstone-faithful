@@ -15,8 +15,10 @@ import (
 	"github.com/davecgh/go-spew/spew"
 	"github.com/fsnotify/fsnotify"
 	hugecache "github.com/rpcpool/yellowstone-faithful/huge-cache"
+	splitcarfetcher "github.com/rpcpool/yellowstone-faithful/split-car-fetcher"
 	"github.com/ryanuber/go-glob"
 	"github.com/urfave/cli/v2"
+	"github.com/ybbus/jsonrpc/v3"
 	"golang.org/x/sync/errgroup"
 	"k8s.io/klog/v2"
 )
@@ -140,6 +142,16 @@ func newCmd_rpc() *cli.Command {
 			klog.Infof("Loaded %d epoch configs", len(configs))
 			klog.Info("Initializing epochs...")
 
+			startedInitiatingEpochsAt := time.Now()
+
+			lotusAPIAddress := "https://api.node.glif.io"
+			cl := jsonrpc.NewClient(lotusAPIAddress)
+			minerInfo := splitcarfetcher.NewMinerInfo(
+				cl,
+				24*time.Hour,
+				5*time.Second,
+			)
+
 			epochs := make([]*Epoch, 0)
 			wg := new(errgroup.Group)
 			wg.SetLimit(epochLoadConcurrency)
@@ -147,7 +159,12 @@ func newCmd_rpc() *cli.Command {
 			for confIndex := range configs {
 				config := configs[confIndex]
 				wg.Go(func() error {
-					epoch, err := NewEpochFromConfig(config, c, allCache)
+					epoch, err := NewEpochFromConfig(
+						config,
+						c,
+						allCache,
+						minerInfo,
+					)
 					if err != nil {
 						return fmt.Errorf("failed to create epoch from config %q: %s", config.ConfigFilepath(), err.Error())
 					}
@@ -181,6 +198,8 @@ func newCmd_rpc() *cli.Command {
 					return cli.Exit(fmt.Sprintf("failed to add epoch %d: %s", epoch.Epoch(), err.Error()), 1)
 				}
 			}
+			tookInitializingEpochs := time.Since(startedInitiatingEpochsAt)
+			klog.Infof("Initialized %d epochs in %s", len(epochs), tookInitializingEpochs)
 
 			if watch {
 				dirs, err := GetListOfDirectories(
@@ -242,7 +261,7 @@ func newCmd_rpc() *cli.Command {
 								klog.Errorf("error loading config file %q: %s", event.Name, err.Error())
 								return
 							}
-							epoch, err := NewEpochFromConfig(config, c, allCache)
+							epoch, err := NewEpochFromConfig(config, c, allCache, minerInfo)
 							if err != nil {
 								klog.Errorf("error creating epoch from config file %q: %s", event.Name, err.Error())
 								return
@@ -264,7 +283,7 @@ func newCmd_rpc() *cli.Command {
 								klog.Errorf("error loading config file %q: %s", event.Name, err.Error())
 								return
 							}
-							epoch, err := NewEpochFromConfig(config, c, allCache)
+							epoch, err := NewEpochFromConfig(config, c, allCache, minerInfo)
 							if err != nil {
 								klog.Errorf("error creating epoch from config file %q: %s", event.Name, err.Error())
 								return

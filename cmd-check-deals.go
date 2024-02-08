@@ -116,6 +116,14 @@ func newCmd_check_deals() *cli.Command {
 				klog.Infof("Provider allowlist: <empty>")
 			}
 
+			lotusAPIAddress := "https://api.node.glif.io"
+			cl := jsonrpc.NewClient(lotusAPIAddress)
+			dm := splitcarfetcher.NewMinerInfo(
+				cl,
+				24*time.Hour,
+				5*time.Second,
+			)
+
 			// Check deals:
 			for _, config := range configs {
 				epoch := *config.Epoch
@@ -134,21 +142,13 @@ func newCmd_check_deals() *cli.Command {
 						return fmt.Errorf("failed to read deals: %w", err)
 					}
 
-					lotusAPIAddress := "https://api.node.glif.io"
-					cl := jsonrpc.NewClient(lotusAPIAddress)
-					dm := splitcarfetcher.NewMinerInfo(
-						cl,
-						5*time.Minute,
-						5*time.Second,
-					)
-
 					err = checkAllPieces(
 						c.Context,
 						epoch,
 						metadata,
 						dealRegistry,
 						providerAllowlist,
-						&dm,
+						dm,
 					)
 					if err != nil {
 						return fmt.Errorf(

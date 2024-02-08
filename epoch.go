@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/multiformats/go-multiaddr"
-	"github.com/ybbus/jsonrpc/v3"
 
 	"github.com/anjor/carlet"
 	"github.com/davecgh/go-spew/spew"
@@ -95,6 +94,7 @@ func NewEpochFromConfig(
 	config *Config,
 	c *cli.Context,
 	allCache *hugecache.Cache,
+	minerInfo *splitcarfetcher.MinerInfoCache,
 ) (*Epoch, error) {
 	if config == nil {
 		return nil, fmt.Errorf("config must not be nil")
@@ -298,14 +298,6 @@ func NewEpochFromConfig(
 					return nil, fmt.Errorf("failed to read deals: %w", err)
 				}
 
-				lotusAPIAddress := "https://api.node.glif.io"
-				cl := jsonrpc.NewClient(lotusAPIAddress)
-				dm := splitcarfetcher.NewMinerInfo(
-					cl,
-					5*time.Minute,
-					5*time.Second,
-				)
-
 				scr, err := splitcarfetcher.NewSplitCarReader(
 					metadata.CarPieces,
 					func(piece carlet.CarFile) (splitcarfetcher.ReaderAtCloserSize, error) {
@@ -314,7 +306,7 @@ func NewEpochFromConfig(
 							return nil, fmt.Errorf("failed to find miner for piece CID %s", piece.CommP)
 						}
 						klog.Infof("piece CID %s is stored on miner %s", piece.CommP, minerID)
-						minerInfo, err := dm.GetProviderInfo(c.Context, minerID)
+						minerInfo, err := minerInfo.GetProviderInfo(c.Context, minerID)
 						if err != nil {
 							return nil, fmt.Errorf("failed to get miner info for miner %s, for piece %s: %w", minerID, piece.CommP, err)
 						}
