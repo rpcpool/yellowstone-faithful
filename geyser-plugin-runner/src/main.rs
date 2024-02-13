@@ -13,7 +13,6 @@ use crossbeam_channel::unbounded;
 use solana_accounts_db::stake_rewards::RewardInfo;
 use solana_geyser_plugin_manager::{self};
 use solana_rpc::optimistically_confirmed_bank_tracker::SlotNotification;
-use solana_rpc::transaction_notifier_interface::TransactionNotifier;
 use solana_sdk::reward_type::RewardType;
 
 use std::{convert::TryFrom, str::FromStr};

@@ -55,7 +55,7 @@ impl Transaction {
 
         if let serde_cbor::Value::Array(array) = val {
             // println!("Kind: {:?}", array[0]);
-            if let Some(serde_cbor::Value::Integer(kind)) = array.get(0) {
+            if let Some(serde_cbor::Value::Integer(kind)) = array.first() {
                 // println!("Kind: {:?}", Kind::from_u64(kind as u64).unwrap().to_string());
                 transaction.kind = *kind as u64;
 
@@ -94,14 +94,8 @@ impl Transaction {
     pub fn to_json(&self) -> serde_json::Value {
         let mut map = serde_json::Map::new();
         map.insert("kind".to_string(), serde_json::Value::from(self.kind));
-        map.insert(
-            "data".to_string(),
-            serde_json::Value::from(self.data.to_json()),
-        );
-        map.insert(
-            "metadata".to_string(),
-            serde_json::Value::from(self.metadata.to_json()),
-        );
+        map.insert("data".to_string(), self.data.to_json());
+        map.insert("metadata".to_string(), self.metadata.to_json());
         map.insert("slot".to_string(), serde_json::Value::from(self.slot));
         map.insert("index".to_string(), serde_json::Value::from(self.index));
 

@@ -41,7 +41,7 @@ impl Rewards {
 
         if let serde_cbor::Value::Array(array) = val {
             // println!("Kind: {:?}", array[0]);
-            if let Some(serde_cbor::Value::Integer(kind)) = array.get(0) {
+            if let Some(serde_cbor::Value::Integer(kind)) = array.first() {
                 // println!("Kind: {:?}", Kind::from_u64(kind as u64).unwrap().to_string());
                 rewards.kind = *kind as u64;
 
@@ -72,10 +72,7 @@ impl Rewards {
         let mut map = serde_json::Map::new();
         map.insert("kind".to_string(), serde_json::Value::from(self.kind));
         map.insert("slot".to_string(), serde_json::Value::from(self.slot));
-        map.insert(
-            "data".to_string(),
-            serde_json::Value::from(self.data.to_json()),
-        );
+        map.insert("data".to_string(), self.data.to_json());
 
         return serde_json::Value::from(map);
     }
