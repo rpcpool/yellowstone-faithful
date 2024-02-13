@@ -1,6 +1,4 @@
 use cid::Cid;
-use serde_cbor;
-use serde_json;
 
 use std::error::Error;
 
@@ -45,9 +43,9 @@ impl Entry {
             // println!("Kind: {:?}", array[0]);
             if let Some(serde_cbor::Value::Integer(kind)) = array.get(0) {
                 // println!("Kind: {:?}", Kind::from_u64(kind as u64).unwrap().to_string());
-                entry.kind = kind as u64;
+                entry.kind = *kind as u64;
 
-                if kind as u64 != Kind::Entry as u64 {
+                if *kind as u64 != Kind::Entry as u64 {
                     return Err(Box::new(std::io::Error::new(
                         std::io::ErrorKind::Other,
                         std::format!(
@@ -59,7 +57,7 @@ impl Entry {
                 }
             }
             if let Some(serde_cbor::Value::Integer(num_hashes)) = array.get(1) {
-                entry.num_hashes = num_hashes as u64;
+                entry.num_hashes = *num_hashes as u64;
             }
             if let Some(serde_cbor::Value::Bytes(hash)) = &array.get(2) {
                 entry.hash = Hash(hash.to_vec());

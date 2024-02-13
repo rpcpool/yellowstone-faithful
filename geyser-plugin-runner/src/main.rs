@@ -1,6 +1,5 @@
 #![recursion_limit = "512"]
 
-use solana_storage_proto;
 use std::env::args;
 use std::error::Error;
 

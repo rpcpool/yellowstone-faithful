@@ -1,7 +1,4 @@
 use bincode::deserialize;
-use serde_cbor;
-use serde_json;
-use solana_sdk;
 use std::error::Error;
 use std::vec::Vec;
 
@@ -60,9 +57,9 @@ impl Transaction {
             // println!("Kind: {:?}", array[0]);
             if let Some(serde_cbor::Value::Integer(kind)) = array.get(0) {
                 // println!("Kind: {:?}", Kind::from_u64(kind as u64).unwrap().to_string());
-                transaction.kind = kind as u64;
+                transaction.kind = *kind as u64;
 
-                if kind as u64 != Kind::Transaction as u64 {
+                if *kind as u64 != Kind::Transaction as u64 {
                     return Err(Box::new(std::io::Error::new(
                         std::io::ErrorKind::Other,
                         std::format!(
@@ -84,11 +81,11 @@ impl Transaction {
             }
 
             if let Some(serde_cbor::Value::Integer(slot)) = array.get(3) {
-                transaction.slot = slot as u64;
+                transaction.slot = *slot as u64;
             }
 
             if let Some(serde_cbor::Value::Integer(index)) = array.get(4) {
-                transaction.index = Some(index as u64);
+                transaction.index = Some(*index as u64);
             }
         }
         return Ok(transaction);
