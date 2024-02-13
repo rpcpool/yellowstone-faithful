@@ -3,6 +3,7 @@ use solana_geyser_plugin_interface::geyser_plugin_interface::{
     ReplicaTransactionInfoVersions, Result, SlotStatus,
 };
 
+use colored::Colorize;
 use tracing::info;
 
 #[no_mangle]
@@ -31,31 +32,6 @@ impl std::fmt::Debug for GeyserPluginDemo {
     }
 }
 
-fn green_bg(s: &str) -> String {
-    // green BG, black FG
-    format!("\x1b[42;30m{}\x1b[0m", s)
-}
-
-fn blue_bg(s: &str) -> String {
-    // blue BG, black FG
-    format!("\x1b[44;30m{}\x1b[0m", s)
-}
-
-fn cyan_bg(s: &str) -> String {
-    // cyan BG, black FG
-    format!("\x1b[46;30m{}\x1b[0m", s)
-}
-
-fn white_bg(s: &str) -> String {
-    // white BG, black FG
-    format!("\x1b[47;30m{}\x1b[0m", s)
-}
-
-fn purple_bg(s: &str) -> String {
-    // purple BG, black FG
-    format!("\x1b[45;30m{}\x1b[0m", s)
-}
-
 const BANNER: &str = "::plugin::";
 
 impl GeyserPlugin for GeyserPluginDemo {
@@ -66,7 +42,7 @@ impl GeyserPlugin for GeyserPluginDemo {
     fn on_load(&mut self, config_file: &str, _is_reload: bool) -> Result<()> {
         info!(
             "{} Loading plugin: {:?} from config_file {:?}",
-            green_bg(BANNER),
+            BANNER.green().on_black(),
             self.name(),
             config_file
         );
@@ -74,13 +50,17 @@ impl GeyserPlugin for GeyserPluginDemo {
     }
 
     fn on_unload(&mut self) {
-        info!("{} Unloading plugin: {:?}", green_bg(BANNER), self.name());
+        info!(
+            "{} Unloading plugin: {:?}",
+            BANNER.green().on_black(),
+            self.name()
+        );
     }
 
     fn notify_end_of_startup(&self) -> Result<()> {
         info!(
             "{} Notifying the end of startup for accounts notifications",
-            green_bg(BANNER),
+            BANNER.green().on_black(),
         );
         Ok(())
     }
@@ -108,17 +88,29 @@ impl GeyserPlugin for GeyserPluginDemo {
         _is_startup: bool,
     ) -> Result<()> {
         // NOTE: account updates are NOT supported in old-faithful.
-        info!("{} Updating account at slot {:?}", green_bg(BANNER), slot);
+        info!(
+            "{} Updating account at slot {:?}",
+            BANNER.green().on_black(),
+            slot
+        );
         Ok(())
     }
 
     fn notify_entry(&self, _entry: ReplicaEntryInfoVersions) -> Result<()> {
         match _entry {
             ReplicaEntryInfoVersions::V0_0_1(entry_info) => {
-                info!("{} Received ENTRY: {:?}", blue_bg(BANNER), entry_info,);
+                info!(
+                    "{} Received ENTRY: {:?}",
+                    BANNER.blue().on_black(),
+                    entry_info,
+                );
             }
             ReplicaEntryInfoVersions::V0_0_2(entry_info) => {
-                info!("{} Received ENTRY: {:?}", blue_bg(BANNER), entry_info,);
+                info!(
+                    "{} Received ENTRY: {:?}",
+                    BANNER.blue().on_black(),
+                    entry_info,
+                );
             }
         };
         Ok(())
@@ -131,7 +123,7 @@ impl GeyserPlugin for GeyserPluginDemo {
     ) -> Result<()> {
         info!(
             "{} Received TRANSACTION at slot {:?}, signature {:?}",
-            cyan_bg(BANNER),
+            BANNER.cyan().on_black(),
             slot,
             match _transaction_info {
                 ReplicaTransactionInfoVersions::V0_0_1(transaction_info) => {
@@ -153,7 +145,7 @@ impl GeyserPlugin for GeyserPluginDemo {
     ) -> Result<()> {
         info!(
             "{} Updating slot {:?} with status {:?}",
-            purple_bg(BANNER),
+            BANNER.purple().on_black(),
             slot,
             status
         );
@@ -163,7 +155,7 @@ impl GeyserPlugin for GeyserPluginDemo {
     fn notify_block_metadata(&self, _block_info: ReplicaBlockInfoVersions) -> Result<()> {
         info!(
             "{} Notifying block metadata: slot {}, blocktime {:?}",
-            white_bg(BANNER),
+            BANNER.white().on_black(),
             match _block_info {
                 ReplicaBlockInfoVersions::V0_0_1(block_info) => block_info.slot,
                 ReplicaBlockInfoVersions::V0_0_2(block_info) => block_info.slot,
