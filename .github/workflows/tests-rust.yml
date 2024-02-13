@@ -43,6 +43,9 @@ jobs:
           profile: minimal
           components: clippy, rustfmt
 
+      - name: Enter the geyser-plugin-runner directory
+        run: cd geyser-plugin-runner
+
       - name: cargo tree
         run: |
           cargo tree
