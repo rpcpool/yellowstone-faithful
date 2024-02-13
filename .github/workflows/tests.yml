@@ -53,6 +53,11 @@ jobs:
           RUST_VERSION="$(./ci/rust-version.sh)"
           echo "RUST_VERSION=$RUST_VERSION" >> "$GITHUB_ENV"
 
+      - name: Install protoc
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler
+
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: ${{ env.RUST_VERSION }}
