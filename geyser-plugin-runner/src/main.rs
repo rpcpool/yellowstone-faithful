@@ -103,8 +103,8 @@ fn main() -> Result<(), Box<dyn Error>> {
                                 metadata.try_into()?;
 
                            {
-                                // TODO: use a real address loader
-                                let dummy_address_loader = MessageAddressLoader::new(solana_sdk::pubkey::Pubkey::default());
+                                // TODO: test address loading.
+                                let dummy_address_loader = MessageAddressLoaderFromTxMeta::new(as_native_metadata.clone().into());
                                 let sanitized_tx= match  parsed.version() {
                                     solana_sdk::transaction::TransactionVersion::Number(_)=> {
                                         let message_hash = parsed.verify_and_hash_message()?;
@@ -134,8 +134,6 @@ fn main() -> Result<(), Box<dyn Error>> {
                                 let sanitized_tx = sanitized_tx.unwrap();
 
                                 transaction_notifier
-                                        .try_write()
-                                        .unwrap()
                                         .notify_transaction(
                                             block.slot,
                                             transaction.index.unwrap() as usize,
@@ -167,10 +165,9 @@ fn main() -> Result<(), Box<dyn Error>> {
                             num_transactions: _entry.transactions.len() as u64,
                         };
 
+                        let starting_transaction_index = 0; // TODO:: implement this
                         entry_notifier
-                            .try_write()
-                            .unwrap()
-                            .notify_entry(block.slot, entry_index  ,&entry_summary);
+                            .notify_entry(block.slot, entry_index  ,&entry_summary, starting_transaction_index);
                         entry_index+=1;
                     }
                     node::Node::Block(_block) => {
@@ -210,8 +207,6 @@ fn main() -> Result<(), Box<dyn Error>> {
                             // }
                             let block_meta_notifier = block_meta_notifier_maybe.as_ref().unwrap();
                             block_meta_notifier
-                                .try_write()
-                                .unwrap()
                                 .notify_block_metadata(
                                      block.meta.parent_slot,
                                      todo_previous_blockhash.to_string().as_str(),
@@ -260,32 +255,31 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 }
 
-pub struct MessageAddressLoader {
-    pub address: solana_sdk::pubkey::Pubkey,
+pub struct MessageAddressLoaderFromTxMeta {
+    pub tx_meta: solana_transaction_status::TransactionStatusMeta,
 }
 
-impl MessageAddressLoader {
-    pub fn new(address: solana_sdk::pubkey::Pubkey) -> Self {
-        MessageAddressLoader { address }
+impl MessageAddressLoaderFromTxMeta {
+    pub fn new(tx_meta: solana_transaction_status::TransactionStatusMeta) -> Self {
+        MessageAddressLoaderFromTxMeta { tx_meta }
     }
 }
 
-impl solana_sdk::message::AddressLoader for MessageAddressLoader {
+impl solana_sdk::message::AddressLoader for MessageAddressLoaderFromTxMeta {
     fn load_addresses(
         self,
         _lookups: &[solana_sdk::message::v0::MessageAddressTableLookup],
     ) -> Result<solana_sdk::message::v0::LoadedAddresses, solana_sdk::message::AddressLoaderError>
     {
-        let loaded_addresses = solana_sdk::message::v0::LoadedAddresses::default();
-        Ok(loaded_addresses)
+        Ok(self.tx_meta.loaded_addresses.clone())
     }
 }
 
-// implement clone for MessageAddressLoader
-impl Clone for MessageAddressLoader {
+// implement clone for MessageAddressLoaderFromTxMeta
+impl Clone for MessageAddressLoaderFromTxMeta {
     fn clone(&self) -> Self {
-        MessageAddressLoader {
-            address: self.address,
+        MessageAddressLoaderFromTxMeta {
+            tx_meta: self.tx_meta.clone(),
         }
     }
 }
