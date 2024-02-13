@@ -3,6 +3,8 @@ use solana_geyser_plugin_interface::geyser_plugin_interface::{
     ReplicaTransactionInfoVersions, Result, SlotStatus,
 };
 
+use tracing::info;
+
 #[no_mangle]
 #[allow(improper_ctypes_definitions)]
 /// # Safety
@@ -61,8 +63,8 @@ impl GeyserPlugin for GeyserPluginDemo {
         "plugin::GeyserPluginDemo"
     }
 
-    fn on_load(&mut self, config_file: &str) -> Result<()> {
-        println!(
+    fn on_load(&mut self, config_file: &str, _is_reload: bool) -> Result<()> {
+        info!(
             "{} Loading plugin: {:?} from config_file {:?}",
             green_bg(BANNER),
             self.name(),
@@ -72,11 +74,11 @@ impl GeyserPlugin for GeyserPluginDemo {
     }
 
     fn on_unload(&mut self) {
-        println!("{} Unloading plugin: {:?}", green_bg(BANNER), self.name());
+        info!("{} Unloading plugin: {:?}", green_bg(BANNER), self.name());
     }
 
     fn notify_end_of_startup(&self) -> Result<()> {
-        println!(
+        info!(
             "{} Notifying the end of startup for accounts notifications",
             green_bg(BANNER),
         );
@@ -106,18 +108,19 @@ impl GeyserPlugin for GeyserPluginDemo {
         _is_startup: bool,
     ) -> Result<()> {
         // NOTE: account updates are NOT supported in old-faithful.
-        println!("{} Updating account at slot {:?}", green_bg(BANNER), slot);
+        info!("{} Updating account at slot {:?}", green_bg(BANNER), slot);
         Ok(())
     }
 
     fn notify_entry(&self, _entry: ReplicaEntryInfoVersions) -> Result<()> {
-        println!(
-            "{} Received ENTRY: {:?}",
-            blue_bg(BANNER),
-            match _entry {
-                ReplicaEntryInfoVersions::V0_0_1(entry_info) => entry_info,
-            },
-        );
+        match _entry {
+            ReplicaEntryInfoVersions::V0_0_1(entry_info) => {
+                info!("{} Received ENTRY: {:?}", blue_bg(BANNER), entry_info,);
+            }
+            ReplicaEntryInfoVersions::V0_0_2(entry_info) => {
+                info!("{} Received ENTRY: {:?}", blue_bg(BANNER), entry_info,);
+            }
+        };
         Ok(())
     }
 
@@ -126,7 +129,7 @@ impl GeyserPlugin for GeyserPluginDemo {
         _transaction_info: ReplicaTransactionInfoVersions,
         slot: u64,
     ) -> Result<()> {
-        println!(
+        info!(
             "{} Received TRANSACTION at slot {:?}, signature {:?}",
             cyan_bg(BANNER),
             slot,
@@ -148,7 +151,7 @@ impl GeyserPlugin for GeyserPluginDemo {
         _parent: Option<u64>,
         status: SlotStatus,
     ) -> Result<()> {
-        println!(
+        info!(
             "{} Updating slot {:?} with status {:?}",
             purple_bg(BANNER),
             slot,
@@ -158,7 +161,7 @@ impl GeyserPlugin for GeyserPluginDemo {
     }
 
     fn notify_block_metadata(&self, _block_info: ReplicaBlockInfoVersions) -> Result<()> {
-        println!(
+        info!(
             "{} Notifying block metadata: slot {}, blocktime {:?}",
             white_bg(BANNER),
             match _block_info {

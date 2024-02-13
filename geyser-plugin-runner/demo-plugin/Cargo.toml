@@ -7,6 +7,7 @@ edition = "2021"
 
 [dependencies]
 solana-geyser-plugin-interface = { workspace = true }
+tracing = { workspace = true }
 
 [dev-dependencies]
 libc = "0.2.134"
