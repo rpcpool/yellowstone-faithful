@@ -25,7 +25,9 @@ bytes = "1.5.0"
 "solana-transaction-status" = "1.17.10"
 prost = "0.11.9"
 zstd = "0.13.0"
-
+anyhow = "1.0.79"
+thiserror = "1.0.57"
+tracing = "0.1.40"
 # for geyser:
 solana-geyser-plugin-manager = "1.17.7"
 crossbeam-channel = "0.5.8"

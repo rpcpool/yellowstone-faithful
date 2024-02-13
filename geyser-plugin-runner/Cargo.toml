@@ -26,6 +26,8 @@ bytes = { workspace = true }
 "solana-transaction-status" = { workspace = true }
 prost = { workspace = true }
 zstd = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
 # for geyser:
 solana-geyser-plugin-manager = { workspace = true }
 crossbeam-channel = { workspace = true }
