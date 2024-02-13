@@ -6,7 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-solana-geyser-plugin-interface = "1.17.7"
+solana-geyser-plugin-interface = { workspace = true }
 
 [dev-dependencies]
 libc = "0.2.134"
