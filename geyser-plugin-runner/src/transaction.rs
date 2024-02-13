@@ -58,7 +58,7 @@ impl Transaction {
 
         if let serde_cbor::Value::Array(array) = val {
             // println!("Kind: {:?}", array[0]);
-            if let serde_cbor::Value::Integer(kind) = array[0] {
+            if let Some(serde_cbor::Value::Integer(kind)) = array.get(0) {
                 // println!("Kind: {:?}", Kind::from_u64(kind as u64).unwrap().to_string());
                 transaction.kind = kind as u64;
 
@@ -74,20 +74,20 @@ impl Transaction {
                 }
             }
 
-            if let serde_cbor::Value::Array(data) = &array[1] {
+            if let Some(serde_cbor::Value::Array(data)) = &array.get(1) {
                 transaction.data = DataFrame::from_cbor(serde_cbor::Value::Array(data.clone()))?;
             }
 
-            if let serde_cbor::Value::Array(metadata) = &array[2] {
+            if let Some(serde_cbor::Value::Array(metadata)) = &array.get(2) {
                 transaction.metadata =
                     DataFrame::from_cbor(serde_cbor::Value::Array(metadata.clone()))?;
             }
 
-            if let serde_cbor::Value::Integer(slot) = array[3] {
+            if let Some(serde_cbor::Value::Integer(slot)) = array.get(3) {
                 transaction.slot = slot as u64;
             }
 
-            if let serde_cbor::Value::Integer(index) = array[4] {
+            if let Some(serde_cbor::Value::Integer(index)) = array.get(4) {
                 transaction.index = Some(index as u64);
             }
         }

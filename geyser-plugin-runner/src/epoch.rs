@@ -37,7 +37,7 @@ impl Epoch {
 
         if let serde_cbor::Value::Array(array) = val {
             // println!("Kind: {:?}", array[0]);
-            if let serde_cbor::Value::Integer(kind) = array[0] {
+            if let Some(serde_cbor::Value::Integer(kind)) = array.get(0) {
                 // println!("Kind: {:?}", Kind::from_u64(kind as u64).unwrap().to_string());
                 epoch.kind = kind as u64;
 
@@ -52,11 +52,11 @@ impl Epoch {
                     )));
                 }
             }
-            if let serde_cbor::Value::Integer(num) = array[1] {
+            if let Some(serde_cbor::Value::Integer(num)) = array.get(1) {
                 epoch.epoch = num as u64;
             }
 
-            if let serde_cbor::Value::Array(subsets) = &array[2] {
+            if let Some(serde_cbor::Value::Array(subsets)) = &array.get(2) {
                 for subset in subsets {
                     if let serde_cbor::Value::Bytes(subset) = subset {
                         epoch
