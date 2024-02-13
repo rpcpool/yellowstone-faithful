@@ -44,7 +44,7 @@ impl DataFrame {
 
         if let serde_cbor::Value::Array(array) = val {
             // println!("Kind: {:?}", array[0]);
-            if let Some(serde_cbor::Value::Integer(kind)) = array.get(0) {
+            if let Some(serde_cbor::Value::Integer(kind)) = array.first() {
                 // println!("Kind: {:?}", Kind::from_u64(kind as u64).unwrap().to_string());
                 data_frame.kind = *kind as u64;
 

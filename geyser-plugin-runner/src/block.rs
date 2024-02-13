@@ -59,7 +59,7 @@ impl Block {
 
         if let serde_cbor::Value::Array(array) = val {
             // println!("Kind: {:?}", array[0]);
-            if let Some(serde_cbor::Value::Integer(kind)) = array.get(0) {
+            if let Some(serde_cbor::Value::Integer(kind)) = array.first() {
                 // println!("Kind: {:?}", Kind::from_u64(kind as u64).unwrap().to_string());
                 block.kind = *kind as u64;
 
@@ -129,10 +129,7 @@ impl Block {
         map.insert("slot".to_string(), serde_json::Value::from(self.slot));
         map.insert("shredding".to_string(), serde_json::Value::from(shredding));
         map.insert("entries".to_string(), serde_json::Value::from(entries));
-        map.insert(
-            "meta".to_string(),
-            serde_json::Value::from(self.meta.to_json()),
-        );
+        map.insert("meta".to_string(), self.meta.to_json());
         map.insert(
             "rewards".to_string(),
             serde_json::Value::from(serde_json::json!({
@@ -1123,7 +1120,7 @@ impl Shredding {
 
         if let serde_cbor::Value::Array(array) = val {
             // println!("Kind: {:?}", array[0]);
-            if let Some(serde_cbor::Value::Integer(entry_end_idx)) = array.get(0) {
+            if let Some(serde_cbor::Value::Integer(entry_end_idx)) = array.first() {
                 // println!("Kind: {:?}", Kind::from_u64(kind as u64).unwrap().to_string());
                 shredding.entry_end_idx = *entry_end_idx as i64;
             }
@@ -1193,7 +1190,7 @@ impl SlotMeta {
 
         if let serde_cbor::Value::Array(array) = val {
             // println!("Kind: {:?}", array[0]);
-            if let Some(serde_cbor::Value::Integer(parent_slot)) = array.get(0) {
+            if let Some(serde_cbor::Value::Integer(parent_slot)) = array.first() {
                 // println!("Kind: {:?}", Kind::from_u64(kind as u64).unwrap().to_string());
                 slot_meta.parent_slot = *parent_slot as u64;
             }
