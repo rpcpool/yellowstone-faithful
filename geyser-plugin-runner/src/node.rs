@@ -288,7 +288,7 @@ pub fn parse_any_from_cbordata(data: Vec<u8>) -> Result<Node, Box<dyn Error>> {
     // decoded_data is an serde_cbor.Array; print the kind, which is the first element of the array
     if let serde_cbor::Value::Array(array) = decoded_data {
         // println!("Kind: {:?}", array[0]);
-        if let serde_cbor::Value::Integer(kind) = array[0] {
+        if let Some(serde_cbor::Value::Integer(kind)) = array.get(0) {
             // println!(
             //     "Kind: {:?}",
             //     Kind::from_u64(kind as u64).unwrap().to_string()

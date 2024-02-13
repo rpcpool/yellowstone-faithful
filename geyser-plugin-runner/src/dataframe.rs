@@ -46,7 +46,7 @@ impl DataFrame {
 
         if let serde_cbor::Value::Array(array) = val {
             // println!("Kind: {:?}", array[0]);
-            if let serde_cbor::Value::Integer(kind) = array[0] {
+            if let Some(serde_cbor::Value::Integer(kind)) = array.get(0) {
                 // println!("Kind: {:?}", Kind::from_u64(kind as u64).unwrap().to_string());
                 data_frame.kind = kind as u64;
 
@@ -61,21 +61,21 @@ impl DataFrame {
                     )));
                 }
             }
-            if let serde_cbor::Value::Integer(hash) = array[1] {
+            if let Some(serde_cbor::Value::Integer(hash)) = array.get(1) {
                 data_frame.hash = Some(hash as u64);
             }
-            if let serde_cbor::Value::Integer(index) = array[2] {
+            if let Some(serde_cbor::Value::Integer(index)) = array.get(2) {
                 data_frame.index = Some(index as u64);
             }
-            if let serde_cbor::Value::Integer(total) = array[3] {
+            if let Some(serde_cbor::Value::Integer(total)) = array.get(3) {
                 data_frame.total = Some(total as u64);
             }
-            if let serde_cbor::Value::Bytes(data) = &array[4] {
+            if let Some(serde_cbor::Value::Bytes(data)) = &array.get(4) {
                 data_frame.data = Buffer::from_vec(data.clone());
             }
 
             if array.len() > 5 {
-                if let serde_cbor::Value::Array(next) = &array[5] {
+                if let Some(serde_cbor::Value::Array(next)) = &array.get(5) {
                     if next.len() == 0 {
                         data_frame.next = None;
                     } else {
