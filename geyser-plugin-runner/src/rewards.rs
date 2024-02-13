@@ -1,5 +1,3 @@
-use serde_cbor;
-use serde_json;
 use std::error::Error;
 use std::vec::Vec;
 
@@ -45,9 +43,9 @@ impl Rewards {
             // println!("Kind: {:?}", array[0]);
             if let Some(serde_cbor::Value::Integer(kind)) = array.get(0) {
                 // println!("Kind: {:?}", Kind::from_u64(kind as u64).unwrap().to_string());
-                rewards.kind = kind as u64;
+                rewards.kind = *kind as u64;
 
-                if kind as u64 != Kind::Rewards as u64 {
+                if *kind as u64 != Kind::Rewards as u64 {
                     return Err(Box::new(std::io::Error::new(
                         std::io::ErrorKind::Other,
                         std::format!(
@@ -59,7 +57,7 @@ impl Rewards {
                 }
             }
             if let Some(serde_cbor::Value::Integer(slot)) = array.get(1) {
-                rewards.slot = slot as u64;
+                rewards.slot = *slot as u64;
             }
 
             if let Some(serde_cbor::Value::Array(data)) = &array.get(2) {

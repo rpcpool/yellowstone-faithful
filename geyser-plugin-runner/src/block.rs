@@ -1,6 +1,4 @@
 use cid::Cid;
-use serde_cbor;
-use serde_json;
 
 use std::error::Error;
 
@@ -63,9 +61,9 @@ impl Block {
             // println!("Kind: {:?}", array[0]);
             if let Some(serde_cbor::Value::Integer(kind)) = array.get(0) {
                 // println!("Kind: {:?}", Kind::from_u64(kind as u64).unwrap().to_string());
-                block.kind = kind as u64;
+                block.kind = *kind as u64;
 
-                if kind as u64 != Kind::Block as u64 {
+                if *kind as u64 != Kind::Block as u64 {
                     return Err(Box::new(std::io::Error::new(
                         std::io::ErrorKind::Other,
                         std::format!(
@@ -77,7 +75,7 @@ impl Block {
                 }
             }
             if let Some(serde_cbor::Value::Integer(slot)) = array.get(1) {
-                block.slot = slot as u64;
+                block.slot = *slot as u64;
             }
 
             if let Some(serde_cbor::Value::Array(shredding)) = &array.get(2) {
@@ -1127,10 +1125,10 @@ impl Shredding {
             // println!("Kind: {:?}", array[0]);
             if let Some(serde_cbor::Value::Integer(entry_end_idx)) = array.get(0) {
                 // println!("Kind: {:?}", Kind::from_u64(kind as u64).unwrap().to_string());
-                shredding.entry_end_idx = entry_end_idx as i64;
+                shredding.entry_end_idx = *entry_end_idx as i64;
             }
             if let Some(serde_cbor::Value::Integer(shred_end_idx)) = array.get(1) {
-                shredding.shred_end_idx = shred_end_idx as i64;
+                shredding.shred_end_idx = *shred_end_idx as i64;
             }
         }
         return shredding;
@@ -1197,13 +1195,13 @@ impl SlotMeta {
             // println!("Kind: {:?}", array[0]);
             if let Some(serde_cbor::Value::Integer(parent_slot)) = array.get(0) {
                 // println!("Kind: {:?}", Kind::from_u64(kind as u64).unwrap().to_string());
-                slot_meta.parent_slot = parent_slot as u64;
+                slot_meta.parent_slot = *parent_slot as u64;
             }
             if let Some(serde_cbor::Value::Integer(blocktime)) = array.get(1) {
-                slot_meta.blocktime = blocktime as u64;
+                slot_meta.blocktime = *blocktime as u64;
             }
             if let Some(serde_cbor::Value::Integer(block_height)) = array.get(2) {
-                slot_meta.block_height = Some(block_height as u64);
+                slot_meta.block_height = Some(*block_height as u64);
             }
         }
         return slot_meta;

@@ -1,7 +1,4 @@
 use cid::Cid;
-use serde_cbor;
-use serde_json;
-
 use std::error::Error;
 
 use std::vec::Vec;
@@ -39,9 +36,9 @@ impl Epoch {
             // println!("Kind: {:?}", array[0]);
             if let Some(serde_cbor::Value::Integer(kind)) = array.get(0) {
                 // println!("Kind: {:?}", Kind::from_u64(kind as u64).unwrap().to_string());
-                epoch.kind = kind as u64;
+                epoch.kind = *kind as u64;
 
-                if kind as u64 != Kind::Epoch as u64 {
+                if *kind as u64 != Kind::Epoch as u64 {
                     return Err(Box::new(std::io::Error::new(
                         std::io::ErrorKind::Other,
                         std::format!(
@@ -53,7 +50,7 @@ impl Epoch {
                 }
             }
             if let Some(serde_cbor::Value::Integer(num)) = array.get(1) {
-                epoch.epoch = num as u64;
+                epoch.epoch = *num as u64;
             }
 
             if let Some(serde_cbor::Value::Array(subsets)) = &array.get(2) {

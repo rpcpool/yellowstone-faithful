@@ -1,6 +1,4 @@
 use cid::Cid;
-use serde_cbor;
-use serde_json;
 
 use std::error::Error;
 
@@ -48,9 +46,9 @@ impl DataFrame {
             // println!("Kind: {:?}", array[0]);
             if let Some(serde_cbor::Value::Integer(kind)) = array.get(0) {
                 // println!("Kind: {:?}", Kind::from_u64(kind as u64).unwrap().to_string());
-                data_frame.kind = kind as u64;
+                data_frame.kind = *kind as u64;
 
-                if kind as u64 != Kind::DataFrame as u64 {
+                if *kind as u64 != Kind::DataFrame as u64 {
                     return Err(Box::new(std::io::Error::new(
                         std::io::ErrorKind::Other,
                         std::format!(
@@ -62,13 +60,13 @@ impl DataFrame {
                 }
             }
             if let Some(serde_cbor::Value::Integer(hash)) = array.get(1) {
-                data_frame.hash = Some(hash as u64);
+                data_frame.hash = Some(*hash as u64);
             }
             if let Some(serde_cbor::Value::Integer(index)) = array.get(2) {
-                data_frame.index = Some(index as u64);
+                data_frame.index = Some(*index as u64);
             }
             if let Some(serde_cbor::Value::Integer(total)) = array.get(3) {
-                data_frame.total = Some(total as u64);
+                data_frame.total = Some(*total as u64);
             }
             if let Some(serde_cbor::Value::Bytes(data)) = &array.get(4) {
                 data_frame.data = Buffer::from_vec(data.clone());

@@ -1,11 +1,7 @@
-use bytes::Buf;
 use cid::Cid;
 use core::hash::Hasher;
 use crc::{Crc, CRC_64_GO_ISO};
 use fnv::FnvHasher;
-use multihash;
-
-use serde_cbor;
 
 use std::error::Error;
 use std::fs::File;
@@ -296,7 +292,7 @@ pub fn parse_any_from_cbordata(data: Vec<u8>) -> Result<Node, Box<dyn Error>> {
 
             // based on the kind, we can decode the rest of the data
             match kind {
-                kind => match Kind::from_u64(kind as u64).unwrap() {
+                kind => match Kind::from_u64(*kind as u64).unwrap() {
                     Kind::Transaction => {
                         let transaction = transaction::Transaction::from_cbor(cloned_data)?;
                         return Ok(Node::Transaction(transaction));

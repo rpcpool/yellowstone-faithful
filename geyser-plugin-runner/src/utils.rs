@@ -1,5 +1,7 @@
 use std::error::Error;
 
+use base64::engine::general_purpose::STANDARD;
+use base64::engine::Engine;
 use std::io::{self, Read};
 use std::vec::Vec;
 
@@ -150,7 +152,7 @@ impl std::fmt::Debug for Buffer {
 // base64
 impl std::fmt::Display for Buffer {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        base64::encode(&self.0).fmt(f)
+        STANDARD.encode(&self.0).fmt(f)
     }
 }
 
@@ -159,7 +161,7 @@ impl serde::Serialize for Buffer {
     where
         S: serde::ser::Serializer,
     {
-        base64::encode(&self.0).serialize(serializer)
+        STANDARD.encode(&self.0).serialize(serializer)
     }
 }
 
@@ -169,7 +171,7 @@ impl<'de> serde::Deserialize<'de> for Buffer {
         D: serde::de::Deserializer<'de>,
     {
         let base64 = String::deserialize(deserializer)?;
-        Ok(Buffer(base64::decode(&base64).unwrap()))
+        Ok(Buffer(STANDARD.decode(&base64).unwrap()))
     }
 }
 
