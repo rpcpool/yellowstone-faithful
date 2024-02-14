@@ -53,7 +53,6 @@ func countSignatures(v map[uint64][]solana.Signature) int {
 }
 
 func (multi *MultiEpoch) handleGetSignaturesForAddress(ctx context.Context, conn *requestContext, req *jsonrpc2.Request) (*jsonrpc2.Error, error) {
-	// TODO:
 	// - parse and validate request
 	// - get list of epochs (from most recent to oldest)
 	// - iterate until we find the requested number of signatures

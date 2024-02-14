@@ -16,6 +16,8 @@ import (
 var gitCommitSHA = ""
 
 func main() {
+	defer klog.Flush()
+
 	// set up a context that is canceled when a command is interrupted
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -41,12 +43,9 @@ func main() {
 		Name:        "faithful CLI",
 		Version:     gitCommitSHA,
 		Description: "CLI to get, manage and interact with the Solana blockchain data stored in a CAR file or on Filecoin/IPFS.",
-		Before: func(c *cli.Context) error {
+		Flags:       NewKlogFlagSet(),
+		Before: func(cctx *cli.Context) error {
 			return nil
-		},
-		Flags: []cli.Flag{
-			FlagVerbose,
-			FlagVeryVerbose,
 		},
 		Action: nil,
 		Commands: []*cli.Command{

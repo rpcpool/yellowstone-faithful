@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/multiformats/go-multiaddr"
-	"github.com/ybbus/jsonrpc/v3"
 
 	"github.com/anjor/carlet"
 	"github.com/davecgh/go-spew/spew"
@@ -95,6 +94,7 @@ func NewEpochFromConfig(
 	config *Config,
 	c *cli.Context,
 	allCache *hugecache.Cache,
+	minerInfo *splitcarfetcher.MinerInfoCache,
 ) (*Epoch, error) {
 	if config == nil {
 		return nil, fmt.Errorf("config must not be nil")
@@ -129,7 +129,6 @@ func NewEpochFromConfig(
 			cidToOffsetIndexFile, err := openIndexStorage(
 				c.Context,
 				string(config.Indexes.CidToOffset.URI),
-				DebugMode,
 			)
 			if err != nil {
 				return nil, fmt.Errorf("failed to open cid-to-offset index file: %w", err)
@@ -149,7 +148,6 @@ func NewEpochFromConfig(
 			cidToOffsetAndSizeIndexFile, err := openIndexStorage(
 				c.Context,
 				string(config.Indexes.CidToOffsetAndSize.URI),
-				DebugMode,
 			)
 			if err != nil {
 				return nil, fmt.Errorf("failed to open cid-to-offset index file: %w", err)
@@ -176,7 +174,6 @@ func NewEpochFromConfig(
 		slotToCidIndexFile, err := openIndexStorage(
 			c.Context,
 			string(config.Indexes.SlotToCid.URI),
-			DebugMode,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to open slot-to-cid index file: %w", err)
@@ -207,7 +204,6 @@ func NewEpochFromConfig(
 		sigToCidIndexFile, err := openIndexStorage(
 			c.Context,
 			string(config.Indexes.SigToCid.URI),
-			DebugMode,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to open sig-to-cid index file: %w", err)
@@ -298,14 +294,6 @@ func NewEpochFromConfig(
 					return nil, fmt.Errorf("failed to read deals: %w", err)
 				}
 
-				lotusAPIAddress := "https://api.node.glif.io"
-				cl := jsonrpc.NewClient(lotusAPIAddress)
-				dm := splitcarfetcher.NewMinerInfo(
-					cl,
-					5*time.Minute,
-					5*time.Second,
-				)
-
 				scr, err := splitcarfetcher.NewSplitCarReader(
 					metadata.CarPieces,
 					func(piece carlet.CarFile) (splitcarfetcher.ReaderAtCloserSize, error) {
@@ -313,15 +301,15 @@ func NewEpochFromConfig(
 						if !ok {
 							return nil, fmt.Errorf("failed to find miner for piece CID %s", piece.CommP)
 						}
-						klog.Infof("piece CID %s is stored on miner %s", piece.CommP, minerID)
-						minerInfo, err := dm.GetProviderInfo(c.Context, minerID)
+						klog.V(3).Infof("piece CID %s is stored on miner %s", piece.CommP, minerID)
+						minerInfo, err := minerInfo.GetProviderInfo(c.Context, minerID)
 						if err != nil {
 							return nil, fmt.Errorf("failed to get miner info for miner %s, for piece %s: %w", minerID, piece.CommP, err)
 						}
 						if len(minerInfo.Multiaddrs) == 0 {
 							return nil, fmt.Errorf("miner %s has no multiaddrs", minerID)
 						}
-						spew.Dump(minerInfo)
+						klog.V(3).Infof("miner info: %s", spew.Sdump(minerInfo))
 						// extract the IP address from the multiaddr:
 						split := multiaddr.Split(minerInfo.Multiaddrs[0])
 						if len(split) < 2 {
@@ -342,7 +330,7 @@ func NewEpochFromConfig(
 							return nil, fmt.Errorf("invalid multiaddr: %s", minerInfo.Multiaddrs[0])
 						}
 						minerIP := fmt.Sprintf("%s:%s", ip, port)
-						klog.Infof("piece CID %s is stored on miner %s (%s)", piece.CommP, minerID, minerIP)
+						klog.V(3).Infof("piece CID %s is stored on miner %s (%s)", piece.CommP, minerID, minerIP)
 						formattedURL := fmt.Sprintf("http://%s/piece/%s", minerIP, piece.CommP.String())
 						return splitcarfetcher.NewRemoteFileSplitCarReader(
 							piece.CommP.String(),
@@ -424,7 +412,6 @@ func NewEpochFromConfig(
 		sigExistsFile, err := openIndexStorage(
 			c.Context,
 			string(config.Indexes.SigExists.URI),
-			DebugMode,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to open sig-exists index file: %w", err)
@@ -438,12 +425,12 @@ func NewEpochFromConfig(
 			}
 			ep.onClose = append(ep.onClose, sigExists.Close)
 
-			{
-				// warm up the cache
-				for i := 0; i < 100_000; i++ {
-					sigExists.Has(newRandomSignature())
-				}
-			}
+			// {
+			// 	// warm up the cache
+			// 	for i := 0; i < 10; i++ {
+			// 		sigExists.Has(newRandomSignature())
+			// 	}
+			// }
 
 			ep.sigExists = sigExists
 		} else {
@@ -453,12 +440,12 @@ func NewEpochFromConfig(
 			}
 			ep.onClose = append(ep.onClose, sigExists.Close)
 
-			{
-				// warm up the cache
-				for i := 0; i < 100_000; i++ {
-					sigExists.Has(newRandomSignature())
-				}
-			}
+			// {
+			// 	// warm up the cache
+			// 	for i := 0; i < 10; i++ {
+			// 		sigExists.Has(newRandomSignature())
+			// 	}
+			// }
 
 			ep.sigExists = sigExists
 
@@ -592,8 +579,7 @@ func (s *Epoch) prefetchSubgraph(ctx context.Context, wantedCid cid.Cid) error {
 				return nil
 			})
 		}
-		klog.Errorf("failed to get subgraph from lassie: %v", err)
-		return err
+		return fmt.Errorf("failed to get subgraph from lassie for CID %s: %w", wantedCid, err)
 	}
 	return nil
 }
@@ -617,15 +603,13 @@ func (s *Epoch) GetNodeByCid(ctx context.Context, wantedCid cid.Cid) ([]byte, er
 			s.GetCache().PutRawCarObject(wantedCid, data)
 			return data, nil
 		}
-		klog.Errorf("failed to get node from lassie: %v", err)
-		return nil, err
+		return nil, fmt.Errorf("failed to get node from lassie for CID %s: %w", wantedCid, err)
 	}
 	// Find CAR file oas for CID in index.
 	oas, err := s.FindOffsetAndSizeFromCid(ctx, wantedCid)
 	if err != nil {
-		klog.Errorf("failed to find offset for CID %s: %v", wantedCid, err)
 		// not found or error
-		return nil, err
+		return nil, fmt.Errorf("failed to find offset for CID %s: %w", wantedCid, err)
 	}
 	return s.GetNodeByOffsetAndSize(ctx, wantedCid, oas)
 }
@@ -641,15 +625,13 @@ func (s *Epoch) ReadAtFromCar(ctx context.Context, offset uint64, length uint64)
 	// Get reader and seek to offset, then read node.
 	dr, err := s.localCarReader.DataReader()
 	if err != nil {
-		klog.Errorf("failed to get data reader: %v", err)
-		return nil, err
+		return nil, fmt.Errorf("failed to get data reader: %w", err)
 	}
 	dr.Seek(int64(offset), io.SeekStart)
 	data := make([]byte, length)
 	_, err = io.ReadFull(dr, data)
 	if err != nil {
-		klog.Errorf("failed to read node: %v", err)
-		return nil, err
+		return nil, fmt.Errorf("failed to read node from CAR: %w", err)
 	}
 	return data, nil
 }
@@ -673,8 +655,7 @@ func (s *Epoch) GetNodeByOffsetAndSize(ctx context.Context, wantedCid cid.Cid, o
 	// Get reader and seek to offset, then read node.
 	dr, err := s.localCarReader.DataReader()
 	if err != nil {
-		klog.Errorf("failed to get data reader: %v", err)
-		return nil, err
+		return nil, fmt.Errorf("failed to get local CAR data reader: %w", err)
 	}
 	dr.Seek(int64(offset), io.SeekStart)
 	br := bufio.NewReader(dr)
@@ -693,8 +674,7 @@ func (s *Epoch) getNodeSize(ctx context.Context, offset uint64) (uint64, error) 
 	// Get reader and seek to offset, then read node.
 	dr, err := s.localCarReader.DataReader()
 	if err != nil {
-		klog.Errorf("failed to get data reader: %v", err)
-		return 0, err
+		return 0, fmt.Errorf("failed to get local CAR data reader: %w", err)
 	}
 	return readNodeSizeFromReaderAtWithOffset(dr, offset)
 }
@@ -719,8 +699,7 @@ func readNodeWithKnownSize(br *bufio.Reader, wantedCid cid.Cid, length uint64) (
 	section := make([]byte, length)
 	_, err := io.ReadFull(br, section)
 	if err != nil {
-		klog.Errorf("failed to read section: %v", err)
-		return nil, err
+		return nil, fmt.Errorf("failed to read section from CAR with length %d: %w", length, err)
 	}
 	return parseNodeFromSection(section, wantedCid)
 }
@@ -741,7 +720,6 @@ func parseNodeFromSection(section []byte, wantedCid cid.Cid) ([]byte, error) {
 	}
 	// verify that the CID we read matches the one we expected.
 	if !gotCid.Equals(wantedCid) {
-		klog.Errorf("CID mismatch: expected %s, got %s", wantedCid, gotCid)
 		return nil, fmt.Errorf("CID mismatch: expected %s, got %s", wantedCid, gotCid)
 	}
 	return data[cidLen:], nil
@@ -750,7 +728,7 @@ func parseNodeFromSection(section []byte, wantedCid cid.Cid) ([]byte, error) {
 func (ser *Epoch) FindCidFromSlot(ctx context.Context, slot uint64) (o cid.Cid, e error) {
 	startedAt := time.Now()
 	defer func() {
-		klog.Infof("Found CID for slot %d in %s: %s", slot, time.Since(startedAt), o)
+		klog.V(4).Infof("Found CID for slot %d in %s: %s", slot, time.Since(startedAt), o)
 	}()
 
 	// try from cache
@@ -770,7 +748,7 @@ func (ser *Epoch) FindCidFromSlot(ctx context.Context, slot uint64) (o cid.Cid, 
 func (ser *Epoch) FindCidFromSignature(ctx context.Context, sig solana.Signature) (o cid.Cid, e error) {
 	startedAt := time.Now()
 	defer func() {
-		klog.Infof("Found CID for signature %s in %s: %s", sig, time.Since(startedAt), o)
+		klog.V(4).Infof("Found CID for signature %s in %s: %s", sig, time.Since(startedAt), o)
 	}()
 	return ser.sigToCidIndex.Get(sig)
 }
@@ -779,9 +757,9 @@ func (ser *Epoch) FindOffsetAndSizeFromCid(ctx context.Context, cid cid.Cid) (os
 	startedAt := time.Now()
 	defer func() {
 		if os != nil {
-			klog.Infof("Found offset and size for CID %s in %s: o=%d s=%d", cid, time.Since(startedAt), os.Offset, os.Size)
+			klog.V(4).Infof("Found offset and size for CID %s in %s: o=%d s=%d", cid, time.Since(startedAt), os.Offset, os.Size)
 		} else {
-			klog.Infof("Offset and size for CID %s in %s: not found", cid, time.Since(startedAt))
+			klog.V(4).Infof("Offset and size for CID %s in %s: not found", cid, time.Since(startedAt))
 		}
 	}()
 
@@ -798,14 +776,14 @@ func (ser *Epoch) FindOffsetAndSizeFromCid(ctx context.Context, cid cid.Cid) (os
 			return nil, err
 		}
 
-		klog.Infof("Found offset for CID %s in %s: %d", cid, time.Since(startedAt), offset)
+		klog.V(4).Infof("Found offset for CID %s in %s: %d", cid, time.Since(startedAt), offset)
 
 		size, err := ser.getNodeSize(ctx, offset)
 		if err != nil {
 			return nil, err
 		}
 
-		klog.Infof("Found size for CID %s in %s: %d", cid, time.Since(startedAt), size)
+		klog.V(4).Infof("Found size for CID %s in %s: %d", cid, time.Since(startedAt), size)
 
 		found := &indexes.OffsetAndSize{
 			Offset: offset,
@@ -819,7 +797,6 @@ func (ser *Epoch) FindOffsetAndSizeFromCid(ctx context.Context, cid cid.Cid) (os
 	if err != nil {
 		return nil, err
 	}
-	// TODO: use also the size.
 	ser.GetCache().PutCidToOffsetAndSize(cid, found)
 	return found, nil
 }
@@ -828,8 +805,7 @@ func (ser *Epoch) GetBlock(ctx context.Context, slot uint64) (*ipldbindcode.Bloc
 	// get the slot by slot number
 	wantedCid, err := ser.FindCidFromSlot(ctx, slot)
 	if err != nil {
-		klog.Errorf("failed to find CID for slot %d: %v", slot, err)
-		return nil, err
+		return nil, fmt.Errorf("failed to find CID for slot %d: %w", slot, err)
 	}
 	{
 		doPrefetch := getValueFromContext(ctx, "prefetch")
@@ -841,14 +817,12 @@ func (ser *Epoch) GetBlock(ctx context.Context, slot uint64) (*ipldbindcode.Bloc
 	// get the block by CID
 	data, err := ser.GetNodeByCid(ctx, wantedCid)
 	if err != nil {
-		klog.Errorf("failed to find node by cid: %v", err)
-		return nil, err
+		return nil, fmt.Errorf("failed to get node by cid %s: %w", wantedCid, err)
 	}
 	// try parsing the data as a Block node.
 	decoded, err := iplddecoders.DecodeBlock(data)
 	if err != nil {
-		klog.Errorf("failed to decode block: %v", err)
-		return nil, err
+		return nil, fmt.Errorf("failed to decode block with CID %s: %w", wantedCid, err)
 	}
 	return decoded, nil
 }
@@ -856,14 +830,12 @@ func (ser *Epoch) GetBlock(ctx context.Context, slot uint64) (*ipldbindcode.Bloc
 func (ser *Epoch) GetEntryByCid(ctx context.Context, wantedCid cid.Cid) (*ipldbindcode.Entry, error) {
 	data, err := ser.GetNodeByCid(ctx, wantedCid)
 	if err != nil {
-		klog.Errorf("failed to find node by cid: %v", err)
-		return nil, err
+		return nil, fmt.Errorf("failed to find node by cid %s: %w", wantedCid, err)
 	}
 	// try parsing the data as an Entry node.
 	decoded, err := iplddecoders.DecodeEntry(data)
 	if err != nil {
-		klog.Errorf("failed to decode entry: %v", err)
-		return nil, err
+		return nil, fmt.Errorf("failed to decode entry with CID %s: %w", wantedCid, err)
 	}
 	return decoded, nil
 }
@@ -871,14 +843,12 @@ func (ser *Epoch) GetEntryByCid(ctx context.Context, wantedCid cid.Cid) (*ipldbi
 func (ser *Epoch) GetTransactionByCid(ctx context.Context, wantedCid cid.Cid) (*ipldbindcode.Transaction, error) {
 	data, err := ser.GetNodeByCid(ctx, wantedCid)
 	if err != nil {
-		klog.Errorf("failed to find node by cid: %v", err)
-		return nil, err
+		return nil, fmt.Errorf("failed to find node by cid %s: %w", wantedCid, err)
 	}
 	// try parsing the data as a Transaction node.
 	decoded, err := iplddecoders.DecodeTransaction(data)
 	if err != nil {
-		klog.Errorf("failed to decode transaction: %v", err)
-		return nil, err
+		return nil, fmt.Errorf("failed to decode transaction with CID %s: %w", wantedCid, err)
 	}
 	return decoded, nil
 }
@@ -886,14 +856,12 @@ func (ser *Epoch) GetTransactionByCid(ctx context.Context, wantedCid cid.Cid) (*
 func (ser *Epoch) GetDataFrameByCid(ctx context.Context, wantedCid cid.Cid) (*ipldbindcode.DataFrame, error) {
 	data, err := ser.GetNodeByCid(ctx, wantedCid)
 	if err != nil {
-		klog.Errorf("failed to find node by cid: %v", err)
-		return nil, err
+		return nil, fmt.Errorf("failed to find node by cid %s: %w", wantedCid, err)
 	}
 	// try parsing the data as a DataFrame node.
 	decoded, err := iplddecoders.DecodeDataFrame(data)
 	if err != nil {
-		klog.Errorf("failed to decode data frame: %v", err)
-		return nil, err
+		return nil, fmt.Errorf("failed to decode data frame with CID %s: %w", wantedCid, err)
 	}
 	return decoded, nil
 }
@@ -901,14 +869,12 @@ func (ser *Epoch) GetDataFrameByCid(ctx context.Context, wantedCid cid.Cid) (*ip
 func (ser *Epoch) GetRewardsByCid(ctx context.Context, wantedCid cid.Cid) (*ipldbindcode.Rewards, error) {
 	data, err := ser.GetNodeByCid(ctx, wantedCid)
 	if err != nil {
-		klog.Errorf("failed to find node by cid: %v", err)
-		return nil, err
+		return nil, fmt.Errorf("failed to find node by cid %s: %w", wantedCid, err)
 	}
 	// try parsing the data as a Rewards node.
 	decoded, err := iplddecoders.DecodeRewards(data)
 	if err != nil {
-		klog.Errorf("failed to decode rewards: %v", err)
-		return nil, err
+		return nil, fmt.Errorf("failed to decode rewards with CID %s: %w", wantedCid, err)
 	}
 	return decoded, nil
 }
@@ -917,8 +883,7 @@ func (ser *Epoch) GetTransaction(ctx context.Context, sig solana.Signature) (*ip
 	// get the CID by signature
 	wantedCid, err := ser.FindCidFromSignature(ctx, sig)
 	if err != nil {
-		klog.Errorf("failed to find CID for signature %s: %v", sig, err)
-		return nil, err
+		return nil, fmt.Errorf("failed to find CID for signature %s: %w", sig, err)
 	}
 	{
 		doPrefetch := getValueFromContext(ctx, "prefetch")
@@ -930,14 +895,12 @@ func (ser *Epoch) GetTransaction(ctx context.Context, sig solana.Signature) (*ip
 	// get the transaction by CID
 	data, err := ser.GetNodeByCid(ctx, wantedCid)
 	if err != nil {
-		klog.Errorf("failed to get node by cid: %v", err)
-		return nil, err
+		return nil, fmt.Errorf("failed to get node by cid %s: %w", wantedCid, err)
 	}
 	// try parsing the data as a Transaction node.
 	decoded, err := iplddecoders.DecodeTransaction(data)
 	if err != nil {
-		klog.Errorf("failed to decode transaction: %v", err)
-		return nil, err
+		return nil, fmt.Errorf("failed to decode transaction with CID %s: %w", wantedCid, err)
 	}
 	return decoded, nil
 }

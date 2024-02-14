@@ -26,8 +26,24 @@ import (
 
 var fasterJson = jsoniter.ConfigCompatibleWithStandardLibrary
 
+type MyContextKey string
+
+const requestIDKey = MyContextKey("requestID")
+
+func setRequestIDToContext(ctx context.Context, id string) context.Context {
+	return context.WithValue(ctx, requestIDKey, id)
+}
+
+func getRequestIDFromContext(ctx context.Context) string {
+	id, ok := ctx.Value(requestIDKey).(string)
+	if !ok {
+		return ""
+	}
+	return id
+}
+
 func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContext, req *jsonrpc2.Request) (*jsonrpc2.Error, error) {
-	tim := newTimer()
+	tim := newTimer(getRequestIDFromContext(ctx))
 	params, err := parseGetBlockRequest(req.Params)
 	if err != nil {
 		return &jsonrpc2.Error{
@@ -103,9 +119,9 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 				return err
 			}
 			if slot == 0 {
-				klog.Infof("car start to slot(0)::%s", blockCid)
+				klog.V(4).Infof("car start to slot(0)::%s", blockCid)
 			} else {
-				klog.Infof(
+				klog.V(4).Infof(
 					"slot(%d)::%s to slot(%d)::%s",
 					uint64(block.Meta.Parent_slot),
 					parentBlockCid,
@@ -151,7 +167,7 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 
 				start := parentOffset
 
-				klog.Infof("prefetching CAR: start=%d length=%d (parent_offset=%d)", start, length, parentOffset)
+				klog.V(4).Infof("prefetching CAR: start=%d length=%d (parent_offset=%d)", start, length, parentOffset)
 				carSection, err := epochHandler.ReadAtFromCar(ctx, start, length)
 				if err != nil {
 					return err
@@ -454,7 +470,7 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 			}
 		} else {
 			if slot != 0 {
-				klog.Infof("parent slot is in a different epoch, not implemented yet (can't get previousBlockhash)")
+				klog.V(4).Infof("parent slot is in a different epoch, not implemented yet (can't get previousBlockhash)")
 			}
 		}
 	}

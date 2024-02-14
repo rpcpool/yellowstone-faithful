@@ -61,8 +61,8 @@ func (multi *MultiEpoch) findEpochNumberFromSignature(ctx context.Context, sig s
 			found = append(found, epochNumber)
 		}
 	}
-	klog.Infof(
-		"Searched %d epochs in %s, and found %d candidate epochs for %s: %v",
+	klog.V(4).Infof(
+		"Searched %d epochs in %s, and found %d candidate epochs for signature %s: %v",
 		len(numbers),
 		time.Since(startedSearchingCandidatesAt),
 		len(found),
@@ -154,7 +154,7 @@ func (multi *MultiEpoch) handleGetTransaction(ctx context.Context, conn *request
 			Message: "Internal error",
 		}, fmt.Errorf("failed to get epoch for signature %s: %v", sig, err)
 	}
-	klog.Infof("Found signature %s in epoch %d in %s", sig, epochNumber, time.Since(startedEpochLookupAt))
+	klog.V(4).Infof("Found signature %s in epoch %d in %s", sig, epochNumber, time.Since(startedEpochLookupAt))
 
 	epochHandler, err := multi.GetEpoch(uint64(epochNumber))
 	if err != nil {

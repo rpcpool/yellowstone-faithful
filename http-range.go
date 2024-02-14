@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/goware/urlx"
+	"k8s.io/klog/v2"
 )
 
 type ReaderAtCloser interface {
@@ -186,7 +186,7 @@ func (r *readCloserWrapper) ReadAt(p []byte, off int64) (n int, err error) {
 	startedAt := time.Now()
 	defer func() {
 		took := time.Since(startedAt)
-		if DebugMode {
+		if klog.V(5).Enabled() {
 			var icon string
 			if r.isRemote {
 				// add internet icon
@@ -204,7 +204,7 @@ func (r *readCloserWrapper) ReadAt(p []byte, off int64) (n int, err error) {
 			if strings.HasSuffix(r.name, ".car") {
 				prefix = icon + purpleBG("[READ-CAR]")
 			}
-			fmt.Fprintf(os.Stderr, prefix+" %s:%d+%d (%s)\n", filepath.Base(r.name), off, len(p), took)
+			klog.V(5).Infof(prefix+" %s:%d+%d (%s)\n", filepath.Base(r.name), off, len(p), took)
 		}
 	}()
 	return r.rac.ReadAt(p, off)

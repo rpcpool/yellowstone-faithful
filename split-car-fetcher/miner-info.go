@@ -29,25 +29,25 @@ func NewMinerInfo(
 	lotusClient jsonrpc.RPCClient,
 	cacheTTL time.Duration,
 	requestTimeout time.Duration,
-) MinerInfoCache {
+) *MinerInfoCache {
 	minerInfoCache := ttlcache.New[string, *MinerInfo](
 		ttlcache.WithTTL[string, *MinerInfo](cacheTTL),
 		ttlcache.WithDisableTouchOnHit[string, *MinerInfo]())
 
-	return MinerInfoCache{
+	return &MinerInfoCache{
 		lotusClient:    lotusClient,
 		requestTimeout: requestTimeout,
 		minerInfoCache: minerInfoCache,
 	}
 }
 
-func (d MinerInfoCache) GetProviderInfo(ctx context.Context, provider address.Address) (*MinerInfo, error) {
+func (d *MinerInfoCache) GetProviderInfo(ctx context.Context, provider address.Address) (*MinerInfo, error) {
 	file := d.minerInfoCache.Get(provider.String())
 	if file != nil && !file.IsExpired() {
 		return file.Value(), nil
 	}
 
-	minerInfo, err := MinerInfoFetcher{Client: d.lotusClient}.GetProviderInfo(ctx, provider.String())
+	minerInfo, err := (&MinerInfoFetcher{Client: d.lotusClient}).GetProviderInfo(ctx, provider.String())
 	if err != nil {
 		return nil, err
 	}
@@ -59,7 +59,7 @@ type MinerInfoFetcher struct {
 	Client jsonrpc.RPCClient
 }
 
-func (m MinerInfoFetcher) GetProviderInfo(ctx context.Context, provider string) (*MinerInfo, error) {
+func (m *MinerInfoFetcher) GetProviderInfo(ctx context.Context, provider string) (*MinerInfo, error) {
 	minerInfo := new(MinerInfo)
 	err := m.Client.CallFor(ctx, minerInfo, "Filecoin.StateMinerInfo", provider, nil)
 	if err != nil {

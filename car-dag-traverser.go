@@ -310,8 +310,7 @@ func FindSubsets(
 			}
 			decoded, err := iplddecoders.DecodeSubset(block.RawData())
 			if err != nil {
-				// TODO: log error, or return error?
-				continue
+				return fmt.Errorf("failed to decode Subset with CID %s: %w", block.Cid(), err)
 			}
 			err = callback(block.Cid(), decoded)
 			if err != nil {

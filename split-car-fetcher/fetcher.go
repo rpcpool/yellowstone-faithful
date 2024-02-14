@@ -9,8 +9,10 @@ import (
 	"math"
 	"net/http"
 	"os"
+	"sync"
 
 	"github.com/anjor/carlet"
+	"golang.org/x/sync/errgroup"
 )
 
 type SplitCarReader struct {
@@ -172,11 +174,30 @@ func NewSplitCarReader(
 		readers = append(readers, originalCarHeaderReaderAt)
 		sizes = append(sizes, int64(originalCarHeaderSize))
 	}
-	for _, cf := range files.CarPieces {
-		fi, err := readerCreator(cf)
-		if err != nil {
-			return nil, fmt.Errorf("failed to open remote file %q: %s", cf.CommP, err)
-		}
+	fileHandlers := make([]ReaderAtCloserSize, len(files.CarPieces))
+	// create all the handlers concurrently, max 10 at a time
+	wg := new(errgroup.Group)
+	wg.SetLimit(10)
+	mu := &sync.Mutex{}
+	for i, cf := range files.CarPieces {
+		i, cf := i, cf
+		wg.Go(func() error {
+			fi, err := readerCreator(cf)
+			if err != nil {
+				return fmt.Errorf("failed to open remote file %q: %s", cf.CommP, err)
+			}
+			mu.Lock()
+			defer mu.Unlock()
+			fileHandlers[i] = fi
+			return nil
+		})
+	}
+	if err := wg.Wait(); err != nil {
+		return nil, err
+	}
+
+	for cfi, cf := range files.CarPieces {
+		fi := fileHandlers[cfi]
 
 		size := int(fi.Size())
 

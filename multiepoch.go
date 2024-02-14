@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"crypto/rand"
 	"fmt"
 	"net/http"
 	"sort"
@@ -10,9 +9,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/goware/urlx"
 	"github.com/libp2p/go-reuseport"
-	"github.com/mr-tron/base58"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"github.com/sourcegraph/jsonrpc2"
 	"github.com/valyala/fasthttp"
@@ -249,11 +248,8 @@ func (m *MultiEpoch) ListenAndServe(ctx context.Context, listenOn string, lsConf
 }
 
 func randomRequestID() string {
-	b := make([]byte, 4)
-	if _, err := rand.Read(b); err != nil {
-		panic(err)
-	}
-	return strings.ToUpper(base58.Encode(b))
+	id := uuid.New().String()
+	return id
 }
 
 func newMultiEpochHandler(handler *MultiEpoch, lsConf *ListenerConfig) func(ctx *fasthttp.RequestCtx) {
@@ -279,7 +275,7 @@ func newMultiEpochHandler(handler *MultiEpoch, lsConf *ListenerConfig) func(ctx 
 		startedAt := time.Now()
 		reqID := randomRequestID()
 		defer func() {
-			klog.Infof("[%s] request took %s", reqID, time.Since(startedAt))
+			klog.V(2).Infof("[%s] request took %s", reqID, time.Since(startedAt))
 		}()
 		{
 			// make sure the method is POST
@@ -307,6 +303,8 @@ func newMultiEpochHandler(handler *MultiEpoch, lsConf *ListenerConfig) func(ctx 
 		// read request body
 		body := reqCtx.Request.Body()
 
+		reqCtx.Response.Header.Set("X-Request-ID", reqID)
+
 		// parse request
 		var rpcRequest jsonrpc2.Request
 		if err := fasterJson.Unmarshal(body, &rpcRequest); err != nil {
@@ -319,11 +317,13 @@ func newMultiEpochHandler(handler *MultiEpoch, lsConf *ListenerConfig) func(ctx 
 			})
 			return
 		}
+		method := rpcRequest.Method
 
-		klog.Infof("[%s] received request: %q", reqID, strings.TrimSpace(string(body)))
+		klog.V(2).Infof("[%s] method=%q", reqID, sanitizeMethod(method))
+		klog.V(3).Infof("[%s] received request with body: %q", reqID, strings.TrimSpace(string(body)))
 
 		if proxy != nil && !isValidLocalMethod(rpcRequest.Method) {
-			klog.Infof("[%s] Unhandled method %q, proxying to %q", reqID, rpcRequest.Method, proxy.Addr)
+			klog.V(2).Infof("[%s] Unhandled method %q, proxying to %q", reqID, rpcRequest.Method, proxy.Addr)
 			// proxy the request to the target
 			proxyToAlternativeRPCServer(
 				handler,
@@ -338,7 +338,6 @@ func newMultiEpochHandler(handler *MultiEpoch, lsConf *ListenerConfig) func(ctx 
 		}
 
 		rqCtx := &requestContext{ctx: reqCtx}
-		method := rpcRequest.Method
 
 		if method == "getVersion" {
 			versionInfo := make(map[string]any)
@@ -362,13 +361,13 @@ func newMultiEpochHandler(handler *MultiEpoch, lsConf *ListenerConfig) func(ctx 
 		}
 
 		// errorResp is the error response to be sent to the client.
-		errorResp, err := handler.handleRequest(reqCtx, rqCtx, &rpcRequest)
+		errorResp, err := handler.handleRequest(setRequestIDToContext(reqCtx, reqID), rqCtx, &rpcRequest)
 		if err != nil {
 			klog.Errorf("[%s] failed to handle %s: %v", reqID, sanitizeMethod(method), err)
 		}
 		if errorResp != nil {
 			if proxy != nil && lsConf.ProxyConfig.ProxyFailedRequests {
-				klog.Infof("[%s] Failed local method %q, proxying to %q", reqID, rpcRequest.Method, proxy.Addr)
+				klog.Warningf("[%s] Failed local method %q, proxying to %q", reqID, rpcRequest.Method, proxy.Addr)
 				// proxy the request to the target
 				proxyToAlternativeRPCServer(
 					handler,

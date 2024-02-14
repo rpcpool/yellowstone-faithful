@@ -126,6 +126,16 @@ The RPC server provides a proxy mode which allows it to forward traffic it can't
 
 The `proxyFailedRequests` flag will make the RPC server proxy not only RPC methods that it doesn't support, but also retry requests that failed to be served from the archives (e.g. a `getBlock` request that failed to be served from the archives because that epoch is not available).
 
+### Log Levels
+
+You can set the desired log verbosity level by using the `-v` flag. The levels are from 0 to 5, where 0 is the least verbose and 5 is the most verbose. The default level is 2.
+
+Example:
+
+```bash
+faithful-cli rpc -v=5 455.yml
+```
+
 ### RPC server from old-faithful.net
 
 We are hosting data on old-faithful.net for testing and cloning purposes. This allows you to run a sample test server without downloading any data. You can run a fully remote server like this:

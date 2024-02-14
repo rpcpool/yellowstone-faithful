@@ -80,7 +80,7 @@ func CreateIndex_cid2offset(
 		rootCid,
 		network,
 		tmpDir,
-		numItems, // TODO: what if the number of real items is less than this?
+		numItems,
 	)
 	if err != nil {
 		return "", fmt.Errorf("failed to open index store: %w", err)

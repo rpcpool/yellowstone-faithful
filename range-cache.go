@@ -3,9 +3,10 @@ package main
 import (
 	"context"
 	"fmt"
-	"os"
 	"sync"
 	"time"
+
+	"k8s.io/klog/v2"
 )
 
 type RangeCache struct {
@@ -124,12 +125,12 @@ func (rc *RangeCache) setRange(ctx context.Context, start, ln int64, value []byt
 			}
 			// check if one of the ranges in the cache contains the requested range.
 			if r.contains(Range{start, end}) {
-				debugLn("there's already a cache entry for this or a superset of this range")
+				klog.V(5).Infof("there's already a cache entry for this or a superset of this range: %v", r)
 				return nil
 			}
 			// check if the requested range contains one of the ranges in the cache.
 			if (Range{start, end}).contains(r) {
-				debugLn("deleting a subset of this range")
+				klog.V(5).Infof("deleting a subset of this range: %v", r)
 				delete(rc.cache, r)
 				rc.occupiedSpace -= uint64(len(rv.Value))
 			}
@@ -148,7 +149,7 @@ func (rc *RangeCache) GetRange(ctx context.Context, start, ln int64) ([]byte, er
 	end := start + ln
 	got, err := rc.getRange(ctx, start, end, func() ([]byte, error) {
 		v := make([]byte, end-start)
-		debugf(
+		klog.V(5).Infof(
 			orange("[cache-MISS] reading from source %s: start=%d end=%d len=%d\n"),
 			rc.name,
 			start,
@@ -170,20 +171,6 @@ func (rc *RangeCache) GetRange(ctx context.Context, start, ln int64) ([]byte, er
 	}
 	return got, nil
 }
-
-func debugLn(a ...interface{}) {
-	if DebugMode {
-		fmt.Fprintln(os.Stderr, a...)
-	}
-}
-
-func debugf(format string, a ...interface{}) {
-	if DebugMode {
-		fmt.Fprintf(os.Stderr, format, a...)
-	}
-}
-
-var DebugMode = false
 
 func orange(s string) string {
 	return "\033[38;5;208m" + s + "\033[0m"
@@ -221,7 +208,7 @@ func (rc *RangeCache) getRangeFromCache(ctx context.Context, start, end int64) (
 		return nil, false, nil
 	}
 	if v, ok := rc.cache[Range{start, end}]; ok {
-		debugf(
+		klog.V(5).Infof(
 			lime("[exact-cache-HIT] for %s: start=%d end=%d len=%d\n"),
 			rc.name,
 			start,
@@ -237,7 +224,7 @@ func (rc *RangeCache) getRangeFromCache(ctx context.Context, start, end int64) (
 				return nil, false, ctx.Err()
 			}
 			if r.contains(Range{start, end}) {
-				debugf(
+				klog.V(5).Infof(
 					lime("[cache-HIT] range superset in %s: start=%d end=%d len=%d\n"),
 					rc.name,
 					start,
