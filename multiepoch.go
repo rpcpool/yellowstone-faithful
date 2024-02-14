@@ -12,9 +12,11 @@ import (
 	"github.com/google/uuid"
 	"github.com/goware/urlx"
 	"github.com/libp2p/go-reuseport"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"github.com/sourcegraph/jsonrpc2"
 	"github.com/valyala/fasthttp"
+	"github.com/valyala/fasthttp/fasthttpadaptor"
 	"k8s.io/klog/v2"
 )
 
@@ -274,9 +276,20 @@ func newMultiEpochHandler(handler *MultiEpoch, lsConf *ListenerConfig) func(ctx 
 	return func(reqCtx *fasthttp.RequestCtx) {
 		startedAt := time.Now()
 		reqID := randomRequestID()
+		var method string = "<unknown>"
 		defer func() {
-			klog.V(2).Infof("[%s] request took %s", reqID, time.Since(startedAt))
+			klog.V(2).Infof("[%s] request %q took %s", reqID, sanitizeMethod(method), time.Since(startedAt))
+			metrics_statusCode.WithLabelValues(fmt.Sprint(reqCtx.Response.StatusCode())).Inc()
+			metrics_responseTimeHistogram.WithLabelValues(sanitizeMethod(method)).Observe(time.Since(startedAt).Seconds())
 		}()
+		{
+			// handle the /metrics endpoint
+			if string(reqCtx.Path()) == "/metrics" {
+				handler := fasthttpadaptor.NewFastHTTPHandler(promhttp.Handler())
+				handler(reqCtx)
+				return
+			}
+		}
 		{
 			// make sure the method is POST
 			if !reqCtx.IsPost() {
@@ -317,7 +330,11 @@ func newMultiEpochHandler(handler *MultiEpoch, lsConf *ListenerConfig) func(ctx 
 			})
 			return
 		}
-		method := rpcRequest.Method
+		method = rpcRequest.Method
+		metrics_RpcRequestByMethod.WithLabelValues(sanitizeMethod(method)).Inc()
+		defer func() {
+			metrics_methodToCode.WithLabelValues(sanitizeMethod(method), fmt.Sprint(reqCtx.Response.StatusCode())).Inc()
+		}()
 
 		klog.V(2).Infof("[%s] method=%q", reqID, sanitizeMethod(method))
 		klog.V(3).Infof("[%s] received request with body: %q", reqID, strings.TrimSpace(string(body)))
@@ -334,6 +351,7 @@ func newMultiEpochHandler(handler *MultiEpoch, lsConf *ListenerConfig) func(ctx 
 				body,
 				reqID,
 			)
+			metrics_methodToNumProxied.WithLabelValues(sanitizeMethod(method)).Inc()
 			return
 		}
 
@@ -366,6 +384,7 @@ func newMultiEpochHandler(handler *MultiEpoch, lsConf *ListenerConfig) func(ctx 
 			klog.Errorf("[%s] failed to handle %s: %v", reqID, sanitizeMethod(method), err)
 		}
 		if errorResp != nil {
+			metrics_methodToSuccessOrFailure.WithLabelValues(sanitizeMethod(method), "failure").Inc()
 			if proxy != nil && lsConf.ProxyConfig.ProxyFailedRequests {
 				klog.Warningf("[%s] Failed local method %q, proxying to %q", reqID, rpcRequest.Method, proxy.Addr)
 				// proxy the request to the target
@@ -378,6 +397,7 @@ func newMultiEpochHandler(handler *MultiEpoch, lsConf *ListenerConfig) func(ctx 
 					body,
 					reqID,
 				)
+				metrics_methodToNumProxied.WithLabelValues(sanitizeMethod(method)).Inc()
 				return
 			} else {
 				rqCtx.ReplyWithError(
@@ -388,6 +408,7 @@ func newMultiEpochHandler(handler *MultiEpoch, lsConf *ListenerConfig) func(ctx 
 			}
 			return
 		}
+		metrics_methodToSuccessOrFailure.WithLabelValues(sanitizeMethod(method), "success").Inc()
 	}
 }
 

@@ -190,6 +190,7 @@ func newCmd_rpc() *cli.Command {
 				if err := multi.AddEpoch(epoch.Epoch(), epoch); err != nil {
 					return cli.Exit(fmt.Sprintf("failed to add epoch %d: %s", epoch.Epoch(), err.Error()), 1)
 				}
+				metrics_epochsAvailable.WithLabelValues(fmt.Sprintf("%d", epoch.Epoch())).Set(1)
 			}
 			tookInitializingEpochs := time.Since(startedInitiatingEpochsAt)
 			klog.Infof("Initialized %d epochs in %s", len(epochs), tookInitializingEpochs)
@@ -249,6 +250,7 @@ func newCmd_rpc() *cli.Command {
 									return
 								}
 								klog.V(2).Infof("Epoch %d added/replaced in %s", epoch.Epoch(), time.Since(startedAt))
+								metrics_epochsAvailable.WithLabelValues(fmt.Sprintf("%d", epoch.Epoch())).Set(1)
 							}
 						case fsnotify.Create:
 							{
@@ -271,6 +273,7 @@ func newCmd_rpc() *cli.Command {
 									return
 								}
 								klog.V(2).Infof("Epoch %d added in %s", epoch.Epoch(), time.Since(startedAt))
+								metrics_epochsAvailable.WithLabelValues(fmt.Sprintf("%d", epoch.Epoch())).Set(1)
 							}
 						case fsnotify.Remove:
 							{
@@ -282,6 +285,7 @@ func newCmd_rpc() *cli.Command {
 									klog.Errorf("error removing epoch for config file %q: %s", event.Name, err.Error())
 								}
 								klog.V(2).Infof("Epoch %d removed in %s", epNumber, time.Since(startedAt))
+								metrics_epochsAvailable.WithLabelValues(fmt.Sprintf("%d", epNumber)).Set(0)
 							}
 						case fsnotify.Rename:
 							klog.V(3).Infof("File %q was renamed; do nothing", event.Name)
