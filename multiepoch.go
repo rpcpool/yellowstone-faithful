@@ -285,6 +285,7 @@ func newMultiEpochHandler(handler *MultiEpoch, lsConf *ListenerConfig) func(ctx 
 		{
 			// handle the /metrics endpoint
 			if string(reqCtx.Path()) == "/metrics" {
+				method = "/metrics"
 				handler := fasthttpadaptor.NewFastHTTPHandler(promhttp.Handler())
 				handler(reqCtx)
 				return
@@ -381,7 +382,7 @@ func newMultiEpochHandler(handler *MultiEpoch, lsConf *ListenerConfig) func(ctx 
 		// errorResp is the error response to be sent to the client.
 		errorResp, err := handler.handleRequest(setRequestIDToContext(reqCtx, reqID), rqCtx, &rpcRequest)
 		if err != nil {
-			klog.Errorf("[%s] failed to handle %s: %v", reqID, sanitizeMethod(method), err)
+			klog.Errorf("[%s] failed to handle %q: %v", reqID, sanitizeMethod(method), err)
 		}
 		if errorResp != nil {
 			metrics_methodToSuccessOrFailure.WithLabelValues(sanitizeMethod(method), "failure").Inc()
@@ -465,7 +466,17 @@ func sanitizeMethod(method string) string {
 	if isValidLocalMethod(method) {
 		return method
 	}
-	return "<unknown>"
+	return allowOnlyAsciiPrintable(method)
+}
+
+func allowOnlyAsciiPrintable(s string) string {
+	return strings.Map(func(r rune) rune {
+		// allow only printable ASCII characters
+		if r >= 32 && r <= 126 {
+			return r
+		}
+		return -1
+	}, s)
 }
 
 func isValidLocalMethod(method string) bool {
