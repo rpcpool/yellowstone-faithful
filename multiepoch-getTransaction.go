@@ -74,18 +74,7 @@ func (multi *MultiEpoch) findEpochNumberFromSignature(ctx context.Context, sig s
 		return 0, ErrNotFound
 	}
 
-	for _, epochNumber := range found {
-		epoch, err := multi.GetEpoch(epochNumber)
-		if err != nil {
-			return 0, fmt.Errorf("failed to get epoch %d: %v", epochNumber, err)
-		}
-		if _, err := epoch.FindCidFromSignature(ctx, sig); err == nil {
-			return epochNumber, nil
-		}
-	}
-	return 0, ErrNotFound
-
-	// TODO: Search all epochs in parallel:
+	// Search all epochs in parallel:
 	wg := NewFirstResponse(ctx, multi.options.EpochSearchConcurrency)
 	for i := range numbers {
 		epochNumber := numbers[i]
