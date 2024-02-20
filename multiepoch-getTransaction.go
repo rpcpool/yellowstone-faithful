@@ -135,7 +135,7 @@ func (multi *MultiEpoch) handleGetTransaction(ctx context.Context, conn *request
 		if errors.Is(err, ErrNotFound) {
 			return &jsonrpc2.Error{
 				Code:    CodeNotFound,
-				Message: fmt.Sprintf("Epoch %d is not available from this RPC", epochNumber),
+				Message: "Signature not found",
 			}, fmt.Errorf("failed to find epoch number from signature %s: %v", sig, err)
 		}
 		return &jsonrpc2.Error{
