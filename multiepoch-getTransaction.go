@@ -153,7 +153,7 @@ func (multi *MultiEpoch) handleGetTransaction(ctx context.Context, conn *request
 		}, fmt.Errorf("failed to get handler for epoch %d: %w", epochNumber, err)
 	}
 
-	transactionNode, err := epochHandler.GetTransaction(WithSubrapghPrefetch(ctx, true), sig)
+	transactionNode, transactionCid, err := epochHandler.GetTransaction(WithSubrapghPrefetch(ctx, true), sig)
 	if err != nil {
 		if errors.Is(err, compactindexsized.ErrNotFound) {
 			// NOTE: solana just returns null here in case of transaction not found
@@ -167,12 +167,15 @@ func (multi *MultiEpoch) handleGetTransaction(ctx context.Context, conn *request
 			Message: "Internal error",
 		}, fmt.Errorf("failed to get Transaction: %v", err)
 	}
+	{
+		conn.ctx.Response.Header.Set("DAG-Root-CID", transactionCid.String())
+	}
 
 	var response GetTransactionResponse
 
 	response.Slot = ptrToUint64(uint64(transactionNode.Slot))
 	{
-		block, err := epochHandler.GetBlock(ctx, uint64(transactionNode.Slot))
+		block, _, err := epochHandler.GetBlock(ctx, uint64(transactionNode.Slot))
 		if err != nil {
 			return &jsonrpc2.Error{
 				Code:    jsonrpc2.CodeInternalError,
