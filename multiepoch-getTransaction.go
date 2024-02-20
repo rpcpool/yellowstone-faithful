@@ -133,7 +133,7 @@ func (multi *MultiEpoch) handleGetTransaction(ctx context.Context, conn *request
 	epochNumber, err := multi.findEpochNumberFromSignature(ctx, sig)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
-			// TODO: solana just returns null here in case of transaction not found: {"jsonrpc":"2.0","result":null,"id":1}
+			// solana just returns null here in case of transaction not found: {"jsonrpc":"2.0","result":null,"id":1}
 			return &jsonrpc2.Error{
 				Code:    CodeNotFound,
 				Message: "Transaction not found",
