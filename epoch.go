@@ -421,17 +421,9 @@ func NewEpochFromConfig(
 		if config.IsDeprecatedIndexes() {
 			sigExists, err := deprecatedbucketter.NewReader(sigExistsFile)
 			if err != nil {
-				return nil, fmt.Errorf("failed to open sig-exists index: %w", err)
+				return nil, fmt.Errorf("failed to open (deprecated) sig-exists index: %w", err)
 			}
 			ep.onClose = append(ep.onClose, sigExists.Close)
-
-			// {
-			// 	// warm up the cache
-			// 	for i := 0; i < 10; i++ {
-			// 		sigExists.Has(newRandomSignature())
-			// 	}
-			// }
-
 			ep.sigExists = sigExists
 		} else {
 			sigExists, err := bucketteer.NewReader(sigExistsFile)
@@ -439,14 +431,6 @@ func NewEpochFromConfig(
 				return nil, fmt.Errorf("failed to open sig-exists index: %w", err)
 			}
 			ep.onClose = append(ep.onClose, sigExists.Close)
-
-			// {
-			// 	// warm up the cache
-			// 	for i := 0; i < 10; i++ {
-			// 		sigExists.Has(newRandomSignature())
-			// 	}
-			// }
-
 			ep.sigExists = sigExists
 
 			gotEpoch, ok := sigExists.Meta().GetUint64(indexmeta.MetadataKey_Epoch)

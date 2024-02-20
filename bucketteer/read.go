@@ -3,9 +3,11 @@ package bucketteer
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"math"
+	"os"
 
 	bin "github.com/gagliardetto/binary"
 	"github.com/rpcpool/yellowstone-faithful/indexmeta"
@@ -49,6 +51,13 @@ func uint16ToPrefix(num uint16) [2]byte {
 // Open opens a Bucketteer file in read-only mode,
 // using memory-mapped IO.
 func Open(path string) (*Reader, error) {
+	empty, err := isEmptyFile(path)
+	if err != nil {
+		return nil, err
+	}
+	if empty {
+		return nil, fmt.Errorf("file is empty: %s", path)
+	}
 	file, err := mmap.Open(path)
 	if err != nil {
 		return nil, err
@@ -56,13 +65,48 @@ func Open(path string) (*Reader, error) {
 	return NewReader(file)
 }
 
+func isEmptyFile(path string) (bool, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return false, err
+	}
+	defer file.Close()
+	stat, err := file.Stat()
+	if err != nil {
+		return false, err
+	}
+	return stat.Size() == 0, nil
+}
+
+func isReaderEmpty(reader io.ReaderAt) (bool, error) {
+	if reader == nil {
+		return false, errors.New("reader is nil")
+	}
+	buf := make([]byte, 1)
+	_, err := reader.ReadAt(buf, 0)
+	if err != nil {
+		if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+			return true, nil
+		}
+		return false, err
+	}
+	return len(buf) == 0, nil
+}
+
 func NewReader(reader io.ReaderAt) (*Reader, error) {
+	empty, err := isReaderEmpty(reader)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check if reader is empty: %w", err)
+	}
+	if empty {
+		return nil, fmt.Errorf("reader is empty")
+	}
 	r := &Reader{
 		prefixToOffset: newUint16LayoutPointer(),
 	}
 	prefixToOffset, meta, headerTotalSize, err := readHeader(reader)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to read header: %w", err)
 	}
 	r.meta = meta
 	r.prefixToOffset = prefixToOffset
@@ -95,12 +139,12 @@ func readHeader(reader io.ReaderAt) (*bucketToOffset, *indexmeta.Meta, int64, er
 	// read header size:
 	headerSize, err := readHeaderSize(reader)
 	if err != nil {
-		return nil, nil, 0, err
+		return nil, nil, 0, fmt.Errorf("failed to read header size: %w", err)
 	}
 	// read header bytes:
 	headerBuf := make([]byte, headerSize)
 	if _, err := reader.ReadAt(headerBuf, 4); err != nil {
-		return nil, nil, 0, err
+		return nil, nil, 0, fmt.Errorf("failed to read header bytes: %w", err)
 	}
 	// decode header:
 	decoder := bin.NewBorshDecoder(headerBuf)
@@ -110,7 +154,7 @@ func readHeader(reader io.ReaderAt) (*bucketToOffset, *indexmeta.Meta, int64, er
 		magicBuf := make([]byte, len(_Magic[:]))
 		_, err := decoder.Read(magicBuf)
 		if err != nil {
-			return nil, nil, 0, err
+			return nil, nil, 0, fmt.Errorf("failed to read magic: %w", err)
 		}
 		if !bytes.Equal(magicBuf, _Magic[:]) {
 			return nil, nil, 0, fmt.Errorf("invalid magic: %x", string(magicBuf))
@@ -120,7 +164,7 @@ func readHeader(reader io.ReaderAt) (*bucketToOffset, *indexmeta.Meta, int64, er
 	{
 		got, err := decoder.ReadUint64(bin.LE)
 		if err != nil {
-			return nil, nil, 0, err
+			return nil, nil, 0, fmt.Errorf("failed to read version: %w", err)
 		}
 		if got != Version {
 			return nil, nil, 0, fmt.Errorf("expected version %d, got %d", Version, got)
@@ -135,7 +179,7 @@ func readHeader(reader io.ReaderAt) (*bucketToOffset, *indexmeta.Meta, int64, er
 	// numPrefixes:
 	numPrefixes, err := decoder.ReadUint64(bin.LE)
 	if err != nil {
-		return nil, nil, 0, err
+		return nil, nil, 0, fmt.Errorf("failed to read numPrefixes: %w", err)
 	}
 	// prefix -> offset:
 	prefixToOffset := newUint16Layout()
@@ -143,11 +187,11 @@ func readHeader(reader io.ReaderAt) (*bucketToOffset, *indexmeta.Meta, int64, er
 		var prefix [2]byte
 		_, err := decoder.Read(prefix[:])
 		if err != nil {
-			return nil, nil, 0, err
+			return nil, nil, 0, fmt.Errorf("failed to read prefixes[%d]: %w", i, err)
 		}
 		offset, err := decoder.ReadUint64(bin.LE)
 		if err != nil {
-			return nil, nil, 0, err
+			return nil, nil, 0, fmt.Errorf("failed to read offsets[%d]: %w", i, err)
 		}
 		prefixToOffset[prefixToUint16(prefix)] = offset
 	}
@@ -176,7 +220,7 @@ func (r *Reader) Has(sig [64]byte) (bool, error) {
 		return readUint64Le(bucketReader, pos)
 	})
 	if err != nil {
-		if err == ErrNotFound {
+		if errors.Is(err, ErrNotFound) {
 			return false, nil
 		}
 		return false, err
