@@ -56,7 +56,7 @@ func (multi *MultiEpoch) findEpochNumberFromSignature(ctx context.Context, sig s
 			continue
 		}
 		if has, err := bucket.Has(sig); err != nil {
-			return 0, fmt.Errorf("failed to check if signature exists in bucket: %v", err)
+			return 0, fmt.Errorf("failed to check if signature exists in bucket: %w", err)
 		} else if has {
 			found = append(found, epochNumber)
 		}
@@ -81,7 +81,7 @@ func (multi *MultiEpoch) findEpochNumberFromSignature(ctx context.Context, sig s
 		wg.Spawn(func() (any, error) {
 			epoch, err := multi.GetEpoch(epochNumber)
 			if err != nil {
-				return nil, fmt.Errorf("failed to get epoch %d: %v", epochNumber, err)
+				return nil, fmt.Errorf("failed to get epoch %d: %w", epochNumber, err)
 			}
 			if _, err := epoch.FindCidFromSignature(ctx, sig); err == nil {
 				return epochNumber, nil
@@ -118,7 +118,7 @@ func (multi *MultiEpoch) handleGetTransaction(ctx context.Context, conn *request
 		return &jsonrpc2.Error{
 			Code:    jsonrpc2.CodeInvalidParams,
 			Message: "Invalid params",
-		}, fmt.Errorf("failed to parse params: %v", err)
+		}, fmt.Errorf("failed to parse params: %w", err)
 	}
 	if err := params.Validate(); err != nil {
 		return &jsonrpc2.Error{
@@ -137,12 +137,12 @@ func (multi *MultiEpoch) handleGetTransaction(ctx context.Context, conn *request
 			return &jsonrpc2.Error{
 				Code:    CodeNotFound,
 				Message: "Transaction not found",
-			}, fmt.Errorf("failed to find epoch number from signature %s: %v", sig, err)
+			}, fmt.Errorf("failed to find epoch number from signature %s: %w", sig, err)
 		}
 		return &jsonrpc2.Error{
 			Code:    jsonrpc2.CodeInternalError,
 			Message: "Internal error",
-		}, fmt.Errorf("failed to get epoch for signature %s: %v", sig, err)
+		}, fmt.Errorf("failed to get epoch for signature %s: %w", sig, err)
 	}
 	klog.V(4).Infof("Found signature %s in epoch %d in %s", sig, epochNumber, time.Since(startedEpochLookupAt))
 
@@ -166,7 +166,7 @@ func (multi *MultiEpoch) handleGetTransaction(ctx context.Context, conn *request
 		return &jsonrpc2.Error{
 			Code:    jsonrpc2.CodeInternalError,
 			Message: "Internal error",
-		}, fmt.Errorf("failed to get Transaction: %v", err)
+		}, fmt.Errorf("failed to get Transaction: %w", err)
 	}
 	{
 		conn.ctx.Response.Header.Set("DAG-Root-CID", transactionCid.String())
@@ -181,7 +181,7 @@ func (multi *MultiEpoch) handleGetTransaction(ctx context.Context, conn *request
 			return &jsonrpc2.Error{
 				Code:    jsonrpc2.CodeInternalError,
 				Message: "Internal error",
-			}, fmt.Errorf("failed to get block: %v", err)
+			}, fmt.Errorf("failed to get block: %w", err)
 		}
 		blocktime := uint64(block.Meta.Blocktime)
 		if blocktime != 0 {
@@ -199,7 +199,7 @@ func (multi *MultiEpoch) handleGetTransaction(ctx context.Context, conn *request
 			return &jsonrpc2.Error{
 				Code:    jsonrpc2.CodeInternalError,
 				Message: "Internal error",
-			}, fmt.Errorf("failed to decode transaction: %v", err)
+			}, fmt.Errorf("failed to decode transaction: %w", err)
 		}
 		response.Signatures = tx.Signatures
 		if tx.Message.IsVersioned() {
@@ -214,7 +214,7 @@ func (multi *MultiEpoch) handleGetTransaction(ctx context.Context, conn *request
 			return &jsonrpc2.Error{
 				Code:    jsonrpc2.CodeInternalError,
 				Message: "Internal error",
-			}, fmt.Errorf("failed to encode transaction: %v", err)
+			}, fmt.Errorf("failed to encode transaction: %w", err)
 		}
 		response.Transaction = encodedTx
 	}
