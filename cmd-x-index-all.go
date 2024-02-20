@@ -40,7 +40,7 @@ func newCmd_Index_all() *cli.Command {
 		Flags: []cli.Flag{
 			&cli.BoolFlag{
 				Name:        "verify",
-				Usage:       "verify the index after creating it",
+				Usage:       "verify the indexes after creating them",
 				Destination: &verify,
 			},
 			&cli.StringFlag{

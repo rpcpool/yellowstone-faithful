@@ -14,6 +14,7 @@ import (
 )
 
 type Writer struct {
+	path           string
 	destination    *os.File
 	writer         *bufio.Writer
 	prefixToHashes *prefixToHashes // prefix -> hashes
@@ -22,7 +23,11 @@ type Writer struct {
 type prefixToHashes [math.MaxUint16 + 1][]uint64 // prefix -> hashes
 
 func newPrefixToHashes() *prefixToHashes {
-	return &prefixToHashes{}
+	var out prefixToHashes
+	for i := range out {
+		out[i] = make([]uint64, 0, 16_000)
+	}
+	return &out
 }
 
 const (
@@ -41,13 +46,9 @@ func NewWriter(path string) (*Writer, error) {
 	} else if !ok {
 		return nil, fmt.Errorf("file already exists and is not empty: %s", path)
 	}
-	file, err := os.Create(path)
-	if err != nil {
-		return nil, err
-	}
+
 	return &Writer{
-		writer:         bufio.NewWriterSize(file, writeBufSize),
-		destination:    file,
+		path:           path,
 		prefixToHashes: newPrefixToHashes(),
 	}, nil
 }
@@ -57,7 +58,8 @@ func NewWriter(path string) (*Writer, error) {
 func (b *Writer) Put(sig [64]byte) {
 	var prefix [2]byte
 	copy(prefix[:], sig[:2])
-	b.prefixToHashes[prefixToUint16(prefix)] = append(b.prefixToHashes[prefixToUint16(prefix)], Hash(sig))
+	pU16 := prefixToUint16(prefix)
+	b.prefixToHashes[pU16] = append(b.prefixToHashes[pU16], Hash(sig))
 }
 
 // Has returns true if the Bucketteer has seen the given signature.
@@ -74,11 +76,29 @@ func (b *Writer) Has(sig [64]byte) bool {
 }
 
 func (b *Writer) Close() error {
+	if b.writer != nil {
+		if err := b.writer.Flush(); err != nil {
+			return fmt.Errorf("failed to flush writer: %w", err)
+		}
+	}
+	if b.destination == nil {
+		return nil
+	}
+	if err := b.destination.Sync(); err != nil {
+		return fmt.Errorf("failed to sync file: %w", err)
+	}
 	return b.destination.Close()
 }
 
 // Seal writes the Bucketteer's state to the given writer.
 func (b *Writer) Seal(meta indexmeta.Meta) (int64, error) {
+	file, err := os.Create(b.path)
+	if err != nil {
+		return 0, fmt.Errorf("failed to create file: %w", err)
+	}
+	b.writer = bufio.NewWriterSize(file, writeBufSize)
+	b.destination = file
+
 	// truncate file and seek to beginning:
 	if err := b.destination.Truncate(0); err != nil {
 		return 0, err
@@ -89,6 +109,16 @@ func (b *Writer) Seal(meta indexmeta.Meta) (int64, error) {
 	newHeader, size, err := seal(b.writer, b.prefixToHashes, meta)
 	if err != nil {
 		return 0, err
+	}
+	{
+		// flush the writer:
+		if err := b.writer.Flush(); err != nil {
+			return 0, fmt.Errorf("failed to flush writer: %w", err)
+		}
+		// sync the file:
+		if err := b.destination.Sync(); err != nil {
+			return 0, fmt.Errorf("failed to sync file: %w", err)
+		}
 	}
 	return size, overwriteFileContentAt(b.destination, 0, newHeader)
 }
@@ -232,7 +262,7 @@ func seal(
 	updatedHeader, err := createHeader(
 		_Magic,
 		Version,
-		uint32(headerSize-4), // -4 because we don't count the header size itself
+		uint32(headerSize-4), // -4 because we don't count the header size itself (it's a uint32, so 4 bytes long)
 		meta,
 		prefixToOffset,
 	)

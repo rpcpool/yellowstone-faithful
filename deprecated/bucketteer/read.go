@@ -3,8 +3,10 @@ package bucketteer
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
+	"os"
 
 	bin "github.com/gagliardetto/binary"
 	"golang.org/x/exp/mmap"
@@ -19,6 +21,13 @@ type Reader struct {
 // Open opens a Bucketteer file in read-only mode,
 // using memory-mapped IO.
 func Open(path string) (*Reader, error) {
+	empty, err := isEmptyFile(path)
+	if err != nil {
+		return nil, err
+	}
+	if empty {
+		return nil, fmt.Errorf("file is empty: %s", path)
+	}
 	file, err := mmap.Open(path)
 	if err != nil {
 		return nil, err
@@ -26,7 +35,42 @@ func Open(path string) (*Reader, error) {
 	return NewReader(file)
 }
 
+func isEmptyFile(path string) (bool, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return false, err
+	}
+	defer file.Close()
+	stat, err := file.Stat()
+	if err != nil {
+		return false, err
+	}
+	return stat.Size() == 0, nil
+}
+
+func isReaderEmpty(reader io.ReaderAt) (bool, error) {
+	if reader == nil {
+		return false, errors.New("reader is nil")
+	}
+	buf := make([]byte, 1)
+	_, err := reader.ReadAt(buf, 0)
+	if err != nil {
+		if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+			return true, nil
+		}
+		return false, err
+	}
+	return len(buf) == 0, nil
+}
+
 func NewReader(reader io.ReaderAt) (*Reader, error) {
+	empty, err := isReaderEmpty(reader)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check if reader is empty: %w", err)
+	}
+	if empty {
+		return nil, fmt.Errorf("reader is empty")
+	}
 	r := &Reader{
 		prefixToOffset: make(map[[2]byte]uint64),
 	}
@@ -71,12 +115,12 @@ func readHeader(reader io.ReaderAt) (map[[2]byte]uint64, map[string]string, int6
 	// read header size:
 	headerSize, err := readHeaderSize(reader)
 	if err != nil {
-		return nil, nil, 0, err
+		return nil, nil, 0, fmt.Errorf("failed to read header size: %w", err)
 	}
 	// read header bytes:
 	headerBuf := make([]byte, headerSize)
 	if _, err := reader.ReadAt(headerBuf, 4); err != nil {
-		return nil, nil, 0, err
+		return nil, nil, 0, fmt.Errorf("failed to read header bytes: %w", err)
 	}
 	// decode header:
 	decoder := bin.NewBorshDecoder(headerBuf)
@@ -86,7 +130,7 @@ func readHeader(reader io.ReaderAt) (map[[2]byte]uint64, map[string]string, int6
 		magicBuf := make([]byte, len(_Magic[:]))
 		_, err := decoder.Read(magicBuf)
 		if err != nil {
-			return nil, nil, 0, err
+			return nil, nil, 0, fmt.Errorf("failed to read magic: %w", err)
 		}
 		if !bytes.Equal(magicBuf, _Magic[:]) {
 			return nil, nil, 0, fmt.Errorf("invalid magic: %x", string(magicBuf))
@@ -96,7 +140,7 @@ func readHeader(reader io.ReaderAt) (map[[2]byte]uint64, map[string]string, int6
 	{
 		got, err := decoder.ReadUint64(bin.LE)
 		if err != nil {
-			return nil, nil, 0, err
+			return nil, nil, 0, fmt.Errorf("failed to read version: %w", err)
 		}
 		if got != Version {
 			return nil, nil, 0, fmt.Errorf("expected version %d, got %d", Version, got)
@@ -106,17 +150,17 @@ func readHeader(reader io.ReaderAt) (map[[2]byte]uint64, map[string]string, int6
 		// read meta:
 		numMeta, err := decoder.ReadUint64(bin.LE)
 		if err != nil {
-			return nil, nil, 0, err
+			return nil, nil, 0, fmt.Errorf("failed to read numMeta: %w", err)
 		}
 		meta := make(map[string]string, numMeta)
 		for i := uint64(0); i < numMeta; i++ {
 			key, err := decoder.ReadString()
 			if err != nil {
-				return nil, nil, 0, err
+				return nil, nil, 0, fmt.Errorf("failed to read meta[%d].key: %w", i, err)
 			}
 			value, err := decoder.ReadString()
 			if err != nil {
-				return nil, nil, 0, err
+				return nil, nil, 0, fmt.Errorf("failed to read meta[%d].value: %w", i, err)
 			}
 			meta[key] = value
 		}
@@ -124,7 +168,7 @@ func readHeader(reader io.ReaderAt) (map[[2]byte]uint64, map[string]string, int6
 	// numPrefixes:
 	numPrefixes, err := decoder.ReadUint64(bin.LE)
 	if err != nil {
-		return nil, nil, 0, err
+		return nil, nil, 0, fmt.Errorf("failed to read numPrefixes: %w", err)
 	}
 	// prefix -> offset:
 	prefixToOffset := make(map[[2]byte]uint64, numPrefixes)
@@ -132,11 +176,11 @@ func readHeader(reader io.ReaderAt) (map[[2]byte]uint64, map[string]string, int6
 		var prefix [2]byte
 		_, err := decoder.Read(prefix[:])
 		if err != nil {
-			return nil, nil, 0, err
+			return nil, nil, 0, fmt.Errorf("failed to read prefixes[%d]: %w", i, err)
 		}
 		offset, err := decoder.ReadUint64(bin.LE)
 		if err != nil {
-			return nil, nil, 0, err
+			return nil, nil, 0, fmt.Errorf("failed to read offsets[%d]: %w", i, err)
 		}
 		prefixToOffset[prefix] = offset
 	}
