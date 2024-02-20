@@ -70,7 +70,7 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 		}, fmt.Errorf("failed to get epoch %d: %w", epochNumber, err)
 	}
 
-	block, err := epochHandler.GetBlock(WithSubrapghPrefetch(ctx, true), slot)
+	block, blockCid, err := epochHandler.GetBlock(WithSubrapghPrefetch(ctx, true), slot)
 	if err != nil {
 		if errors.Is(err, compactindexsized.ErrNotFound) {
 			return &jsonrpc2.Error{
@@ -84,6 +84,11 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 			}, fmt.Errorf("failed to get block: %w", err)
 		}
 	}
+	// set the headers:
+	{
+		conn.ctx.Response.Header.Set("DAG-Root-CID", blockCid.String())
+	}
+
 	tim.time("GetBlock")
 	{
 		prefetcherFromCar := func() error {
@@ -448,7 +453,7 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 		if (parentSlot != 0 || slot == 1) && CalcEpochForSlot(parentSlot) == epochNumber {
 			// NOTE: if the parent is in the same epoch, we can get it from the same epoch handler as the block;
 			// otherwise, we need to get it from the previous epoch (TODO: implement this)
-			parentBlock, err := epochHandler.GetBlock(WithSubrapghPrefetch(ctx, false), parentSlot)
+			parentBlock, _, err := epochHandler.GetBlock(WithSubrapghPrefetch(ctx, false), parentSlot)
 			if err != nil {
 				return &jsonrpc2.Error{
 					Code:    jsonrpc2.CodeInternalError,

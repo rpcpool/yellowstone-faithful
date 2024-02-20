@@ -123,7 +123,7 @@ func (multi *MultiEpoch) handleGetSignaturesForAddress(ctx context.Context, conn
 		if blockTime, ok := blockTimeCache.m[slot]; ok {
 			return blockTime
 		}
-		block, err := ser.GetBlock(ctx, slot)
+		block, _, err := ser.GetBlock(ctx, slot)
 		if err != nil {
 			klog.Errorf("failed to get block time for slot %d: %v", slot, err)
 			return 0
@@ -158,7 +158,7 @@ func (multi *MultiEpoch) handleGetSignaturesForAddress(ctx context.Context, conn
 				if signaturesOnly {
 					return nil
 				}
-				transactionNode, err := ser.GetTransaction(ctx, sig)
+				transactionNode, _, err := ser.GetTransaction(ctx, sig)
 				if err != nil {
 					klog.Errorf("failed to get tx %s: %v", sig, err)
 					return nil

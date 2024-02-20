@@ -28,7 +28,7 @@ func (multi *MultiEpoch) handleGetBlockTime(ctx context.Context, conn *requestCo
 		}, fmt.Errorf("failed to get epoch %d: %w", epochNumber, err)
 	}
 
-	block, err := epochHandler.GetBlock(WithSubrapghPrefetch(ctx, false), blockNum)
+	block, _, err := epochHandler.GetBlock(WithSubrapghPrefetch(ctx, false), blockNum)
 	if err != nil {
 		if errors.Is(err, compactindexsized.ErrNotFound) {
 			return &jsonrpc2.Error{

@@ -785,11 +785,11 @@ func (ser *Epoch) FindOffsetAndSizeFromCid(ctx context.Context, cid cid.Cid) (os
 	return found, nil
 }
 
-func (ser *Epoch) GetBlock(ctx context.Context, slot uint64) (*ipldbindcode.Block, error) {
+func (ser *Epoch) GetBlock(ctx context.Context, slot uint64) (*ipldbindcode.Block, cid.Cid, error) {
 	// get the slot by slot number
 	wantedCid, err := ser.FindCidFromSlot(ctx, slot)
 	if err != nil {
-		return nil, fmt.Errorf("failed to find CID for slot %d: %w", slot, err)
+		return nil, cid.Cid{}, fmt.Errorf("failed to find CID for slot %d: %w", slot, err)
 	}
 	{
 		doPrefetch := getValueFromContext(ctx, "prefetch")
@@ -801,14 +801,14 @@ func (ser *Epoch) GetBlock(ctx context.Context, slot uint64) (*ipldbindcode.Bloc
 	// get the block by CID
 	data, err := ser.GetNodeByCid(ctx, wantedCid)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get node by cid %s: %w", wantedCid, err)
+		return nil, cid.Cid{}, fmt.Errorf("failed to get node by cid %s: %w", wantedCid, err)
 	}
 	// try parsing the data as a Block node.
 	decoded, err := iplddecoders.DecodeBlock(data)
 	if err != nil {
-		return nil, fmt.Errorf("failed to decode block with CID %s: %w", wantedCid, err)
+		return nil, cid.Cid{}, fmt.Errorf("failed to decode block with CID %s: %w", wantedCid, err)
 	}
-	return decoded, nil
+	return decoded, wantedCid, nil
 }
 
 func (ser *Epoch) GetEntryByCid(ctx context.Context, wantedCid cid.Cid) (*ipldbindcode.Entry, error) {
@@ -863,11 +863,11 @@ func (ser *Epoch) GetRewardsByCid(ctx context.Context, wantedCid cid.Cid) (*ipld
 	return decoded, nil
 }
 
-func (ser *Epoch) GetTransaction(ctx context.Context, sig solana.Signature) (*ipldbindcode.Transaction, error) {
+func (ser *Epoch) GetTransaction(ctx context.Context, sig solana.Signature) (*ipldbindcode.Transaction, cid.Cid, error) {
 	// get the CID by signature
 	wantedCid, err := ser.FindCidFromSignature(ctx, sig)
 	if err != nil {
-		return nil, fmt.Errorf("failed to find CID for signature %s: %w", sig, err)
+		return nil, cid.Cid{}, fmt.Errorf("failed to find CID for signature %s: %w", sig, err)
 	}
 	{
 		doPrefetch := getValueFromContext(ctx, "prefetch")
@@ -879,12 +879,12 @@ func (ser *Epoch) GetTransaction(ctx context.Context, sig solana.Signature) (*ip
 	// get the transaction by CID
 	data, err := ser.GetNodeByCid(ctx, wantedCid)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get node by cid %s: %w", wantedCid, err)
+		return nil, cid.Cid{}, fmt.Errorf("failed to get node by cid %s: %w", wantedCid, err)
 	}
 	// try parsing the data as a Transaction node.
 	decoded, err := iplddecoders.DecodeTransaction(data)
 	if err != nil {
-		return nil, fmt.Errorf("failed to decode transaction with CID %s: %w", wantedCid, err)
+		return nil, cid.Cid{}, fmt.Errorf("failed to decode transaction with CID %s: %w", wantedCid, err)
 	}
-	return decoded, nil
+	return decoded, wantedCid, nil
 }
