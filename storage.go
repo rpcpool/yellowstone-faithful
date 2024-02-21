@@ -31,7 +31,7 @@ func openIndexStorage(
 		klog.Infof("opening index file from %q as HTTP remote file", where)
 		rac, size, err := splitcarfetcher.NewRemoteHTTPFileAsIoReaderAt(ctx, where)
 		if err != nil {
-			return nil, fmt.Errorf("failed to open remote index file: %w", err)
+			return nil, fmt.Errorf("failed to open remote index file %q: %w", where, err)
 		}
 		if !klog.V(5).Enabled() {
 			return rac, nil
@@ -65,7 +65,7 @@ func openCarStorage(ctx context.Context, where string) (*carv2.Reader, ReaderAtC
 		klog.Infof("opening CAR file from %q as HTTP remote file", where)
 		rem, size, err := splitcarfetcher.NewRemoteHTTPFileAsIoReaderAt(ctx, where)
 		if err != nil {
-			return nil, nil, fmt.Errorf("failed to open remote CAR file: %w", err)
+			return nil, nil, fmt.Errorf("failed to open remote CAR file %q: %w", where, err)
 		}
 		return nil, &readCloserWrapper{
 			rac:  rem,

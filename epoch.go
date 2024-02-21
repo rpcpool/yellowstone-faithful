@@ -339,7 +339,7 @@ func NewEpochFromConfig(
 								formattedURL,
 							)
 							if err != nil {
-								return nil, fmt.Errorf("failed to create remote file split car reader: %w", err)
+								return nil, fmt.Errorf("failed to create remote file split car reader from %q: %w", formattedURL, err)
 							}
 
 							return &readCloserWrapper{
@@ -371,7 +371,7 @@ func NewEpochFromConfig(
 								formattedURL,
 							)
 							if err != nil {
-								return nil, fmt.Errorf("failed to create remote file split car reader: %w", err)
+								return nil, fmt.Errorf("failed to create remote file split car reader from %q: %w", formattedURL, err)
 							}
 
 							return &readCloserWrapper{
