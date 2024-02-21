@@ -56,14 +56,14 @@ func getContentSizeWithHeadOrZeroRange(url string) (int64, error) {
 
 // remoteHTTPFileAsIoReaderAt returns a ReaderAtCloser for a remote file.
 // The returned ReaderAtCloser is backed by a http.Client.
-func remoteHTTPFileAsIoReaderAt(ctx context.Context, url string) (ReaderAtCloser, error) {
+func remoteHTTPFileAsIoReaderAt(ctx context.Context, url string) (ReaderAtCloser, int64, error) {
 	// send a request to the server to get the file size:
 	contentLength, err := getContentSizeWithHeadOrZeroRange(url)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	if contentLength == 0 {
-		return nil, fmt.Errorf("missing Content-Length/Content-Range header, or file is empty")
+		return nil, 0, fmt.Errorf("missing Content-Length/Content-Range header, or file is empty")
 	}
 
 	// Create a cache with a default expiration time of 5 minutes, and which
@@ -75,7 +75,7 @@ func remoteHTTPFileAsIoReaderAt(ctx context.Context, url string) (ReaderAtCloser
 	}
 	parsedURL, err := urlx.Parse(url)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	name := filepath.Base(parsedURL.Path)
 
@@ -88,7 +88,7 @@ func remoteHTTPFileAsIoReaderAt(ctx context.Context, url string) (ReaderAtCloser
 	rc.StartCacheGC(ctx, 1*time.Minute)
 	rr.ca = rc
 
-	return rr, nil
+	return rr, contentLength, nil
 }
 
 type HTTPSingleFileRemoteReaderAt struct {
@@ -176,9 +176,15 @@ func remoteReadAt(client *http.Client, url string, p []byte, off int64) (n int, 
 }
 
 type readCloserWrapper struct {
-	rac      ReaderAtCloser
-	isRemote bool
-	name     string
+	rac        ReaderAtCloser
+	isRemote   bool
+	isSplitCar bool
+	name       string
+	size       int64
+}
+
+func (r *readCloserWrapper) Size() int64 {
+	return r.size
 }
 
 // when reading print a dot
@@ -201,8 +207,12 @@ func (r *readCloserWrapper) ReadAt(p []byte, off int64) (n int, err error) {
 				prefix = icon + azureBG("[READ-INDEX]")
 			}
 			// if has suffix .car, then it's a car file
-			if strings.HasSuffix(r.name, ".car") {
-				prefix = icon + purpleBG("[READ-CAR]")
+			if strings.HasSuffix(r.name, ".car") || r.isSplitCar {
+				if r.isSplitCar {
+					prefix = icon + azureBG("[READ-SPLIT-CAR]")
+				} else {
+					prefix = icon + purpleBG("[READ-CAR]")
+				}
 			}
 			klog.V(5).Infof(prefix+" %s:%d+%d (%s)\n", filepath.Base(r.name), off, len(p), took)
 		}

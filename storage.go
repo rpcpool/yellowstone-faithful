@@ -28,7 +28,7 @@ func openIndexStorage(
 	where = strings.TrimSpace(where)
 	if strings.HasPrefix(where, "http://") || strings.HasPrefix(where, "https://") {
 		klog.Infof("opening index file from %q as HTTP remote file", where)
-		rac, err := remoteHTTPFileAsIoReaderAt(ctx, where)
+		rac, size, err := remoteHTTPFileAsIoReaderAt(ctx, where)
 		if err != nil {
 			return nil, fmt.Errorf("failed to open remote index file: %w", err)
 		}
@@ -39,6 +39,7 @@ func openIndexStorage(
 			rac:      rac,
 			name:     where,
 			isRemote: true,
+			size:     size,
 		}, nil
 	}
 	// TODO: add support for IPFS gateways.
@@ -61,13 +62,14 @@ func openCarStorage(ctx context.Context, where string) (*carv2.Reader, ReaderAtC
 	where = strings.TrimSpace(where)
 	if strings.HasPrefix(where, "http://") || strings.HasPrefix(where, "https://") {
 		klog.Infof("opening CAR file from %q as HTTP remote file", where)
-		rem, err := remoteHTTPFileAsIoReaderAt(ctx, where)
+		rem, size, err := remoteHTTPFileAsIoReaderAt(ctx, where)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to open remote CAR file: %w", err)
 		}
 		return nil, &readCloserWrapper{
 			rac:  rem,
 			name: where,
+			size: size,
 		}, nil
 	}
 	// TODO: add support for IPFS gateways.
