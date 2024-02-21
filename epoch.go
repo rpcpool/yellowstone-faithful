@@ -334,8 +334,8 @@ func NewEpochFromConfig(
 						formattedURL := fmt.Sprintf("http://%s/piece/%s", minerIP, piece.CommP.String())
 
 						{
-							rfspc, err := splitcarfetcher.NewRemoteFileSplitCarReader(
-								piece.CommP.String(),
+							rfspc, _, err := splitcarfetcher.NewRemoteHTTPFileAsIoReaderAt(
+								c.Context,
 								formattedURL,
 							)
 							if err != nil {
@@ -366,8 +366,8 @@ func NewEpochFromConfig(
 
 						{
 							formattedURL := pieceURL.URI.String()
-							rfspc, err := splitcarfetcher.NewRemoteFileSplitCarReader(
-								piece.CommP.String(),
+							rfspc, _, err := splitcarfetcher.NewRemoteHTTPFileAsIoReaderAt(
+								c.Context,
 								formattedURL,
 							)
 							if err != nil {

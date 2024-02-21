@@ -13,6 +13,7 @@ import (
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	solanatxmetaparsers "github.com/rpcpool/yellowstone-faithful/solana-tx-meta-parsers"
+	splitcarfetcher "github.com/rpcpool/yellowstone-faithful/split-car-fetcher"
 	"golang.org/x/exp/mmap"
 	"k8s.io/klog/v2"
 )
@@ -28,7 +29,7 @@ func openIndexStorage(
 	where = strings.TrimSpace(where)
 	if strings.HasPrefix(where, "http://") || strings.HasPrefix(where, "https://") {
 		klog.Infof("opening index file from %q as HTTP remote file", where)
-		rac, size, err := remoteHTTPFileAsIoReaderAt(ctx, where)
+		rac, size, err := splitcarfetcher.NewRemoteHTTPFileAsIoReaderAt(ctx, where)
 		if err != nil {
 			return nil, fmt.Errorf("failed to open remote index file: %w", err)
 		}
@@ -62,7 +63,7 @@ func openCarStorage(ctx context.Context, where string) (*carv2.Reader, ReaderAtC
 	where = strings.TrimSpace(where)
 	if strings.HasPrefix(where, "http://") || strings.HasPrefix(where, "https://") {
 		klog.Infof("opening CAR file from %q as HTTP remote file", where)
-		rem, size, err := remoteHTTPFileAsIoReaderAt(ctx, where)
+		rem, size, err := splitcarfetcher.NewRemoteHTTPFileAsIoReaderAt(ctx, where)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to open remote CAR file: %w", err)
 		}
