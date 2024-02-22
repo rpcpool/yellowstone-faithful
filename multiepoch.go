@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"sort"
@@ -401,11 +402,20 @@ func newMultiEpochHandler(handler *MultiEpoch, lsConf *ListenerConfig) func(ctx 
 				metrics_methodToNumProxied.WithLabelValues(sanitizeMethod(method)).Inc()
 				return
 			} else {
-				rqCtx.ReplyWithError(
-					reqCtx,
-					rpcRequest.ID,
-					errorResp,
-				)
+				if errors.Is(err, ErrNotFound) {
+					// reply with null result
+					rqCtx.ReplyRaw(
+						reqCtx,
+						rpcRequest.ID,
+						nil,
+					)
+				} else {
+					rqCtx.ReplyWithError(
+						reqCtx,
+						rpcRequest.ID,
+						errorResp,
+					)
+				}
 			}
 			return
 		}
