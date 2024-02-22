@@ -13,6 +13,7 @@ import (
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	solanatxmetaparsers "github.com/rpcpool/yellowstone-faithful/solana-tx-meta-parsers"
+	splitcarfetcher "github.com/rpcpool/yellowstone-faithful/split-car-fetcher"
 	"golang.org/x/exp/mmap"
 	"k8s.io/klog/v2"
 )
@@ -28,9 +29,9 @@ func openIndexStorage(
 	where = strings.TrimSpace(where)
 	if strings.HasPrefix(where, "http://") || strings.HasPrefix(where, "https://") {
 		klog.Infof("opening index file from %q as HTTP remote file", where)
-		rac, err := remoteHTTPFileAsIoReaderAt(ctx, where)
+		rac, size, err := splitcarfetcher.NewRemoteHTTPFileAsIoReaderAt(ctx, where)
 		if err != nil {
-			return nil, fmt.Errorf("failed to open remote index file: %w", err)
+			return nil, fmt.Errorf("failed to open remote index file %q: %w", where, err)
 		}
 		if !klog.V(5).Enabled() {
 			return rac, nil
@@ -39,6 +40,7 @@ func openIndexStorage(
 			rac:      rac,
 			name:     where,
 			isRemote: true,
+			size:     size,
 		}, nil
 	}
 	// TODO: add support for IPFS gateways.
@@ -61,13 +63,14 @@ func openCarStorage(ctx context.Context, where string) (*carv2.Reader, ReaderAtC
 	where = strings.TrimSpace(where)
 	if strings.HasPrefix(where, "http://") || strings.HasPrefix(where, "https://") {
 		klog.Infof("opening CAR file from %q as HTTP remote file", where)
-		rem, err := remoteHTTPFileAsIoReaderAt(ctx, where)
+		rem, size, err := splitcarfetcher.NewRemoteHTTPFileAsIoReaderAt(ctx, where)
 		if err != nil {
-			return nil, nil, fmt.Errorf("failed to open remote CAR file: %w", err)
+			return nil, nil, fmt.Errorf("failed to open remote CAR file %q: %w", where, err)
 		}
 		return nil, &readCloserWrapper{
 			rac:  rem,
 			name: where,
+			size: size,
 		}, nil
 	}
 	// TODO: add support for IPFS gateways.

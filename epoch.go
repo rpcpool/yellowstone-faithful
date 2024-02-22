@@ -332,10 +332,23 @@ func NewEpochFromConfig(
 						minerIP := fmt.Sprintf("%s:%s", ip, port)
 						klog.V(3).Infof("piece CID %s is stored on miner %s (%s)", piece.CommP, minerID, minerIP)
 						formattedURL := fmt.Sprintf("http://%s/piece/%s", minerIP, piece.CommP.String())
-						return splitcarfetcher.NewRemoteFileSplitCarReader(
-							piece.CommP.String(),
-							formattedURL,
-						)
+
+						{
+							rfspc, _, err := splitcarfetcher.NewRemoteHTTPFileAsIoReaderAt(
+								c.Context,
+								formattedURL,
+							)
+							if err != nil {
+								return nil, fmt.Errorf("failed to create remote file split car reader from %q: %w", formattedURL, err)
+							}
+
+							return &readCloserWrapper{
+								rac:        rfspc,
+								name:       formattedURL,
+								size:       rfspc.Size(),
+								isSplitCar: true,
+							}, nil
+						}
 					})
 				if err != nil {
 					return nil, fmt.Errorf("failed to open CAR file from pieces: %w", err)
@@ -350,10 +363,24 @@ func NewEpochFromConfig(
 						if !ok {
 							return nil, fmt.Errorf("failed to find URL for piece CID %s", piece.CommP)
 						}
-						return splitcarfetcher.NewRemoteFileSplitCarReader(
-							piece.CommP.String(),
-							pieceURL.URI.String(),
-						)
+
+						{
+							formattedURL := pieceURL.URI.String()
+							rfspc, _, err := splitcarfetcher.NewRemoteHTTPFileAsIoReaderAt(
+								c.Context,
+								formattedURL,
+							)
+							if err != nil {
+								return nil, fmt.Errorf("failed to create remote file split car reader from %q: %w", formattedURL, err)
+							}
+
+							return &readCloserWrapper{
+								rac:        rfspc,
+								name:       formattedURL,
+								size:       rfspc.Size(),
+								isSplitCar: true,
+							}, nil
+						}
 					})
 				if err != nil {
 					return nil, fmt.Errorf("failed to open CAR file from pieces: %w", err)

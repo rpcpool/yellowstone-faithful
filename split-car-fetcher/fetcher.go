@@ -100,60 +100,6 @@ func GetContentSizeWithHeadOrZeroRange(url string) (int64, error) {
 	return resp.ContentLength, nil
 }
 
-type RemoteFileSplitCarReader struct {
-	commP      string
-	url        string
-	size       int64
-	httpClient *http.Client
-}
-
-func NewRemoteFileSplitCarReader(commP string, url string) (*RemoteFileSplitCarReader, error) {
-	size, err := GetContentSizeWithHeadOrZeroRange(url)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get content size from %q: %s", url, err)
-	}
-	return &RemoteFileSplitCarReader{
-		commP:      commP,
-		url:        url,
-		size:       size,
-		httpClient: http.DefaultClient,
-	}, nil
-}
-
-func (fscr *RemoteFileSplitCarReader) ReadAt(p []byte, off int64) (n int, err error) {
-	req, err := http.NewRequest("GET", fscr.url, nil)
-	if err != nil {
-		return 0, err
-	}
-	req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", off, off+int64(len(p))-1))
-	{
-		req.Header.Set("Connection", "keep-alive")
-		req.Header.Set("Keep-Alive", "timeout=600")
-	}
-	resp, err := fscr.httpClient.Do(req)
-	if err != nil {
-		return 0, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusPartialContent {
-		return 0, fmt.Errorf("GET %q: unexpected status code: %d", fscr.url, resp.StatusCode)
-	}
-	n, err = io.ReadFull(resp.Body, p)
-	if err != nil {
-		return 0, err
-	}
-	return n, nil
-}
-
-func (fscr *RemoteFileSplitCarReader) Close() error {
-	fscr.httpClient.CloseIdleConnections()
-	return nil
-}
-
-func (fscr *RemoteFileSplitCarReader) Size() int64 {
-	return fscr.size
-}
-
 func NewSplitCarReader(
 	files *carlet.CarPiecesAndMetadata,
 	readerCreator SplitCarFileReaderCreator,
@@ -216,7 +162,7 @@ func NewSplitCarReader(
 		}
 
 		// if remote, then the file must be at least as header size + content size:
-		if _, ok := fi.(*RemoteFileSplitCarReader); ok {
+		if _, ok := fi.(*HTTPSingleFileRemoteReaderAt); ok {
 			expectedMinSize := int(cf.HeaderSize) + int(cf.ContentSize)
 			if size < expectedMinSize {
 				return nil, fmt.Errorf(
