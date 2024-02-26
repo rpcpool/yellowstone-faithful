@@ -2,7 +2,6 @@ package main
 
 import (
 	"io"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -53,7 +52,7 @@ func (r *readCloserWrapper) ReadAt(p []byte, off int64) (n int, err error) {
 					prefix = icon + purpleBG("[READ-CAR]")
 				}
 			}
-			klog.V(5).Infof(prefix+" %s:%d+%d (%s)\n", filepath.Base(r.name), off, len(p), took)
+			klog.V(5).Infof(prefix+" %s:%d+%d (%s)\n", (r.name), off, len(p), took)
 		}
 	}()
 	return r.rac.ReadAt(p, off)
