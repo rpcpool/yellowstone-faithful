@@ -39,7 +39,6 @@ func (multi *MultiEpoch) findEpochNumberFromSignature(ctx context.Context, sig s
 		return epochs[0], nil
 	}
 
-	// Linear search:
 	numbers := multi.GetEpochNumbers()
 	// sort from highest to lowest:
 	sort.Slice(numbers, func(i, j int) bool {
@@ -48,37 +47,22 @@ func (multi *MultiEpoch) findEpochNumberFromSignature(ctx context.Context, sig s
 
 	buckets := multi.getAllBucketteers()
 
-	found := make([]uint64, 0)
-	startedSearchingCandidatesAt := time.Now()
-	for _, epochNumber := range numbers {
-		bucket, ok := buckets[epochNumber]
-		if !ok {
-			continue
-		}
-		if has, err := bucket.Has(sig); err != nil {
-			return 0, fmt.Errorf("failed to check if signature exists in bucket: %w", err)
-		} else if has {
-			found = append(found, epochNumber)
-		}
-	}
-	klog.V(4).Infof(
-		"Searched %d epochs in %s, and found %d candidate epochs for signature %s: %v",
-		len(numbers),
-		time.Since(startedSearchingCandidatesAt),
-		len(found),
-		sig,
-		found,
-	)
-
-	if len(found) == 0 {
-		return 0, ErrNotFound
-	}
-
 	// Search all epochs in parallel:
 	wg := NewFirstResponse(ctx, multi.options.EpochSearchConcurrency)
 	for i := range numbers {
 		epochNumber := numbers[i]
 		wg.Spawn(func() (any, error) {
+			bucket, ok := buckets[epochNumber]
+			if !ok {
+				return nil, nil
+			}
+			has, err := bucket.Has(sig)
+			if err != nil {
+				return 0, fmt.Errorf("failed to check if signature exists in bucket: %w", err)
+			}
+			if !has {
+				return nil, nil
+			}
 			epoch, err := multi.GetEpoch(epochNumber)
 			if err != nil {
 				return nil, fmt.Errorf("failed to get epoch %d: %w", epochNumber, err)
