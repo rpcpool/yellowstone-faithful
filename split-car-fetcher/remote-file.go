@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"path/filepath"
 	"time"
 
 	"github.com/goware/urlx"
@@ -35,7 +34,7 @@ func NewRemoteHTTPFileAsIoReaderAt(ctx context.Context, url string) (ReaderAtClo
 	if err != nil {
 		return nil, 0, err
 	}
-	name := filepath.Base(parsedURL.Path)
+	name := parsedURL.Path
 
 	rc := rangecache.NewRangeCache(
 		contentLength,
