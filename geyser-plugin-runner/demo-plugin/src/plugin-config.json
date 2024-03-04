@@ -1,0 +1,14 @@
+{
+	"libpath": "/path/to/demo-plugin/target/x86_64-unknown-linux-gnu/release/libdemo_plugin.so",
+	"host": "demo",
+	"user": "solana",
+	"port": 5433,
+	"threads": 20,
+	"batch_size": 20,
+	"panic_on_db_errors": true,
+	"accounts_selector": {
+		"accounts": [
+			"*"
+		]
+	}
+}
