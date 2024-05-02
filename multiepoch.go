@@ -291,6 +291,14 @@ func newMultiEpochHandler(handler *MultiEpoch, lsConf *ListenerConfig) func(ctx 
 				handler(reqCtx)
 				return
 			}
+			{
+				// Handle the /health endpoint
+				if string(reqCtx.Path()) == "/health" && reqCtx.IsGet() {
+					method = "/health"
+					reqCtx.SetStatusCode(http.StatusOK)
+					return
+				}
+			}
 		}
 		{
 			// make sure the method is POST
