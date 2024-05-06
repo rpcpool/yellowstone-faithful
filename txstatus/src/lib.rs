@@ -45,7 +45,6 @@ pub extern "C" fn parse_instruction(bytes: *const u8, len: usize) -> Response {
             }
         }
 
-        let parsed_account_keys: Combined;
         let static_account_keys_len = decoder.read_u8().unwrap() as usize;
         // println!(
         //     "[rust] static_account_keys_len: {:?}",
@@ -60,7 +59,7 @@ pub extern "C" fn parse_instruction(bytes: *const u8, len: usize) -> Response {
         }
 
         let has_dynamic_account_keys = decoder.read_option().unwrap();
-        if has_dynamic_account_keys {
+        let parsed_account_keys: Combined = if has_dynamic_account_keys {
             let mut loaded_addresses = LoadedAddresses::default();
             let num_writable_accounts = decoder.read_u8().unwrap() as usize;
             // println!("[rust] num_writable_accounts: {:?}", num_writable_accounts);
@@ -80,19 +79,17 @@ pub extern "C" fn parse_instruction(bytes: *const u8, len: usize) -> Response {
                 loaded_addresses.readonly.push(account_key);
             }
 
-            parsed_account_keys = Combined {
+            Combined {
                 parent: static_account_keys_vec,
                 child: Some(loaded_addresses),
-            };
+            }
         } else {
-            parsed_account_keys = Combined {
+            Combined {
                 parent: static_account_keys_vec,
                 child: None,
-            };
-        }
-        let sommmm = &parsed_account_keys
-            .child
-            .unwrap_or(LoadedAddresses::default());
+            }
+        };
+        let sommmm = &parsed_account_keys.child.unwrap_or_default();
 
         let account_keys = AccountKeys::new(
             &parsed_account_keys.parent,
@@ -199,16 +196,8 @@ struct Buffer {
     len: usize,
 }
 
+#[derive(Default)]
 struct Combined {
     parent: Vec<Pubkey>,
     child: Option<LoadedAddresses>,
-}
-
-impl Default for Combined {
-    fn default() -> Self {
-        Combined {
-            parent: vec![],
-            child: None,
-        }
-    }
 }
