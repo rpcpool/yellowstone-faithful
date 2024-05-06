@@ -92,9 +92,17 @@ var metrics_version = prometheus.NewGaugeVec(
 func init() {
 	// Add an entry to the metric with the version information.
 	labeledValues := map[string]string{
-		"started_at": StartedAt.Format(time.RFC3339),
-		"tag":        GitTag,
-		"commit":     GitCommit,
+		"started_at":   StartedAt.Format(time.RFC3339),
+		"tag":          GitTag,
+		"commit":       GitCommit,
+		"compiler":     "",
+		"goarch":       "",
+		"goos":         "",
+		"goamd64":      "",
+		"vcs":          "",
+		"vcs_revision": "",
+		"vcs_time":     "",
+		"vcs_modified": "",
 	}
 	if info, ok := debug.ReadBuildInfo(); ok {
 		for _, setting := range info.Settings {
