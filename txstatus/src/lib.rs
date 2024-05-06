@@ -1,8 +1,5 @@
-use std::ffi::CStr;
-use std::ffi::CString;
-
 use std::slice;
-use std::time::Instant;
+// use std::time::Instant;
 
 mod byte_order;
 mod reader;
@@ -35,15 +32,15 @@ pub extern "C" fn parse_instruction(bytes: *const u8, len: usize) -> Response {
             data: vec![],
         };
         {
-            instruction.program_id_index = decoder.read_u8().unwrap() as u8;
+            instruction.program_id_index = decoder.read_u8().unwrap();
             let accounts_len = decoder.read_u8().unwrap() as usize;
             for _ in 0..accounts_len {
-                let account_index = decoder.read_u8().unwrap() as u8;
+                let account_index = decoder.read_u8().unwrap();
                 instruction.accounts.push(account_index);
             }
             let data_len = decoder.read_u8().unwrap() as usize;
             for _ in 0..data_len {
-                let data_byte = decoder.read_u8().unwrap() as u8;
+                let data_byte = decoder.read_u8().unwrap();
                 instruction.data.push(data_byte);
             }
         }
@@ -95,8 +92,7 @@ pub extern "C" fn parse_instruction(bytes: *const u8, len: usize) -> Response {
         }
         let sommmm = &parsed_account_keys
             .child
-            .or(Some(LoadedAddresses::default()))
-            .unwrap();
+            .unwrap_or(LoadedAddresses::default());
 
         let account_keys = AccountKeys::new(
             &parsed_account_keys.parent,
@@ -149,13 +145,13 @@ pub extern "C" fn parse_instruction(bytes: *const u8, len: usize) -> Response {
             let data = response.as_mut_ptr();
             let len = response.len();
 
-            return Response {
+            Response {
                 buf: Buffer {
                     data: unsafe { data.add(32) },
                     len: len - 32,
                 },
                 status: 1,
-            };
+            }
         } else {
             // println!(
             //     "[rust] successfully parsed the instruction in {:?}: {:?}",
@@ -180,13 +176,13 @@ pub extern "C" fn parse_instruction(bytes: *const u8, len: usize) -> Response {
             let data = response.as_mut_ptr();
             let len = response.len();
             // println!("[rust] {:?}", Instant::now() - started_at);
-            return Response {
+            Response {
                 buf: Buffer {
                     data: unsafe { data.add(32) },
                     len: len - 32,
                 },
                 status: 0,
-            };
+            }
         }
     }
 }
@@ -201,14 +197,6 @@ pub struct Response {
 struct Buffer {
     data: *mut u8,
     len: usize,
-}
-
-extern "C" fn free_buf(buf: Buffer) {
-    let s = unsafe { std::slice::from_raw_parts_mut(buf.data, buf.len) };
-    let s = s.as_mut_ptr();
-    unsafe {
-        Box::from_raw(s);
-    }
 }
 
 struct Combined {
