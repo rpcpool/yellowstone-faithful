@@ -3,7 +3,6 @@ use std::slice;
 
 mod byte_order;
 mod reader;
-mod tools;
 mod type_size;
 
 use reader::Decoder;
@@ -25,7 +24,8 @@ pub extern "C" fn parse_instruction(bytes: *const u8, len: usize) -> Response {
     {
         // read program ID:
         let program_id_bytes = decoder.read_bytes(32).unwrap();
-        let program_id = solana_sdk::pubkey::Pubkey::new(&program_id_bytes);
+        let program_id =
+            solana_sdk::pubkey::Pubkey::try_from(program_id_bytes).expect("invalid program id");
         let mut instruction = CompiledInstruction {
             program_id_index: 0,
             accounts: vec![],
@@ -45,10 +45,7 @@ pub extern "C" fn parse_instruction(bytes: *const u8, len: usize) -> Response {
             }
         }
 
-        let mut parsed_account_keys = Combined {
-            parent: vec![],
-            child: None,
-        };
+        let parsed_account_keys: Combined;
         let static_account_keys_len = decoder.read_u8().unwrap() as usize;
         // println!(
         //     "[rust] static_account_keys_len: {:?}",
@@ -57,7 +54,8 @@ pub extern "C" fn parse_instruction(bytes: *const u8, len: usize) -> Response {
         let mut static_account_keys_vec = vec![];
         for _ in 0..static_account_keys_len {
             let account_key_bytes = decoder.read_bytes(32).unwrap();
-            let account_key = solana_sdk::pubkey::Pubkey::new(&account_key_bytes);
+            let account_key = solana_sdk::pubkey::Pubkey::try_from(account_key_bytes)
+                .expect("invalid account key in static account keys");
             static_account_keys_vec.push(account_key);
         }
 
@@ -69,14 +67,16 @@ pub extern "C" fn parse_instruction(bytes: *const u8, len: usize) -> Response {
             // read 32 bytes for each writable account:
             for _ in 0..num_writable_accounts {
                 let account_key_bytes = decoder.read_bytes(32).unwrap();
-                let account_key = solana_sdk::pubkey::Pubkey::new(&account_key_bytes);
+                let account_key = solana_sdk::pubkey::Pubkey::try_from(account_key_bytes)
+                    .expect("invalid account key in writable accounts");
                 loaded_addresses.writable.push(account_key);
             }
             let num_readonly_accounts = decoder.read_u8().unwrap() as usize;
             // read 32 bytes for each readonly account:
             for _ in 0..num_readonly_accounts {
                 let account_key_bytes = decoder.read_bytes(32).unwrap();
-                let account_key = solana_sdk::pubkey::Pubkey::new(&account_key_bytes);
+                let account_key = solana_sdk::pubkey::Pubkey::try_from(account_key_bytes)
+                    .expect("invalid account key in readonly accounts");
                 loaded_addresses.readonly.push(account_key);
             }
 
@@ -202,4 +202,13 @@ struct Buffer {
 struct Combined {
     parent: Vec<Pubkey>,
     child: Option<LoadedAddresses>,
+}
+
+impl Default for Combined {
+    fn default() -> Self {
+        Combined {
+            parent: vec![],
+            child: None,
+        }
+    }
 }

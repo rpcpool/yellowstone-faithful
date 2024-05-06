@@ -6,7 +6,6 @@ use std::error::Error as StdError;
 pub enum Error {
     ShortBuffer { msg: String },
     InvalidValue { msg: String },
-    GenericError { msg: String },
 }
 
 impl StdError for Error {}
@@ -16,7 +15,6 @@ impl std::fmt::Display for Error {
         match self {
             Error::ShortBuffer { msg } => write!(f, "short buffer: {}", msg),
             Error::InvalidValue { msg } => write!(f, "invalid value: {}", msg),
-            Error::GenericError { msg } => write!(f, "generic error: {}", msg),
         }
     }
 }
@@ -26,7 +24,6 @@ impl std::fmt::Debug for Error {
         match self {
             Error::ShortBuffer { msg } => write!(f, "short buffer: {}", msg),
             Error::InvalidValue { msg } => write!(f, "invalid value: {}", msg),
-            Error::GenericError { msg } => write!(f, "generic error: {}", msg),
         }
     }
 }
@@ -48,7 +45,7 @@ impl Decoder {
     }
 
     pub fn read_byte(&mut self) -> Result<u8, Error> {
-        if self.pos + type_size::BYTE as usize > self.data.len() {
+        if self.pos + type_size::BYTE > self.data.len() {
             return Err(Error::ShortBuffer {
                 msg: format!(
                     "required {} bytes, but only {} bytes available",
@@ -58,7 +55,7 @@ impl Decoder {
             });
         }
         let b = self.data[self.pos];
-        self.pos += type_size::BYTE as usize;
+        self.pos += type_size::BYTE;
         Ok(b)
     }
 
@@ -189,37 +186,6 @@ impl TypeIDFromBytes for TypeID {
         type_id.copy_from_slice(&bytes);
         type_id
     }
-}
-
-// 	func DecodeCompactU16(bytes []byte) (int, int, error) {
-// 	ln := 0
-// 	size := 0
-// 	for {
-// 		if len(bytes) == 0 {
-// 			return 0, 0, io.ErrUnexpectedEOF
-// 		}
-// 		elem := int(bytes[0])
-// 		bytes = bytes[1:]
-// 		ln |= (elem & 0x7f) << (size * 7)
-// 		size += 1
-// 		if (elem & 0x80) == 0 {
-// 			break
-// 		}
-// 	}
-// 	return ln, size, nil
-// }
-
-pub fn decode_compact_u16(bytes: &[u8]) -> Result<(usize, usize), Error> {
-    let mut ln = 0;
-    let mut size = 0;
-    for elem in bytes {
-        ln |= (usize::from(*elem) & 0x7F) << (size * 7);
-        size += 1;
-        if (usize::from(*elem) & 0x80) == 0 {
-            break;
-        }
-    }
-    Ok((ln, size))
 }
 
 #[cfg(test)]
