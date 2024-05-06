@@ -17,7 +17,7 @@ jsonParsed-linux: build-rust-wrapper
 	cp txstatus/target/x86_64-unknown-linux-gnu/release/libdemo_transaction_status_ffi.a ./txstatus/lib/libsolana_transaction_status_wrapper.a
 	LD_FLAGS="$(BASE_LD_FLAGS) -extldflags -static"
 	go build -ldflags=$(LD_FLAGS) -tags ffi -o ./bin/faithful-cli_jsonParsed .
-	echo "built old-faithful with jsonParsed format support via ffi (rust)"
+	echo "SUCCESS: built old-faithful with jsonParsed format support via ffi (rust)"
 compile:
 	@echo "\nCompiling faithful-cli binary for current platform ..."
 	go build -ldflags="$(BASE_LD_FLAGS)" -o ./bin/faithful-cli .
