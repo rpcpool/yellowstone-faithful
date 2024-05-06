@@ -1,6 +1,10 @@
 [workspace]
 
-members = ["geyser-plugin-runner", "geyser-plugin-runner/demo-plugin"]
+members = [
+	"geyser-plugin-runner",
+	"geyser-plugin-runner/demo-plugin",
+	"txstatus",
+]
 
 resolver = "2"
 

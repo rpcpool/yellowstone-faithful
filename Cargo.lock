@@ -1392,6 +1392,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "demo-transaction-status-ffi"
+version = "0.1.0"
+dependencies = [
+ "bs58 0.4.0",
+ "byteorder 1.5.0",
+ "chrono",
+ "libc",
+ "serde_json",
+ "solana-sdk",
+ "solana-transaction-status",
+]
+
+[[package]]
 name = "der"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
