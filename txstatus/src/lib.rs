@@ -13,9 +13,9 @@ use solana_transaction_status::parse_instruction::parse;
 #[no_mangle]
 pub extern "C" fn parse_instruction(bytes: *const u8, len: usize) -> Response {
     // let started_at = Instant::now();
-    let bytes = unsafe {
+    let bytes = {
         assert!(!bytes.is_null());
-        slice::from_raw_parts(bytes, len)
+        unsafe { slice::from_raw_parts(bytes, len) }
     };
     let bytes = bytes.to_vec();
     // println!("[rust] params raw bytes: {:?}", bytes);
