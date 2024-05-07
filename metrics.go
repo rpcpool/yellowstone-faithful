@@ -1,6 +1,11 @@
 package main
 
-import "github.com/prometheus/client_golang/prometheus"
+import (
+	"runtime/debug"
+	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
+)
 
 // - RPC requests by method (counter)
 // - Epochs available epoch_available{epoch="200"} = 1
@@ -74,3 +79,69 @@ var metrics_responseTimeHistogram = prometheus.NewHistogramVec(
 	},
 	[]string{"method"},
 )
+
+// - Version information of this binary
+var metrics_version = prometheus.NewGaugeVec(
+	prometheus.GaugeOpts{
+		Name: "version",
+		Help: "Version information of this binary",
+	},
+	[]string{"started_at", "tag", "commit", "compiler", "goarch", "goos", "goamd64", "vcs", "vcs_revision", "vcs_time", "vcs_modified"},
+)
+
+func init() {
+	// Add an entry to the metric with the version information.
+	labeledValues := map[string]string{
+		"started_at":   StartedAt.Format(time.RFC3339),
+		"tag":          GitTag,
+		"commit":       GitCommit,
+		"compiler":     "",
+		"goarch":       "",
+		"goos":         "",
+		"goamd64":      "",
+		"vcs":          "",
+		"vcs_revision": "",
+		"vcs_time":     "",
+		"vcs_modified": "",
+	}
+	if info, ok := debug.ReadBuildInfo(); ok {
+		for _, setting := range info.Settings {
+			if isAnyOf(setting.Key,
+				"-compiler",
+				"GOARCH",
+				"GOOS",
+				"GOAMD64",
+				"vcs",
+				"vcs.revision",
+				"vcs.time",
+				"vcs.modified",
+			) {
+				switch setting.Key {
+				case "-compiler":
+					labeledValues["compiler"] = setting.Value
+				case "GOARCH":
+					labeledValues["goarch"] = setting.Value
+				case "GOOS":
+					labeledValues["goos"] = setting.Value
+				case "GOAMD64":
+					labeledValues["goamd64"] = setting.Value
+				case "vcs":
+					labeledValues["vcs"] = setting.Value
+				case "vcs.revision":
+					labeledValues["vcs_revision"] = setting.Value
+				case "vcs.time":
+					labeledValues["vcs_time"] = setting.Value
+				case "vcs.modified":
+					labeledValues["vcs_modified"] = setting.Value
+				}
+			}
+		}
+	}
+	metrics_version.With(labeledValues).Set(1)
+}
+
+var StartedAt = time.Now()
+
+func GetUptime() time.Duration {
+	return time.Since(StartedAt)
+}
