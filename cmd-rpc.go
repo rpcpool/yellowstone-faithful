@@ -133,9 +133,7 @@ func newCmd_rpc() *cli.Command {
 			}
 			configs.SortByEpoch()
 			klog.Infof("Loaded %d epoch configs", len(configs))
-			klog.Info("Initializing epochs...")
-
-			startedInitiatingEpochsAt := time.Now()
+			klog.Info("Initializing epochs async...")
 
 			lotusAPIAddress := "https://api.node.glif.io"
 			cl := jsonrpc.NewClient(lotusAPIAddress)
@@ -145,55 +143,60 @@ func newCmd_rpc() *cli.Command {
 				5*time.Second,
 			)
 
-			epochs := make([]*Epoch, 0)
-			wg := new(errgroup.Group)
-			wg.SetLimit(epochLoadConcurrency)
-			mu := &sync.Mutex{}
-			for confIndex := range configs {
-				config := configs[confIndex]
-				wg.Go(func() error {
-					epoch, err := NewEpochFromConfig(
-						config,
-						c,
-						allCache,
-						minerInfo,
-					)
-					if err != nil {
-						return fmt.Errorf("failed to create epoch from config %q: %s", config.ConfigFilepath(), err.Error())
-					}
-					mu.Lock()
-					defer mu.Unlock()
-					epochs = append(epochs, epoch)
-					return nil
-				})
-			}
-			if err := wg.Wait(); err != nil {
-				return cli.Exit(fmt.Sprintf("failed to initialize epochs: %s", err.Error()), 1)
-			}
-			// Sort epochs by epoch number:
-			sort.Slice(epochs, func(i, j int) bool {
-				return epochs[i].Epoch() < epochs[j].Epoch()
-			})
-
 			multi := NewMultiEpoch(&Options{
 				GsfaOnlySignatures:     gsfaOnlySignatures,
 				EpochSearchConcurrency: epochSearchConcurrency,
 			})
-
 			defer func() {
 				if err := multi.Close(); err != nil {
 					klog.Errorf("error closing multi-epoch: %s", err.Error())
 				}
 			}()
 
-			for _, epoch := range epochs {
-				if err := multi.AddEpoch(epoch.Epoch(), epoch); err != nil {
-					return cli.Exit(fmt.Sprintf("failed to add epoch %d: %s", epoch.Epoch(), err.Error()), 1)
+			startedInitiatingEpochsAt := time.Now()
+			go func() {
+				// Sort epochs by epoch number:
+				sort.Slice(configs, func(i, j int) bool {
+					return *configs[i].Epoch < *configs[j].Epoch
+				})
+
+				wg := new(errgroup.Group)
+				wg.SetLimit(epochLoadConcurrency)
+				for confIndex := range configs {
+					config := configs[confIndex]
+					wg.Go(func() error {
+						epochNum := *config.Epoch
+						err := func() error {
+							epoch, err := NewEpochFromConfig(
+								config,
+								c,
+								allCache,
+								minerInfo,
+							)
+							if err != nil {
+								return fmt.Errorf("failed to create epoch from config %q: %s", config.ConfigFilepath(), err.Error())
+							}
+							if err := multi.AddEpoch(epoch.Epoch(), epoch); err != nil {
+								return fmt.Errorf("failed to add epoch %d: %s", epoch.Epoch(), err.Error())
+							}
+							return nil
+						}()
+						if err != nil {
+							metrics_epochsAvailable.WithLabelValues(fmt.Sprintf("%d", epochNum)).Set(0)
+							klog.Error(err)
+							// NOTE: DO NOT return the error here, as we want to continue loading other epochs
+							return nil
+						}
+						metrics_epochsAvailable.WithLabelValues(fmt.Sprintf("%d", epochNum)).Set(1)
+						return nil
+					})
 				}
-				metrics_epochsAvailable.WithLabelValues(fmt.Sprintf("%d", epoch.Epoch())).Set(1)
-			}
-			tookInitializingEpochs := time.Since(startedInitiatingEpochsAt)
-			klog.Infof("Initialized %d epochs in %s", len(epochs), tookInitializingEpochs)
+				if err := wg.Wait(); err != nil {
+					klog.Errorf("fatal error initializing epochs: %s", err.Error())
+				}
+				tookInitializingEpochs := time.Since(startedInitiatingEpochsAt)
+				klog.Infof("Initialized %d epochs in %s", len(configs), tookInitializingEpochs)
+			}()
 
 			if watch {
 				dirs, err := GetListOfDirectories(
