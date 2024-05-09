@@ -24,8 +24,8 @@ func decompressZSTD(data []byte) ([]byte, error) {
 }
 
 var zstdEncoderPool = zstdpool.NewEncoderPool(
-	// zstd.WithEncoderLevel(zstd.SpeedBetterCompression),
-	zstd.WithEncoderLevel(zstd.SpeedFastest),
+	zstd.WithEncoderLevel(zstd.SpeedBetterCompression),
+	// zstd.WithEncoderLevel(zstd.SpeedFastest),
 )
 
 func compressZSTD(data []byte) ([]byte, error) {

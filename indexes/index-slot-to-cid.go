@@ -81,7 +81,7 @@ func (w *SlotToCid_Writer) Put(slot uint64, cid_ cid.Cid) error {
 	if cid_ == cid.Undef {
 		return fmt.Errorf("cid is undefined")
 	}
-	key := uint64tob(slot)
+	key := Uint64tob(slot)
 	value := cid_.Bytes()
 	return w.index.Insert(key, value)
 }
@@ -184,7 +184,7 @@ func (r *SlotToCid_Reader) IsDeprecatedOldVersion() bool {
 
 func (r *SlotToCid_Reader) Get(slot uint64) (cid.Cid, error) {
 	if r.IsDeprecatedOldVersion() {
-		key := uint64tob(slot)
+		key := Uint64tob(slot)
 		value, err := r.deprecatedIndex.Lookup(key)
 		if err != nil {
 			return cid.Undef, err
@@ -195,7 +195,7 @@ func (r *SlotToCid_Reader) Get(slot uint64) (cid.Cid, error) {
 		}
 		return c, nil
 	}
-	key := uint64tob(slot)
+	key := Uint64tob(slot)
 	value, err := r.index.Lookup(key)
 	if err != nil {
 		return cid.Undef, err

@@ -57,7 +57,7 @@ func setDefaultMetadata(index *compactindexsized.Builder, metadata *Metadata) er
 	}
 	setter := index.Metadata()
 
-	if err := setter.Add(indexmeta.MetadataKey_Epoch, uint64tob(metadata.Epoch)); err != nil {
+	if err := setter.Add(indexmeta.MetadataKey_Epoch, Uint64tob(metadata.Epoch)); err != nil {
 		return err
 	}
 
@@ -96,7 +96,7 @@ func getDefaultMetadata(index *compactindexsized.DB) (*Metadata, error) {
 
 	epochBytes, ok := meta.Get(indexmeta.MetadataKey_Epoch)
 	if ok {
-		out.Epoch = btoUint64(epochBytes)
+		out.Epoch = BtoUint64(epochBytes)
 	} else {
 		return nil, fmt.Errorf("metadata.epoch is empty")
 	}

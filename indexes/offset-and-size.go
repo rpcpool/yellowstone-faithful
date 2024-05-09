@@ -14,7 +14,7 @@ func NewOffsetAndSize(offset uint64, size uint64) *OffsetAndSize {
 
 // IsValid returns true if the offset and size are valid.
 func (oas *OffsetAndSize) IsValid() bool {
-	return oas.Offset <= maxUint48 && oas.Size <= maxUint24
+	return oas.Offset <= MaxUint48 && oas.Size <= MaxUint24
 }
 
 type OffsetAndSize struct {
@@ -24,7 +24,7 @@ type OffsetAndSize struct {
 
 // Bytes returns the offset and size as a byte slice.
 func (oas OffsetAndSize) Bytes() []byte {
-	return append(uint48tob(oas.Offset), uint24tob(uint32(oas.Size))...)
+	return append(Uint48tob(oas.Offset), Uint24tob(uint32(oas.Size))...)
 }
 
 // FromBytes parses the offset and size from a byte slice.
@@ -33,8 +33,8 @@ func (oas *OffsetAndSize) FromBytes(buf []byte) error {
 		return errors.New("invalid byte slice length")
 	}
 	_ = buf[IndexValueSize_CidToOffsetAndSize-1] // bounds check hint to compiler
-	oas.Offset = btoUint48(buf[:6])
-	oas.Size = uint64(btoUint24(buf[6:]))
+	oas.Offset = BtoUint48(buf[:6])
+	oas.Size = uint64(BtoUint24(buf[6:]))
 	return nil
 }
 

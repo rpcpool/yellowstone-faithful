@@ -78,14 +78,14 @@ func (w *CidToOffsetAndSize_Writer) Put(cid_ cid.Cid, offset uint64, size uint64
 	if cid_ == cid.Undef {
 		return fmt.Errorf("cid is undefined")
 	}
-	if offset > maxUint48 {
-		return fmt.Errorf("offset is too large; max is %d, but got %d", maxUint48, offset)
+	if offset > MaxUint48 {
+		return fmt.Errorf("offset is too large; max is %d, but got %d", MaxUint48, offset)
 	}
-	if size > maxUint24 {
-		return fmt.Errorf("size is too large; max is %d, but got %d", maxUint24, size)
+	if size > MaxUint24 {
+		return fmt.Errorf("size is too large; max is %d, but got %d", MaxUint24, size)
 	}
 	key := cid_.Bytes()
-	value := append(uint48tob(offset), uint24tob(uint32(size))...)
+	value := append(Uint48tob(offset), Uint24tob(uint32(size))...)
 	return w.index.Insert(key, value)
 }
 
