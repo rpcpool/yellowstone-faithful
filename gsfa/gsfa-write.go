@@ -127,7 +127,6 @@ func (a *GsfaWriter) fullBufferWriter() {
 				for _, buf := range tmpBuf {
 					// Write the buffer to the linked log.
 					klog.V(5).Infof("Flushing %d transactions for key %s", len(buf.Locations), buf.Key)
-					// TODO: write to linked log
 					if err := a.flushSingle(buf.Key, buf.Locations); err != nil {
 						klog.Errorf("Error while flushing transactions for key %s: %v", buf.Key, err)
 					}
