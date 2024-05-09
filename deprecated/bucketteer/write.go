@@ -9,6 +9,7 @@ import (
 	"sort"
 
 	bin "github.com/gagliardetto/binary"
+	"k8s.io/klog/v2"
 )
 
 type Writer struct {
@@ -206,7 +207,7 @@ func seal(
 	for _, prefix := range prefixes {
 		entries := getCleanSet(prefixToHashes[prefix])
 		if len(entries) != len(prefixToHashes[prefix]) {
-			panic(fmt.Sprintf("duplicate hashes for prefix %v", prefix))
+			klog.Errorf("duplicate hashes for prefix %v", prefix)
 		}
 		sortWithCompare(entries, func(i, j int) int {
 			if entries[i] < entries[j] {
