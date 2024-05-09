@@ -135,6 +135,9 @@ func (multi *MultiEpoch) handleGetSignaturesForAddress(ctx context.Context, conn
 	}
 	blockTimeCache.m = make(map[uint64]uint64)
 	getBlockTime := func(slot uint64, ser *Epoch) uint64 {
+		// NOTE: this means that you have to potentially fetch 1k blocks to get the blocktime for each transaction.
+		// TODO: include blocktime into the transaction data, or in the gsfaindex.
+		// return 0
 		blockTimeCache.mu.Lock()
 		defer blockTimeCache.mu.Unlock()
 		if blockTime, ok := blockTimeCache.m[slot]; ok {
