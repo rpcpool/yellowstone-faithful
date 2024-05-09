@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -14,11 +15,10 @@ import (
 	"time"
 
 	"github.com/dustin/go-humanize"
-	bin "github.com/gagliardetto/binary"
 	"github.com/gagliardetto/solana-go"
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-libipfs/blocks"
-	"github.com/ipld/go-car"
+	carv1 "github.com/ipld/go-car"
 	"github.com/rpcpool/yellowstone-faithful/gsfa"
 	"github.com/rpcpool/yellowstone-faithful/indexes"
 	"github.com/rpcpool/yellowstone-faithful/indexmeta"
@@ -44,11 +44,6 @@ func newCmd_Index_gsfa() *cli.Command {
 			return nil
 		},
 		Flags: []cli.Flag{
-			&cli.Uint64Flag{
-				Name:  "flush-every",
-				Usage: "flush every N transactions",
-				Value: 1_000_000,
-			},
 			// verify hash of transactions:
 			&cli.BoolFlag{
 				Name:  "verify-hash",
@@ -78,6 +73,11 @@ func newCmd_Index_gsfa() *cli.Command {
 					return nil
 				},
 			},
+			&cli.StringFlag{
+				Name:  "tmp-dir",
+				Usage: "temporary directory to use for storing intermediate files",
+				Value: "",
+			},
 		},
 		Action: func(c *cli.Context) error {
 			carPath := c.Args().First()
@@ -97,13 +97,13 @@ func newCmd_Index_gsfa() *cli.Command {
 			if err != nil {
 				klog.Exitf("Failed to create caching reader: %s", err)
 			}
-			rd, err := car.NewCarReader(cachingReader)
+			rd, err := newCarReader(cachingReader)
 			if err != nil {
 				klog.Exitf("Failed to open CAR: %s", err)
 			}
 			{
 				// print roots:
-				roots := rd.Header.Roots
+				roots := rd.header.Roots
 				klog.Infof("Roots: %d", len(roots))
 				for i, root := range roots {
 					if i == 0 && len(roots) == 1 {
@@ -121,7 +121,7 @@ func newCmd_Index_gsfa() *cli.Command {
 				return fmt.Errorf("index-dir is not a directory")
 			}
 
-			rootCID := rd.Header.Roots[0]
+			rootCID := rd.header.Roots[0]
 
 			// Use the car file name and root CID to name the gsfa index dir:
 			gsfaIndexDir := filepath.Join(indexDir, formatIndexDirname_gsfa(
@@ -135,12 +135,6 @@ func newCmd_Index_gsfa() *cli.Command {
 				return fmt.Errorf("failed to create index dir: %w", err)
 			}
 
-			flushEvery := c.Uint64("flush-every")
-			if flushEvery == 0 {
-				return fmt.Errorf("flush-every must be > 0")
-			}
-			klog.Infof("Will flush to index every %s transactions", humanize.Comma(int64(flushEvery)))
-
 			meta := indexmeta.Meta{}
 			if err := meta.AddUint64(indexmeta.MetadataKey_Epoch, epoch); err != nil {
 				return fmt.Errorf("failed to add epoch to sig_exists index metadata: %w", err)
@@ -151,10 +145,14 @@ func newCmd_Index_gsfa() *cli.Command {
 			if err := meta.AddString(indexmeta.MetadataKey_Network, string(network)); err != nil {
 				return fmt.Errorf("failed to add network to sig_exists index metadata: %w", err)
 			}
+			tmpDir := c.String("tmp-dir")
 			accu, err := gsfa.NewGsfaWriter(
 				gsfaIndexDir,
-				flushEvery,
 				meta,
+				epoch,
+				rootCID,
+				network,
+				tmpDir,
 			)
 			if err != nil {
 				return fmt.Errorf("error while opening gsfa index writer: %w", err)
@@ -174,10 +172,9 @@ func newCmd_Index_gsfa() *cli.Command {
 				klog.Infof("Finished in %s", time.Since(startedAt))
 				klog.Infof("Indexed %s transactions", humanize.Comma(int64(numTransactionsSeen)))
 			}()
-			dotEvery := 100_000
-			klog.Infof("A dot is printed every %s transactions", humanize.Comma(int64(dotEvery)))
 
-			verifyHash = c.Bool("verify-hash")
+			verifyHash := c.Bool("verify-hash")
+			ipldbindcode.DisableHashVerification = !verifyHash
 			numWorkers := c.Uint("w")
 
 			if numWorkers == 0 {
@@ -193,30 +190,62 @@ func newCmd_Index_gsfa() *cli.Command {
 				workerInputChan,
 				&concurrently.Options{PoolSize: int(numWorkers), OutChannelBuffer: int(numWorkers)},
 			)
+			epochStart, epochEnd := CalcEpochLimits(epoch)
 			go func() {
 				// process the results from the workers
+				lastSeenSlot := uint64(0)
+				numTransactionsProcessed := 0
 				for result := range outputChan {
 					switch resValue := result.Value.(type) {
 					case error:
 						panic(resValue)
 					case TransactionWithSlot:
+						numTransactionsProcessed++
 						tx := resValue.Transaction
 						slot := resValue.Slot
-						sig := tx.Signatures[0]
-						err = accu.Push(slot, sig, tx.Message.AccountKeys)
+						off := resValue.Offset
+						length := resValue.Length
+						err = accu.Push(
+							off,
+							length,
+							slot,
+							tx.Message.AccountKeys,
+						)
 						if err != nil {
 							klog.Exitf("Error while pushing to gsfa index: %s", err)
 						}
 						waitResultsReceived.Done()
 						numReceivedAtomic.Add(-1)
+						if slot != lastSeenSlot {
+							percentDone := float64(slot-epochStart) / float64(epochEnd-epochStart) * 100
+							// clear line, then print progress
+							fmt.Printf(
+								"\rCreating gSFA index for epoch %d - %s | %s | %.2f%% | slot %d | tx %s",
+								epoch,
+								time.Now().Format("2006-01-02 15:04:05"),
+								time.Since(startedAt).Truncate(time.Second),
+								percentDone,
+								slot,
+								humanize.Comma(int64(numTransactionsProcessed)),
+							)
+							lastSeenSlot = slot
+						}
 					default:
 						panic(fmt.Errorf("unexpected result type: %T", result.Value))
 					}
 				}
 			}()
 
+			totalOffset := uint64(0)
+			{
+				var buf bytes.Buffer
+				if err = carv1.WriteHeader(rd.header, &buf); err != nil {
+					return err
+				}
+				totalOffset = uint64(buf.Len())
+			}
 			for {
-				block, err := rd.Next()
+				_, sectionLength, block, err := rd.NextNode()
 				if err != nil {
 					if errors.Is(err, io.EOF) {
 						fmt.Println("EOF")
@@ -226,17 +255,19 @@ func newCmd_Index_gsfa() *cli.Command {
 				}
 				kind := iplddecoders.Kind(block.RawData()[1])
 
+				currentOffset := totalOffset
+				totalOffset += sectionLength
+
 				switch kind {
 				case iplddecoders.KindTransaction:
 					numTransactionsSeen++
-					if numTransactionsSeen%dotEvery == 0 {
-						fmt.Print(".")
-					}
 					{
 						waitExecuted.Add(1)
 						waitResultsReceived.Add(1)
 						numReceivedAtomic.Add(1)
 						workerInputChan <- newTxParserWorker(
+							currentOffset,
+							sectionLength,
 							block,
 							func() {
 								waitExecuted.Done()
@@ -258,7 +289,7 @@ func newCmd_Index_gsfa() *cli.Command {
 				waitResultsReceived.Wait()
 				klog.Infof("All results received")
 			}
-			klog.Infof("Success: GSFA index created at %s", gsfaIndexDir)
+			klog.Infof("Success: gSFA index created at %s", gsfaIndexDir)
 			return nil
 		},
 	}
@@ -275,63 +306,53 @@ func formatIndexDirname_gsfa(epoch uint64, rootCid cid.Cid, network indexes.Netw
 }
 
 type TransactionWithSlot struct {
+	Offset      uint64
+	Length      uint64
 	Slot        uint64
 	Transaction solana.Transaction
 }
 
 type txParserWorker struct {
-	blk  blocks.Block
-	done func()
+	offset uint64
+	length uint64 // section length
+	object blocks.Block
+	done   func()
 }
 
 func newTxParserWorker(
-	blk blocks.Block,
+	offset uint64,
+	length uint64,
+	object blocks.Block,
 	done func(),
 ) *txParserWorker {
 	return &txParserWorker{
-		blk:  blk,
-		done: done,
+		offset: offset,
+		length: length,
+		object: object,
+		done:   done,
 	}
 }
-
-var verifyHash bool
 
 func (w txParserWorker) Run(ctx context.Context) interface{} {
 	defer func() {
 		w.done()
 	}()
 
-	block := w.blk
+	object := w.object
 
-	decoded, err := iplddecoders.DecodeTransaction(block.RawData())
+	decoded, err := iplddecoders.DecodeTransaction(object.RawData())
 	if err != nil {
-		return fmt.Errorf("error while decoding transaction from nodex %s: %w", block.Cid(), err)
+		return fmt.Errorf("error while decoding transaction from nodex %s: %w", object.Cid(), err)
 	}
-	{
-		if total, ok := decoded.Data.GetTotal(); !ok || total == 1 {
-			completeData := decoded.Data.Bytes()
-			if verifyHash {
-				// verify hash (if present)
-				if ha, ok := decoded.Data.GetHash(); ok {
-					err := ipldbindcode.VerifyHash(completeData, ha)
-					if err != nil {
-						klog.Exitf("Error while verifying hash for %s: %s", block.Cid(), err)
-					}
-				}
-			}
-			var tx solana.Transaction
-			if err := bin.UnmarshalBin(&tx, completeData); err != nil {
-				klog.Exitf("Error while unmarshaling transaction from nodex %s: %s", block.Cid(), err)
-			} else if len(tx.Signatures) == 0 {
-				klog.Exitf("Error while unmarshaling transaction from nodex %s: no signatures", block.Cid())
-			}
-			return TransactionWithSlot{
-				Slot:        uint64(decoded.Slot),
-				Transaction: tx,
-			}
-		} else {
-			klog.Warningf("Transaction data is split into multiple objects for %s; skipping", block.Cid())
-		}
+	tx, err := decoded.GetSolanaTransaction()
+	if err != nil {
+		return fmt.Errorf("error while getting solana transaction from object %s: %w", object.Cid(), err)
 	}
-	return nil
+
+	return TransactionWithSlot{
+		Offset:      w.offset,
+		Length:      w.length,
+		Slot:        uint64(decoded.Slot),
+		Transaction: *tx,
+	}
 }

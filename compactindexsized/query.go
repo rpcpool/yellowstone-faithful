@@ -237,6 +237,10 @@ func (b *Bucket) loadEntry(i int) (Entry, error) {
 // ErrNotFound marks a missing entry.
 var ErrNotFound = errors.New("not found")
 
+func IsNotFound(err error) bool {
+	return errors.Is(err, ErrNotFound)
+}
+
 func searchEytzinger(min int, max int, x uint64, getter func(int) (Entry, error)) ([]byte, error) {
 	var index int
 	for index < max {

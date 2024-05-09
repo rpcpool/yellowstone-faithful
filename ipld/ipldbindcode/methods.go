@@ -2,12 +2,15 @@ package ipldbindcode
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"hash/crc64"
 	"hash/fnv"
 	"strconv"
 	"strings"
 
+	bin "github.com/gagliardetto/binary"
+	"github.com/gagliardetto/solana-go"
 	"github.com/ipfs/go-cid"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 )
@@ -114,6 +117,92 @@ func (n Transaction) GetPositionIndex() (int, bool) {
 		return 0, false
 	}
 	return **n.Index, true
+}
+
+var DisableHashVerification bool
+
+func (decoded Transaction) GetSolanaTransaction() (*solana.Transaction, error) {
+	if total, ok := decoded.Data.GetTotal(); !ok || total == 1 {
+		completeData := decoded.Data.Bytes()
+		if !DisableHashVerification {
+			// verify hash (if present)
+			if ha, ok := decoded.Data.GetHash(); ok {
+				err := VerifyHash(completeData, ha)
+				if err != nil {
+					return nil, fmt.Errorf("error while verifying hash: %w", err)
+				}
+			}
+		}
+		var tx solana.Transaction
+		if err := bin.UnmarshalBin(&tx, completeData); err != nil {
+			return nil, fmt.Errorf("error while unmarshaling transaction: %w", err)
+		} else if len(tx.Signatures) == 0 {
+			return nil, fmt.Errorf("transaction has no signatures")
+		}
+		return &tx, nil
+	} else {
+		return nil, errors.New("transaction data is split into multiple objects")
+	}
+}
+
+func (decoded Transaction) Signatures() ([]solana.Signature, error) {
+	return readAllSignatures(decoded.Data.Bytes())
+}
+
+func (decoded Transaction) Signature() (solana.Signature, error) {
+	return readFirstSignature(decoded.Data.Bytes())
+}
+
+func readAllSignatures(buf []byte) ([]solana.Signature, error) {
+	decoder := bin.NewCompactU16Decoder(buf)
+	numSigs, err := decoder.ReadCompactU16()
+	if err != nil {
+		return nil, err
+	}
+	if numSigs == 0 {
+		return nil, fmt.Errorf("no signatures")
+	}
+	// check that there is at least 64 bytes * numSigs left:
+	if decoder.Remaining() < (64 * numSigs) {
+		return nil, fmt.Errorf("not enough bytes left to read %d signatures", numSigs)
+	}
+
+	sigs := make([]solana.Signature, numSigs)
+	for i := 0; i < numSigs; i++ {
+		numRead, err := decoder.Read(sigs[i][:])
+		if err != nil {
+			return nil, err
+		}
+		if numRead != 64 {
+			return nil, fmt.Errorf("unexpected signature length %d", numRead)
+		}
+	}
+	return sigs, nil
+}
+
+func readFirstSignature(buf []byte) (solana.Signature, error) {
+	decoder := bin.NewCompactU16Decoder(buf)
+	numSigs, err := decoder.ReadCompactU16()
+	if err != nil {
+		return solana.Signature{}, err
+	}
+	if numSigs == 0 {
+		return solana.Signature{}, fmt.Errorf("no signatures")
+	}
+	// check that there is at least 64 bytes left:
+	if decoder.Remaining() < 64 {
+		return solana.Signature{}, fmt.Errorf("not enough bytes left to read a signature")
+	}
+
+	var sig solana.Signature
+	numRead, err := decoder.Read(sig[:])
+	if err != nil {
+		return sig, err
+	}
+	if numRead != 64 {
+		return sig, fmt.Errorf("unexpected signature length %d", numRead)
+	}
+	return sig, nil
 }
 
 // GetBlockHeight returns the 'block_height' field, which indicates

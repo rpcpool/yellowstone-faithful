@@ -6,7 +6,9 @@ import (
 	"fmt"
 
 	"github.com/gagliardetto/solana-go"
-	"github.com/rpcpool/yellowstone-faithful/gsfa/offsetstore"
+	"github.com/rpcpool/yellowstone-faithful/compactindexsized"
+	"github.com/rpcpool/yellowstone-faithful/indexes"
+	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 )
 
 type GsfaReaderMultiepoch struct {
@@ -46,11 +48,12 @@ func (gsfa *GsfaReaderMultiepoch) Get(
 	ctx context.Context,
 	pk solana.PublicKey,
 	limit int,
-) (EpochToSignatures, error) {
+	fetcher func(uint64, indexes.OffsetAndSize) (*ipldbindcode.Transaction, error),
+) (EpochToTransactionObjects, error) {
 	if limit <= 0 {
 		return nil, nil
 	}
-	sigs := make(EpochToSignatures)
+	sigs := make(EpochToTransactionObjects)
 	currentLimit := limit
 epochLoop:
 	for _, epoch := range gsfa.epochs {
@@ -62,8 +65,12 @@ epochLoop:
 		if !ok {
 			return nil, fmt.Errorf("epoch is not set for the provided gsfa reader")
 		}
-		for _, sig := range epochSigs {
-			sigs[epochNum] = append(sigs[epochNum], sig)
+		for _, txLoc := range epochSigs {
+			tx, err := fetcher(epochNum, txLoc)
+			if err != nil {
+				return nil, fmt.Errorf("error while fetching signature: %w", err)
+			}
+			sigs[epochNum] = append(sigs[epochNum], tx)
 			currentLimit--
 			if currentLimit <= 0 {
 				break epochLoop
@@ -76,10 +83,10 @@ epochLoop:
 	return sigs, nil
 }
 
-type EpochToSignatures map[uint64][]solana.Signature
+type EpochToTransactionObjects map[uint64][]*ipldbindcode.Transaction
 
 // Count returns the number of signatures in the EpochToSignatures.
-func (e EpochToSignatures) Count() int {
+func (e EpochToTransactionObjects) Count() int {
 	var count int
 	for _, sigs := range e {
 		count += len(sigs)
@@ -93,11 +100,12 @@ func (multi *GsfaReaderMultiepoch) GetBeforeUntil(
 	limit int,
 	before *solana.Signature, // Before this signature, exclusive (i.e. get signatures older than this signature, excluding it).
 	until *solana.Signature, // Until this signature, inclusive (i.e. stop at this signature, including it).
-) (EpochToSignatures, error) {
+	fetcher func(uint64, indexes.OffsetAndSize) (*ipldbindcode.Transaction, error),
+) (EpochToTransactionObjects, error) {
 	if limit <= 0 {
-		return make(EpochToSignatures), nil
+		return make(EpochToTransactionObjects), nil
 	}
-	return multi.iterBeforeUntil(ctx, pk, limit, before, until)
+	return multi.iterBeforeUntil(ctx, pk, limit, before, until, fetcher)
 }
 
 // GetBeforeUntil gets the signatures for the given public key,
@@ -108,12 +116,13 @@ func (multi *GsfaReaderMultiepoch) iterBeforeUntil(
 	limit int,
 	before *solana.Signature, // Before this signature, exclusive (i.e. get signatures older than this signature, excluding it).
 	until *solana.Signature, // Until this signature, inclusive (i.e. stop at this signature, including it).
-) (EpochToSignatures, error) {
+	fetcher func(uint64, indexes.OffsetAndSize) (*ipldbindcode.Transaction, error),
+) (EpochToTransactionObjects, error) {
 	if limit <= 0 {
-		return make(EpochToSignatures), nil
+		return make(EpochToTransactionObjects), nil
 	}
 
-	sigs := make(EpochToSignatures)
+	sigs := make(EpochToTransactionObjects)
 	reachedBefore := false
 	if before == nil {
 		reachedBefore = true
@@ -121,21 +130,24 @@ func (multi *GsfaReaderMultiepoch) iterBeforeUntil(
 
 epochLoop:
 	for readerIndex, index := range multi.epochs {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
 		epochNum, ok := index.GetEpoch()
 		if !ok {
 			return nil, fmt.Errorf("epoch is not set for the #%d provided gsfa reader", readerIndex)
 		}
 
-		locs, err := index.offsets.Get(context.Background(), pk)
+		locs, err := index.offsets.Get(pk)
 		if err != nil {
-			if offsetstore.IsNotFound(err) {
+			if compactindexsized.IsNotFound(err) {
 				continue epochLoop
 			}
 			return nil, fmt.Errorf("error while getting initial offset: %w", err)
 		}
 		debugln("locs.OffsetToFirst:", locs)
 
-		next := locs.OffsetToLatest // Start from the latest, and go back in time.
+		next := locs.Offset // Start from the latest, and go back in time.
 
 		for {
 			if next == 0 {
@@ -151,9 +163,13 @@ epochLoop:
 			debugln("sigIndexes:", sigIndexes, "newNext:", newNext)
 			next = newNext
 			for _, sigIndex := range sigIndexes {
-				sig, err := index.sff.Get(sigIndex)
+				tx, err := fetcher(epochNum, sigIndex)
 				if err != nil {
 					return nil, fmt.Errorf("error while getting signature at index=%d: %w", sigIndex, err)
+				}
+				sig, err := tx.Signature()
+				if err != nil {
+					return nil, fmt.Errorf("error while getting signature: %w", err)
 				}
 				if !reachedBefore && sig == *before {
 					reachedBefore = true
@@ -165,7 +181,7 @@ epochLoop:
 				if limit > 0 && sigs.Count() >= limit {
 					break epochLoop
 				}
-				sigs[epochNum] = append(sigs[epochNum], sig)
+				sigs[epochNum] = append(sigs[epochNum], tx)
 				if until != nil && sig == *until {
 					break epochLoop
 				}

@@ -145,7 +145,6 @@ func newCmd_Index_sigExists() *cli.Command {
 			dotEvery := 100_000
 			klog.Infof("A dot is printed every %s transactions", humanize.Comma(int64(dotEvery)))
 
-			verifyHash = c.Bool("verify-hash")
 			numWorkers := c.Uint("w")
 
 			if numWorkers == 0 {

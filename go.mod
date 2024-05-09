@@ -72,9 +72,9 @@ require (
 	github.com/mostynb/zstdpool-freelist v0.0.0-20201229113212-927304c0c3b1
 	github.com/mr-tron/base58 v1.2.0
 	github.com/prometheus/client_golang v1.18.0
-	github.com/ronanh/intcomp v1.1.0
 	github.com/ryanuber/go-glob v1.0.0
 	github.com/tejzpr/ordered-concurrently/v3 v3.0.1
+	github.com/tidwall/hashmap v1.8.1
 	github.com/valyala/fasthttp v1.47.0
 	github.com/ybbus/jsonrpc/v3 v3.1.5
 	golang.org/x/exp v0.0.0-20231006140011-7918f672742d
@@ -208,6 +208,7 @@ require (
 	github.com/whyrusleeping/cbor v0.0.0-20171005072247-63513f603b11 // indirect
 	github.com/whyrusleeping/cbor-gen v0.0.0-20230818171029-f91ae536ca25 // indirect
 	github.com/xrash/smetrics v0.0.0-20201216005158-039620a65673 // indirect
+	github.com/zeebo/xxh3 v1.0.2 // indirect
 	go.mongodb.org/mongo-driver v1.11.2 // indirect
 	go.opencensus.io v0.24.0 // indirect
 	go.opentelemetry.io/otel/metric v1.16.0 // indirect
