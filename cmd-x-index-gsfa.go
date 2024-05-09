@@ -195,6 +195,9 @@ func newCmd_Index_gsfa() *cli.Command {
 				// process the results from the workers
 				lastSeenSlot := uint64(0)
 				numTransactionsProcessed := 0
+				lastPrintedAt := time.Now()
+				numSlotsDone := uint64(0)
+				lastTimeDid1kSlots := time.Now()
 				for result := range outputChan {
 					switch resValue := result.Value.(type) {
 					case error:
@@ -216,10 +219,20 @@ func newCmd_Index_gsfa() *cli.Command {
 						}
 						waitResultsReceived.Done()
 						numReceivedAtomic.Add(-1)
+						var eta time.Duration
 						if slot != lastSeenSlot {
+							lastSeenSlot = slot
+							numSlotsDone++
+							if numSlotsDone%1000 == 0 {
+								tookToDo1kSlots := time.Since(lastTimeDid1kSlots)
+								lastTimeDid1kSlots = time.Now()
+								eta = time.Duration(float64(tookToDo1kSlots) / 1000 * float64(epochEnd-epochStart-numSlotsDone))
+							}
+						}
+						if time.Since(lastPrintedAt) > time.Millisecond*500 {
 							percentDone := float64(slot-epochStart) / float64(epochEnd-epochStart) * 100
 							// clear line, then print progress
-							fmt.Printf(
+							msg := fmt.Sprintf(
 								"\rCreating gSFA index for epoch %d - %s | %s | %.2f%% | slot %d | tx %s",
 								epoch,
 								time.Now().Format("2006-01-02 15:04:05"),
@@ -228,7 +241,11 @@ func newCmd_Index_gsfa() *cli.Command {
 								slot,
 								humanize.Comma(int64(numTransactionsProcessed)),
 							)
-							lastSeenSlot = slot
+							if eta > 0 {
+								msg += fmt.Sprintf(" | ETA %s", eta.Truncate(time.Second))
+							}
+							fmt.Print(msg)
+							lastPrintedAt = time.Now()
 						}
 					default:
 						panic(fmt.Errorf("unexpected result type: %T", result.Value))

@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gagliardetto/solana-go"
@@ -21,17 +22,18 @@ import (
 )
 
 type GsfaWriter struct {
-	mu                   sync.Mutex
-	offsetsIndexDir      string
-	offsets              *hashmap.Map[solana.PublicKey, [2]uint64]
-	ll                   *linkedlog.LinkedLog
-	man                  *manifest.Manifest
-	fullBufferWriterChan chan keyWithTxLocations
-	accum                *hashmap.Map[solana.PublicKey, []indexes.OffsetAndSize]
-	offsetsWriter        *indexes.PubkeyToOffsetAndSize_Writer
-	ctx                  context.Context
-	cancel               context.CancelFunc
-	fullBufferWriterDone chan struct{}
+	mu                            sync.Mutex
+	indexRootDir                  string
+	offsets                       *hashmap.Map[solana.PublicKey, [2]uint64]
+	ll                            *linkedlog.LinkedLog
+	man                           *manifest.Manifest
+	fullBufferWriterChan          chan keyWithTxLocations
+	accum                         *hashmap.Map[solana.PublicKey, []indexes.OffsetAndSize]
+	offsetsWriter                 *indexes.PubkeyToOffsetAndSize_Writer
+	ctx                           context.Context
+	cancel                        context.CancelFunc
+	numSentToFullBufferWriterChan *atomic.Uint64
+	fullBufferWriterDone          chan struct{}
 }
 
 type keyWithTxLocations struct {
@@ -69,15 +71,14 @@ func NewGsfaWriter(
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	index := &GsfaWriter{
-		fullBufferWriterChan: make(chan keyWithTxLocations, 1000), // TODO: make this configurable
-		offsets:              hashmap.New[solana.PublicKey, [2]uint64](int(1_000_000)),
-		accum:                hashmap.New[solana.PublicKey, []indexes.OffsetAndSize](int(10000)),
-		ctx:                  ctx,
-		cancel:               cancel,
-		fullBufferWriterDone: make(chan struct{}),
-	}
-	{
-		index.offsetsIndexDir = indexRootDir
+		fullBufferWriterChan:          make(chan keyWithTxLocations, 1000), // TODO: make this configurable
+		offsets:                       hashmap.New[solana.PublicKey, [2]uint64](int(1_000_000)),
+		accum:                         hashmap.New[solana.PublicKey, []indexes.OffsetAndSize](int(10000)),
+		ctx:                           ctx,
+		cancel:                        cancel,
+		fullBufferWriterDone:          make(chan struct{}),
+		indexRootDir:                  indexRootDir,
+		numSentToFullBufferWriterChan: new(atomic.Uint64),
 	}
 	{
 		ll, err := linkedlog.NewLinkedLog(filepath.Join(indexRootDir, "linked-log"))
@@ -110,25 +111,19 @@ func NewGsfaWriter(
 }
 
 func (a *GsfaWriter) fullBufferWriter() {
-	bufSize := 100
+	numReadFromChan := uint64(0)
+	bufSize := 200
 	tmpBuf := make(map[solana.PublicKey]keyWithTxLocations, bufSize)
 
+	isExiting := false
 	for {
 		select {
 		case <-a.ctx.Done():
-			for _, buf := range tmpBuf {
-				// Write the buffer to the linked log.
-				klog.V(5).Infof("Flushing %d transactions for key %s", len(buf.Locations), buf.Key)
-				// TODO: write to linked log
-				if err := a.flushSingle(buf.Key, buf.Locations); err != nil {
-					klog.Errorf("Error while flushing transactions for key %s: %v", buf.Key, err)
-				}
-			}
-			a.fullBufferWriterDone <- struct{}{}
-			return
+			isExiting = true
 		case buffer := <-a.fullBufferWriterChan:
+			numReadFromChan++
 			_, has := tmpBuf[buffer.Key]
-			if len(tmpBuf) == bufSize || has {
+			if len(tmpBuf) == bufSize || has || isExiting {
 				for _, buf := range tmpBuf {
 					// Write the buffer to the linked log.
 					klog.V(5).Infof("Flushing %d transactions for key %s", len(buf.Locations), buf.Key)
@@ -140,6 +135,11 @@ func (a *GsfaWriter) fullBufferWriter() {
 				tmpBuf = make(map[solana.PublicKey]keyWithTxLocations, 10)
 			}
 			tmpBuf[buffer.Key] = buffer
+
+			if isExiting && numReadFromChan == a.numSentToFullBufferWriterChan.Load() {
+				a.fullBufferWriterDone <- struct{}{}
+				return
+			}
 		}
 	}
 }
@@ -169,6 +169,7 @@ func (a *GsfaWriter) Push(
 					Key:       publicKey,
 					Locations: clone(current),
 				}
+				a.numSentToFullBufferWriterChan.Add(1)
 				clear(current)
 				current = make([]indexes.OffsetAndSize, 0, itemsPerBatch)
 			}
@@ -212,7 +213,7 @@ func (a *GsfaWriter) Close() error {
 				}
 			}
 		}
-		offsetsIndex := filepath.Join(a.offsetsIndexDir, string(indexes.Kind_PubkeyToOffsetAndSize)+".index")
+		offsetsIndex := filepath.Join(a.indexRootDir, string(indexes.Kind_PubkeyToOffsetAndSize)+".index")
 		err := a.offsetsWriter.SealWithFilename(context.Background(), offsetsIndex)
 		if err != nil {
 			return fmt.Errorf("error while sealing pubkey-to-offset-and-size writer: %w", err)
