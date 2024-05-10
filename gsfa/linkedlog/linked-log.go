@@ -112,60 +112,65 @@ func (s *LinkedLog) write(b []byte) (uint64, uint32, error) {
 const mib = 1024 * 1024
 
 // Read reads the block stored at the given offset.
-func (s *LinkedLog) Read(offset uint64) ([]indexes.OffsetAndSize, uint64, error) {
+func (s *LinkedLog) Read(offset uint64) ([]OffsetAndSizeAndBlocktime, indexes.OffsetAndSize, error) {
 	lenBuf := make([]byte, binary.MaxVarintLen64)
 	_, err := s.file.ReadAt(lenBuf, int64(offset))
 	if err != nil {
-		return nil, 0, err
+		return nil, indexes.OffsetAndSize{}, err
 	}
 	// debugln_(func() []any { return []any{"lenBuf:", bin.FormatByteSlice(lenBuf)} })
 	// Read the length of the compressed indexes
 	compactedIndexesLen, n := binary.Uvarint(lenBuf)
 	if n <= 0 {
-		return nil, 0, errors.New("invalid compacted indexes length")
+		return nil, indexes.OffsetAndSize{}, errors.New("invalid compacted indexes length")
 	}
 	return s.ReadWithSize(offset, compactedIndexesLen)
 }
 
-func uvarintSize(n uint64) int {
+func sizeOfUvarint(n uint64) int {
 	return binary.PutUvarint(make([]byte, binary.MaxVarintLen64), n)
 }
 
-func (s *LinkedLog) ReadWithSize(offset uint64, size uint64) ([]indexes.OffsetAndSize, uint64, error) {
+func (s *LinkedLog) ReadWithSize(offset uint64, size uint64) ([]OffsetAndSizeAndBlocktime, indexes.OffsetAndSize, error) {
 	if size > 256*mib {
-		return nil, 0, fmt.Errorf("compacted indexes length too large: %d", size)
+		return nil, indexes.OffsetAndSize{}, fmt.Errorf("compacted indexes length too large: %d", size)
 	}
 	// debugln("compactedIndexesLen:", compactedIndexesLen)
 	// Read the compressed indexes
-	data := make([]byte, size)
-	_, err := s.file.ReadAt(data, int64(offset)+int64(uvarintSize(size)))
+	data := make([]byte, size-uint64(sizeOfUvarint(size))) // The size bytes have already been read.
+	_, err := s.file.ReadAt(data, int64(offset)+int64(sizeOfUvarint(size)))
 	if err != nil {
-		return nil, 0, err
+		return nil, indexes.OffsetAndSize{}, err
 	}
 	// debugln_(func() []any { return []any{"data:", bin.FormatByteSlice(data)} })
-	// the indexes are up until the last 8 bytes, which are the `next` offset.
-	indexes := data[:len(data)-8]
-	nextOffset := binary.LittleEndian.Uint64(data[len(data)-8:])
-	// Decompress the indexes
-	sigIndexes, err := decompressIndexes(indexes)
+	// the indexesBytes are up until the last 8 bytes, which are the `next` offset.
+	indexesBytes := data[:len(data)-9]
+	var nextOffset indexes.OffsetAndSize
+	err = nextOffset.FromBytes(data[len(data)-9:])
 	if err != nil {
-		return nil, 0, fmt.Errorf("error while decompressing indexes: %w", err)
+		return nil, indexes.OffsetAndSize{}, fmt.Errorf("error while reading next offset: %w", err)
+	}
+	// fmt.Println("nextOffset:", nextOffset, offset, size, bin.FormatByteSlice(data)) // DEBUG
+	// Decompress the indexes
+	sigIndexes, err := decompressIndexes(indexesBytes)
+	if err != nil {
+		return nil, indexes.OffsetAndSize{}, fmt.Errorf("error while decompressing indexes: %w", err)
 	}
 	return sigIndexes, nextOffset, nil
 }
 
-func decompressIndexes(data []byte) ([]indexes.OffsetAndSize, error) {
+func decompressIndexes(data []byte) ([]OffsetAndSizeAndBlocktime, error) {
 	decompressed, err := decompressZSTD(data)
 	if err != nil {
 		return nil, fmt.Errorf("error while decompressing data: %w", err)
 	}
-	return indexes.OffsetAndSizeSliceFromBytes(decompressed)
+	return OffsetAndSizeAndBlocktimeSliceFromBytes(decompressed)
 }
 
 // Put map[PublicKey][]uint64 to file
 func (s *LinkedLog) Put(
-	dataMap *hashmap.Map[solana.PublicKey, []indexes.OffsetAndSize],
-	callbackBefore func(pk solana.PublicKey) (uint64, error),
+	dataMap *hashmap.Map[solana.PublicKey, []OffsetAndSizeAndBlocktime],
+	callbackBefore func(pk solana.PublicKey) (indexes.OffsetAndSize, error),
 	callbackAfter func(pk solana.PublicKey, offset uint64, ln uint32) error,
 ) (uint64, error) {
 	s.mu.Lock()
@@ -190,18 +195,20 @@ func (s *LinkedLog) Put(
 		if !ok {
 			return 0, errors.New("public key not found in dataMap")
 		}
-		slices.Reverse[[]indexes.OffsetAndSize](sigIndexes) // reverse the slice so that the most recent indexes are first
+		slices.Reverse[[]OffsetAndSizeAndBlocktime](sigIndexes) // reverse the slice so that the most recent indexes are first
 		wg.Go(func() error {
 			encodedIndexes, err := createIndexesPayload(sigIndexes)
 			if err != nil {
 				return fmt.Errorf("error while creating payload: %w", err)
 			}
-			finalPayload := make([]byte, 0)
+			payloadLen := uint64(len(encodedIndexes)) + indexes.IndexValueSize_CidToOffsetAndSize
+			payloadLenAsBytes := encodeUvarint(payloadLen)
 
-			// Write the size of the compressed indexes
-			uvLen := encodeUvarint(uint64(len(encodedIndexes)) + 8)
-			finalPayload = append(finalPayload, uvLen...)
-			// Write the compressed indexes
+			// The payload:
+			finalPayload := make([]byte, 0)
+			// 1/3 - the size of the compressed indexes
+			finalPayload = append(finalPayload, payloadLenAsBytes...)
+			// 2/3 - the compressed indexes
 			finalPayload = append(finalPayload, encodedIndexes...)
 
 			{
@@ -209,32 +216,29 @@ func (s *LinkedLog) Put(
 				if err != nil {
 					return err
 				}
-				// Write the offset of the previous list for this pubkey:
-				finalPayload = append(finalPayload, uint64ToBytes(previousListOffset)...)
+				// 3/3 - the offset and size of the previous list for this pubkey:
+				finalPayload = append(finalPayload, previousListOffset.Bytes()...)
 			}
 
 			offset, numWrittenBytes, err := s.write(finalPayload)
 			if err != nil {
 				return err
 			}
+			// fmt.Printf("offset=%d, numWrittenBytes=%d ll=%d\n", offset, numWrittenBytes, ll) // DEBUG
+			// fmt.Println("finalPayload:", bin.FormatByteSlice(finalPayload))                  // DEBUG
 			return callbackAfter(pk, offset, numWrittenBytes)
 		})
 	}
 	return uint64(previousSize), wg.Wait()
 }
 
-func createIndexesPayload(indexes []indexes.OffsetAndSize) ([]byte, error) {
+func createIndexesPayload(indexes []OffsetAndSizeAndBlocktime) ([]byte, error) {
 	buf := make([]byte, 0, 9*len(indexes))
 	for _, index := range indexes {
 		buf = append(buf, index.Bytes()...)
 	}
-	return compressZSTD(buf)
-}
-
-func uint64ToBytes(i uint64) []byte {
-	b := make([]byte, 8)
-	binary.LittleEndian.PutUint64(b, i)
-	return b
+	buf = slices.Clip(buf)
+	return (compressZSTD(buf))
 }
 
 func encodeUvarint(n uint64) []byte {

@@ -1,10 +1,11 @@
 package linkedlog
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
-
-	"github.com/rpcpool/yellowstone-faithful/indexes"
+	"io"
+	"slices"
 )
 
 func NewOffsetAndSizeAndBlocktime(offset uint64, size uint64, blocktime uint64) *OffsetAndSizeAndBlocktime {
@@ -15,51 +16,175 @@ func NewOffsetAndSizeAndBlocktime(offset uint64, size uint64, blocktime uint64) 
 	}
 }
 
-// IsValid returns true if the offset and size are valid.
-func (oas *OffsetAndSizeAndBlocktime) IsValid() bool {
-	return oas.Offset <= indexes.MaxUint48 && oas.Size <= indexes.MaxUint24 && oas.Blocktime <= indexes.MaxUint40
-}
-
 type OffsetAndSizeAndBlocktime struct {
 	Offset    uint64 // uint48, 6 bytes, max 281.5 TB (terabytes)
 	Size      uint64 // uint24, 3 bytes, max 16.7 MB (megabytes)
 	Blocktime uint64 // uint40, 5 bytes, max 1099511627775 (seconds since epoch)
 }
 
-const OffsetAndSizeAndBlocktimeSize = 6 + 3 + 5
-
 // Bytes returns the offset and size as a byte slice.
 func (oas OffsetAndSizeAndBlocktime) Bytes() []byte {
-	return append(
-		indexes.Uint48tob(oas.Offset),
-		append(
-			indexes.Uint24tob(uint32(oas.Size)),
-			indexes.Uint40tob(uint64(oas.Blocktime))...,
-		)...,
-	)
+	buf := make([]byte, 0, binary.MaxVarintLen64*3)
+	buf = binary.AppendUvarint(buf, oas.Offset)
+	buf = binary.AppendUvarint(buf, oas.Size)
+	buf = binary.AppendUvarint(buf, oas.Blocktime)
+	buf = slices.Clip(buf)
+	return buf
+}
+
+func init() {
+	{
+		ca := OffsetAndSizeAndBlocktime{
+			Offset:    1,
+			Size:      2,
+			Blocktime: 3,
+		}
+		buf := ca.Bytes()
+
+		{
+			ca2 := OffsetAndSizeAndBlocktime{}
+			err := ca2.FromBytes(buf)
+			if err != nil {
+				panic(err)
+			}
+			if ca != ca2 {
+				panic(fmt.Sprintf("expected %v, got %v", ca, ca2))
+			}
+		}
+	}
+	{
+		// now with very high values
+		ca := OffsetAndSizeAndBlocktime{
+			Offset:    281474976710655,
+			Size:      16777215,
+			Blocktime: 1099511627775,
+		}
+		buf := ca.Bytes()
+
+		{
+			ca2 := OffsetAndSizeAndBlocktime{}
+			err := ca2.FromBytes(buf)
+			if err != nil {
+				panic(err)
+			}
+			if ca != ca2 {
+				panic(fmt.Sprintf("expected %v, got %v", ca, ca2))
+			}
+		}
+	}
+	{
+		many := []OffsetAndSizeAndBlocktime{
+			{
+				Offset:    1,
+				Size:      2,
+				Blocktime: 3,
+			},
+			{
+				Offset:    4,
+				Size:      5,
+				Blocktime: 6,
+			},
+			{
+				Offset:    281474976710655,
+				Size:      16777215,
+				Blocktime: 1099511627775,
+			},
+		}
+		buf := make([]byte, 0, binary.MaxVarintLen64*3*len(many))
+		for _, ca := range many {
+			buf = append(buf, ca.Bytes()...)
+		}
+
+		{
+			many2, err := OffsetAndSizeAndBlocktimeSliceFromBytes(buf)
+			if err != nil {
+				panic(err)
+			}
+			if len(many) != len(many2) {
+				panic(fmt.Sprintf("expected %v, got %v", many, many2))
+			}
+			for i := range many {
+				if many[i] != many2[i] {
+					panic(fmt.Sprintf("expected %v, got %v", many, many2))
+				}
+			}
+		}
+	}
 }
 
 // FromBytes parses the offset and size from a byte slice.
 func (oas *OffsetAndSizeAndBlocktime) FromBytes(buf []byte) error {
-	if len(buf) != OffsetAndSizeAndBlocktimeSize {
+	if len(buf) > binary.MaxVarintLen64*3 {
 		return errors.New("invalid byte slice length")
 	}
-	_ = buf[OffsetAndSizeAndBlocktimeSize-1] // bounds check hint to compiler
-	oas.Offset = indexes.BtoUint48(buf[:6])
-	oas.Size = uint64(indexes.BtoUint24(buf[6:9]))
-	oas.Blocktime = uint64(indexes.BtoUint40(buf[9:14]))
+	var n int
+	oas.Offset, n = binary.Uvarint(buf)
+	if n <= 0 {
+		return errors.New("failed to parse offset")
+	}
+	buf = buf[n:]
+	oas.Size, n = binary.Uvarint(buf)
+	if n <= 0 {
+		return errors.New("failed to parse size")
+	}
+	buf = buf[n:]
+	oas.Blocktime, n = binary.Uvarint(buf)
+	if n <= 0 {
+		return errors.New("failed to parse blocktime")
+	}
 	return nil
 }
 
-func OffsetAndSizeAndBlocktimeSliceFromBytes(buf []byte) ([]OffsetAndSizeAndBlocktime, error) {
-	if len(buf)%OffsetAndSizeAndBlocktimeSize != 0 {
-		return nil, errors.New("invalid byte slice length")
+func (oas *OffsetAndSizeAndBlocktime) FromReader(r UvarintReader) error {
+	var err error
+	oas.Offset, err = r.ReadUvarint()
+	if err != nil {
+		return fmt.Errorf("failed to read offset: %w", err)
 	}
-	oass := make([]OffsetAndSizeAndBlocktime, len(buf)/OffsetAndSizeAndBlocktimeSize)
-	for i := 0; i < len(oass); i++ {
-		if err := oass[i].FromBytes(buf[i*OffsetAndSizeAndBlocktimeSize : (i+1)*OffsetAndSizeAndBlocktimeSize]); err != nil {
-			return nil, fmt.Errorf("failed to parse offset and size and blocktime at index %d: %w", i, err)
+	oas.Size, err = r.ReadUvarint()
+	if err != nil {
+		return fmt.Errorf("failed to read size: %w", err)
+	}
+	oas.Blocktime, err = r.ReadUvarint()
+	if err != nil {
+		return fmt.Errorf("failed to read blocktime: %w", err)
+	}
+	return nil
+}
+
+type UvarintReader interface {
+	ReadUvarint() (uint64, error)
+}
+type uvarintReader struct {
+	pos int
+	buf []byte
+}
+
+func (r *uvarintReader) ReadUvarint() (uint64, error) {
+	if r.pos >= len(r.buf) {
+		return 0, io.EOF
+	}
+	v, n := binary.Uvarint(r.buf[r.pos:])
+	if n <= 0 {
+		return 0, errors.New("failed to parse uvarint")
+	}
+	r.pos += n
+	return v, nil
+}
+
+func OffsetAndSizeAndBlocktimeSliceFromBytes(buf []byte) ([]OffsetAndSizeAndBlocktime, error) {
+	r := &uvarintReader{buf: buf}
+	oass := make([]OffsetAndSizeAndBlocktime, 0)
+	for {
+		oas := OffsetAndSizeAndBlocktime{}
+		err := oas.FromReader(r)
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			return nil, fmt.Errorf("failed to parse offset and size: %w", err)
 		}
+		oass = append(oass, oas)
 	}
 	return oass, nil
 }

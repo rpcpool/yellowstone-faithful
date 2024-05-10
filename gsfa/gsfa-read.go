@@ -93,9 +93,9 @@ func (index *GsfaReader) Get(
 	ctx context.Context,
 	pk solana.PublicKey,
 	limit int,
-) ([]indexes.OffsetAndSize, error) {
+) ([]linkedlog.OffsetAndSizeAndBlocktime, error) {
 	if limit <= 0 {
-		return []indexes.OffsetAndSize{}, nil
+		return []linkedlog.OffsetAndSizeAndBlocktime{}, nil
 	}
 	lastOffset, err := index.offsets.Get(pk)
 	if err != nil {
@@ -106,22 +106,22 @@ func (index *GsfaReader) Get(
 	}
 	debugln("locs.OffsetToFirst:", lastOffset)
 
-	var transactionLocations []indexes.OffsetAndSize
-	next := lastOffset.Offset // Start from the latest, and go back in time.
+	var transactionLocations []linkedlog.OffsetAndSizeAndBlocktime
+	next := lastOffset // Start from the latest, and go back in time.
 
 	for {
-		if next == 0 {
+		if next == nil || next.IsZero() { // no previous.
 			break
 		}
 		if limit > 0 && len(transactionLocations) >= limit {
 			break
 		}
-		sigIndexes, newNext, err := index.ll.Read(next)
+		sigIndexes, newNext, err := index.ll.ReadWithSize(next.Offset, next.Size)
 		if err != nil {
 			return nil, fmt.Errorf("error while reading linked log with next=%d: %w", next, err)
 		}
 		debugln("sigIndexes:", sigIndexes, "newNext:", newNext)
-		next = newNext
+		next = &newNext
 		for _, sigIndex := range sigIndexes {
 			if limit > 0 && len(transactionLocations) >= limit {
 				break
@@ -138,10 +138,10 @@ func (index *GsfaReader) GetBeforeUntil(
 	limit int,
 	before *solana.Signature, // Before this signature, exclusive (i.e. get signatures older than this signature, excluding it).
 	until *solana.Signature, // Until this signature, inclusive (i.e. stop at this signature, including it).
-	fetcher func(sigIndex indexes.OffsetAndSize) (solana.Signature, error),
-) ([]indexes.OffsetAndSize, error) {
+	fetcher func(sigIndex linkedlog.OffsetAndSizeAndBlocktime) (solana.Signature, error),
+) ([]linkedlog.OffsetAndSizeAndBlocktime, error) {
 	if limit <= 0 {
-		return []indexes.OffsetAndSize{}, nil
+		return []linkedlog.OffsetAndSizeAndBlocktime{}, nil
 	}
 	locs, err := index.offsets.Get(pk)
 	if err != nil {
@@ -152,8 +152,8 @@ func (index *GsfaReader) GetBeforeUntil(
 	}
 	debugln("locs.OffsetToFirst:", locs)
 
-	var transactionLocations []indexes.OffsetAndSize
-	next := locs.Offset // Start from the latest, and go back in time.
+	var transactionLocations []linkedlog.OffsetAndSizeAndBlocktime
+	next := locs // Start from the latest, and go back in time.
 
 	reachedBefore := false
 	if before == nil {
@@ -162,18 +162,18 @@ func (index *GsfaReader) GetBeforeUntil(
 
 bigLoop:
 	for {
-		if next == 0 {
+		if next == nil || next.IsZero() { // no previous.
 			break
 		}
 		if limit > 0 && len(transactionLocations) >= limit {
 			break
 		}
-		sigIndexes, newNext, err := index.ll.Read(next)
+		sigIndexes, newNext, err := index.ll.ReadWithSize(next.Offset, next.Size)
 		if err != nil {
 			return nil, fmt.Errorf("error while reading linked log with next=%d: %w", next, err)
 		}
 		debugln("sigIndexes:", sigIndexes, "newNext:", newNext)
-		next = newNext
+		next = &newNext
 		for _, txLoc := range sigIndexes {
 			sig, err := fetcher(txLoc)
 			if err != nil {

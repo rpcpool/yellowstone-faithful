@@ -16,7 +16,6 @@ import (
 	"github.com/rpcpool/yellowstone-faithful/gsfa/manifest"
 	"github.com/rpcpool/yellowstone-faithful/indexes"
 	"github.com/rpcpool/yellowstone-faithful/indexmeta"
-	"github.com/rpcpool/yellowstone-faithful/store"
 	"github.com/tidwall/hashmap"
 	"k8s.io/klog"
 )
@@ -28,7 +27,7 @@ type GsfaWriter struct {
 	ll                            *linkedlog.LinkedLog
 	man                           *manifest.Manifest
 	fullBufferWriterChan          chan keyWithTxLocations
-	accum                         *hashmap.Map[solana.PublicKey, []indexes.OffsetAndSize]
+	accum                         *hashmap.Map[solana.PublicKey, []linkedlog.OffsetAndSizeAndBlocktime]
 	offsetsWriter                 *indexes.PubkeyToOffsetAndSize_Writer
 	ctx                           context.Context
 	cancel                        context.CancelFunc
@@ -38,12 +37,7 @@ type GsfaWriter struct {
 
 type keyWithTxLocations struct {
 	Key       solana.PublicKey
-	Locations []indexes.OffsetAndSize
-}
-
-var offsetstoreOptions = []store.Option{
-	store.IndexBitSize(22),
-	store.GCInterval(time.Hour),
+	Locations []linkedlog.OffsetAndSizeAndBlocktime
 }
 
 // NewGsfaWriter creates or opens an existing index in WRITE mode.
@@ -73,7 +67,7 @@ func NewGsfaWriter(
 	index := &GsfaWriter{
 		fullBufferWriterChan:          make(chan keyWithTxLocations, 1000), // TODO: make this configurable
 		offsets:                       hashmap.New[solana.PublicKey, [2]uint64](int(1_000_000)),
-		accum:                         hashmap.New[solana.PublicKey, []indexes.OffsetAndSize](int(10000)),
+		accum:                         hashmap.New[solana.PublicKey, []linkedlog.OffsetAndSizeAndBlocktime](int(10000)),
 		ctx:                           ctx,
 		cancel:                        cancel,
 		fullBufferWriterDone:          make(chan struct{}),
@@ -112,8 +106,8 @@ func NewGsfaWriter(
 
 func (a *GsfaWriter) fullBufferWriter() {
 	numReadFromChan := uint64(0)
-	bufSize := 200
-	tmpBuf := make(map[solana.PublicKey]keyWithTxLocations, bufSize)
+	howManyBuffersToFlushConcurrently := 256
+	tmpBuf := make(map[solana.PublicKey]keyWithTxLocations, howManyBuffersToFlushConcurrently)
 
 	isExiting := false
 	for {
@@ -123,7 +117,7 @@ func (a *GsfaWriter) fullBufferWriter() {
 		case buffer := <-a.fullBufferWriterChan:
 			numReadFromChan++
 			_, has := tmpBuf[buffer.Key]
-			if len(tmpBuf) == bufSize || has || isExiting {
+			if len(tmpBuf) == howManyBuffersToFlushConcurrently || has || isExiting {
 				for _, buf := range tmpBuf {
 					// Write the buffer to the linked log.
 					klog.V(5).Infof("Flushing %d transactions for key %s", len(buf.Locations), buf.Key)
@@ -147,30 +141,34 @@ func (a *GsfaWriter) Push(
 	offset uint64,
 	length uint64,
 	slot uint64,
-	publicKeys []solana.PublicKey,
+	blocktime uint64,
+	publicKeys solana.PublicKeySlice,
 ) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	oas := indexes.OffsetAndSize{
-		Offset: offset,
-		Size:   length,
+	oas := linkedlog.OffsetAndSizeAndBlocktime{
+		Offset:    offset,
+		Size:      length,
+		Blocktime: blocktime,
 	}
+	publicKeys = publicKeys.Dedupe()
+	publicKeys.Sort()
 	for _, publicKey := range publicKeys {
 		current, ok := a.accum.Get(publicKey)
 		if !ok {
-			current = make([]indexes.OffsetAndSize, 0, itemsPerBatch)
+			current = make([]linkedlog.OffsetAndSizeAndBlocktime, 0, itemsPerBatch)
 			current = append(current, oas)
 		} else {
 			current = append(current, oas)
 			if len(current) >= itemsPerBatch {
+				a.numSentToFullBufferWriterChan.Add(1)
 				a.fullBufferWriterChan <- keyWithTxLocations{
 					Key:       publicKey,
 					Locations: clone(current),
 				}
-				a.numSentToFullBufferWriterChan.Add(1)
 				clear(current)
-				current = make([]indexes.OffsetAndSize, 0, itemsPerBatch)
+				current = make([]linkedlog.OffsetAndSizeAndBlocktime, 0, itemsPerBatch)
 			}
 		}
 		a.accum.Set(publicKey, current)
@@ -203,7 +201,8 @@ func (a *GsfaWriter) Close() error {
 	a.cancel()
 	{
 		{
-			keys := a.offsets.Keys()
+			keys := solana.PublicKeySlice(a.offsets.Keys())
+			keys.Sort()
 			for _, key := range keys {
 				offSize, _ := a.offsets.Get(key)
 				err := a.offsetsWriter.Put(key, offSize[0], offSize[1])
@@ -226,13 +225,13 @@ func (a *GsfaWriter) Close() error {
 	)
 }
 
-func (a *GsfaWriter) flushAll(accum *hashmap.Map[solana.PublicKey, []indexes.OffsetAndSize]) error {
+func (a *GsfaWriter) flushAll(accum *hashmap.Map[solana.PublicKey, []linkedlog.OffsetAndSizeAndBlocktime]) error {
 	if accum.Len() == 0 {
 		return nil
 	}
 	startedAt := time.Now()
 	defer func() {
-		klog.Infof(" Flushed key-to-sigs in %s.", time.Since(startedAt))
+		klog.V(5).Infof(" Flushed key-to-sigs in %s.", time.Since(startedAt))
 	}()
 
 	{
@@ -244,17 +243,18 @@ func (a *GsfaWriter) flushAll(accum *hashmap.Map[solana.PublicKey, []indexes.Off
 		klog.V(5).Infof("Writing %d account batches to linked log...", accum.Len())
 		_, err = a.ll.Put(
 			accum,
-			func(pk solana.PublicKey) (uint64, error) {
+			func(pk solana.PublicKey) (indexes.OffsetAndSize, error) {
 				got, ok := a.offsets.Get(pk)
 				if !ok {
 					// This is the first time we see this account.
 					// And there is no offset for the previous list.
-					return 0, nil
+					return indexes.OffsetAndSize{}, nil
 				}
-				return got[0], nil
+				return indexes.OffsetAndSize{Offset: got[0], Size: got[1]}, nil
 			},
 			func(pk solana.PublicKey, offset uint64, ln uint32) error {
 				a.offsets.Set(pk, [2]uint64{offset, uint64(ln)})
+				// fmt.Printf("Set offset=%d, ln=%d for pk=%s\n", offset, ln, pk.String())
 				return nil
 			},
 		)
@@ -263,11 +263,11 @@ func (a *GsfaWriter) flushAll(accum *hashmap.Map[solana.PublicKey, []indexes.Off
 		}
 	}
 
-	a.accum = hashmap.New[solana.PublicKey, []indexes.OffsetAndSize](int(10000))
+	a.accum = hashmap.New[solana.PublicKey, []linkedlog.OffsetAndSizeAndBlocktime](int(10000))
 	return nil
 }
 
-func (a *GsfaWriter) flushSingle(key solana.PublicKey, values []indexes.OffsetAndSize) error {
+func (a *GsfaWriter) flushSingle(key solana.PublicKey, values []linkedlog.OffsetAndSizeAndBlocktime) error {
 	if len(values) == 0 {
 		return nil
 	}
@@ -276,7 +276,7 @@ func (a *GsfaWriter) flushSingle(key solana.PublicKey, values []indexes.OffsetAn
 		klog.V(5).Infof(" Flushed %v keys for %s in %s.", len(values), key, time.Since(startedAt))
 	}()
 
-	batch := hashmap.New[solana.PublicKey, []indexes.OffsetAndSize](1)
+	batch := hashmap.New[solana.PublicKey, []linkedlog.OffsetAndSizeAndBlocktime](1)
 	batch.Set(key, values)
 	{
 		// Flush the linked log cache.
@@ -286,14 +286,14 @@ func (a *GsfaWriter) flushSingle(key solana.PublicKey, values []indexes.OffsetAn
 		}
 		_, err = a.ll.Put(
 			batch,
-			func(pk solana.PublicKey) (uint64, error) {
+			func(pk solana.PublicKey) (indexes.OffsetAndSize, error) {
 				got, ok := a.offsets.Get(pk)
 				if !ok {
 					// This is the first time we see this account.
 					// And there is no offset for the previous list.
-					return 0, nil
+					return indexes.OffsetAndSize{}, nil
 				}
-				return got[0], nil
+				return indexes.OffsetAndSize{Offset: got[0], Size: got[1]}, nil
 			},
 			func(pk solana.PublicKey, offset uint64, ln uint32) error {
 				a.offsets.Set(pk, [2]uint64{offset, uint64(ln)})
@@ -308,12 +308,6 @@ func (a *GsfaWriter) flushSingle(key solana.PublicKey, values []indexes.OffsetAn
 }
 
 var enableDebug = false
-
-func debugf(format string, args ...interface{}) {
-	if enableDebug {
-		klog.Infof(format, args...)
-	}
-}
 
 func debugln(args ...interface{}) {
 	if enableDebug {

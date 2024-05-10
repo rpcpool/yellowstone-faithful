@@ -22,6 +22,11 @@ type OffsetAndSize struct {
 	Size   uint64 // uint24, 3 bytes, max 16.7 MB (megabytes)
 }
 
+// IsZero
+func (oas OffsetAndSize) IsZero() bool {
+	return oas.Offset == 0 && oas.Size == 0
+}
+
 // Bytes returns the offset and size as a byte slice.
 func (oas OffsetAndSize) Bytes() []byte {
 	return append(Uint48tob(oas.Offset), Uint24tob(uint32(oas.Size))...)

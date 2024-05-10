@@ -93,7 +93,7 @@ func newCmd_Index_gsfa() *cli.Command {
 				defer file.Close()
 			}
 
-			cachingReader, err := readahead.NewCachingReaderFromReader(file, readahead.DefaultChunkSize)
+			cachingReader, err := readahead.NewCachingReaderFromReader(file, readahead.MiB*2)
 			if err != nil {
 				klog.Exitf("Failed to create caching reader: %s", err)
 			}
@@ -212,6 +212,7 @@ func newCmd_Index_gsfa() *cli.Command {
 							off,
 							length,
 							slot,
+							1715999999, // TODO: replace with actual blocktime
 							tx.Message.AccountKeys,
 						)
 						if err != nil {
@@ -274,6 +275,11 @@ func newCmd_Index_gsfa() *cli.Command {
 
 				currentOffset := totalOffset
 				totalOffset += sectionLength
+
+				// DEBUG:
+				// if numTransactionsSeen >= 10_000 {
+				// 	break
+				// }
 
 				switch kind {
 				case iplddecoders.KindTransaction:

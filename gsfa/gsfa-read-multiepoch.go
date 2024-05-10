@@ -7,7 +7,7 @@ import (
 
 	"github.com/gagliardetto/solana-go"
 	"github.com/rpcpool/yellowstone-faithful/compactindexsized"
-	"github.com/rpcpool/yellowstone-faithful/indexes"
+	"github.com/rpcpool/yellowstone-faithful/gsfa/linkedlog"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 )
 
@@ -48,7 +48,7 @@ func (gsfa *GsfaReaderMultiepoch) Get(
 	ctx context.Context,
 	pk solana.PublicKey,
 	limit int,
-	fetcher func(uint64, indexes.OffsetAndSize) (*ipldbindcode.Transaction, error),
+	fetcher func(uint64, linkedlog.OffsetAndSizeAndBlocktime) (*ipldbindcode.Transaction, error),
 ) (EpochToTransactionObjects, error) {
 	if limit <= 0 {
 		return nil, nil
@@ -100,7 +100,7 @@ func (multi *GsfaReaderMultiepoch) GetBeforeUntil(
 	limit int,
 	before *solana.Signature, // Before this signature, exclusive (i.e. get signatures older than this signature, excluding it).
 	until *solana.Signature, // Until this signature, inclusive (i.e. stop at this signature, including it).
-	fetcher func(uint64, indexes.OffsetAndSize) (*ipldbindcode.Transaction, error),
+	fetcher func(uint64, linkedlog.OffsetAndSizeAndBlocktime) (*ipldbindcode.Transaction, error),
 ) (EpochToTransactionObjects, error) {
 	if limit <= 0 {
 		return make(EpochToTransactionObjects), nil
@@ -116,7 +116,7 @@ func (multi *GsfaReaderMultiepoch) iterBeforeUntil(
 	limit int,
 	before *solana.Signature, // Before this signature, exclusive (i.e. get signatures older than this signature, excluding it).
 	until *solana.Signature, // Until this signature, inclusive (i.e. stop at this signature, including it).
-	fetcher func(uint64, indexes.OffsetAndSize) (*ipldbindcode.Transaction, error),
+	fetcher func(uint64, linkedlog.OffsetAndSizeAndBlocktime) (*ipldbindcode.Transaction, error),
 ) (EpochToTransactionObjects, error) {
 	if limit <= 0 {
 		return make(EpochToTransactionObjects), nil
@@ -147,21 +147,21 @@ epochLoop:
 		}
 		debugln("locs.OffsetToFirst:", locs)
 
-		next := locs.Offset // Start from the latest, and go back in time.
+		next := locs // Start from the latest, and go back in time.
 
 		for {
-			if next == 0 {
+			if next == nil || next.IsZero() { // no previous.
 				continue epochLoop
 			}
 			if limit > 0 && sigs.Count() >= limit {
 				break epochLoop
 			}
-			sigIndexes, newNext, err := index.ll.Read(next)
+			sigIndexes, newNext, err := index.ll.ReadWithSize(next.Offset, next.Size)
 			if err != nil {
 				return nil, fmt.Errorf("error while reading linked log with next=%d: %w", next, err)
 			}
 			debugln("sigIndexes:", sigIndexes, "newNext:", newNext)
-			next = newNext
+			next = &newNext
 			for _, sigIndex := range sigIndexes {
 				tx, err := fetcher(epochNum, sigIndex)
 				if err != nil {

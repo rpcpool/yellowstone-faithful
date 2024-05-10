@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/rpcpool/yellowstone-faithful/gsfa"
+	"github.com/rpcpool/yellowstone-faithful/gsfa/linkedlog"
 	"github.com/rpcpool/yellowstone-faithful/indexes"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
@@ -87,48 +88,6 @@ func (multi *MultiEpoch) handleGetSignaturesForAddress(ctx context.Context, conn
 		}, fmt.Errorf("failed to create gsfa multiepoch reader: %w", err)
 	}
 
-	// Get the transactions:
-	foundTransactions, err := gsfaMulti.GetBeforeUntil(
-		ctx,
-		pk,
-		limit,
-		params.Before,
-		params.Until,
-		func(epochNum uint64, oas indexes.OffsetAndSize) (*ipldbindcode.Transaction, error) {
-			epoch, err := multi.GetEpoch(epochNum)
-			if err != nil {
-				return nil, fmt.Errorf("failed to get epoch %d: %w", epochNum, err)
-			}
-			raw, err := epoch.GetNodeByOffsetAndSize(ctx, nil, &oas)
-			if err != nil {
-				return nil, fmt.Errorf("failed to get signature: %w", err)
-			}
-			decoded, err := iplddecoders.DecodeTransaction(raw)
-			if err != nil {
-				return nil, fmt.Errorf("error while decoding transaction from nodex at offset %d: %w", oas.Offset, err)
-			}
-			return decoded, nil
-		},
-	)
-	if err != nil {
-		return &jsonrpc2.Error{
-			Code:    jsonrpc2.CodeInternalError,
-			Message: "Internal error",
-		}, fmt.Errorf("failed to get signatures: %w", err)
-	}
-
-	if len(foundTransactions) == 0 {
-		err = conn.ReplyRaw(
-			ctx,
-			req.ID,
-			[]map[string]any{},
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to reply: %w", err)
-		}
-		return nil, nil
-	}
-
 	var blockTimeCache struct {
 		m  map[uint64]uint64
 		mu sync.Mutex
@@ -150,6 +109,52 @@ func (multi *MultiEpoch) handleGetSignaturesForAddress(ctx context.Context, conn
 		}
 		blockTimeCache.m[slot] = uint64(block.Meta.Blocktime)
 		return uint64(block.Meta.Blocktime)
+	}
+
+	// Get the transactions:
+	foundTransactions, err := gsfaMulti.GetBeforeUntil(
+		ctx,
+		pk,
+		limit,
+		params.Before,
+		params.Until,
+		func(epochNum uint64, oas linkedlog.OffsetAndSizeAndBlocktime) (*ipldbindcode.Transaction, error) {
+			epoch, err := multi.GetEpoch(epochNum)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get epoch %d: %w", epochNum, err)
+			}
+			raw, err := epoch.GetNodeByOffsetAndSize(ctx, nil, &indexes.OffsetAndSize{
+				Offset: oas.Offset,
+				Size:   oas.Size,
+			})
+			if err != nil {
+				return nil, fmt.Errorf("failed to get signature: %w", err)
+			}
+			decoded, err := iplddecoders.DecodeTransaction(raw)
+			if err != nil {
+				return nil, fmt.Errorf("error while decoding transaction from nodex at offset %d: %w", oas.Offset, err)
+			}
+			blockTimeCache.m[uint64(decoded.Slot)] = uint64(oas.Blocktime)
+			return decoded, nil
+		},
+	)
+	if err != nil {
+		return &jsonrpc2.Error{
+			Code:    jsonrpc2.CodeInternalError,
+			Message: "Internal error",
+		}, fmt.Errorf("failed to get signatures: %w", err)
+	}
+
+	if len(foundTransactions) == 0 {
+		err = conn.ReplyRaw(
+			ctx,
+			req.ID,
+			[]map[string]any{},
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to reply: %w", err)
+		}
+		return nil, nil
 	}
 
 	wg := new(errgroup.Group)
