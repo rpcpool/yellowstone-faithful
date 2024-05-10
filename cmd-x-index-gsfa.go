@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -18,7 +17,7 @@ import (
 	"github.com/gagliardetto/solana-go"
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-libipfs/blocks"
-	carv1 "github.com/ipld/go-car"
+	"github.com/rpcpool/yellowstone-faithful/carreader"
 	"github.com/rpcpool/yellowstone-faithful/gsfa"
 	"github.com/rpcpool/yellowstone-faithful/indexes"
 	"github.com/rpcpool/yellowstone-faithful/indexmeta"
@@ -97,13 +96,13 @@ func newCmd_Index_gsfa() *cli.Command {
 			if err != nil {
 				klog.Exitf("Failed to create caching reader: %s", err)
 			}
-			rd, err := newCarReader(cachingReader)
+			rd, err := carreader.New(cachingReader)
 			if err != nil {
 				klog.Exitf("Failed to open CAR: %s", err)
 			}
 			{
 				// print roots:
-				roots := rd.header.Roots
+				roots := rd.Header.Roots
 				klog.Infof("Roots: %d", len(roots))
 				for i, root := range roots {
 					if i == 0 && len(roots) == 1 {
@@ -121,7 +120,7 @@ func newCmd_Index_gsfa() *cli.Command {
 				return fmt.Errorf("index-dir is not a directory")
 			}
 
-			rootCID := rd.header.Roots[0]
+			rootCID := rd.Header.Roots[0]
 
 			// Use the car file name and root CID to name the gsfa index dir:
 			gsfaIndexDir := filepath.Join(indexDir, formatIndexDirname_gsfa(
@@ -257,11 +256,11 @@ func newCmd_Index_gsfa() *cli.Command {
 
 			totalOffset := uint64(0)
 			{
-				var buf bytes.Buffer
-				if err = carv1.WriteHeader(rd.header, &buf); err != nil {
+				if size, err := rd.HeaderSize(); err != nil {
 					return err
+				} else {
+					totalOffset += size
 				}
-				totalOffset = uint64(buf.Len())
 			}
 			for {
 				_, sectionLength, block, err := rd.NextNode()

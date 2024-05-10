@@ -23,6 +23,7 @@ import (
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/rpcpool/yellowstone-faithful/bucketteer"
+	"github.com/rpcpool/yellowstone-faithful/carreader"
 	deprecatedbucketter "github.com/rpcpool/yellowstone-faithful/deprecated/bucketteer"
 	"github.com/rpcpool/yellowstone-faithful/gsfa"
 	hugecache "github.com/rpcpool/yellowstone-faithful/huge-cache"
@@ -420,7 +421,7 @@ func NewEpochFromConfig(
 			if err != nil {
 				return nil, fmt.Errorf("failed to get local CAR data reader: %w", err)
 			}
-			header, err := readHeader(dr)
+			header, err := carreader.ReadHeader(dr)
 			if err != nil {
 				return nil, fmt.Errorf("failed to read local CAR header: %w", err)
 			}

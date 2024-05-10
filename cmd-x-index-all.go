@@ -13,8 +13,8 @@ import (
 
 	"github.com/dustin/go-humanize"
 	"github.com/ipfs/go-cid"
-	carv1 "github.com/ipld/go-car"
 	"github.com/rpcpool/yellowstone-faithful/bucketteer"
+	"github.com/rpcpool/yellowstone-faithful/carreader"
 	"github.com/rpcpool/yellowstone-faithful/indexes"
 	"github.com/rpcpool/yellowstone-faithful/indexmeta"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
@@ -135,19 +135,19 @@ func createAllIndexes(
 	}
 	defer carFile.Close()
 
-	rd, err := newCarReader(carFile)
+	rd, err := carreader.New(carFile)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to create car reader: %w", err)
 	}
 	// check it has 1 root
-	if len(rd.header.Roots) != 1 {
-		return nil, 0, fmt.Errorf("car file must have exactly 1 root, but has %d", len(rd.header.Roots))
+	if len(rd.Header.Roots) != 1 {
+		return nil, 0, fmt.Errorf("car file must have exactly 1 root, but has %d", len(rd.Header.Roots))
 	}
 	// print roots:
-	for _, root := range rd.header.Roots {
+	for _, root := range rd.Header.Roots {
 		klog.Infof("- Root: %s", root)
 	}
-	rootCID := rd.header.Roots[0]
+	rootCID := rd.Header.Roots[0]
 
 	klog.Infof("Getting car file size")
 
@@ -222,11 +222,11 @@ func createAllIndexes(
 
 	totalOffset := uint64(0)
 	{
-		var buf bytes.Buffer
-		if err = carv1.WriteHeader(rd.header, &buf); err != nil {
+		if size, err := rd.HeaderSize(); err != nil {
 			return nil, 0, err
+		} else {
+			totalOffset += size
 		}
-		totalOffset = uint64(buf.Len())
 	}
 
 	numIndexedOffsets := uint64(0)
@@ -529,13 +529,13 @@ func verifyAllIndexes(
 	}
 	defer carFile.Close()
 
-	rd, err := newCarReader(carFile)
+	rd, err := carreader.New(carFile)
 	if err != nil {
 		return fmt.Errorf("failed to create car reader: %w", err)
 	}
 	// check it has 1 root
-	if len(rd.header.Roots) != 1 {
-		return fmt.Errorf("car file must have exactly 1 root, but has %d", len(rd.header.Roots))
+	if len(rd.Header.Roots) != 1 {
+		return fmt.Errorf("car file must have exactly 1 root, but has %d", len(rd.Header.Roots))
 	}
 
 	cid_to_offset_and_size, err := OpenIndex_CidToOffset(
@@ -575,11 +575,11 @@ func verifyAllIndexes(
 
 	totalOffset := uint64(0)
 	{
-		var buf bytes.Buffer
-		if err = carv1.WriteHeader(rd.header, &buf); err != nil {
+		if size, err := rd.HeaderSize(); err != nil {
 			return err
+		} else {
+			totalOffset += size
 		}
-		totalOffset = uint64(buf.Len())
 	}
 
 	numIndexedOffsets := uint64(0)
