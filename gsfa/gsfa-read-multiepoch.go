@@ -122,7 +122,7 @@ func (multi *GsfaReaderMultiepoch) iterBeforeUntil(
 		return make(EpochToTransactionObjects), nil
 	}
 
-	sigs := make(EpochToTransactionObjects)
+	transactions := make(EpochToTransactionObjects)
 	reachedBefore := false
 	if before == nil {
 		reachedBefore = true
@@ -153,19 +153,19 @@ epochLoop:
 			if next == nil || next.IsZero() { // no previous.
 				continue epochLoop
 			}
-			if limit > 0 && sigs.Count() >= limit {
+			if limit > 0 && transactions.Count() >= limit {
 				break epochLoop
 			}
-			sigIndexes, newNext, err := index.ll.ReadWithSize(next.Offset, next.Size)
+			locations, newNext, err := index.ll.ReadWithSize(next.Offset, next.Size)
 			if err != nil {
 				return nil, fmt.Errorf("error while reading linked log with next=%d: %w", next, err)
 			}
-			debugln("sigIndexes:", sigIndexes, "newNext:", newNext)
+			debugln("sigIndexes:", locations, "newNext:", newNext)
 			next = &newNext
-			for _, sigIndex := range sigIndexes {
-				tx, err := fetcher(epochNum, sigIndex)
+			for _, txLoc := range locations {
+				tx, err := fetcher(epochNum, txLoc)
 				if err != nil {
-					return nil, fmt.Errorf("error while getting signature at index=%d: %w", sigIndex, err)
+					return nil, fmt.Errorf("error while getting signature at index=%d: %w", txLoc, err)
 				}
 				sig, err := tx.Signature()
 				if err != nil {
@@ -178,15 +178,15 @@ epochLoop:
 				if !reachedBefore {
 					continue
 				}
-				if limit > 0 && sigs.Count() >= limit {
+				if limit > 0 && transactions.Count() >= limit {
 					break epochLoop
 				}
-				sigs[epochNum] = append(sigs[epochNum], tx)
+				transactions[epochNum] = append(transactions[epochNum], tx)
 				if until != nil && sig == *until {
 					break epochLoop
 				}
 			}
 		}
 	}
-	return sigs, nil
+	return transactions, nil
 }

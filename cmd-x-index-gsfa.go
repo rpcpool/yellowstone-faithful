@@ -198,6 +198,8 @@ func newCmd_Index_gsfa() *cli.Command {
 				lastPrintedAt := time.Now()
 				numSlotsDone := uint64(0)
 				lastTimeDid1kSlots := time.Now()
+				var eta time.Duration
+				etaSampleSlots := uint64(10000)
 				for result := range outputChan {
 					switch resValue := result.Value.(type) {
 					case error:
@@ -220,14 +222,13 @@ func newCmd_Index_gsfa() *cli.Command {
 						}
 						waitResultsReceived.Done()
 						numReceivedAtomic.Add(-1)
-						var eta time.Duration
 						if slot != lastSeenSlot {
 							lastSeenSlot = slot
 							numSlotsDone++
-							if numSlotsDone%1000 == 0 {
+							if numSlotsDone%etaSampleSlots == 0 {
 								tookToDo1kSlots := time.Since(lastTimeDid1kSlots)
 								lastTimeDid1kSlots = time.Now()
-								eta = time.Duration(float64(tookToDo1kSlots) / 1000 * float64(epochEnd-epochStart-numSlotsDone))
+								eta = time.Duration(float64(tookToDo1kSlots) / float64(etaSampleSlots) * float64(epochEnd-epochStart-numSlotsDone))
 							}
 						}
 						if time.Since(lastPrintedAt) > time.Millisecond*500 {

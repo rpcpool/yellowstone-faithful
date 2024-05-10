@@ -106,30 +106,30 @@ func (index *GsfaReader) Get(
 	}
 	debugln("locs.OffsetToFirst:", lastOffset)
 
-	var transactionLocations []linkedlog.OffsetAndSizeAndBlocktime
+	var allTransactionLocations []linkedlog.OffsetAndSizeAndBlocktime
 	next := lastOffset // Start from the latest, and go back in time.
 
 	for {
 		if next == nil || next.IsZero() { // no previous.
 			break
 		}
-		if limit > 0 && len(transactionLocations) >= limit {
+		if limit > 0 && len(allTransactionLocations) >= limit {
 			break
 		}
-		sigIndexes, newNext, err := index.ll.ReadWithSize(next.Offset, next.Size)
+		locations, newNext, err := index.ll.ReadWithSize(next.Offset, next.Size)
 		if err != nil {
 			return nil, fmt.Errorf("error while reading linked log with next=%d: %w", next, err)
 		}
-		debugln("sigIndexes:", sigIndexes, "newNext:", newNext)
+		debugln("sigIndexes:", locations, "newNext:", newNext)
 		next = &newNext
-		for _, sigIndex := range sigIndexes {
-			if limit > 0 && len(transactionLocations) >= limit {
+		for _, sigIndex := range locations {
+			if limit > 0 && len(allTransactionLocations) >= limit {
 				break
 			}
-			transactionLocations = append(transactionLocations, sigIndex)
+			allTransactionLocations = append(allTransactionLocations, sigIndex)
 		}
 	}
-	return transactionLocations, nil
+	return allTransactionLocations, nil
 }
 
 func (index *GsfaReader) GetBeforeUntil(
@@ -152,7 +152,7 @@ func (index *GsfaReader) GetBeforeUntil(
 	}
 	debugln("locs.OffsetToFirst:", locs)
 
-	var transactionLocations []linkedlog.OffsetAndSizeAndBlocktime
+	var allTransactionLocations []linkedlog.OffsetAndSizeAndBlocktime
 	next := locs // Start from the latest, and go back in time.
 
 	reachedBefore := false
@@ -165,16 +165,16 @@ bigLoop:
 		if next == nil || next.IsZero() { // no previous.
 			break
 		}
-		if limit > 0 && len(transactionLocations) >= limit {
+		if limit > 0 && len(allTransactionLocations) >= limit {
 			break
 		}
-		sigIndexes, newNext, err := index.ll.ReadWithSize(next.Offset, next.Size)
+		locations, newNext, err := index.ll.ReadWithSize(next.Offset, next.Size)
 		if err != nil {
 			return nil, fmt.Errorf("error while reading linked log with next=%d: %w", next, err)
 		}
-		debugln("sigIndexes:", sigIndexes, "newNext:", newNext)
+		debugln("sigIndexes:", locations, "newNext:", newNext)
 		next = &newNext
-		for _, txLoc := range sigIndexes {
+		for _, txLoc := range locations {
 			sig, err := fetcher(txLoc)
 			if err != nil {
 				return nil, fmt.Errorf("error while getting signature at index=%v: %w", txLoc, err)
@@ -186,14 +186,14 @@ bigLoop:
 			if !reachedBefore {
 				continue
 			}
-			if limit > 0 && len(transactionLocations) >= limit {
+			if limit > 0 && len(allTransactionLocations) >= limit {
 				break
 			}
-			transactionLocations = append(transactionLocations, txLoc)
+			allTransactionLocations = append(allTransactionLocations, txLoc)
 			if until != nil && sig == *until {
 				break bigLoop
 			}
 		}
 	}
-	return transactionLocations, nil
+	return allTransactionLocations, nil
 }
