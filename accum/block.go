@@ -36,7 +36,7 @@ func NewObjectAccumulator(
 
 type ObjectWithMetadata struct {
 	Cid           cid.Cid
-	TotalOffset   uint64
+	Offset        uint64
 	SectionLength uint64
 	Object        *blocks.BasicBlock
 }
@@ -68,7 +68,7 @@ func (oa *ObjectAccumulator) Run(ctx context.Context) error {
 
 		objm := ObjectWithMetadata{
 			Cid:           c,
-			TotalOffset:   currentOffset,
+			Offset:        currentOffset,
 			SectionLength: sectionLength,
 			Object:        obj,
 		}
@@ -76,6 +76,9 @@ func (oa *ObjectAccumulator) Run(ctx context.Context) error {
 		kind := iplddecoders.Kind(obj.RawData()[1])
 		if kind == oa.flushOnKind {
 			if err := oa.flush(&objm, clone(objects)); err != nil {
+				if isStop(err) {
+					return nil
+				}
 				return err
 			}
 			clear(objects)
@@ -93,11 +96,7 @@ func (oa *ObjectAccumulator) flush(head *ObjectWithMetadata, other []ObjectWithM
 		return nil
 	}
 
-	err := oa.callback(head, other)
-	if isStop(err) {
-		return nil
-	}
-	return err
+	return oa.callback(head, other)
 }
 
 func clone[T any](s []T) []T {
