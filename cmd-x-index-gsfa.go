@@ -2,21 +2,18 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
-	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/dustin/go-humanize"
 	"github.com/gagliardetto/solana-go"
 	"github.com/ipfs/go-cid"
-	"github.com/ipfs/go-libipfs/blocks"
+	"github.com/rpcpool/yellowstone-faithful/accum"
 	"github.com/rpcpool/yellowstone-faithful/carreader"
 	"github.com/rpcpool/yellowstone-faithful/gsfa"
 	"github.com/rpcpool/yellowstone-faithful/indexes"
@@ -24,7 +21,6 @@ import (
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
 	"github.com/rpcpool/yellowstone-faithful/readahead"
-	concurrently "github.com/tejzpr/ordered-concurrently/v3"
 	"github.com/urfave/cli/v2"
 	"k8s.io/klog/v2"
 )
@@ -145,7 +141,7 @@ func newCmd_Index_gsfa() *cli.Command {
 				return fmt.Errorf("failed to add network to sig_exists index metadata: %w", err)
 			}
 			tmpDir := c.String("tmp-dir")
-			accu, err := gsfa.NewGsfaWriter(
+			indexW, err := gsfa.NewGsfaWriter(
 				gsfaIndexDir,
 				meta,
 				epoch,
@@ -157,10 +153,10 @@ func newCmd_Index_gsfa() *cli.Command {
 				return fmt.Errorf("error while opening gsfa index writer: %w", err)
 			}
 			defer func() {
-				if err := accu.Flush(); err != nil {
+				if err := indexW.Flush(); err != nil {
 					klog.Errorf("Error while flushing: %s", err)
 				}
-				if err := accu.Close(); err != nil {
+				if err := indexW.Close(); err != nil {
 					klog.Errorf("Error while closing: %s", err)
 				}
 			}()
@@ -174,148 +170,120 @@ func newCmd_Index_gsfa() *cli.Command {
 
 			verifyHash := c.Bool("verify-hash")
 			ipldbindcode.DisableHashVerification = !verifyHash
-			numWorkers := c.Uint("w")
+			numProcessedTransactions := new(atomic.Int64)
 
-			if numWorkers == 0 {
-				numWorkers = uint(runtime.NumCPU())
-			}
-			workerInputChan := make(chan concurrently.WorkFunction, numWorkers)
-			waitExecuted := new(sync.WaitGroup)
-			waitResultsReceived := new(sync.WaitGroup)
-			numReceivedAtomic := new(atomic.Int64)
-
-			outputChan := concurrently.Process(
-				context.Background(),
-				workerInputChan,
-				&concurrently.Options{PoolSize: int(numWorkers), OutChannelBuffer: int(numWorkers)},
-			)
 			epochStart, epochEnd := CalcEpochLimits(epoch)
-			go func() {
-				// process the results from the workers
-				lastSeenSlot := uint64(0)
-				numTransactionsProcessed := 0
-				lastPrintedAt := time.Now()
-				numSlotsDone := uint64(0)
-				lastTimeDid1kSlots := time.Now()
-				var eta time.Duration
-				etaSampleSlots := uint64(10000)
-				for result := range outputChan {
-					switch resValue := result.Value.(type) {
-					case error:
-						panic(resValue)
-					case TransactionWithSlot:
-						numTransactionsProcessed++
-						tx := resValue.Transaction
-						slot := resValue.Slot
-						off := resValue.Offset
-						length := resValue.Length
-						err = accu.Push(
-							off,
-							length,
-							slot,
-							1715999999, // TODO: replace with actual blocktime
-							tx.Message.AccountKeys,
-						)
-						if err != nil {
-							klog.Exitf("Error while pushing to gsfa index: %s", err)
-						}
-						waitResultsReceived.Done()
-						numReceivedAtomic.Add(-1)
-						if slot != lastSeenSlot {
-							lastSeenSlot = slot
-							numSlotsDone++
-							if numSlotsDone%etaSampleSlots == 0 {
-								tookToDo1kSlots := time.Since(lastTimeDid1kSlots)
-								lastTimeDid1kSlots = time.Now()
-								eta = time.Duration(float64(tookToDo1kSlots) / float64(etaSampleSlots) * float64(epochEnd-epochStart-numSlotsDone))
-							}
-						}
-						if time.Since(lastPrintedAt) > time.Millisecond*500 {
-							percentDone := float64(slot-epochStart) / float64(epochEnd-epochStart) * 100
-							// clear line, then print progress
-							msg := fmt.Sprintf(
-								"\rCreating gSFA index for epoch %d - %s | %s | %.2f%% | slot %d | tx %s",
-								epoch,
-								time.Now().Format("2006-01-02 15:04:05"),
-								time.Since(startedAt).Truncate(time.Second),
-								percentDone,
-								slot,
-								humanize.Comma(int64(numTransactionsProcessed)),
-							)
-							if eta > 0 {
-								msg += fmt.Sprintf(" | ETA %s", eta.Truncate(time.Second))
-							}
-							fmt.Print(msg)
-							lastPrintedAt = time.Now()
-						}
-					default:
-						panic(fmt.Errorf("unexpected result type: %T", result.Value))
-					}
-				}
+
+			defer func() {
+				klog.Infof("Finished in %s", time.Since(startedAt))
 			}()
+			numSlots := uint64(0)
+			numMaxObjects := uint64(0)
 
-			totalOffset := uint64(0)
-			{
-				if size, err := rd.HeaderSize(); err != nil {
-					return err
-				} else {
-					totalOffset += size
+			lastPrintedAt := time.Now()
+			lastTimeDid1kSlots := time.Now()
+			var eta time.Duration
+			etaSampleSlots := uint64(10000)
+			accum := accum.NewObjectAccumulator(rd, iplddecoders.KindBlock, func(owm1 *accum.ObjectWithMetadata, owm2 []accum.ObjectWithMetadata) error {
+				numSlots++
+				numObjects := len(owm2) + 1
+				if numObjects > int(numMaxObjects) {
+					numMaxObjects = uint64(numObjects)
 				}
-			}
-			for {
-				_, sectionLength, block, err := rd.NextNode()
+
+				// decode the block:
+				block, err := iplddecoders.DecodeBlock(owm1.Object.RawData())
 				if err != nil {
-					if errors.Is(err, io.EOF) {
-						fmt.Println("EOF")
-						break
-					}
-					return err
+					return fmt.Errorf("error while decoding block: %w", err)
 				}
-				kind := iplddecoders.Kind(block.RawData()[1])
+				transactions, err := objectsToTransactions(block, owm2)
+				if err != nil {
+					return fmt.Errorf("error while converting objects to transactions: %w", err)
+				}
+				if numSlots%etaSampleSlots == 0 {
+					tookToDo1kSlots := time.Since(lastTimeDid1kSlots)
+					lastTimeDid1kSlots = time.Now()
+					eta = time.Duration(float64(tookToDo1kSlots) / float64(etaSampleSlots) * float64(epochEnd-epochStart-numSlots))
+				}
+				for _, resValue := range transactions {
+					numProcessedTransactions.Add(1)
+					tx := resValue.Transaction
+					slot := resValue.Slot
+					off := resValue.Offset
+					length := resValue.Length
+					blocktime := resValue.Blocktime
+					err = indexW.Push(
+						off,
+						length,
+						slot,
+						blocktime,
+						tx.Message.AccountKeys,
+					)
+					if err != nil {
+						klog.Exitf("Error while pushing to gsfa index: %s", err)
+					}
 
-				currentOffset := totalOffset
-				totalOffset += sectionLength
-
-				// DEBUG:
-				// if numTransactionsSeen >= 10_000 {
-				// 	break
-				// }
-
-				switch kind {
-				case iplddecoders.KindTransaction:
-					numTransactionsSeen++
-					{
-						waitExecuted.Add(1)
-						waitResultsReceived.Add(1)
-						numReceivedAtomic.Add(1)
-						workerInputChan <- newTxParserWorker(
-							currentOffset,
-							sectionLength,
-							block,
-							func() {
-								waitExecuted.Done()
-							},
+					if time.Since(lastPrintedAt) > time.Millisecond*500 {
+						percentDone := float64(slot-epochStart) / float64(epochEnd-epochStart) * 100
+						// clear line, then print progress
+						msg := fmt.Sprintf(
+							"\rCreating gSFA index for epoch %d - %s | %s | %.2f%% | slot %d | tx %s",
+							epoch,
+							time.Now().Format("2006-01-02 15:04:05"),
+							time.Since(startedAt).Truncate(time.Second),
+							percentDone,
+							slot,
+							humanize.Comma(int64(numProcessedTransactions.Load())),
 						)
+						if eta > 0 {
+							msg += fmt.Sprintf(" | ETA %s", eta.Truncate(time.Second))
+						}
+						fmt.Print(msg)
+						lastPrintedAt = time.Now()
 					}
-				default:
-					continue
 				}
+				return nil
+			})
+
+			if err := accum.Run(context.Background()); err != nil {
+				return fmt.Errorf("error while accumulating objects: %w", err)
 			}
 
-			{
-				klog.Infof("Waiting for all transactions to be parsed...")
-				waitExecuted.Wait()
-				klog.Infof("All transactions parsed.")
+			klog.Infof("Success: gSFA index created at %s with %d transactions", gsfaIndexDir, numProcessedTransactions.Load())
 
-				klog.Infof("Waiting to receive all results...")
-				close(workerInputChan)
-				waitResultsReceived.Wait()
-				klog.Infof("All results received")
-			}
-			klog.Infof("Success: gSFA index created at %s", gsfaIndexDir)
 			return nil
 		},
 	}
+}
+
+func objectsToTransactions(
+	block *ipldbindcode.Block,
+	objects []accum.ObjectWithMetadata,
+) ([]TransactionWithSlot, error) {
+	transactions := make([]TransactionWithSlot, 0, len(objects))
+	for _, object := range objects {
+		// check if the object is a transaction:
+		kind := iplddecoders.Kind(object.Object.RawData()[1])
+		if kind != iplddecoders.KindTransaction {
+			continue
+		}
+		decoded, err := iplddecoders.DecodeTransaction(object.Object.RawData())
+		if err != nil {
+			return nil, fmt.Errorf("error while decoding transaction from nodex %s: %w", object.Cid, err)
+		}
+		tx, err := decoded.GetSolanaTransaction()
+		if err != nil {
+			return nil, fmt.Errorf("error while getting solana transaction from object %s: %w", object.Cid, err)
+		}
+		transactions = append(transactions, TransactionWithSlot{
+			Offset:      object.Offset,
+			Length:      object.SectionLength,
+			Slot:        uint64(decoded.Slot),
+			Blocktime:   uint64(block.Meta.Blocktime),
+			Transaction: *tx,
+		})
+	}
+	return transactions, nil
 }
 
 func formatIndexDirname_gsfa(epoch uint64, rootCid cid.Cid, network indexes.Network) string {
@@ -332,50 +300,6 @@ type TransactionWithSlot struct {
 	Offset      uint64
 	Length      uint64
 	Slot        uint64
+	Blocktime   uint64
 	Transaction solana.Transaction
-}
-
-type txParserWorker struct {
-	offset uint64
-	length uint64 // section length
-	object blocks.Block
-	done   func()
-}
-
-func newTxParserWorker(
-	offset uint64,
-	length uint64,
-	object blocks.Block,
-	done func(),
-) *txParserWorker {
-	return &txParserWorker{
-		offset: offset,
-		length: length,
-		object: object,
-		done:   done,
-	}
-}
-
-func (w txParserWorker) Run(ctx context.Context) interface{} {
-	defer func() {
-		w.done()
-	}()
-
-	object := w.object
-
-	decoded, err := iplddecoders.DecodeTransaction(object.RawData())
-	if err != nil {
-		return fmt.Errorf("error while decoding transaction from nodex %s: %w", object.Cid(), err)
-	}
-	tx, err := decoded.GetSolanaTransaction()
-	if err != nil {
-		return fmt.Errorf("error while getting solana transaction from object %s: %w", object.Cid(), err)
-	}
-
-	return TransactionWithSlot{
-		Offset:      w.offset,
-		Length:      w.length,
-		Slot:        uint64(decoded.Slot),
-		Transaction: *tx,
-	}
 }
