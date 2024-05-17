@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 
 	"github.com/ipfs/go-cid"
 	cbor "github.com/ipfs/go-ipld-cbor"
@@ -22,8 +23,13 @@ type CarReader struct {
 	Header     *carv1.CarHeader
 }
 
+func alignValueToPageSize(value int) int {
+	pageSize := os.Getpagesize()
+	return (value + pageSize - 1) &^ (pageSize - 1)
+}
+
 func New(r io.ReadCloser) (*CarReader, error) {
-	br := bufio.NewReaderSize(r, readahead.DefaultChunkSize)
+	br := bufio.NewReaderSize(r, alignValueToPageSize(readahead.DefaultChunkSize))
 	ch, err := ReadHeader(br)
 	if err != nil {
 		return nil, err
@@ -75,6 +81,14 @@ func (cr *CarReader) NextNode() (cid.Cid, uint64, *blocks.BasicBlock, error) {
 		return c, 0, nil, fmt.Errorf("failed to create block: %w", err)
 	}
 	return c, sectionLen, bl, nil
+}
+
+func (cr *CarReader) NextNodeBytes() (cid.Cid, uint64, []byte, error) {
+	c, sectionLen, data, err := ReadNodeInfoWithData(cr.br)
+	if err != nil {
+		return c, 0, nil, fmt.Errorf("failed to read node info: %w", err)
+	}
+	return c, sectionLen, data, nil
 }
 
 func (cr *CarReader) HeaderSize() (uint64, error) {

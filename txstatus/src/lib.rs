@@ -33,19 +33,19 @@ pub extern "C" fn parse_instruction(bytes: *const u8, len: usize) -> Response {
         };
         {
             instruction.program_id_index = decoder.read_u8().unwrap();
-            let accounts_len = decoder.read_u8().unwrap() as usize;
+            let accounts_len = decoder.read_u16().unwrap() as usize;
             for _ in 0..accounts_len {
                 let account_index = decoder.read_u8().unwrap();
                 instruction.accounts.push(account_index);
             }
-            let data_len = decoder.read_u8().unwrap() as usize;
+            let data_len = decoder.read_u16().unwrap() as usize;
             for _ in 0..data_len {
                 let data_byte = decoder.read_u8().unwrap();
                 instruction.data.push(data_byte);
             }
         }
 
-        let static_account_keys_len = decoder.read_u8().unwrap() as usize;
+        let static_account_keys_len = decoder.read_u16().unwrap() as usize;
         // println!(
         //     "[rust] static_account_keys_len: {:?}",
         //     static_account_keys_len
@@ -61,16 +61,38 @@ pub extern "C" fn parse_instruction(bytes: *const u8, len: usize) -> Response {
         let has_dynamic_account_keys = decoder.read_option().unwrap();
         let parsed_account_keys: Combined = if has_dynamic_account_keys {
             let mut loaded_addresses = LoadedAddresses::default();
-            let num_writable_accounts = decoder.read_u8().unwrap() as usize;
+            let num_writable_accounts = decoder.read_u16().unwrap() as usize;
             // println!("[rust] num_writable_accounts: {:?}", num_writable_accounts);
             // read 32 bytes for each writable account:
-            for _ in 0..num_writable_accounts {
-                let account_key_bytes = decoder.read_bytes(32).unwrap();
+            for dyn_wri_index in 0..num_writable_accounts {
+                let account_key_bytes = decoder.read_bytes(32);
+                if account_key_bytes.is_err() {
+                    // println!("[rust] account_key_bytes error: {:?}", account_key_bytes);
+                    let mut response = vec![0; 32];
+                    // add error string to response:
+                    let error = account_key_bytes.err().unwrap();
+                    let error = format!(
+                        "account_key_bytes error at index: {:?}: {:?}",
+                        dyn_wri_index, error
+                    );
+                    response.extend_from_slice(error.as_bytes());
+                    let data = response.as_mut_ptr();
+                    let len = response.len();
+
+                    return Response {
+                        buf: Buffer {
+                            data: unsafe { data.add(32) },
+                            len: len - 32,
+                        },
+                        status: 1,
+                    };
+                }
+                let account_key_bytes = account_key_bytes.unwrap();
                 let account_key = solana_sdk::pubkey::Pubkey::try_from(account_key_bytes)
                     .expect("invalid account key in writable accounts");
                 loaded_addresses.writable.push(account_key);
             }
-            let num_readonly_accounts = decoder.read_u8().unwrap() as usize;
+            let num_readonly_accounts = decoder.read_u16().unwrap() as usize;
             // read 32 bytes for each readonly account:
             for _ in 0..num_readonly_accounts {
                 let account_key_bytes = decoder.read_bytes(32).unwrap();

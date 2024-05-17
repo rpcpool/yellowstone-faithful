@@ -48,7 +48,7 @@ func (inst Parameters) MarshalWithEncoder(encoder *bin.Encoder) error {
 
 type CompiledInstruction struct {
 	ProgramIDIndex uint8
-	Accounts       []uint8
+	Accounts       solana.Uint8SliceAsNum
 	Data           []byte
 }
 
@@ -61,8 +61,8 @@ func (inst CompiledInstruction) MarshalWithEncoder(encoder *bin.Encoder) error {
 		}
 		// .compiled_instruction.accounts:
 		{
-			// len uint8
-			err := encoder.WriteUint8(uint8(len(inst.Accounts)))
+			// len uint16
+			err := encoder.WriteUint16(uint16(len(inst.Accounts)), binary.LittleEndian)
 			if err != nil {
 				return fmt.Errorf("failed to write len(Accounts): %w", err)
 			}
@@ -74,8 +74,12 @@ func (inst CompiledInstruction) MarshalWithEncoder(encoder *bin.Encoder) error {
 		}
 		// .compiled_instruction.data:
 		{
-			// len uint8
-			err := encoder.WriteUint8(uint8(len(inst.Data)))
+			// len uint16
+			dataLen := uint16(len(inst.Data))
+			if int(dataLen) != len(inst.Data) {
+				return fmt.Errorf("encoded len(Data) is larger than 16 bits")
+			}
+			err := encoder.WriteUint16(dataLen, binary.LittleEndian)
 			if err != nil {
 				return fmt.Errorf("failed to write len(Data): %w", err)
 			}
@@ -98,8 +102,8 @@ func (inst AccountKeys) MarshalWithEncoder(encoder *bin.Encoder) error {
 	{
 		// account_keys.static_keys:
 		{
-			// len uint8
-			err := encoder.WriteUint8(uint8(len(inst.StaticKeys)))
+			// len uint16
+			err := encoder.WriteUint16(uint16(len(inst.StaticKeys)), binary.LittleEndian)
 			if err != nil {
 				return fmt.Errorf("failed to write len(StaticKeys): %w", err)
 			}
@@ -141,8 +145,8 @@ func (inst LoadedAddresses) MarshalWithEncoder(encoder *bin.Encoder) error {
 	{
 		// account_keys.dynamic_keys.writable:
 		{
-			// len uint8
-			err := encoder.WriteUint8(uint8(len(inst.Writable)))
+			// len uint16
+			err := encoder.WriteUint16(uint16(len(inst.Writable)), binary.LittleEndian)
 			if err != nil {
 				return fmt.Errorf("failed to write len(Writable): %w", err)
 			}
@@ -156,8 +160,8 @@ func (inst LoadedAddresses) MarshalWithEncoder(encoder *bin.Encoder) error {
 		}
 		// account_keys.dynamic_keys.readonly:
 		{
-			// len uint8
-			err := encoder.WriteUint8(uint8(len(inst.Readonly)))
+			// len uint16
+			err := encoder.WriteUint16(uint16(len(inst.Readonly)), binary.LittleEndian)
 			if err != nil {
 				return fmt.Errorf("failed to write len(Readonly): %w", err)
 			}

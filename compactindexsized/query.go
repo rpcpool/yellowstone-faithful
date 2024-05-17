@@ -255,6 +255,9 @@ func searchEytzinger(min int, max int, x uint64, getter func(int) (Entry, error)
 		if k.Hash < x {
 			index++
 		}
+		if index < min {
+			return nil, ErrNotFound
+		}
 	}
 	return nil, ErrNotFound
 }

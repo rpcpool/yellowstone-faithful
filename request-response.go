@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 
 	bin "github.com/gagliardetto/binary"
@@ -393,10 +394,104 @@ func encodeTransactionResponseBasedOnWantedEncoding(
 			return nil, fmt.Errorf("unsupported encoding")
 		}
 
+		ixIndexToNumAccountStaticDynamicWR := make(map[int][3]uint8)
+		numStaticAccountsForTx := (len(tx.Message.AccountKeys))
+		{
+			meta, ok := meta.(*confirmed_block.TransactionStatusMeta)
+			if ok {
+				numDynamicWritable := len(meta.LoadedWritableAddresses)
+				for i, inst := range tx.Message.Instructions {
+					vvv := [3]uint8{
+						0,
+						0,
+						0,
+					}
+					for _, accountIndex := range toUniqueSorted(inst.Accounts) {
+						if accountIndex < uint16(numStaticAccountsForTx) {
+							vvv[0]++
+						} else {
+							if accountIndex < uint16(numStaticAccountsForTx+numDynamicWritable) {
+								vvv[1]++
+							} else {
+								vvv[2]++
+							}
+						}
+					}
+					ixIndexToNumAccountStaticDynamicWR[i] = vvv
+				}
+				{
+					tables := map[solana.PublicKey]solana.PublicKeySlice{}
+					writable := byteSlicesToKeySlices(meta.LoadedWritableAddresses)
+					readonly := byteSlicesToKeySlices(meta.LoadedReadonlyAddresses)
+					for _, addr := range tx.Message.AddressTableLookups {
+						numTakeWritable := len(addr.WritableIndexes)
+						numTakeReadonly := len(addr.ReadonlyIndexes)
+						tableKey := addr.AccountKey
+						{
+							// now need to rebuild the address table taking into account the indexes, and put the keys into the tables
+							maxIndex := 0
+							for _, indexB := range addr.WritableIndexes {
+								index := int(indexB)
+								if index > maxIndex {
+									maxIndex = index
+								}
+							}
+							for _, indexB := range addr.ReadonlyIndexes {
+								index := int(indexB)
+								if index > maxIndex {
+									maxIndex = index
+								}
+							}
+							tables[tableKey] = make([]solana.PublicKey, maxIndex+1)
+						}
+						if numTakeWritable > 0 {
+							writableForTable := writable[:numTakeWritable]
+							for i, indexB := range addr.WritableIndexes {
+								index := int(indexB)
+								tables[tableKey][index] = writableForTable[i]
+							}
+							writable = writable[numTakeWritable:]
+						}
+						if numTakeReadonly > 0 {
+							readableForTable := readonly[:numTakeReadonly]
+							for i, indexB := range addr.ReadonlyIndexes {
+								index := int(indexB)
+								tables[tableKey][index] = readableForTable[i]
+							}
+							readonly = readonly[numTakeReadonly:]
+						}
+					}
+					err := tx.Message.SetAddressTables(tables)
+					if err != nil {
+						return nil, fmt.Errorf("failed to set address tables: %w", err)
+					}
+				}
+				if tx.Message.IsVersioned() {
+					err := tx.Message.ResolveLookups()
+					if err != nil {
+						panic(err)
+					}
+				}
+			} else {
+				for i, inst := range tx.Message.Instructions {
+					vvv := [3]uint8{
+						uint8(len(toUniqueSorted(inst.Accounts))),
+						0,
+						0,
+					}
+					ixIndexToNumAccountStaticDynamicWR[i] = vvv
+				}
+			}
+		}
+
 		parsedInstructions := make([]json.RawMessage, 0)
 
-		for _, inst := range tx.Message.Instructions {
+		for instIndex, inst := range tx.Message.Instructions {
 			programId, _ := tx.ResolveProgramIDIndex(inst.ProgramIDIndex)
+			keys := tx.Message.AccountKeys
+			numStaticThisInstruction := ixIndexToNumAccountStaticDynamicWR[instIndex][0]
+			numDynamicWritableThisInstruction := ixIndexToNumAccountStaticDynamicWR[instIndex][1]
+			numDynamicReadonlyThisInstruction := ixIndexToNumAccountStaticDynamicWR[instIndex][2]
 			instrParams := txstatus.Parameters{
 				ProgramID: programId,
 				Instruction: txstatus.CompiledInstruction{
@@ -411,25 +506,35 @@ func encodeTransactionResponseBasedOnWantedEncoding(
 					Data: inst.Data,
 				},
 				AccountKeys: txstatus.AccountKeys{
-					StaticKeys: tx.Message.AccountKeys,
+					StaticKeys: func() []solana.PublicKey {
+						out := make([]solana.PublicKey, numStaticThisInstruction)
+						if numStaticThisInstruction == 0 {
+							return out
+						}
+						staticKeysForInstruction := keys[:numStaticThisInstruction]
+						copy(out, staticKeysForInstruction)
+						return out
+					}(),
 					// TODO: test this:
 					DynamicKeys: func() *txstatus.LoadedAddresses {
-						switch v := meta.(type) {
+						switch meta.(type) {
 						case *confirmed_block.TransactionStatusMeta:
 							return &txstatus.LoadedAddresses{
 								Writable: func() []solana.PublicKey {
-									out := make([]solana.PublicKey, len(v.LoadedWritableAddresses))
-									for i, v := range v.LoadedWritableAddresses {
-										out[i] = solana.PublicKeyFromBytes(v)
+									writable := make([]solana.PublicKey, numDynamicWritableThisInstruction)
+									if numDynamicWritableThisInstruction == 0 {
+										return writable
 									}
-									return out
+									copy(writable, keys[numStaticThisInstruction:numStaticThisInstruction+numDynamicWritableThisInstruction])
+									return writable
 								}(),
 								Readonly: func() []solana.PublicKey {
-									out := make([]solana.PublicKey, len(v.LoadedReadonlyAddresses))
-									for i, v := range v.LoadedReadonlyAddresses {
-										out[i] = solana.PublicKeyFromBytes(v)
+									readonly := make([]solana.PublicKey, numDynamicReadonlyThisInstruction)
+									if numDynamicReadonlyThisInstruction == 0 {
+										return readonly
 									}
-									return out
+									copy(readonly, keys[numStaticThisInstruction+numDynamicWritableThisInstruction:numStaticThisInstruction+numDynamicWritableThisInstruction+numDynamicReadonlyThisInstruction])
+									return readonly
 								}(),
 							}
 						default:
@@ -446,20 +551,7 @@ func encodeTransactionResponseBasedOnWantedEncoding(
 					"accounts": func() []string {
 						out := make([]string, len(inst.Accounts))
 						for i, v := range inst.Accounts {
-							if v >= uint16(len(tx.Message.AccountKeys)) {
-								continue
-							}
 							out[i] = tx.Message.AccountKeys[v].String()
-						}
-						// TODO: validate that the order is correct
-						switch v := meta.(type) {
-						case *confirmed_block.TransactionStatusMeta:
-							for _, wr := range v.LoadedWritableAddresses {
-								out = append(out, solana.PublicKeyFromBytes(wr).String())
-							}
-							for _, ro := range v.LoadedReadonlyAddresses {
-								out = append(out, solana.PublicKeyFromBytes(ro).String())
-							}
 						}
 						return out
 					}(),
@@ -486,6 +578,32 @@ func encodeTransactionResponseBasedOnWantedEncoding(
 	default:
 		return nil, fmt.Errorf("unsupported encoding")
 	}
+}
+
+func byteSlicesToKeySlices(keys [][]byte) []solana.PublicKey {
+	var out []solana.PublicKey
+	for _, key := range keys {
+		var k solana.PublicKey
+		copy(k[:], key)
+		out = append(out, k)
+	}
+	return out
+}
+
+func toUniqueSorted(accountIndexes []uint16) []uint16 {
+	seen := make(map[uint16]struct{})
+	var out []uint16
+	for _, v := range accountIndexes {
+		if _, ok := seen[v]; ok {
+			continue
+		}
+		seen[v] = struct{}{}
+		out = append(out, v)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return out[i] < out[j]
+	})
+	return out
 }
 
 func encodeBytesResponseBasedOnWantedEncoding(

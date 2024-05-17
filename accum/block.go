@@ -7,7 +7,6 @@ import (
 	"sync"
 
 	"github.com/ipfs/go-cid"
-	"github.com/ipfs/go-libipfs/blocks"
 	"github.com/rpcpool/yellowstone-faithful/carreader"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
 )
@@ -48,7 +47,7 @@ type ObjectWithMetadata struct {
 	Cid           cid.Cid
 	Offset        uint64
 	SectionLength uint64
-	Object        *blocks.BasicBlock
+	ObjectData    []byte
 }
 
 func (oa *ObjectAccumulator) startFlusher(ctx context.Context) {
@@ -92,7 +91,7 @@ func (oa *ObjectAccumulator) Run(ctx context.Context) error {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		c, sectionLength, obj, err := oa.reader.NextNode()
+		c, sectionLength, data, err := oa.reader.NextNodeBytes()
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				break
@@ -102,7 +101,7 @@ func (oa *ObjectAccumulator) Run(ctx context.Context) error {
 		currentOffset := totalOffset
 		totalOffset += sectionLength
 
-		if obj == nil {
+		if data == nil {
 			break
 		}
 
@@ -110,10 +109,10 @@ func (oa *ObjectAccumulator) Run(ctx context.Context) error {
 			Cid:           c,
 			Offset:        currentOffset,
 			SectionLength: sectionLength,
-			Object:        obj,
+			ObjectData:    data,
 		}
 
-		kind := iplddecoders.Kind(obj.RawData()[1])
+		kind := iplddecoders.Kind(data[1])
 		if kind == oa.flushOnKind {
 			oa.flushWg.Add(1)
 			oa.sendToFlusher(&objm, clone(objects))
@@ -131,7 +130,6 @@ func (oa *ObjectAccumulator) flush(head *ObjectWithMetadata, other []ObjectWithM
 	if head == nil && len(other) == 0 {
 		return nil
 	}
-
 	return oa.callback(head, other)
 }
 

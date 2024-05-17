@@ -20,7 +20,6 @@ import (
 	"github.com/rpcpool/yellowstone-faithful/indexmeta"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
-	"github.com/rpcpool/yellowstone-faithful/readahead"
 	"github.com/urfave/cli/v2"
 	"k8s.io/klog/v2"
 )
@@ -88,11 +87,7 @@ func newCmd_Index_gsfa() *cli.Command {
 				defer file.Close()
 			}
 
-			cachingReader, err := readahead.NewCachingReaderFromReader(file, readahead.MiB*2)
-			if err != nil {
-				klog.Exitf("Failed to create caching reader: %s", err)
-			}
-			rd, err := carreader.New(cachingReader)
+			rd, err := carreader.New(file)
 			if err != nil {
 				klog.Exitf("Failed to open CAR: %s", err)
 			}
@@ -192,7 +187,7 @@ func newCmd_Index_gsfa() *cli.Command {
 				}
 
 				// decode the block:
-				block, err := iplddecoders.DecodeBlock(owm1.Object.RawData())
+				block, err := iplddecoders.DecodeBlock(owm1.ObjectData)
 				if err != nil {
 					return fmt.Errorf("error while decoding block: %w", err)
 				}
@@ -263,11 +258,11 @@ func objectsToTransactions(
 	transactions := make([]TransactionWithSlot, 0, len(objects))
 	for _, object := range objects {
 		// check if the object is a transaction:
-		kind := iplddecoders.Kind(object.Object.RawData()[1])
+		kind := iplddecoders.Kind(object.ObjectData[1])
 		if kind != iplddecoders.KindTransaction {
 			continue
 		}
-		decoded, err := iplddecoders.DecodeTransaction(object.Object.RawData())
+		decoded, err := iplddecoders.DecodeTransaction(object.ObjectData)
 		if err != nil {
 			return nil, fmt.Errorf("error while decoding transaction from nodex %s: %w", object.Cid, err)
 		}

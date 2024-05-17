@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/allegro/bigcache/v3"
@@ -160,6 +161,9 @@ func newCmd_rpc() *cli.Command {
 					return *configs[i].Epoch < *configs[j].Epoch
 				})
 
+				numFailed := new(atomic.Int32)
+				numSucceeded := new(atomic.Int32)
+
 				wg := new(errgroup.Group)
 				wg.SetLimit(epochLoadConcurrency)
 				for confIndex := range configs {
@@ -184,10 +188,12 @@ func newCmd_rpc() *cli.Command {
 						if err != nil {
 							metrics_epochsAvailable.WithLabelValues(fmt.Sprintf("%d", epochNum)).Set(0)
 							klog.Error(err)
+							numFailed.Add(1)
 							// NOTE: DO NOT return the error here, as we want to continue loading other epochs
 							return nil
 						}
 						metrics_epochsAvailable.WithLabelValues(fmt.Sprintf("%d", epochNum)).Set(1)
+						numSucceeded.Add(1)
 						return nil
 					})
 				}
@@ -195,7 +201,7 @@ func newCmd_rpc() *cli.Command {
 					klog.Errorf("fatal error initializing epochs: %s", err.Error())
 				}
 				tookInitializingEpochs := time.Since(startedInitiatingEpochsAt)
-				klog.Infof("Initialized %d epochs in %s", len(configs), tookInitializingEpochs)
+				klog.Infof("Initialized %d/%d epochs in %s", numSucceeded.Load(), len(configs), tookInitializingEpochs)
 			}()
 
 			if watch {

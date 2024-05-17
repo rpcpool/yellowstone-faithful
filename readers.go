@@ -79,7 +79,7 @@ func carCountItemsByFirstByte(carPath string) (map[byte]uint64, *ipldbindcode.Ep
 	startedCountAt := time.Now()
 	var epochObject *ipldbindcode.Epoch
 	for {
-		_, _, block, err := rd.NextNode()
+		_, _, block, err := rd.NextNodeBytes()
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				break
@@ -87,7 +87,7 @@ func carCountItemsByFirstByte(carPath string) (map[byte]uint64, *ipldbindcode.Ep
 			return nil, nil, err
 		}
 		// the first data byte is the block type (after the CBOR tag)
-		firstDataByte := block.RawData()[1]
+		firstDataByte := block[1]
 		counts[firstDataByte]++
 		numTotalItems++
 
@@ -98,7 +98,7 @@ func carCountItemsByFirstByte(carPath string) (map[byte]uint64, *ipldbindcode.Ep
 		}
 
 		if iplddecoders.Kind(firstDataByte) == iplddecoders.KindEpoch {
-			epochObject, err = iplddecoders.DecodeEpoch(block.RawData())
+			epochObject, err = iplddecoders.DecodeEpoch(block)
 			if err != nil {
 				return nil, nil, fmt.Errorf("failed to decode Epoch node: %w", err)
 			}
