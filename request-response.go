@@ -421,7 +421,10 @@ func compiledInstructionsToJsonParsed(
 				}
 			}(),
 		},
-		StackHeight: nil,
+		StackHeight: func() *uint32 {
+			// TODO: get the stack height from somewhere
+			return nil
+		}(),
 	}
 
 	parsedInstructionJSON, err := instrParams.ParseInstruction()
