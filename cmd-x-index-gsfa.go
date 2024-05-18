@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/dustin/go-humanize"
 	"github.com/gagliardetto/solana-go"
 	"github.com/ipfs/go-cid"
@@ -147,31 +148,27 @@ func newCmd_Index_gsfa() *cli.Command {
 			if err != nil {
 				return fmt.Errorf("error while opening gsfa index writer: %w", err)
 			}
+			numProcessedTransactions := new(atomic.Int64)
+			startedAt := time.Now()
 			defer func() {
+				klog.Infof("Indexed %s transactions", humanize.Comma(int64(numProcessedTransactions.Load())))
+				klog.Info("Finalizing index -- this may take a while, DO NOT EXIT")
 				if err := indexW.Flush(); err != nil {
 					klog.Errorf("Error while flushing: %s", err)
 				}
+				klog.Info("Closing index")
 				if err := indexW.Close(); err != nil {
 					klog.Errorf("Error while closing: %s", err)
 				}
-			}()
-
-			startedAt := time.Now()
-			numTransactionsSeen := 0
-			defer func() {
+				klog.Infof("Success: gSFA index created at %s with %d transactions", gsfaIndexDir, numProcessedTransactions.Load())
 				klog.Infof("Finished in %s", time.Since(startedAt))
-				klog.Infof("Indexed %s transactions", humanize.Comma(int64(numTransactionsSeen)))
 			}()
 
 			verifyHash := c.Bool("verify-hash")
 			ipldbindcode.DisableHashVerification = !verifyHash
-			numProcessedTransactions := new(atomic.Int64)
 
 			epochStart, epochEnd := CalcEpochLimits(epoch)
 
-			defer func() {
-				klog.Infof("Finished in %s", time.Since(startedAt))
-			}()
 			numSlots := uint64(0)
 			numMaxObjects := uint64(0)
 
@@ -186,19 +183,34 @@ func newCmd_Index_gsfa() *cli.Command {
 					numMaxObjects = uint64(numObjects)
 				}
 
+				if owm1 == nil {
+					transactions, err := objectsToTransactions(&ipldbindcode.Block{
+						Meta: ipldbindcode.SlotMeta{
+							Blocktime: 0,
+						},
+					}, owm2)
+					if err != nil {
+						return fmt.Errorf("error while converting objects to transactions: %w", err)
+					}
+					if len(transactions) == 0 {
+						return nil
+					}
+					spew.Dump(owm1, transactions, len(owm2))
+				}
+
 				// decode the block:
 				block, err := iplddecoders.DecodeBlock(owm1.ObjectData)
 				if err != nil {
 					return fmt.Errorf("error while decoding block: %w", err)
 				}
-				transactions, err := objectsToTransactions(block, owm2)
-				if err != nil {
-					return fmt.Errorf("error while converting objects to transactions: %w", err)
-				}
 				if numSlots%etaSampleSlots == 0 {
 					tookToDo1kSlots := time.Since(lastTimeDid1kSlots)
 					lastTimeDid1kSlots = time.Now()
 					eta = time.Duration(float64(tookToDo1kSlots) / float64(etaSampleSlots) * float64(epochEnd-epochStart-numSlots))
+				}
+				transactions, err := objectsToTransactions(block, owm2)
+				if err != nil {
+					return fmt.Errorf("error while converting objects to transactions: %w", err)
 				}
 				for _, resValue := range transactions {
 					numProcessedTransactions.Add(1)
@@ -243,8 +255,6 @@ func newCmd_Index_gsfa() *cli.Command {
 			if err := accum.Run(context.Background()); err != nil {
 				return fmt.Errorf("error while accumulating objects: %w", err)
 			}
-
-			klog.Infof("Success: gSFA index created at %s with %d transactions", gsfaIndexDir, numProcessedTransactions.Load())
 
 			return nil
 		},

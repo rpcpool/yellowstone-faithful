@@ -16,7 +16,7 @@ type ObjectAccumulator struct {
 	reader      *carreader.CarReader
 	callback    func(*ObjectWithMetadata, []ObjectWithMetadata) error
 	flushWg     sync.WaitGroup
-	flushQueue  chan flushBuffer
+	flushQueue  chan *flushBuffer
 }
 
 var ErrStop = errors.New("stop")
@@ -34,13 +34,34 @@ func NewObjectAccumulator(
 		reader:      reader,
 		flushOnKind: flushOnKind,
 		callback:    callback,
-		flushQueue:  make(chan flushBuffer, 1000),
+		flushQueue:  make(chan *flushBuffer, 1000),
 	}
+}
+
+var flushBufferPool = sync.Pool{
+	New: func() interface{} {
+		return &flushBuffer{}
+	},
+}
+
+func getFlushBuffer() *flushBuffer {
+	return flushBufferPool.Get().(*flushBuffer)
+}
+
+func putFlushBuffer(fb *flushBuffer) {
+	fb.Reset()
+	flushBufferPool.Put(fb)
 }
 
 type flushBuffer struct {
 	head  *ObjectWithMetadata
 	other []ObjectWithMetadata
+}
+
+// Reset resets the flushBuffer.
+func (fb *flushBuffer) Reset() {
+	fb.head = nil
+	clear(fb.other)
 }
 
 type ObjectWithMetadata struct {
@@ -56,6 +77,9 @@ func (oa *ObjectAccumulator) startFlusher(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case fb := <-oa.flushQueue:
+			if fb == nil {
+				return
+			}
 			if err := oa.flush(fb.head, fb.other); err != nil {
 				if isStop(err) {
 					return
@@ -63,19 +87,24 @@ func (oa *ObjectAccumulator) startFlusher(ctx context.Context) {
 				panic(err)
 			}
 			oa.flushWg.Done()
+			putFlushBuffer(fb)
 		}
 	}
 }
 
 func (oa *ObjectAccumulator) sendToFlusher(head *ObjectWithMetadata, other []ObjectWithMetadata) {
-	oa.flushQueue <- flushBuffer{head, other}
+	oa.flushWg.Add(1)
+	fb := getFlushBuffer()
+	fb.head = head
+	fb.other = clone(other)
+	oa.flushQueue <- fb
 }
 
 func (oa *ObjectAccumulator) Run(ctx context.Context) error {
 	go oa.startFlusher(ctx)
 	defer func() {
-		close(oa.flushQueue)
 		oa.flushWg.Wait()
+		close(oa.flushQueue)
 	}()
 	totalOffset := uint64(0)
 	{
@@ -86,44 +115,48 @@ func (oa *ObjectAccumulator) Run(ctx context.Context) error {
 		}
 	}
 	objectCap := 5000
-	objects := make([]ObjectWithMetadata, 0, objectCap)
+buffersLoop:
 	for {
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-		c, sectionLength, data, err := oa.reader.NextNodeBytes()
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				break
+		objects := make([]ObjectWithMetadata, 0, objectCap)
+	currentBufferLoop:
+		for {
+			if ctx.Err() != nil {
+				return ctx.Err()
 			}
-			return err
-		}
-		currentOffset := totalOffset
-		totalOffset += sectionLength
+			c, sectionLength, data, err := oa.reader.NextNodeBytes()
+			if err != nil {
+				if errors.Is(err, io.EOF) {
+					oa.sendToFlusher(nil, objects)
+					break buffersLoop
+				}
+				return err
+			}
+			currentOffset := totalOffset
+			totalOffset += sectionLength
 
-		if data == nil {
-			break
-		}
+			if data == nil {
+				oa.sendToFlusher(nil, objects)
+				break buffersLoop
+			}
 
-		objm := ObjectWithMetadata{
-			Cid:           c,
-			Offset:        currentOffset,
-			SectionLength: sectionLength,
-			ObjectData:    data,
-		}
+			objm := ObjectWithMetadata{
+				Cid:           c,
+				Offset:        currentOffset,
+				SectionLength: sectionLength,
+				ObjectData:    data,
+			}
 
-		kind := iplddecoders.Kind(data[1])
-		if kind == oa.flushOnKind {
-			oa.flushWg.Add(1)
-			oa.sendToFlusher(&objm, clone(objects))
-			clear(objects)
-			objects = make([]ObjectWithMetadata, 0, objectCap)
-		} else {
-			objects = append(objects, objm)
+			kind := iplddecoders.Kind(data[1])
+			if kind == oa.flushOnKind {
+				oa.sendToFlusher(&objm, (objects))
+				break currentBufferLoop
+			} else {
+				objects = append(objects, objm)
+			}
 		}
 	}
 
-	return oa.flush(nil, objects)
+	return nil
 }
 
 func (oa *ObjectAccumulator) flush(head *ObjectWithMetadata, other []ObjectWithMetadata) error {
