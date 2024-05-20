@@ -2,6 +2,7 @@ package linkedlog
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -194,7 +195,7 @@ func (s *LinkedLog) Put(
 	defer s.mu.Unlock()
 	// sort by public key:
 	sort.Slice(values, func(i, j int) bool {
-		return values[i].Key.String() < values[j].Key.String()
+		return bytes.Compare(values[i].Key[:], values[j].Key[:]) < 0
 	})
 
 	previousSize, err := s.getSize()
@@ -216,7 +217,7 @@ func (s *LinkedLog) Put(
 			payloadLenAsBytes := encodeUvarint(payloadLen)
 
 			// The payload:
-			finalPayload := make([]byte, 0)
+			finalPayload := make([]byte, 0, len(payloadLenAsBytes)+len(encodedIndexes)+indexes.IndexValueSize_CidToOffsetAndSize)
 			// 1/3 - the size of the compressed indexes
 			finalPayload = append(finalPayload, payloadLenAsBytes...)
 			// 2/3 - the compressed indexes
@@ -235,6 +236,7 @@ func (s *LinkedLog) Put(
 			if err != nil {
 				return err
 			}
+			clear(finalPayload)
 			// fmt.Printf("offset=%d, numWrittenBytes=%d ll=%d\n", offset, numWrittenBytes, ll) // DEBUG
 			// fmt.Println("finalPayload:", bin.FormatByteSlice(finalPayload))                  // DEBUG
 			return callbackAfter(val.Key, offset, numWrittenBytes)

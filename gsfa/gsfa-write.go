@@ -119,8 +119,12 @@ func (a *GsfaWriter) fullBufferWriter() {
 				numReadFromChan++
 				has := tmpBuf.Has(buffer.Key)
 				if len(tmpBuf) == howManyBuffersToFlushConcurrently || has {
-					if err := a.flushSingle(tmpBuf...); err != nil {
-						klog.Errorf("Error while flushing %d buffers: %s", len(tmpBuf), err)
+					for _, buf := range tmpBuf {
+						// Write the buffer to the linked log.
+						klog.V(5).Infof("Flushing %d transactions for key %s", len(buf.Values), buf.Key)
+						if err := a.flushSingle(buf); err != nil {
+							klog.Errorf("Error while flushing transactions for key %s: %v", buf.Key, err)
+						}
 					}
 					tmpBuf = make(linkedlog.KeyToOffsetAndSizeAndBlocktimeSlice, howManyBuffersToFlushConcurrently)
 				}
@@ -151,6 +155,15 @@ func (a *GsfaWriter) Push(
 	publicKeys.Sort()
 	if slot%1000 == 0 {
 		klog.Infof("accum has %d keys", a.accum.Len())
+		if a.accum.Len() > 500_000 {
+			// flush all
+			klog.Info("Flushing all...")
+			for _, key := range mapToArray(a.accum) {
+				if err := a.flushSingle(key); err != nil {
+					return err
+				}
+			}
+		}
 	}
 	for _, publicKey := range publicKeys {
 		current, ok := a.accum.Get(publicKey)
