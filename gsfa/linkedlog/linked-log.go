@@ -8,11 +8,11 @@ import (
 	"io"
 	"os"
 	"slices"
+	"sort"
 	"sync"
 
 	"github.com/gagliardetto/solana-go"
 	"github.com/rpcpool/yellowstone-faithful/indexes"
-	"github.com/tidwall/hashmap"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -167,20 +167,35 @@ func decompressIndexes(data []byte) ([]OffsetAndSizeAndBlocktime, error) {
 	return OffsetAndSizeAndBlocktimeSliceFromBytes(decompressed)
 }
 
+type KeyToOffsetAndSizeAndBlocktimeSlice []KeyToOffsetAndSizeAndBlocktime
+
+// Has returns true if the given public key is in the slice.
+func (s KeyToOffsetAndSizeAndBlocktimeSlice) Has(key solana.PublicKey) bool {
+	for _, k := range s {
+		if k.Key == key {
+			return true
+		}
+	}
+	return false
+}
+
+type KeyToOffsetAndSizeAndBlocktime struct {
+	Key    solana.PublicKey
+	Values []*OffsetAndSizeAndBlocktime
+}
+
 // Put map[PublicKey][]uint64 to file
 func (s *LinkedLog) Put(
-	dataMap *hashmap.Map[solana.PublicKey, []OffsetAndSizeAndBlocktime],
 	callbackBefore func(pk solana.PublicKey) (indexes.OffsetAndSize, error),
 	callbackAfter func(pk solana.PublicKey, offset uint64, ln uint32) error,
+	values ...KeyToOffsetAndSizeAndBlocktime,
 ) (uint64, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	pubkeys := make(solana.PublicKeySlice, 0, dataMap.Len())
-	for _, k := range dataMap.Keys() {
-		pubkeys = append(pubkeys, k)
-	}
-	// Sort pubkeys
-	pubkeys.Sort()
+	// sort by public key:
+	sort.Slice(values, func(i, j int) bool {
+		return values[i].Key.String() < values[j].Key.String()
+	})
 
 	previousSize, err := s.getSize()
 	if err != nil {
@@ -189,15 +204,11 @@ func (s *LinkedLog) Put(
 
 	wg := new(errgroup.Group)
 	wg.SetLimit(256)
-	for pkIndex := range pubkeys {
-		pk := pubkeys[pkIndex]
-		sigIndexes, ok := dataMap.Get(pk)
-		if !ok {
-			return 0, errors.New("public key not found in dataMap")
-		}
-		slices.Reverse[[]OffsetAndSizeAndBlocktime](sigIndexes) // reverse the slice so that the most recent indexes are first
+	for pkIndex := range values {
+		val := values[pkIndex]
+		slices.Reverse[[]*OffsetAndSizeAndBlocktime](val.Values) // reverse the slice so that the most recent indexes are first
 		wg.Go(func() error {
-			encodedIndexes, err := createIndexesPayload(sigIndexes)
+			encodedIndexes, err := createIndexesPayload(val.Values)
 			if err != nil {
 				return fmt.Errorf("error while creating payload: %w", err)
 			}
@@ -212,7 +223,7 @@ func (s *LinkedLog) Put(
 			finalPayload = append(finalPayload, encodedIndexes...)
 
 			{
-				previousListOffset, err := callbackBefore(pk)
+				previousListOffset, err := callbackBefore(val.Key)
 				if err != nil {
 					return err
 				}
@@ -226,13 +237,13 @@ func (s *LinkedLog) Put(
 			}
 			// fmt.Printf("offset=%d, numWrittenBytes=%d ll=%d\n", offset, numWrittenBytes, ll) // DEBUG
 			// fmt.Println("finalPayload:", bin.FormatByteSlice(finalPayload))                  // DEBUG
-			return callbackAfter(pk, offset, numWrittenBytes)
+			return callbackAfter(val.Key, offset, numWrittenBytes)
 		})
 	}
 	return uint64(previousSize), wg.Wait()
 }
 
-func createIndexesPayload(indexes []OffsetAndSizeAndBlocktime) ([]byte, error) {
+func createIndexesPayload(indexes []*OffsetAndSizeAndBlocktime) ([]byte, error) {
 	buf := make([]byte, 0, 9*len(indexes))
 	for _, index := range indexes {
 		buf = append(buf, index.Bytes()...)

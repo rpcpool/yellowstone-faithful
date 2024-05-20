@@ -175,82 +175,89 @@ func newCmd_Index_gsfa() *cli.Command {
 			lastPrintedAt := time.Now()
 			lastTimeDid1kSlots := time.Now()
 			var eta time.Duration
-			etaSampleSlots := uint64(10000)
-			accum := accum.NewObjectAccumulator(rd, iplddecoders.KindBlock, func(owm1 *accum.ObjectWithMetadata, owm2 []accum.ObjectWithMetadata) error {
-				numSlots++
-				numObjects := len(owm2) + 1
-				if numObjects > int(numMaxObjects) {
-					numMaxObjects = uint64(numObjects)
-				}
+			etaSampleSlots := uint64(2_000)
+			var tookToDo1kSlots time.Duration
+			accum := accum.NewObjectAccumulator(
+				rd,
+				iplddecoders.KindBlock,
+				func(owm1 *accum.ObjectWithMetadata, owm2 []accum.ObjectWithMetadata) error {
+					numSlots++
+					numObjects := len(owm2) + 1
+					if numObjects > int(numMaxObjects) {
+						numMaxObjects = uint64(numObjects)
+					}
 
-				if owm1 == nil {
-					transactions, err := objectsToTransactions(&ipldbindcode.Block{
-						Meta: ipldbindcode.SlotMeta{
-							Blocktime: 0,
-						},
-					}, owm2)
+					if owm1 == nil {
+						transactions, err := objectsToTransactions(&ipldbindcode.Block{
+							Meta: ipldbindcode.SlotMeta{
+								Blocktime: 0,
+							},
+						}, owm2)
+						if err != nil {
+							return fmt.Errorf("error while converting objects to transactions: %w", err)
+						}
+						if len(transactions) == 0 {
+							return nil
+						}
+						spew.Dump(owm1, transactions, len(owm2))
+					}
+
+					// decode the block:
+					block, err := iplddecoders.DecodeBlock(owm1.ObjectData)
+					if err != nil {
+						return fmt.Errorf("error while decoding block: %w", err)
+					}
+					if numSlots%etaSampleSlots == 0 {
+						tookToDo1kSlots = time.Since(lastTimeDid1kSlots)
+						lastTimeDid1kSlots = time.Now()
+					}
+					if tookToDo1kSlots > 0 {
+						eta = time.Duration(float64(tookToDo1kSlots) / float64(etaSampleSlots) * float64(epochEnd-epochStart-numSlots))
+					}
+					transactions, err := objectsToTransactions(block, owm2)
 					if err != nil {
 						return fmt.Errorf("error while converting objects to transactions: %w", err)
 					}
-					if len(transactions) == 0 {
-						return nil
-					}
-					spew.Dump(owm1, transactions, len(owm2))
-				}
-
-				// decode the block:
-				block, err := iplddecoders.DecodeBlock(owm1.ObjectData)
-				if err != nil {
-					return fmt.Errorf("error while decoding block: %w", err)
-				}
-				if numSlots%etaSampleSlots == 0 {
-					tookToDo1kSlots := time.Since(lastTimeDid1kSlots)
-					lastTimeDid1kSlots = time.Now()
-					eta = time.Duration(float64(tookToDo1kSlots) / float64(etaSampleSlots) * float64(epochEnd-epochStart-numSlots))
-				}
-				transactions, err := objectsToTransactions(block, owm2)
-				if err != nil {
-					return fmt.Errorf("error while converting objects to transactions: %w", err)
-				}
-				for _, resValue := range transactions {
-					numProcessedTransactions.Add(1)
-					tx := resValue.Transaction
-					slot := resValue.Slot
-					off := resValue.Offset
-					length := resValue.Length
-					blocktime := resValue.Blocktime
-					err = indexW.Push(
-						off,
-						length,
-						slot,
-						blocktime,
-						tx.Message.AccountKeys,
-					)
-					if err != nil {
-						klog.Exitf("Error while pushing to gsfa index: %s", err)
-					}
-
-					if time.Since(lastPrintedAt) > time.Millisecond*500 {
-						percentDone := float64(slot-epochStart) / float64(epochEnd-epochStart) * 100
-						// clear line, then print progress
-						msg := fmt.Sprintf(
-							"\rCreating gSFA index for epoch %d - %s | %s | %.2f%% | slot %d | tx %s",
-							epoch,
-							time.Now().Format("2006-01-02 15:04:05"),
-							time.Since(startedAt).Truncate(time.Second),
-							percentDone,
-							slot,
-							humanize.Comma(int64(numProcessedTransactions.Load())),
+					for ii := range transactions {
+						txWithInfo := transactions[ii]
+						numProcessedTransactions.Add(1)
+						err = indexW.Push(
+							txWithInfo.Offset,
+							txWithInfo.Length,
+							txWithInfo.Slot,
+							txWithInfo.Blocktime,
+							txWithInfo.Transaction.Message.AccountKeys,
 						)
-						if eta > 0 {
-							msg += fmt.Sprintf(" | ETA %s", eta.Truncate(time.Second))
+						if err != nil {
+							klog.Exitf("Error while pushing to gsfa index: %s", err)
 						}
-						fmt.Print(msg)
-						lastPrintedAt = time.Now()
+
+						if time.Since(lastPrintedAt) > time.Millisecond*500 {
+							percentDone := float64(txWithInfo.Slot-epochStart) / float64(epochEnd-epochStart) * 100
+							// clear line, then print progress
+							msg := fmt.Sprintf(
+								"\rCreating gSFA index for epoch %d - %s | %s | %.2f%% | slot %s | tx %s",
+								epoch,
+								time.Now().Format("2006-01-02 15:04:05"),
+								time.Since(startedAt).Truncate(time.Second),
+								percentDone,
+								humanize.Comma(int64(txWithInfo.Slot)),
+								humanize.Comma(int64(numProcessedTransactions.Load())),
+							)
+							if eta > 0 {
+								msg += fmt.Sprintf(" | ETA %s", eta.Truncate(time.Second))
+							}
+							fmt.Print(msg)
+							lastPrintedAt = time.Now()
+						}
 					}
-				}
-				return nil
-			})
+					return nil
+				},
+				// Ignore these kinds in the accumulator (only need transactions):
+				iplddecoders.KindEntry,
+				iplddecoders.KindRewards,
+				iplddecoders.KindDataFrame,
+			)
 
 			if err := accum.Run(context.Background()); err != nil {
 				return fmt.Errorf("error while accumulating objects: %w", err)
@@ -264,8 +271,8 @@ func newCmd_Index_gsfa() *cli.Command {
 func objectsToTransactions(
 	block *ipldbindcode.Block,
 	objects []accum.ObjectWithMetadata,
-) ([]TransactionWithSlot, error) {
-	transactions := make([]TransactionWithSlot, 0, len(objects))
+) ([]*TransactionWithSlot, error) {
+	transactions := make([]*TransactionWithSlot, 0, len(objects))
 	for _, object := range objects {
 		// check if the object is a transaction:
 		kind := iplddecoders.Kind(object.ObjectData[1])
@@ -280,7 +287,7 @@ func objectsToTransactions(
 		if err != nil {
 			return nil, fmt.Errorf("error while getting solana transaction from object %s: %w", object.Cid, err)
 		}
-		transactions = append(transactions, TransactionWithSlot{
+		transactions = append(transactions, &TransactionWithSlot{
 			Offset:      object.Offset,
 			Length:      object.SectionLength,
 			Slot:        uint64(decoded.Slot),

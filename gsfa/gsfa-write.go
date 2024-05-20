@@ -26,18 +26,13 @@ type GsfaWriter struct {
 	offsets              *hashmap.Map[solana.PublicKey, [2]uint64]
 	ll                   *linkedlog.LinkedLog
 	man                  *manifest.Manifest
-	fullBufferWriterChan chan keyWithTxLocations
-	accum                *hashmap.Map[solana.PublicKey, []linkedlog.OffsetAndSizeAndBlocktime]
+	fullBufferWriterChan chan linkedlog.KeyToOffsetAndSizeAndBlocktime
+	accum                *hashmap.Map[solana.PublicKey, []*linkedlog.OffsetAndSizeAndBlocktime]
 	offsetsWriter        *indexes.PubkeyToOffsetAndSize_Writer
 	ctx                  context.Context
 	cancel               context.CancelFunc
 	exiting              *atomic.Bool
 	fullBufferWriterDone chan struct{}
-}
-
-type keyWithTxLocations struct {
-	Key       solana.PublicKey
-	Locations []linkedlog.OffsetAndSizeAndBlocktime
 }
 
 // NewGsfaWriter creates or opens an existing index in WRITE mode.
@@ -65,9 +60,9 @@ func NewGsfaWriter(
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	index := &GsfaWriter{
-		fullBufferWriterChan: make(chan keyWithTxLocations, 1000), // TODO: make this configurable
+		fullBufferWriterChan: make(chan linkedlog.KeyToOffsetAndSizeAndBlocktime, 50), // TODO: make this configurable
 		offsets:              hashmap.New[solana.PublicKey, [2]uint64](int(1_000_000)),
-		accum:                hashmap.New[solana.PublicKey, []linkedlog.OffsetAndSizeAndBlocktime](int(10000)),
+		accum:                hashmap.New[solana.PublicKey, []*linkedlog.OffsetAndSizeAndBlocktime](int(1_000_000)),
 		ctx:                  ctx,
 		cancel:               cancel,
 		fullBufferWriterDone: make(chan struct{}),
@@ -107,10 +102,10 @@ func NewGsfaWriter(
 func (a *GsfaWriter) fullBufferWriter() {
 	numReadFromChan := uint64(0)
 	howManyBuffersToFlushConcurrently := 256
-	tmpBuf := make(map[solana.PublicKey]keyWithTxLocations, howManyBuffersToFlushConcurrently)
+	tmpBuf := make(linkedlog.KeyToOffsetAndSizeAndBlocktimeSlice, howManyBuffersToFlushConcurrently)
 
 	for {
-		fmt.Println("numReadFromChan", numReadFromChan, "len(a.fullBufferWriterChan)", len(a.fullBufferWriterChan), "a.exiting.Load()", a.exiting.Load())
+		// fmt.Println("numReadFromChan", numReadFromChan, "len(a.fullBufferWriterChan)", len(a.fullBufferWriterChan), "a.exiting.Load()", a.exiting.Load())
 		if a.exiting.Load() {
 			klog.Infof("remaining %d buffers to flush", len(a.fullBufferWriterChan))
 		}
@@ -122,18 +117,14 @@ func (a *GsfaWriter) fullBufferWriter() {
 		case buffer := <-a.fullBufferWriterChan:
 			{
 				numReadFromChan++
-				_, has := tmpBuf[buffer.Key]
+				has := tmpBuf.Has(buffer.Key)
 				if len(tmpBuf) == howManyBuffersToFlushConcurrently || has {
-					for _, buf := range tmpBuf {
-						// Write the buffer to the linked log.
-						klog.V(5).Infof("Flushing %d transactions for key %s", len(buf.Locations), buf.Key)
-						if err := a.flushSingle(buf.Key, buf.Locations); err != nil {
-							klog.Errorf("Error while flushing transactions for key %s: %v", buf.Key, err)
-						}
+					if err := a.flushSingle(tmpBuf...); err != nil {
+						klog.Errorf("Error while flushing %d buffers: %s", len(tmpBuf), err)
 					}
-					tmpBuf = make(map[solana.PublicKey]keyWithTxLocations, 10)
+					tmpBuf = make(linkedlog.KeyToOffsetAndSizeAndBlocktimeSlice, howManyBuffersToFlushConcurrently)
 				}
-				tmpBuf[buffer.Key] = buffer
+				tmpBuf = append(tmpBuf, buffer)
 			}
 		case <-time.After(1 * time.Second):
 			klog.Infof("Read %d buffers from channel", numReadFromChan)
@@ -151,30 +142,35 @@ func (a *GsfaWriter) Push(
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	oas := linkedlog.OffsetAndSizeAndBlocktime{
+	oas := &linkedlog.OffsetAndSizeAndBlocktime{
 		Offset:    offset,
 		Size:      length,
 		Blocktime: blocktime,
 	}
 	publicKeys = publicKeys.Dedupe()
 	publicKeys.Sort()
+	if slot%1000 == 0 {
+		klog.Infof("accum has %d keys", a.accum.Len())
+	}
 	for _, publicKey := range publicKeys {
 		current, ok := a.accum.Get(publicKey)
 		if !ok {
-			current = make([]linkedlog.OffsetAndSizeAndBlocktime, 0, itemsPerBatch)
+			current = make([]*linkedlog.OffsetAndSizeAndBlocktime, 0)
 			current = append(current, oas)
+			a.accum.Set(publicKey, current)
 		} else {
 			current = append(current, oas)
 			if len(current) >= itemsPerBatch {
-				a.fullBufferWriterChan <- keyWithTxLocations{
-					Key:       publicKey,
-					Locations: clone(current),
+				a.fullBufferWriterChan <- linkedlog.KeyToOffsetAndSizeAndBlocktime{
+					Key:    publicKey,
+					Values: clone(current),
 				}
 				clear(current)
-				current = make([]linkedlog.OffsetAndSizeAndBlocktime, 0, itemsPerBatch)
+				a.accum.Delete(publicKey)
+			} else {
+				a.accum.Set(publicKey, current)
 			}
 		}
-		a.accum.Set(publicKey, current)
 	}
 	return nil
 }
@@ -191,14 +187,14 @@ const itemsPerBatch = 1000
 func (a *GsfaWriter) Flush() error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	return a.flushAll(a.accum)
+	return a.flushSingle(mapToArray(a.accum)...)
 }
 
 // Close closes the accumulator.
 func (a *GsfaWriter) Close() error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if err := a.flushAll(a.accum); err != nil {
+	if err := a.flushSingle(mapToArray(a.accum)...); err != nil {
 		return err
 	}
 	a.exiting.Store(true)
@@ -234,59 +230,30 @@ func (a *GsfaWriter) Close() error {
 	)
 }
 
-func (a *GsfaWriter) flushAll(accum *hashmap.Map[solana.PublicKey, []linkedlog.OffsetAndSizeAndBlocktime]) error {
-	if accum.Len() == 0 {
-		return nil
-	}
-	startedAt := time.Now()
-	defer func() {
-		klog.V(5).Infof(" Flushed key-to-sigs in %s.", time.Since(startedAt))
-	}()
+func mapToArray(m *hashmap.Map[solana.PublicKey, []*linkedlog.OffsetAndSizeAndBlocktime]) []linkedlog.KeyToOffsetAndSizeAndBlocktime {
+	var keys solana.PublicKeySlice = m.Keys()
+	keys.Sort()
 
-	{
-		// Flush the linked log cache.
-		err := a.ll.Flush()
-		if err != nil {
-			return fmt.Errorf("error while flushing linked log cache: %w", err)
-		}
-		klog.V(5).Infof("Writing %d account batches to linked log...", accum.Len())
-		_, err = a.ll.Put(
-			accum,
-			func(pk solana.PublicKey) (indexes.OffsetAndSize, error) {
-				got, ok := a.offsets.Get(pk)
-				if !ok {
-					// This is the first time we see this account.
-					// And there is no offset for the previous list.
-					return indexes.OffsetAndSize{}, nil
-				}
-				return indexes.OffsetAndSize{Offset: got[0], Size: got[1]}, nil
-			},
-			func(pk solana.PublicKey, offset uint64, ln uint32) error {
-				a.offsets.Set(pk, [2]uint64{offset, uint64(ln)})
-				// fmt.Printf("Set offset=%d, ln=%d for pk=%s\n", offset, ln, pk.String())
-				return nil
-			},
-		)
-		if err != nil {
-			return fmt.Errorf("error while writing account lists batch to linked log: %w", err)
-		}
+	out := make([]linkedlog.KeyToOffsetAndSizeAndBlocktime, 0, m.Len())
+	for _, key := range keys {
+		val, _ := m.Get(key)
+		out = append(out, linkedlog.KeyToOffsetAndSizeAndBlocktime{
+			Key:    key,
+			Values: val,
+		})
 	}
-
-	a.accum = hashmap.New[solana.PublicKey, []linkedlog.OffsetAndSizeAndBlocktime](int(10000))
-	return nil
+	return out
 }
 
-func (a *GsfaWriter) flushSingle(key solana.PublicKey, values []linkedlog.OffsetAndSizeAndBlocktime) error {
-	if len(values) == 0 {
+func (a *GsfaWriter) flushSingle(kvs ...linkedlog.KeyToOffsetAndSizeAndBlocktime) error {
+	if len(kvs) == 0 {
 		return nil
 	}
 	startedAt := time.Now()
 	defer func() {
-		klog.V(5).Infof(" Flushed %v keys for %s in %s.", len(values), key, time.Since(startedAt))
+		klog.V(5).Infof(" Flushed %d key-to-sigs in %s.", len(kvs), time.Since(startedAt))
 	}()
 
-	batch := hashmap.New[solana.PublicKey, []linkedlog.OffsetAndSizeAndBlocktime](1)
-	batch.Set(key, values)
 	{
 		// Flush the linked log cache.
 		err := a.ll.Flush()
@@ -294,7 +261,6 @@ func (a *GsfaWriter) flushSingle(key solana.PublicKey, values []linkedlog.Offset
 			return fmt.Errorf("error while flushing linked log cache: %w", err)
 		}
 		_, err = a.ll.Put(
-			batch,
 			func(pk solana.PublicKey) (indexes.OffsetAndSize, error) {
 				got, ok := a.offsets.Get(pk)
 				if !ok {
@@ -308,6 +274,7 @@ func (a *GsfaWriter) flushSingle(key solana.PublicKey, values []linkedlog.Offset
 				a.offsets.Set(pk, [2]uint64{offset, uint64(ln)})
 				return nil
 			},
+			kvs...,
 		)
 		if err != nil {
 			return fmt.Errorf("error while writing account lists batch to linked log: %w", err)

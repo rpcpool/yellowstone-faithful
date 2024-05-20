@@ -14,6 +14,7 @@ import (
 type ObjectAccumulator struct {
 	flushOnKind iplddecoders.Kind
 	reader      *carreader.CarReader
+	ignoreKinds iplddecoders.KindSlice
 	callback    func(*ObjectWithMetadata, []ObjectWithMetadata) error
 	flushWg     sync.WaitGroup
 	flushQueue  chan *flushBuffer
@@ -29,9 +30,11 @@ func NewObjectAccumulator(
 	reader *carreader.CarReader,
 	flushOnKind iplddecoders.Kind,
 	callback func(*ObjectWithMetadata, []ObjectWithMetadata) error,
+	ignoreKinds ...iplddecoders.Kind,
 ) *ObjectAccumulator {
 	return &ObjectAccumulator{
 		reader:      reader,
+		ignoreKinds: ignoreKinds,
 		flushOnKind: flushOnKind,
 		callback:    callback,
 		flushQueue:  make(chan *flushBuffer, 1000),
@@ -151,6 +154,9 @@ buffersLoop:
 				oa.sendToFlusher(&objm, (objects))
 				break currentBufferLoop
 			} else {
+				if len(oa.ignoreKinds) > 0 && oa.ignoreKinds.Has(kind) {
+					continue
+				}
 				objects = append(objects, objm)
 			}
 		}
