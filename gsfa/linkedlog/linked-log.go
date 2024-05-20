@@ -236,7 +236,6 @@ func (s *LinkedLog) Put(
 			if err != nil {
 				return err
 			}
-			clear(finalPayload)
 			// fmt.Printf("offset=%d, numWrittenBytes=%d ll=%d\n", offset, numWrittenBytes, ll) // DEBUG
 			// fmt.Println("finalPayload:", bin.FormatByteSlice(finalPayload))                  // DEBUG
 			return callbackAfter(val.Key, offset, numWrittenBytes)

@@ -154,13 +154,15 @@ func (a *GsfaWriter) Push(
 	publicKeys = publicKeys.Dedupe()
 	publicKeys.Sort()
 	if slot%1000 == 0 {
-		klog.Infof("accum has %d keys", a.accum.Len())
-		if a.accum.Len() > 500_000 {
+		if a.accum.Len() > 130_000 {
 			// flush all
-			klog.Info("Flushing all...")
-			for _, key := range mapToArray(a.accum) {
-				if err := a.flushSingle(key); err != nil {
-					return err
+			klog.Infof("Flushing all %d keys", a.accum.Len())
+			for _, kv := range mapToArray(a.accum) {
+				if len(kv.Values) < 100 {
+					if err := a.flushSingle(kv); err != nil {
+						return err
+					}
+					a.accum.Delete(kv.Key)
 				}
 			}
 		}
