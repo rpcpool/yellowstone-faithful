@@ -234,17 +234,18 @@ func adaptTransactionMetaToExpectedOutput(m map[string]any) map[string]any {
 					} else {
 						instruction["accounts"] = []any{}
 					}
-					if data, ok := instruction["data"]; ok {
-						// as string
-						dataStr, ok := data.(string)
-						if ok {
-							decoded, err := base64.StdEncoding.DecodeString(dataStr)
-							if err == nil {
-								// TODO: the data in the `innerInstructions` is always base58 encoded (even if the transaction is base64 encoded)
-								instruction["data"] = base58.Encode(decoded)
-							}
-						}
-					}
+					// if data, ok := instruction["data"]; ok {
+					// 	// as string
+					// 	dataStr, ok := data.(string)
+					// 	if ok {
+					// 		decoded, err := base64.StdEncoding.DecodeString(dataStr)
+					// 		if err == nil {
+					// 			// TODO: the data in the `innerInstructions` is always base58 encoded (even if the transaction is base64 encoded)
+					// 			// instruction["data"] = base58.Encode(decoded)
+					// 			_ = decoded
+					// 		}
+					// 	}
+					// }
 				}
 			}
 			meta["innerInstructions"].([]any)[i] = innerInstruction
