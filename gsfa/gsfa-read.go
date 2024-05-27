@@ -170,7 +170,7 @@ bigLoop:
 		}
 		locations, newNext, err := index.ll.ReadWithSize(next.Offset, next.Size)
 		if err != nil {
-			return nil, fmt.Errorf("error while reading linked log with next=%d: %w", next, err)
+			return nil, fmt.Errorf("error while reading linked log with next=%v: %w", next, err)
 		}
 		debugln("sigIndexes:", locations, "newNext:", newNext)
 		next = &newNext

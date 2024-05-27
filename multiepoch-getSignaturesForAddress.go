@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"runtime"
 	"sort"
 	"sync"
 
@@ -16,7 +15,6 @@ import (
 	metaoldest "github.com/rpcpool/yellowstone-faithful/parse_legacy_transaction_status_meta/v-oldest"
 	"github.com/rpcpool/yellowstone-faithful/third_party/solana_proto/confirmed_block"
 	"github.com/sourcegraph/jsonrpc2"
-	"golang.org/x/sync/errgroup"
 	"k8s.io/klog/v2"
 )
 
@@ -157,8 +155,6 @@ func (multi *MultiEpoch) handleGetSignaturesForAddress(ctx context.Context, conn
 		return nil, nil
 	}
 
-	wg := new(errgroup.Group)
-	wg.SetLimit(runtime.NumCPU() * 2)
 	// The response is an array of objects: [{signature: string}]
 	response := make([]map[string]any, countTransactions(foundTransactions))
 	numBefore := 0
@@ -176,7 +172,7 @@ func (multi *MultiEpoch) handleGetSignaturesForAddress(ctx context.Context, conn
 		for i := range sigs {
 			ii := numBefore + i
 			transactionNode := sigs[i]
-			wg.Go(func() error {
+			err := func() error {
 				sig, err := transactionNode.Signature()
 				if err != nil {
 					klog.Errorf("failed to get signature: %v", err)
@@ -229,17 +225,16 @@ func (multi *MultiEpoch) handleGetSignaturesForAddress(ctx context.Context, conn
 					response[ii]["confirmationStatus"] = "finalized"
 				}
 				return nil
-			})
+			}()
+			if err != nil {
+				return &jsonrpc2.Error{
+					Code:    jsonrpc2.CodeInternalError,
+					Message: "Internal error",
+				}, fmt.Errorf("failed to get tx data: %w", err)
+			}
 		}
 		numBefore += len(sigs)
 	}
-	if err := wg.Wait(); err != nil {
-		return &jsonrpc2.Error{
-			Code:    jsonrpc2.CodeInternalError,
-			Message: "Internal error",
-		}, fmt.Errorf("failed to get tx data: %w", err)
-	}
-
 	// reply with the data
 	err = conn.ReplyRaw(
 		ctx,

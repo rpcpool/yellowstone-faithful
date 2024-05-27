@@ -153,9 +153,6 @@ func newCmd_Index_gsfa() *cli.Command {
 			defer func() {
 				klog.Infof("Indexed %s transactions", humanize.Comma(int64(numProcessedTransactions.Load())))
 				klog.Info("Finalizing index -- this may take a while, DO NOT EXIT")
-				if err := indexW.Flush(); err != nil {
-					klog.Errorf("Error while flushing: %s", err)
-				}
 				klog.Info("Closing index")
 				if err := indexW.Close(); err != nil {
 					klog.Errorf("Error while closing: %s", err)
