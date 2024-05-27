@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/rpcpool/yellowstone-faithful/indexes"
@@ -33,7 +34,7 @@ func newCmd_Index_slot2cid() *cli.Command {
 			&cli.StringFlag{
 				Name:  "tmp-dir",
 				Usage: "temporary directory to use for storing intermediate files",
-				Value: "",
+				Value: os.TempDir(),
 			},
 			&cli.Uint64Flag{
 				Name:        "epoch",

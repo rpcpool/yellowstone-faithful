@@ -46,7 +46,7 @@ func newCmd_Index_all() *cli.Command {
 			&cli.StringFlag{
 				Name:  "tmp-dir",
 				Usage: "temporary directory to use for storing intermediate files",
-				Value: "",
+				Value: os.TempDir(),
 			},
 			&cli.StringFlag{
 				Name:  "network",

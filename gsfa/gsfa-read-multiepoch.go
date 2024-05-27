@@ -10,7 +10,7 @@ import (
 	"github.com/rpcpool/yellowstone-faithful/compactindexsized"
 	"github.com/rpcpool/yellowstone-faithful/gsfa/linkedlog"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 )
 
 type GsfaReaderMultiepoch struct {

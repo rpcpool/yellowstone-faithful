@@ -17,7 +17,7 @@ import (
 	"github.com/rpcpool/yellowstone-faithful/indexes"
 	"github.com/rpcpool/yellowstone-faithful/indexmeta"
 	"github.com/tidwall/hashmap"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 )
 
 type GsfaWriter struct {

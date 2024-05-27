@@ -71,7 +71,7 @@ func newCmd_Index_gsfa() *cli.Command {
 			&cli.StringFlag{
 				Name:  "tmp-dir",
 				Usage: "temporary directory to use for storing intermediate files",
-				Value: "",
+				Value: os.TempDir(),
 			},
 		},
 		Action: func(c *cli.Context) error {

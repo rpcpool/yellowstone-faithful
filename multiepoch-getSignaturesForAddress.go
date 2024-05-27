@@ -11,9 +11,6 @@ import (
 	"github.com/rpcpool/yellowstone-faithful/indexes"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
-	metalatest "github.com/rpcpool/yellowstone-faithful/parse_legacy_transaction_status_meta/v-latest"
-	metaoldest "github.com/rpcpool/yellowstone-faithful/parse_legacy_transaction_status_meta/v-oldest"
-	"github.com/rpcpool/yellowstone-faithful/third_party/solana_proto/confirmed_block"
 	"github.com/sourcegraph/jsonrpc2"
 	"k8s.io/klog/v2"
 )
@@ -189,23 +186,14 @@ func (multi *MultiEpoch) handleGetSignaturesForAddress(ctx context.Context, conn
 					{
 						tx, meta, err := parseTransactionAndMetaFromNode(transactionNode, ser.GetDataFrameByCid)
 						if err == nil {
-							switch metaValue := meta.(type) {
-							case *confirmed_block.TransactionStatusMeta:
-								response[ii]["err"] = metaValue.Err
-							case *metalatest.TransactionStatusMeta:
-								response[ii]["err"] = metaValue.Status
-							case *metaoldest.TransactionStatusMeta:
-								response[ii]["err"] = metaValue.Status
-							}
-
-							if _, ok := response[ii]["err"]; ok {
-								response[ii]["err"], _ = parseTransactionError(response[ii]["err"])
-							}
+							response[ii]["err"] = getErr(meta)
 
 							memoData := getMemoInstructionDataFromTransaction(&tx)
 							if memoData != nil {
 								response[ii]["memo"] = string(memoData)
 							}
+						} else {
+							klog.Errorf("failed to parse transaction and meta for signature %s: %v", sig, err)
 						}
 
 						if _, ok := response[ii]["memo"]; !ok {
