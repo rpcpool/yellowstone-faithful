@@ -14,7 +14,7 @@ func getErr(meta any) any {
 	case *metalatest.TransactionStatusMeta:
 		switch status := metaValue.Status.(type) {
 		case *metalatest.Result__Ok:
-			return nil
+			return nil // no error
 		case *metalatest.Result__Err:
 			switch err_ := status.Value.(type) {
 			case *metalatest.TransactionError__AccountInUse:
@@ -163,7 +163,9 @@ func getErr(meta any) any {
 					case *metalatest.InstructionError__ComputationalBudgetExceeded:
 						return "ComputationalBudgetExceeded"
 					default:
-						return nil
+						return map[string]any{
+							"unknown": []any{}, // unknown; could not parse
+						}
 					}
 				}()
 				return map[string]any{
@@ -178,7 +180,7 @@ func getErr(meta any) any {
 	case *metaoldest.TransactionStatusMeta:
 		switch status := metaValue.Status.(type) {
 		case *metaoldest.Result__Ok:
-			return nil
+			return nil // no error
 		case *metaoldest.Result__Err:
 			switch err_ := status.Value.(type) {
 			case *metaoldest.TransactionError__AccountInUse:
@@ -276,7 +278,9 @@ func getErr(meta any) any {
 					case *metaoldest.InstructionError__InvalidError:
 						return "InvalidError"
 					default:
-						return nil
+						return map[string]any{
+							"unknown": []any{}, // unknown; could not parse
+						}
 					}
 				}()
 				return map[string]any{
@@ -306,11 +310,17 @@ func getErr(meta any) any {
 					"InvalidProgramForExecution": []any{12},
 				}
 			default:
-				return nil
+				return map[string]any{
+					"unknown": []any{}, // unknown; could not parse
+				}
 			}
 		}
 	default:
-		return nil
+		return map[string]any{
+			"unknown": []any{}, // unknown; could not parse
+		}
 	}
-	return nil
+	return map[string]any{
+		"unknown": []any{}, // unknown; could not parse
+	}
 }
