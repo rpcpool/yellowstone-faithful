@@ -2,11 +2,12 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-on: [pull_request]
+on:
+  pull_request:
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
-  CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
 
 name: tests
 jobs:
@@ -36,36 +37,37 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            ./target
-          key: ${{ matrix.os }}-geyser-plugin-runner-${{ hashFiles('rust-toolchain.toml') }}-${{ hashFiles('**/Cargo.lock') }}-0001
-          restore-keys: |
-            ${{ matrix.os }}-geyser-plugin-runner
-
-      - name: Set rust version
-        run: |
-          RUST_VERSION="$(./ci/rust-version.sh)"
-          echo "RUST_VERSION=$RUST_VERSION" >> "$GITHUB_ENV"
-
       - name: Install protoc
         run: |
           sudo apt-get update
           sudo apt-get install -y protobuf-compiler
 
-      - uses: actions-rs/toolchain@v1
+      - uses: actions/cache@v4
+        with:
+          path: |
+              ~/.cargo/bin/
+              ~/.cargo/registry/index/
+              ~/.cargo/registry/cache/
+              ~/.cargo/git/db/
+              target
+          key: ${{ matrix.os }}-cargo-${{ hashFiles('rust-toolchain.toml') }}-${{ hashFiles('**/Cargo.lock') }}-0000
+          restore-keys: |
+            ${{ matrix.os }}-cargo-${{ hashFiles('rust-toolchain.toml') }}
+
+      - name: Set rust version
+        run: |
+          RUST_VERSION="$(grep -oP 'channel = "\K\d\.\d+\.\d+(?=")' rust-toolchain.toml)"
+          echo "RUST_VERSION=$RUST_VERSION" >> "$GITHUB_ENV"
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: nightly
+          components: rustfmt
+
+      - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: ${{ env.RUST_VERSION }}
-          profile: minimal
-          components: clippy, rustfmt
-
-      - name: Enter the geyser-plugin-runner directory
-        run: cd geyser-plugin-runner
+          components: clippy
 
       - name: cargo tree
         run: |
@@ -73,11 +75,11 @@ jobs:
           git checkout Cargo.lock
           cargo tree --frozen --offline
 
-      - name: Run fmt
-        run: cargo fmt --all -- --check
+      - name: cargo fmt
+        run: cargo +nightly fmt --all -- --check
 
       - name: Run clippy
-        run: cargo clippy --all-targets --tests -- -Dwarnings
+        run: cargo clippy --workspace --all-targets --tests -- -Dwarnings
 
       - name: Run test
         run: cargo test --all-targets
