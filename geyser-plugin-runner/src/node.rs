@@ -315,20 +315,19 @@ pub fn parse_any_from_cbordata(data: Vec<u8>) -> Result<Node, Box<dyn Error>> {
                     Kind::DataFrame => {
                         let dataframe = dataframe::DataFrame::from_cbor(cloned_data)?;
                         return Ok(Node::DataFrame(dataframe));
-                    }
-                    unknown => {
-                        return Err(Box::new(std::io::Error::new(
-                            std::io::ErrorKind::Other,
-                            std::format!("Unknown type: {:?}", unknown),
-                        )))
-                    }
+                    } // unknown => {
+                      //     return Err(Box::new(std::io::Error::new(
+                      //         std::io::ErrorKind::Other,
+                      //         std::format!("Unknown type: {:?}", unknown),
+                      //     )))
+                      // }
                 },
-                unknown => {
-                    return Err(Box::new(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        std::format!("Unknown type: {:?}", unknown),
-                    )))
-                }
+                // unknown => {
+                //     return Err(Box::new(std::io::Error::new(
+                //         std::io::ErrorKind::Other,
+                //         std::format!("Unknown type: {:?}", unknown),
+                //     )))
+                // }
             }
         }
     }
@@ -495,8 +494,7 @@ impl NodeReader {
     pub fn new(file_path: String) -> Result<NodeReader, Box<dyn Error>> {
         let file = File::open(file_path)?;
         // create a buffered reader over the file
-        let MiB = 1024 * 1024;
-        let capacity = MiB * 8;
+        let capacity = 8 * 1024 * 1024;
         let reader = BufReader::with_capacity(capacity, file);
 
         let node_reader = NodeReader {

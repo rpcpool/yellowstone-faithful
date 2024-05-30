@@ -1,11 +1,7 @@
-#![recursion_limit = "512"]
-
-// geyser:
 use {
-    core::panic,
     crossbeam_channel::unbounded,
+    demo_rust_ipld_car::{node, utils},
     solana_accounts_db::stake_rewards::RewardInfo,
-    solana_geyser_plugin_manager::{self},
     solana_rpc::optimistically_confirmed_bank_tracker::SlotNotification,
     solana_sdk::reward_type::RewardType,
     std::{
@@ -16,16 +12,6 @@ use {
         sync::RwLock,
     },
 };
-
-mod block;
-mod dataframe;
-mod entry;
-mod epoch;
-mod node;
-mod rewards;
-mod subset;
-mod transaction;
-mod utils;
 
 fn main() -> Result<(), Box<dyn Error>> {
     let file_path = args().nth(1).expect("no file given");
@@ -119,9 +105,6 @@ fn main() -> Result<(), Box<dyn Error>> {
                                             parsed.into_legacy_transaction().unwrap() ,
                                         )
                                     },
-                                    _ => {
-                                        panic!("___ not supported version");
-                                    }
                                 };
                                 if sanitized_tx.is_err() {
                                     panic!(
