@@ -20,7 +20,7 @@ message BlockRequest {
 }
 
 message BlockResponse {
-  bytes data = 1; // serialized solana_storage_proto::ConfirmedBlock
+  bytes data = 1; // serialized old-faithful format
 }
 
 message TransactionRequest {
@@ -30,5 +30,5 @@ message TransactionRequest {
 message TransactionResponse {
   uint64 slot = 1;
   int64 block_time = 2;
-  bytes data = 3; // serialized solana_storage_proto::ConfirmedTransaction
+  bytes data = 3; // serialized old-faithful format
 }
