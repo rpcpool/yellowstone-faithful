@@ -24,7 +24,7 @@ impl Transaction {
     pub fn from_bytes(data: Vec<u8>) -> Result<Transaction, Box<dyn Error>> {
         let decoded_data: serde_cbor::Value = serde_cbor::from_slice(&data).unwrap();
         let transaction = Transaction::from_cbor(decoded_data)?;
-        return Ok(transaction);
+        Ok(transaction)
     }
 
     // from serde_cbor::Value
@@ -86,7 +86,7 @@ impl Transaction {
                 transaction.index = Some(*index as u64);
             }
         }
-        return Ok(transaction);
+        Ok(transaction)
     }
 
     pub fn to_json(&self) -> serde_json::Value {
@@ -97,22 +97,22 @@ impl Transaction {
         map.insert("slot".to_string(), serde_json::Value::from(self.slot));
         map.insert("index".to_string(), serde_json::Value::from(self.index));
 
-        return serde_json::Value::from(map);
+        serde_json::Value::from(map)
     }
 
     pub fn as_parsed(
         &self,
     ) -> Result<solana_sdk::transaction::VersionedTransaction, Box<dyn Error>> {
-        return Ok(deserialize(&self.data.data.to_vec())?);
+        Ok(deserialize(&self.data.data.to_vec())?)
     }
 
     /// Returns whether the transaction dataframe is complete or is split into multiple dataframes.
     pub fn is_complete_data(&self) -> bool {
-        return self.data.next.is_none() || self.data.next.as_ref().unwrap().len() == 0;
+        self.data.next.is_none() || self.data.next.as_ref().unwrap().is_empty()
     }
     /// Returns whether the transaction metadata is complete or is split into multiple dataframes.
     pub fn is_complete_metadata(&self) -> bool {
-        return self.metadata.next.is_none() || self.metadata.next.as_ref().unwrap().len() == 0;
+        self.metadata.next.is_none() || self.metadata.next.as_ref().unwrap().is_empty()
     }
 }
 

@@ -29,7 +29,7 @@ impl Block {
     pub fn from_bytes(data: Vec<u8>) -> Result<Block, Box<dyn Error>> {
         let decoded_data: serde_cbor::Value = serde_cbor::from_slice(&data).unwrap();
         let block = Block::from_cbor(decoded_data)?;
-        return Ok(block);
+        Ok(block)
     }
 
     // from serde_cbor::Value
@@ -106,7 +106,7 @@ impl Block {
                 block.rewards = Cid::try_from(rewards[1..].to_vec()).unwrap();
             }
         }
-        return Ok(block);
+        Ok(block)
     }
 
     pub fn to_json(&self) -> serde_json::Value {
@@ -130,12 +130,12 @@ impl Block {
         map.insert("meta".to_string(), self.meta.to_json());
         map.insert(
             "rewards".to_string(),
-            serde_json::Value::from(serde_json::json!({
+            serde_json::json!({
                 "/": self.rewards.to_string()
-            })),
+            }),
         );
 
-        return serde_json::Value::from(map);
+        serde_json::Value::from(map)
     }
 }
 
@@ -1126,7 +1126,7 @@ impl Shredding {
                 shredding.shred_end_idx = *shred_end_idx as i64;
             }
         }
-        return shredding;
+        shredding
     }
 
     pub fn to_json(&self) -> serde_json::Value {
@@ -1140,7 +1140,7 @@ impl Shredding {
             serde_json::Value::from(self.shred_end_idx),
         );
 
-        return serde_json::Value::from(map);
+        serde_json::Value::from(map)
     }
 }
 
@@ -1199,7 +1199,7 @@ impl SlotMeta {
                 slot_meta.block_height = Some(*block_height as u64);
             }
         }
-        return slot_meta;
+        slot_meta
     }
 
     pub fn to_json(&self) -> serde_json::Value {
@@ -1212,7 +1212,7 @@ impl SlotMeta {
             "blocktime".to_string(),
             serde_json::Value::from(self.blocktime),
         );
-        if self.block_height == None {
+        if self.block_height.is_none() {
             map.insert("block_height".to_string(), serde_json::Value::Null);
         } else {
             map.insert(
@@ -1221,7 +1221,7 @@ impl SlotMeta {
             );
         }
 
-        return serde_json::Value::from(map);
+        serde_json::Value::from(map)
     }
 }
 

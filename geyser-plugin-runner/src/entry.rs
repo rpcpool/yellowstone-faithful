@@ -25,7 +25,7 @@ impl Entry {
     pub fn from_bytes(data: Vec<u8>) -> Result<Entry, Box<dyn Error>> {
         let decoded_data: serde_cbor::Value = serde_cbor::from_slice(&data).unwrap();
         let entry = Entry::from_cbor(decoded_data)?;
-        return Ok(entry);
+        Ok(entry)
     }
 
     // from serde_cbor::Value
@@ -71,7 +71,7 @@ impl Entry {
                 }
             }
         }
-        return Ok(entry);
+        Ok(entry)
     }
 
     pub fn to_json(&self) -> serde_json::Value {
@@ -92,16 +92,16 @@ impl Entry {
             "hash".to_string(),
             serde_json::Value::from(self.hash.clone().to_string()),
         );
-        if self.transactions.len() > 0 {
+        if self.transactions.is_empty() {
+            map.insert("transactions".to_string(), serde_json::Value::Null);
+        } else {
             map.insert(
                 "transactions".to_string(),
                 serde_json::Value::from(transactions),
             );
-        } else {
-            map.insert("transactions".to_string(), serde_json::Value::Null);
         }
 
-        return serde_json::Value::from(map);
+        serde_json::Value::from(map)
     }
 }
 

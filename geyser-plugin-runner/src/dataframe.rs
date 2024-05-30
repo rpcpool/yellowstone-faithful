@@ -26,7 +26,7 @@ impl DataFrame {
     pub fn from_bytes(data: Vec<u8>) -> Result<DataFrame, Box<dyn Error>> {
         let decoded_data: serde_cbor::Value = serde_cbor::from_slice(&data).unwrap();
         let data_frame = DataFrame::from_cbor(decoded_data)?;
-        return Ok(data_frame);
+        Ok(data_frame)
     }
     // from serde_cbor::Value
     pub fn from_cbor(val: serde_cbor::Value) -> Result<DataFrame, Box<dyn Error>> {
@@ -71,7 +71,7 @@ impl DataFrame {
 
             if array.len() > 5 {
                 if let Some(serde_cbor::Value::Array(next)) = &array.get(5) {
-                    if next.len() == 0 {
+                    if next.is_empty() {
                         data_frame.next = None;
                     } else {
                         let mut nexts = vec![];
@@ -85,7 +85,7 @@ impl DataFrame {
                 }
             }
         }
-        return Ok(data_frame);
+        Ok(data_frame)
     }
 
     pub fn to_json(&self) -> serde_json::Value {
@@ -100,18 +100,18 @@ impl DataFrame {
 
         let mut map = serde_json::Map::new();
         map.insert("kind".to_string(), serde_json::Value::from(self.kind));
-        if self.hash == None {
+        if self.hash.is_none() {
             map.insert("hash".to_string(), serde_json::Value::Null);
         } else {
-            let hash_as_string = format!("{}", self.hash.unwrap() as u64);
+            let hash_as_string = self.hash.unwrap().to_string();
             map.insert("hash".to_string(), serde_json::Value::from(hash_as_string));
         }
-        if self.index == None {
+        if self.index.is_none() {
             map.insert("index".to_string(), serde_json::Value::Null);
         } else {
             map.insert("index".to_string(), serde_json::Value::from(self.index));
         }
-        if self.total == None {
+        if self.total.is_none() {
             map.insert("total".to_string(), serde_json::Value::Null);
         } else {
             map.insert("total".to_string(), serde_json::Value::from(self.total));
@@ -120,13 +120,13 @@ impl DataFrame {
             "data".to_string(),
             serde_json::Value::from(self.data.to_string()),
         );
-        if next.len() == 0 {
+        if next.is_empty() {
             map.insert("next".to_string(), serde_json::Value::Null);
         } else {
             map.insert("next".to_string(), serde_json::Value::from(next));
         }
 
-        return serde_json::Value::from(map);
+        serde_json::Value::from(map)
     }
 }
 

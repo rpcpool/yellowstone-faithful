@@ -6,6 +6,7 @@ use {
     fnv::FnvHasher,
     std::{
         error::Error,
+        fmt,
         fs::File,
         io::{self, BufReader, Read},
         vec::Vec,
@@ -31,6 +32,7 @@ impl NodeWithCid {
     }
 }
 
+#[derive(Default)]
 pub struct NodesWithCids(pub Vec<NodeWithCid>);
 
 impl NodesWithCids {
@@ -46,17 +48,18 @@ impl NodesWithCids {
         self.0.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     pub fn get(&self, index: usize) -> &NodeWithCid {
         &self.0[index]
     }
 
     pub fn get_by_cid(&self, cid: &Cid) -> Option<&NodeWithCid> {
-        for node_with_cid in &self.0 {
-            if node_with_cid.get_cid() == cid {
-                return Some(node_with_cid);
-            }
-        }
-        return None;
+        self.0
+            .iter()
+            .find(|&node_with_cid| node_with_cid.get_cid() == cid)
     }
 
     pub fn reassemble_dataframes(
@@ -85,7 +88,7 @@ impl NodesWithCids {
 
                 let next_dataframe = next_node_un.get_node().get_dataframe().unwrap();
                 data.extend(next_dataframe.data.to_vec());
-                next_arr = next_dataframe.next.clone();
+                next_arr.clone_from(&next_dataframe.next);
             }
         }
 
@@ -93,7 +96,7 @@ impl NodesWithCids {
             let wanted_hash = first_dataframe.hash.unwrap();
             verify_hash(data.clone(), wanted_hash)?;
         }
-        return Ok(data);
+        Ok(data)
     }
 
     pub fn each<F>(&self, mut f: F) -> Result<(), Box<dyn Error>>
@@ -103,15 +106,15 @@ impl NodesWithCids {
         for node_with_cid in &self.0 {
             f(node_with_cid)?;
         }
-        return Ok(());
+        Ok(())
     }
 
     pub fn get_cids(&self) -> Vec<Cid> {
         let mut cids = vec![];
         for node_with_cid in &self.0 {
-            cids.push(node_with_cid.get_cid().clone());
+            cids.push(*node_with_cid.get_cid());
         }
-        return cids;
+        cids
     }
 
     pub fn get_block(&self) -> Result<&block::Block, Box<dyn Error>> {
@@ -120,7 +123,7 @@ impl NodesWithCids {
         if last_node.is_none() {
             return Err(Box::new(std::io::Error::new(
                 std::io::ErrorKind::Other,
-                std::format!("No nodes"),
+                "No nodes".to_owned(),
             )));
         }
         let last_node_un = last_node.unwrap();
@@ -131,7 +134,7 @@ impl NodesWithCids {
             )));
         }
         let block = last_node_un.get_node().get_block().unwrap();
-        return Ok(block);
+        Ok(block)
     }
 }
 
@@ -152,22 +155,20 @@ pub fn verify_hash(data: Vec<u8>, hash: u64) -> Result<(), Box<dyn Error>> {
             )));
         }
     }
-    return Ok(());
+    Ok(())
 }
 
-fn checksum_crc64(data: &Vec<u8>) -> u64 {
+fn checksum_crc64(data: &[u8]) -> u64 {
     let crc = Crc::<u64>::new(&CRC_64_GO_ISO);
     let mut digest = crc.digest();
     digest.update(data);
-    let crc64 = digest.finalize();
-    crc64
+    digest.finalize()
 }
 
-fn checksum_fnv(data: &Vec<u8>) -> u64 {
+fn checksum_fnv(data: &[u8]) -> u64 {
     let mut hasher = FnvHasher::default();
     hasher.write(data);
-    let hash = hasher.finish();
-    hash
+    hasher.finish()
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
@@ -183,46 +184,31 @@ pub enum Node {
 
 impl Node {
     pub fn is_transaction(&self) -> bool {
-        match self {
-            Node::Transaction(_) => true,
-            _ => false,
-        }
+        matches!(self, Node::Transaction(_))
     }
+
     pub fn is_entry(&self) -> bool {
-        match self {
-            Node::Entry(_) => true,
-            _ => false,
-        }
+        matches!(self, Node::Entry(_))
     }
+
     pub fn is_block(&self) -> bool {
-        match self {
-            Node::Block(_) => true,
-            _ => false,
-        }
+        matches!(self, Node::Block(_))
     }
+
     pub fn is_subset(&self) -> bool {
-        match self {
-            Node::Subset(_) => true,
-            _ => false,
-        }
+        matches!(self, Node::Subset(_))
     }
+
     pub fn is_epoch(&self) -> bool {
-        match self {
-            Node::Epoch(_) => true,
-            _ => false,
-        }
+        matches!(self, Node::Epoch(_))
     }
+
     pub fn is_rewards(&self) -> bool {
-        match self {
-            Node::Rewards(_) => true,
-            _ => false,
-        }
+        matches!(self, Node::Rewards(_))
     }
+
     pub fn is_dataframe(&self) -> bool {
-        match self {
-            Node::DataFrame(_) => true,
-            _ => false,
-        }
+        matches!(self, Node::DataFrame(_))
     }
 
     pub fn get_transaction(&self) -> Option<&transaction::Transaction> {
@@ -286,56 +272,48 @@ pub fn parse_any_from_cbordata(data: Vec<u8>) -> Result<Node, Box<dyn Error>> {
             // );
 
             // based on the kind, we can decode the rest of the data
-            match kind {
-                kind => match Kind::from_u64(*kind as u64).unwrap() {
-                    Kind::Transaction => {
-                        let transaction = transaction::Transaction::from_cbor(cloned_data)?;
-                        return Ok(Node::Transaction(transaction));
-                    }
-                    Kind::Entry => {
-                        let entry = entry::Entry::from_cbor(cloned_data)?;
-                        return Ok(Node::Entry(entry));
-                    }
-                    Kind::Block => {
-                        let block = block::Block::from_cbor(cloned_data)?;
-                        return Ok(Node::Block(block));
-                    }
-                    Kind::Subset => {
-                        let subset = subset::Subset::from_cbor(cloned_data)?;
-                        return Ok(Node::Subset(subset));
-                    }
-                    Kind::Epoch => {
-                        let epoch = epoch::Epoch::from_cbor(cloned_data)?;
-                        return Ok(Node::Epoch(epoch));
-                    }
-                    Kind::Rewards => {
-                        let rewards = rewards::Rewards::from_cbor(cloned_data)?;
-                        return Ok(Node::Rewards(rewards));
-                    }
-                    Kind::DataFrame => {
-                        let dataframe = dataframe::DataFrame::from_cbor(cloned_data)?;
-                        return Ok(Node::DataFrame(dataframe));
-                    } // unknown => {
-                      //     return Err(Box::new(std::io::Error::new(
-                      //         std::io::ErrorKind::Other,
-                      //         std::format!("Unknown type: {:?}", unknown),
-                      //     )))
-                      // }
-                },
-                // unknown => {
-                //     return Err(Box::new(std::io::Error::new(
-                //         std::io::ErrorKind::Other,
-                //         std::format!("Unknown type: {:?}", unknown),
-                //     )))
-                // }
+            match Kind::from_u64(*kind as u64).unwrap() {
+                Kind::Transaction => {
+                    let transaction = transaction::Transaction::from_cbor(cloned_data)?;
+                    return Ok(Node::Transaction(transaction));
+                }
+                Kind::Entry => {
+                    let entry = entry::Entry::from_cbor(cloned_data)?;
+                    return Ok(Node::Entry(entry));
+                }
+                Kind::Block => {
+                    let block = block::Block::from_cbor(cloned_data)?;
+                    return Ok(Node::Block(block));
+                }
+                Kind::Subset => {
+                    let subset = subset::Subset::from_cbor(cloned_data)?;
+                    return Ok(Node::Subset(subset));
+                }
+                Kind::Epoch => {
+                    let epoch = epoch::Epoch::from_cbor(cloned_data)?;
+                    return Ok(Node::Epoch(epoch));
+                }
+                Kind::Rewards => {
+                    let rewards = rewards::Rewards::from_cbor(cloned_data)?;
+                    return Ok(Node::Rewards(rewards));
+                }
+                Kind::DataFrame => {
+                    let dataframe = dataframe::DataFrame::from_cbor(cloned_data)?;
+                    return Ok(Node::DataFrame(dataframe));
+                } // unknown => {
+                  //     return Err(Box::new(std::io::Error::new(
+                  //         std::io::ErrorKind::Other,
+                  //         std::format!("Unknown type: {:?}", unknown),
+                  //     )))
+                  // }
             }
         }
     }
 
-    return Err(Box::new(std::io::Error::new(
+    Err(Box::new(std::io::Error::new(
         std::io::ErrorKind::Other,
-        std::format!("Unknown type"),
-    )));
+        "Unknown type".to_owned(),
+    )))
 }
 
 pub enum Kind {
@@ -348,11 +326,26 @@ pub enum Kind {
     DataFrame,
 }
 
-impl std::fmt::Debug for Kind {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Debug for Kind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Kind")
             .field("kind", &self.to_string())
             .finish()
+    }
+}
+
+impl fmt::Display for Kind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let kind = match self {
+            Kind::Transaction => "Transaction",
+            Kind::Entry => "Entry",
+            Kind::Block => "Block",
+            Kind::Subset => "Subset",
+            Kind::Epoch => "Epoch",
+            Kind::Rewards => "Rewards",
+            Kind::DataFrame => "DataFrame",
+        };
+        write!(f, "{}", kind)
     }
 }
 
@@ -381,18 +374,6 @@ impl Kind {
             Kind::DataFrame => 6,
         }
     }
-
-    pub fn to_string(&self) -> String {
-        match self {
-            Kind::Transaction => "Transaction".to_string(),
-            Kind::Entry => "Entry".to_string(),
-            Kind::Block => "Block".to_string(),
-            Kind::Subset => "Subset".to_string(),
-            Kind::Epoch => "Epoch".to_string(),
-            Kind::Rewards => "Rewards".to_string(),
-            Kind::DataFrame => "DataFrame".to_string(),
-        }
-    }
 }
 
 pub struct RawNode {
@@ -401,8 +382,8 @@ pub struct RawNode {
 }
 
 // Debug trait for RawNode
-impl std::fmt::Debug for RawNode {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Debug for RawNode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("RawNode")
             .field("cid", &self.cid)
             .field("data", &self.data)
@@ -419,14 +400,14 @@ impl RawNode {
         let parsed = parse_any_from_cbordata(self.data.clone());
         if parsed.is_err() {
             println!("Error: {:?}", parsed.err().unwrap());
+            Err(Box::new(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "Unknown type".to_owned(),
+            )))
         } else {
             let node = parsed.unwrap();
-            return Ok(node);
+            Ok(node)
         }
-        return Err(Box::new(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            std::format!("Unknown type"),
-        )));
     }
 
     pub fn from_cursor(cursor: &mut io::Cursor<Vec<u8>>) -> Result<RawNode, Box<dyn Error>> {
@@ -447,7 +428,7 @@ impl RawNode {
         if digest_length > 64 {
             return Err(Box::new(std::io::Error::new(
                 std::io::ErrorKind::Other,
-                std::format!("Digest length too long"),
+                "Digest length too long".to_owned(),
             )));
         }
 
@@ -467,19 +448,17 @@ impl RawNode {
             0 => {
                 let cid = Cid::new_v0(ha)?;
                 let raw_node = RawNode::new(cid, data);
-                return Ok(raw_node);
+                Ok(raw_node)
             }
             1 => {
                 let cid = Cid::new_v1(multicodec, ha);
                 let raw_node = RawNode::new(cid, data);
-                return Ok(raw_node);
+                Ok(raw_node)
             }
-            _ => {
-                return Err(Box::new(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    std::format!("Unknown CID version"),
-                )));
-            }
+            _ => Err(Box::new(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "Unknown CID version".to_owned(),
+            ))),
         }
     }
 }
@@ -502,31 +481,32 @@ impl NodeReader {
             header: vec![],
             item_index: 0,
         };
-        return Ok(node_reader);
+        Ok(node_reader)
     }
 
     pub fn read_raw_header(&mut self) -> Result<Vec<u8>, Box<dyn Error>> {
-        if self.header.len() > 0 {
+        if !self.header.is_empty() {
             return Ok(self.header.clone());
         };
         let header_length = utils::read_uvarint(&mut self.reader)?;
         if header_length > 1024 {
             return Err(Box::new(std::io::Error::new(
                 std::io::ErrorKind::Other,
-                std::format!("Header length too long"),
+                "Header length too long".to_owned(),
             )));
         }
         let mut header = vec![0u8; header_length as usize];
         self.reader.read_exact(&mut header)?;
 
-        self.header = header.clone();
+        self.header.clone_from(&header);
 
         let clone = header.clone();
-        return Ok(clone.as_slice().to_owned());
+        Ok(clone.as_slice().to_owned())
     }
 
+    #[allow(clippy::should_implement_trait)]
     pub fn next(&mut self) -> Result<RawNode, Box<dyn Error>> {
-        if self.header.len() == 0 {
+        if self.header.is_empty() {
             self.read_raw_header()?;
         };
 
@@ -540,7 +520,7 @@ impl NodeReader {
         if section_size > utils::MAX_ALLOWED_SECTION_SIZE as u64 {
             return Err(Box::new(std::io::Error::new(
                 std::io::ErrorKind::Other,
-                std::format!("Section size too long"),
+                "Section size too long".to_owned(),
             )));
         }
 
@@ -554,13 +534,13 @@ impl NodeReader {
         // now create a cursor over the item
         let mut cursor = io::Cursor::new(item);
 
-        return RawNode::from_cursor(&mut cursor);
+        RawNode::from_cursor(&mut cursor)
     }
 
     pub fn next_parsed(&mut self) -> Result<NodeWithCid, Box<dyn Error>> {
         let raw_node = self.next()?;
-        let cid = raw_node.cid.clone();
-        return Ok(NodeWithCid::new(cid, raw_node.parse()?));
+        let cid = raw_node.cid;
+        Ok(NodeWithCid::new(cid, raw_node.parse()?))
     }
 
     pub fn read_until_block(&mut self) -> Result<NodesWithCids, Box<dyn Error>> {
@@ -573,7 +553,7 @@ impl NodeReader {
             }
             nodes.push(node);
         }
-        return Ok(nodes);
+        Ok(nodes)
     }
 
     pub fn get_item_index(&self) -> u64 {

@@ -75,11 +75,11 @@ fn main() -> Result<(), Box<dyn Error>> {
                             let decompressed = utils::decompress_zstd(reassembled_metadata.clone())?;
 
                             let metadata: solana_storage_proto::convert::generated::TransactionStatusMeta =
-                                prost::Message::decode(decompressed.as_slice()).or_else(|err| {
-                                    Err(Box::new(std::io::Error::new(
+                                prost::Message::decode(decompressed.as_slice()).map_err(|err| {
+                                    Box::new(std::io::Error::new(
                                         std::io::ErrorKind::Other,
                                         std::format!("Error decoding metadata: {:?}", err),
-                                    )))
+                                    ))
                                 })?;
 
 
@@ -88,8 +88,8 @@ fn main() -> Result<(), Box<dyn Error>> {
 
                            {
                                 // TODO: test address loading.
-                                let dummy_address_loader = MessageAddressLoaderFromTxMeta::new(as_native_metadata.clone().into());
-                                let sanitized_tx= match  parsed.version() {
+                                let dummy_address_loader = MessageAddressLoaderFromTxMeta::new(as_native_metadata.clone());
+                                let sanitized_tx = match  parsed.version() {
                                     solana_sdk::transaction::TransactionVersion::Number(_)=> {
                                         let message_hash = parsed.verify_and_hash_message()?;
                                         let versioned_sanitized_tx= solana_sdk::transaction::SanitizedVersionedTransaction::try_from(parsed)?;
@@ -180,7 +180,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                                             Err(_err) => None,
                                         },
                                     };
-                                    rewards.write().unwrap().push((solana_sdk::pubkey::Pubkey::from_str(&this_block_reward.pubkey)?, reward.into()));
+                                    rewards.write().unwrap().push((solana_sdk::pubkey::Pubkey::from_str(&this_block_reward.pubkey)?, reward));
                                 }
                             }
                             // if rewards.read().unwrap().len() > 0 {
@@ -212,25 +212,26 @@ fn main() -> Result<(), Box<dyn Error>> {
                         println!("___ Rewards: {:?}", node_with_cid.get_cid());
                         // println!("___ Next items: {:?}", rewards.data.next);
 
+                        #[allow(clippy::overly_complex_bool_expr)]
                         if !rewards.is_complete() && false {
                             let reassembled = nodes.reassemble_dataframes(rewards.data.clone())?;
                             println!("___ reassembled: {:?}", reassembled.len());
 
                             let decompressed = utils::decompress_zstd(reassembled)?;
 
-                            this_block_rewards= prost::Message::decode(decompressed.as_slice()).or_else(|err| {
-                                    Err(Box::new(std::io::Error::new(
-                                        std::io::ErrorKind::Other,
-                                        std::format!("Error decoding rewards: {:?}", err),
-                                    )))
-                                })?;
+                            this_block_rewards = prost::Message::decode(decompressed.as_slice()).map_err(|err| {
+                                Box::new(std::io::Error::new(
+                                    std::io::ErrorKind::Other,
+                                    std::format!("Error decoding rewards: {:?}", err),
+                                ))
+                            })?;
                         }
                     }
                     node::Node::DataFrame(_) => {
                         println!("___ DataFrame: {:?}", node_with_cid.get_cid());
                     }
                 }
-                return Ok(());
+                Ok(())
             })?;
         }
     }
