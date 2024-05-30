@@ -75,7 +75,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                             let decompressed = utils::decompress_zstd(reassembled_metadata.clone())?;
 
                             let metadata: solana_storage_proto::convert::generated::TransactionStatusMeta =
-                                prost::Message::decode(decompressed.as_slice()).map_err(|err| {
+                                prost_011::Message::decode(decompressed.as_slice()).map_err(|err| {
                                     Box::new(std::io::Error::new(
                                         std::io::ErrorKind::Other,
                                         std::format!("Error decoding metadata: {:?}", err),
@@ -219,7 +219,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
                             let decompressed = utils::decompress_zstd(reassembled)?;
 
-                            this_block_rewards = prost::Message::decode(decompressed.as_slice()).map_err(|err| {
+                            this_block_rewards = prost_011::Message::decode(decompressed.as_slice()).map_err(|err| {
                                 Box::new(std::io::Error::new(
                                     std::io::ErrorKind::Other,
                                     std::format!("Error decoding rewards: {:?}", err),

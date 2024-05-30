@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "block-cache-proto",
     "geyser-plugin-runner",
     "geyser-plugin-runner/demo-plugin",
     "txstatus",
@@ -18,7 +19,8 @@ crc = "3.0.1"
 crossbeam-channel = "0.5.8"
 fnv = "1.0.7"
 multihash = "0.19.1"
-prost = "0.11.9"
+prost = { package = "prost", version = "0.12.6" }
+prost_011 = { package = "prost", version = "0.11.9" }
 protobuf-src = "1.1.0"
 serde = "1.0.188"
 serde_cbor = "0.11"
@@ -31,7 +33,8 @@ solana-rpc = "~1.18.1"
 solana-sdk = "~1.18.1"
 solana-storage-proto = "~1.18.1"
 solana-transaction-status = "~1.18.1"
-tonic-build = "0.9.2"
+tonic = "0.11.0"
+tonic-build = "0.11.0"
 tracing = "0.1.40"
 zstd = "0.13.0"
 

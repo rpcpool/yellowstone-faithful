@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+package OldFaithful;
+
+service OldFaithful {
+  rpc GetVersion(VersionRequest) returns (VersionResponse);
+
+  rpc GetBlock(BlockRequest) returns (BlockResponse);
+  rpc GetTransaction(TransactionRequest) returns (TransactionResponse);
+}
+
+message VersionRequest {}
+
+message VersionResponse {
+  string version = 1;
+}
+
+message BlockRequest {
+  uint64 slot = 1;
+}
+
+message BlockResponse {
+  bytes data = 1; // serialized solana_storage_proto::ConfirmedBlock
+}
+
+message TransactionRequest {
+  bytes signature = 1;
+}
+
+message TransactionResponse {
+  uint64 slot = 1;
+  int64 block_time = 2;
+  bytes data = 3; // serialized solana_storage_proto::ConfirmedTransaction
+}
