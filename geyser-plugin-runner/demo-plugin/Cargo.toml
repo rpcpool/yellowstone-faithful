@@ -2,20 +2,21 @@
 name = "demo-plugin"
 version = "0.1.0"
 edition = "2021"
+publish = false
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[lib]
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+colored = { workspace = true }
 solana-geyser-plugin-interface = { workspace = true }
 tracing = { workspace = true }
-colored = { version = "2.1.0" }
 
 [dev-dependencies]
 libc = "0.2.134"
 libloading = { workspace = true }
 serial_test = { workspace = true }
 socket2 = { workspace = true, features = ["all"] }
-
 solana-account-decoder = { workspace = true }
 solana-core = { workspace = true }
 solana-local-cluster = { workspace = true }
@@ -25,6 +26,3 @@ tempfile = { workspace = true }
 
 [package.metadata.docs.rs]
 targets = ["x86_64-unknown-linux-gnu"]
-
-[lib]
-crate-type = ["cdylib", "rlib"]
