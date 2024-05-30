@@ -26,7 +26,7 @@ message BlockResponse {
   uint64 slot = 4;
   int64 block_time = 5;
   uint64 block_height = 6;
-  repeated bytes transactions = 7; // serialized old-faithful format
+  repeated Transaction transactions = 7;
   repeated bytes rewards = 8; // serialized old-faithful format
 }
 
@@ -35,7 +35,12 @@ message TransactionRequest {
 }
 
 message TransactionResponse {
-  bytes transaction = 1; // serialized old-faithful format
+  Transaction transaction = 1;
   uint64 slot = 2;
   int64 block_time = 3;
+}
+
+message Transaction {
+  bytes transaction = 1;
+  bytes meta = 2; // bincode or protobuf
 }
