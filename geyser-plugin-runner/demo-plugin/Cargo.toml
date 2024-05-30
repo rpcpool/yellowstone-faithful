@@ -12,17 +12,5 @@ colored = { workspace = true }
 solana-geyser-plugin-interface = { workspace = true }
 tracing = { workspace = true }
 
-[dev-dependencies]
-libc = "0.2.134"
-libloading = { workspace = true }
-serial_test = { workspace = true }
-socket2 = { workspace = true, features = ["all"] }
-solana-account-decoder = { workspace = true }
-solana-core = { workspace = true }
-solana-local-cluster = { workspace = true }
-solana-net-utils = { workspace = true }
-solana-streamer = { workspace = true }
-tempfile = { workspace = true }
-
 [package.metadata.docs.rs]
 targets = ["x86_64-unknown-linux-gnu"]
