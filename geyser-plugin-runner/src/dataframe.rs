@@ -1,11 +1,8 @@
-use cid::Cid;
-
-use std::error::Error;
-
-use std::vec::Vec;
-
-use crate::node::Kind;
-use crate::utils::Buffer;
+use {
+    crate::{node::Kind, utils::Buffer},
+    cid::Cid,
+    std::{error::Error, vec::Vec},
+};
 
 // type DataFrame struct {
 // 	Kind  int

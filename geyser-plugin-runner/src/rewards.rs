@@ -1,9 +1,7 @@
-use std::error::Error;
-use std::vec::Vec;
-
-use crate::dataframe;
-use crate::node::Kind;
-use crate::utils::Buffer;
+use {
+    crate::{dataframe, node::Kind, utils::Buffer},
+    std::{error::Error, vec::Vec},
+};
 
 // type Rewards struct {
 // 	Kind int
@@ -85,8 +83,7 @@ impl Rewards {
 
 #[cfg(test)]
 mod rewards_tests {
-    use super::*;
-    use cid::Cid;
+    use {super::*, cid::Cid};
 
     #[test]
     fn test_rewards() {

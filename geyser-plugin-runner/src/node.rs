@@ -1,21 +1,16 @@
-use cid::Cid;
-use core::hash::Hasher;
-use crc::{Crc, CRC_64_GO_ISO};
-use fnv::FnvHasher;
-
-use std::error::Error;
-use std::fs::File;
-use std::io::{self, BufReader, Read};
-use std::vec::Vec;
-
-use crate::block;
-use crate::dataframe;
-use crate::entry;
-use crate::epoch;
-use crate::rewards;
-use crate::subset;
-use crate::transaction;
-use crate::utils;
+use {
+    crate::{block, dataframe, entry, epoch, rewards, subset, transaction, utils},
+    cid::Cid,
+    core::hash::Hasher,
+    crc::{Crc, CRC_64_GO_ISO},
+    fnv::FnvHasher,
+    std::{
+        error::Error,
+        fs::File,
+        io::{self, BufReader, Read},
+        vec::Vec,
+    },
+};
 
 pub struct NodeWithCid {
     cid: Cid,

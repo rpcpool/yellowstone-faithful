@@ -1,10 +1,8 @@
-use bincode::deserialize;
-use std::error::Error;
-use std::vec::Vec;
-
-use crate::dataframe::DataFrame;
-use crate::node::Kind;
-use crate::utils::Buffer;
+use {
+    crate::{dataframe::DataFrame, node::Kind, utils::Buffer},
+    bincode::deserialize,
+    std::{error::Error, vec::Vec},
+};
 
 // type Transaction struct {
 // 	Kind     int
@@ -120,8 +118,7 @@ impl Transaction {
 
 #[cfg(test)]
 mod transaction_tests {
-    use super::*;
-    use cid::Cid;
+    use {super::*, cid::Cid};
 
     #[test]
     fn test_transaction() {

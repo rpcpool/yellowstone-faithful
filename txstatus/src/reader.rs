@@ -1,6 +1,7 @@
-use crate::byte_order;
-use crate::type_size;
-use std::error::Error as StdError;
+use {
+    crate::{byte_order, type_size},
+    std::error::Error as StdError,
+};
 
 // declare error type
 pub enum Error {

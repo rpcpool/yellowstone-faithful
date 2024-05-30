@@ -1,9 +1,11 @@
-use std::error::Error;
-
-use base64::engine::general_purpose::STANDARD;
-use base64::engine::Engine;
-use std::io::{self, Read};
-use std::vec::Vec;
+use {
+    base64::engine::{general_purpose::STANDARD, Engine},
+    std::{
+        error::Error,
+        io::{self, Read},
+        vec::Vec,
+    },
+};
 
 const MAX_VARINT_LEN_64: usize = 10;
 

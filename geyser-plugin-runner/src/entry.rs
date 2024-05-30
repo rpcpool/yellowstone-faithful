@@ -1,13 +1,11 @@
-use cid::Cid;
-
-use std::error::Error;
-
-use std::vec::Vec;
-
-use crate::node::Kind;
-use crate::utils;
-
-use crate::utils::Hash;
+use {
+    crate::{
+        node::Kind,
+        utils::{self, Hash},
+    },
+    cid::Cid,
+    std::{error::Error, vec::Vec},
+};
 
 // type Entry struct {
 // 	Kind         int

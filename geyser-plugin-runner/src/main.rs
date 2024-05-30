@@ -1,21 +1,21 @@
 #![recursion_limit = "512"]
 
-use std::env::args;
-use std::error::Error;
-
-use std::convert::TryInto;
-use std::sync::RwLock;
-
 // geyser:
-use core::panic;
-
-use crossbeam_channel::unbounded;
-use solana_accounts_db::stake_rewards::RewardInfo;
-use solana_geyser_plugin_manager::{self};
-use solana_rpc::optimistically_confirmed_bank_tracker::SlotNotification;
-use solana_sdk::reward_type::RewardType;
-
-use std::{convert::TryFrom, str::FromStr};
+use {
+    core::panic,
+    crossbeam_channel::unbounded,
+    solana_accounts_db::stake_rewards::RewardInfo,
+    solana_geyser_plugin_manager::{self},
+    solana_rpc::optimistically_confirmed_bank_tracker::SlotNotification,
+    solana_sdk::reward_type::RewardType,
+    std::{
+        convert::{TryFrom, TryInto},
+        env::args,
+        error::Error,
+        str::FromStr,
+        sync::RwLock,
+    },
+};
 
 mod block;
 mod dataframe;

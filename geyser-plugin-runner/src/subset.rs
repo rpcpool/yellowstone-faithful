@@ -1,10 +1,8 @@
-use cid::Cid;
-
-use std::error::Error;
-
-use std::vec::Vec;
-
-use crate::node::Kind;
+use {
+    crate::node::Kind,
+    cid::Cid,
+    std::{error::Error, vec::Vec},
+};
 
 // type Subset struct {
 // 	Kind   int
