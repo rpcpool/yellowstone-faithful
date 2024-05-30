@@ -20,7 +20,14 @@ message BlockRequest {
 }
 
 message BlockResponse {
-  bytes data = 1; // serialized old-faithful format
+  bytes previous_blockhash = 1;
+  bytes blockhash = 2;
+  uint64 parent_slot = 3;
+  uint64 slot = 4;
+  int64 block_time = 5;
+  uint64 block_height = 6;
+  repeated bytes transactions = 7; // serialized old-faithful format
+  repeated bytes rewards = 8; // serialized old-faithful format
 }
 
 message TransactionRequest {
@@ -28,7 +35,7 @@ message TransactionRequest {
 }
 
 message TransactionResponse {
-  uint64 slot = 1;
-  int64 block_time = 2;
-  bytes data = 3; // serialized old-faithful format
+  bytes transaction = 1; // serialized old-faithful format
+  uint64 slot = 2;
+  int64 block_time = 3;
 }
