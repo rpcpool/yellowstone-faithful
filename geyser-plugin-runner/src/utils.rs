@@ -1,9 +1,11 @@
-use std::error::Error;
-
-use base64::engine::general_purpose::STANDARD;
-use base64::engine::Engine;
-use std::io::{self, Read};
-use std::vec::Vec;
+use {
+    base64::engine::{general_purpose::STANDARD, Engine},
+    std::{
+        error::Error,
+        io::{self, Read},
+        vec::Vec,
+    },
+};
 
 const MAX_VARINT_LEN_64: usize = 10;
 
@@ -101,16 +103,15 @@ impl Hash {
     pub fn from_vec(data: Vec<u8>) -> Hash {
         Hash(data)
     }
+
     pub fn to_bytes(&self) -> [u8; 32] {
         let mut bytes = [0u8; 32];
-        for i in 0..32 {
-            bytes[i] = self.0[i];
-        }
-        return bytes;
+        bytes[..32].copy_from_slice(&self.0[..32]);
+        bytes
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Default, Clone, PartialEq, Eq, Hash)]
 pub struct Buffer(Vec<u8>);
 
 impl Buffer {
@@ -127,11 +128,15 @@ impl Buffer {
         for _ in 0..len {
             data.push(self.0.remove(0));
         }
-        return data;
+        data
     }
 
     pub fn len(&self) -> usize {
         self.0.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
     pub fn to_vec(&self) -> Vec<u8> {
@@ -171,7 +176,7 @@ impl<'de> serde::Deserialize<'de> for Buffer {
         D: serde::de::Deserializer<'de>,
     {
         let base64 = String::deserialize(deserializer)?;
-        Ok(Buffer(STANDARD.decode(&base64).unwrap()))
+        Ok(Buffer(STANDARD.decode(base64).unwrap()))
     }
 }
 
@@ -181,5 +186,5 @@ pub fn decompress_zstd(data: Vec<u8>) -> Result<Vec<u8>, Box<dyn Error>> {
     let mut decoder = zstd::Decoder::new(&data[..])?;
     let mut decompressed = Vec::new();
     decoder.read_to_end(&mut decompressed)?;
-    return Ok(decompressed);
+    Ok(decompressed)
 }

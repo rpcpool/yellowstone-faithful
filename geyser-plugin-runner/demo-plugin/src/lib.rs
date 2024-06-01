@@ -1,10 +1,11 @@
-use solana_geyser_plugin_interface::geyser_plugin_interface::{
-    GeyserPlugin, ReplicaAccountInfoVersions, ReplicaBlockInfoVersions, ReplicaEntryInfoVersions,
-    ReplicaTransactionInfoVersions, Result, SlotStatus,
+use {
+    colored::Colorize,
+    solana_geyser_plugin_interface::geyser_plugin_interface::{
+        GeyserPlugin, ReplicaAccountInfoVersions, ReplicaBlockInfoVersions,
+        ReplicaEntryInfoVersions, ReplicaTransactionInfoVersions, Result, SlotStatus,
+    },
+    tracing::info,
 };
-
-use colored::Colorize;
-use tracing::info;
 
 #[no_mangle]
 #[allow(improper_ctypes_definitions)]

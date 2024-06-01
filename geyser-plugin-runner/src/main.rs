@@ -1,31 +1,17 @@
-#![recursion_limit = "512"]
-
-use std::env::args;
-use std::error::Error;
-
-use std::convert::TryInto;
-use std::sync::RwLock;
-
-// geyser:
-use core::panic;
-
-use crossbeam_channel::unbounded;
-use solana_accounts_db::stake_rewards::RewardInfo;
-use solana_geyser_plugin_manager::{self};
-use solana_rpc::optimistically_confirmed_bank_tracker::SlotNotification;
-use solana_sdk::reward_type::RewardType;
-
-use std::{convert::TryFrom, str::FromStr};
-
-mod block;
-mod dataframe;
-mod entry;
-mod epoch;
-mod node;
-mod rewards;
-mod subset;
-mod transaction;
-mod utils;
+use {
+    crossbeam_channel::unbounded,
+    demo_rust_ipld_car::{node, utils},
+    solana_accounts_db::stake_rewards::RewardInfo,
+    solana_rpc::optimistically_confirmed_bank_tracker::SlotNotification,
+    solana_sdk::reward_type::RewardType,
+    std::{
+        convert::{TryFrom, TryInto},
+        env::args,
+        error::Error,
+        str::FromStr,
+        sync::RwLock,
+    },
+};
 
 fn main() -> Result<(), Box<dyn Error>> {
     let file_path = args().nth(1).expect("no file given");
@@ -89,11 +75,11 @@ fn main() -> Result<(), Box<dyn Error>> {
                             let decompressed = utils::decompress_zstd(reassembled_metadata.clone())?;
 
                             let metadata: solana_storage_proto::convert::generated::TransactionStatusMeta =
-                                prost::Message::decode(decompressed.as_slice()).or_else(|err| {
-                                    Err(Box::new(std::io::Error::new(
+                                prost::Message::decode(decompressed.as_slice()).map_err(|err| {
+                                    Box::new(std::io::Error::new(
                                         std::io::ErrorKind::Other,
                                         std::format!("Error decoding metadata: {:?}", err),
-                                    )))
+                                    ))
                                 })?;
 
 
@@ -102,8 +88,8 @@ fn main() -> Result<(), Box<dyn Error>> {
 
                            {
                                 // TODO: test address loading.
-                                let dummy_address_loader = MessageAddressLoaderFromTxMeta::new(as_native_metadata.clone().into());
-                                let sanitized_tx= match  parsed.version() {
+                                let dummy_address_loader = MessageAddressLoaderFromTxMeta::new(as_native_metadata.clone());
+                                let sanitized_tx = match  parsed.version() {
                                     solana_sdk::transaction::TransactionVersion::Number(_)=> {
                                         let message_hash = parsed.verify_and_hash_message()?;
                                         let versioned_sanitized_tx= solana_sdk::transaction::SanitizedVersionedTransaction::try_from(parsed)?;
@@ -119,9 +105,6 @@ fn main() -> Result<(), Box<dyn Error>> {
                                             parsed.into_legacy_transaction().unwrap() ,
                                         )
                                     },
-                                    _ => {
-                                        panic!("___ not supported version");
-                                    }
                                 };
                                 if sanitized_tx.is_err() {
                                     panic!(
@@ -197,7 +180,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                                             Err(_err) => None,
                                         },
                                     };
-                                    rewards.write().unwrap().push((solana_sdk::pubkey::Pubkey::from_str(&this_block_reward.pubkey)?, reward.into()));
+                                    rewards.write().unwrap().push((solana_sdk::pubkey::Pubkey::from_str(&this_block_reward.pubkey)?, reward));
                                 }
                             }
                             // if rewards.read().unwrap().len() > 0 {
@@ -229,25 +212,26 @@ fn main() -> Result<(), Box<dyn Error>> {
                         println!("___ Rewards: {:?}", node_with_cid.get_cid());
                         // println!("___ Next items: {:?}", rewards.data.next);
 
+                        #[allow(clippy::overly_complex_bool_expr)]
                         if !rewards.is_complete() && false {
                             let reassembled = nodes.reassemble_dataframes(rewards.data.clone())?;
                             println!("___ reassembled: {:?}", reassembled.len());
 
                             let decompressed = utils::decompress_zstd(reassembled)?;
 
-                            this_block_rewards= prost::Message::decode(decompressed.as_slice()).or_else(|err| {
-                                    Err(Box::new(std::io::Error::new(
-                                        std::io::ErrorKind::Other,
-                                        std::format!("Error decoding rewards: {:?}", err),
-                                    )))
-                                })?;
+                            this_block_rewards = prost::Message::decode(decompressed.as_slice()).map_err(|err| {
+                                Box::new(std::io::Error::new(
+                                    std::io::ErrorKind::Other,
+                                    std::format!("Error decoding rewards: {:?}", err),
+                                ))
+                            })?;
                         }
                     }
                     node::Node::DataFrame(_) => {
                         println!("___ DataFrame: {:?}", node_with_cid.get_cid());
                     }
                 }
-                return Ok(());
+                Ok(())
             })?;
         }
     }

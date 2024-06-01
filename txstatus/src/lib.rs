@@ -1,21 +1,25 @@
-use std::slice;
-// use std::time::Instant;
+use {
+    reader::Decoder,
+    solana_sdk::{
+        instruction::CompiledInstruction,
+        message::{v0::LoadedAddresses, AccountKeys},
+        pubkey::Pubkey,
+    },
+    solana_transaction_status::parse_instruction::parse,
+};
 
-mod byte_order;
-mod reader;
-mod type_size;
+pub mod byte_order;
+pub mod reader;
+pub mod type_size;
 
-use reader::Decoder;
-use solana_sdk::message::v0::LoadedAddresses;
-use solana_sdk::{instruction::CompiledInstruction, message::AccountKeys, pubkey::Pubkey};
-use solana_transaction_status::parse_instruction::parse;
-
+/// # Safety
+/// Bytes length should have at least len size.
 #[no_mangle]
-pub extern "C" fn parse_instruction(bytes: *const u8, len: usize) -> Response {
+pub unsafe extern "C" fn parse_instruction(bytes: *const u8, len: usize) -> Response {
     // let started_at = Instant::now();
     let bytes = {
         assert!(!bytes.is_null());
-        unsafe { slice::from_raw_parts(bytes, len) }
+        std::slice::from_raw_parts(bytes, len)
     };
     let bytes = bytes.to_vec();
     // println!("[rust] params raw bytes: {:?}", bytes);

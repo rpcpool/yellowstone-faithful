@@ -1,9 +1,8 @@
-use cid::Cid;
-use std::error::Error;
-
-use std::vec::Vec;
-
-use crate::node::Kind;
+use {
+    crate::node::Kind,
+    cid::Cid,
+    std::{error::Error, vec::Vec},
+};
 // type (
 // 	Epoch      struct {
 // 		Kind    int
@@ -22,7 +21,7 @@ impl Epoch {
     pub fn from_bytes(data: Vec<u8>) -> Result<Epoch, Box<dyn Error>> {
         let decoded_data: serde_cbor::Value = serde_cbor::from_slice(&data).unwrap();
         let epoch = Epoch::from_cbor(decoded_data)?;
-        return Ok(epoch);
+        Ok(epoch)
     }
 
     pub fn from_cbor(val: serde_cbor::Value) -> Result<Epoch, Box<dyn Error>> {
@@ -63,7 +62,7 @@ impl Epoch {
                 }
             }
         }
-        return Ok(epoch);
+        Ok(epoch)
     }
 
     pub fn to_json(&self) -> serde_json::Value {
@@ -79,7 +78,7 @@ impl Epoch {
         map.insert("epoch".to_string(), serde_json::Value::from(self.epoch));
         map.insert("subsets".to_string(), serde_json::Value::from(subsets));
 
-        return serde_json::Value::from(map);
+        serde_json::Value::from(map)
     }
 }
 

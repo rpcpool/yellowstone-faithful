@@ -1,10 +1,8 @@
-use cid::Cid;
-
-use std::error::Error;
-
-use std::vec::Vec;
-
-use crate::node::Kind;
+use {
+    crate::node::Kind,
+    cid::Cid,
+    std::{error::Error, vec::Vec},
+};
 
 // type Subset struct {
 // 	Kind   int
@@ -24,7 +22,7 @@ impl Subset {
     pub fn from_bytes(data: Vec<u8>) -> Result<Subset, Box<dyn Error>> {
         let decoded_data: serde_cbor::Value = serde_cbor::from_slice(&data).unwrap();
         let subset = Subset::from_cbor(decoded_data)?;
-        return Ok(subset);
+        Ok(subset)
     }
 
     // from serde_cbor::Value
@@ -70,7 +68,7 @@ impl Subset {
                 }
             }
         }
-        return Ok(subset);
+        Ok(subset)
     }
 
     pub fn to_json(&self) -> serde_json::Value {
@@ -87,7 +85,7 @@ impl Subset {
         map.insert("last".to_string(), serde_json::Value::from(self.last));
         map.insert("blocks".to_string(), serde_json::Value::from(blocks));
 
-        return serde_json::Value::from(map);
+        serde_json::Value::from(map)
     }
 }
 
