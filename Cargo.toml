@@ -1,8 +1,8 @@
 [workspace]
 members = [
-    "block-cache-proto",
     "geyser-plugin-runner",
     "geyser-plugin-runner/demo-plugin",
+    "old-faithful-proto",
     "txstatus",
 ]
 resolver = "2"

@@ -632,17 +632,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "block-cache-proto"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "prost 0.12.6",
- "protobuf-src",
- "tonic 0.11.0",
- "tonic-build 0.11.0",
-]
-
-[[package]]
 name = "block-padding"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3143,6 +3132,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9bedf36ffb6ba96c2eb7144ef6270557b52e54b20c0a8e1eb2ff99a6c6959bff"
 dependencies = [
  "asn1-rs",
+]
+
+[[package]]
+name = "old-faithful-proto"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "prost 0.12.6",
+ "protobuf-src",
+ "tonic 0.11.0",
+ "tonic-build 0.11.0",
 ]
 
 [[package]]

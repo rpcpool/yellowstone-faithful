@@ -27,7 +27,7 @@ message BlockResponse {
   int64 block_time = 5;
   uint64 block_height = 6;
   repeated Transaction transactions = 7;
-  repeated bytes rewards = 8; // serialized old-faithful format
+  repeated bytes rewards = 8;
 }
 
 message TransactionRequest {

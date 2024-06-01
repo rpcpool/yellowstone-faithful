@@ -1,5 +1,5 @@
 [package]
-name = "block-cache-proto"
+name = "old-faithful-proto"
 version = "0.1.0"
 edition = "2021"
 publish = false
