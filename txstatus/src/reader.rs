@@ -253,7 +253,8 @@ mod tests {
         assert_eq!(4, d.remaining());
 
         let n = d.read_u16().unwrap();
-        assert_eq!(2, n);
+        assert_eq!(0, n);
+        assert_eq!(2, d.remaining());
 
         let n = d.read_u16().unwrap();
         assert_eq!(33, n);
