@@ -57,10 +57,10 @@ install-protoc:
 	@mkdir -p $$(pwd)/third_party/protoc
 	@echo "Getting the latest release of protoc from github.com/protocolbuffers/protobuf..."
 	@cd $$(pwd)/third_party/protoc && \
-		wget https://github.com/protocolbuffers/protobuf/releases/download/v23.1/protoc-23.1-linux-x86_64.zip
+		wget https://github.com/protocolbuffers/protobuf/releases/download/v27.1/protoc-27.1-linux-x86_64.zip
 	@echo "Unzipping protoc..."
 	@cd $$(pwd)/third_party/protoc && \
-		unzip protoc-23.1-linux-x86_64.zip
+		unzip protoc-27.1-linux-x86_64.zip
 	@echo "Installing protoc-gen-go..."
 	@go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
 	@go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
@@ -76,3 +76,13 @@ gen-proto: install-protoc
 		--go_out=paths=source_relative:$$(pwd)/third_party/solana_proto/transaction_by_addr \
 		-I=$$(pwd)/third_party/solana_proto/transaction_by_addr/ \
 		$$(pwd)/third_party/solana_proto/transaction_by_addr/transaction_by_addr.proto
+gen-old-faithful-proto: install-protoc
+	@mkdir -p $$(pwd)/old-faithful-proto/old-faithful-grpc
+	@echo "Generating golang protobuf for old-faithful..."
+	# the proto file is in old-faithful-proto/proto ; generate go code in old-faithful-proto/faithful-grpc
+	$$(pwd)/third_party/protoc/bin/protoc \
+		--experimental_allow_proto3_optional \
+		--go_out=paths=source_relative:$$(pwd)/old-faithful-proto/old-faithful-grpc \
+		--go-grpc_out=paths=source_relative:$$(pwd)/old-faithful-proto/old-faithful-grpc \
+		-I=$$(pwd)/old-faithful-proto/proto/ \
+		$$(pwd)/old-faithful-proto/proto/old-faithful.proto
