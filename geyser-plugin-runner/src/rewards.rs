@@ -1,9 +1,7 @@
-use std::error::Error;
-use std::vec::Vec;
-
-use crate::dataframe;
-use crate::node::Kind;
-use crate::utils::Buffer;
+use {
+    crate::{dataframe, node::Kind, utils::Buffer},
+    std::{error::Error, vec::Vec},
+};
 
 // type Rewards struct {
 // 	Kind int
@@ -21,7 +19,7 @@ impl Rewards {
     pub fn from_bytes(data: Vec<u8>) -> Result<Rewards, Box<dyn Error>> {
         let decoded_data: serde_cbor::Value = serde_cbor::from_slice(&data).unwrap();
         let rewards = Rewards::from_cbor(decoded_data)?;
-        return Ok(rewards);
+        Ok(rewards)
     }
 
     // from serde_cbor::Value
@@ -65,7 +63,7 @@ impl Rewards {
                     dataframe::DataFrame::from_cbor(serde_cbor::Value::Array(data.clone()))?;
             }
         }
-        return Ok(rewards);
+        Ok(rewards)
     }
 
     pub fn to_json(&self) -> serde_json::Value {
@@ -74,19 +72,18 @@ impl Rewards {
         map.insert("slot".to_string(), serde_json::Value::from(self.slot));
         map.insert("data".to_string(), self.data.to_json());
 
-        return serde_json::Value::from(map);
+        serde_json::Value::from(map)
     }
 
     /// Returns whether the rewards data is complete or is split into multiple dataframes.
     pub fn is_complete(&self) -> bool {
-        return self.data.next.is_none() || self.data.next.as_ref().unwrap().len() == 0;
+        self.data.next.is_none() || self.data.next.as_ref().unwrap().is_empty()
     }
 }
 
 #[cfg(test)]
 mod rewards_tests {
-    use super::*;
-    use cid::Cid;
+    use {super::*, cid::Cid};
 
     #[test]
     fn test_rewards() {

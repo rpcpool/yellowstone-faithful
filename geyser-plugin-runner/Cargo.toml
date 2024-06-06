@@ -2,38 +2,25 @@
 name = "demo-rust-ipld-car"
 version = "0.1.0"
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+publish = false
 
 [dependencies]
-cbor = { workspace = true }
-byteorder = { workspace = true }
 base64 = { workspace = true }
+bincode = { workspace = true }
+cid = { workspace = true }
+crc = { workspace = true }
+crossbeam-channel = { workspace = true }
+fnv = { workspace = true }
+multihash = { workspace = true }
+prost_011 = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_cbor = { workspace = true }
 serde_json = { workspace = true }
-integer-encoding = { workspace = true }
-bs58 = { workspace = true }
-hex = { workspace = true }
-cid = { workspace = true }
-multihash = { workspace = true }
-solana-sdk = { workspace = true }
-bincode = { workspace = true }
-crc = { workspace = true }
-fnv = { workspace = true }
-solana-storage-proto = { workspace = true }
-bytes = { workspace = true }
-"solana-transaction-status" = { workspace = true }
-prost = { workspace = true }
-zstd = { workspace = true }
-anyhow = { workspace = true }
-thiserror = { workspace = true }
-# for geyser:
-solana-geyser-plugin-manager = { workspace = true }
-crossbeam-channel = { workspace = true }
-solana-rpc = { workspace = true }
-borsh = { workspace = true }
-solana-program = { workspace = true }
-solana-ledger = { workspace = true }
-solana-entry = { workspace = true }
 solana-accounts-db = { workspace = true }
+solana-entry = { workspace = true }
+solana-geyser-plugin-manager = { workspace = true }
+solana-rpc = { workspace = true }
+solana-sdk = { workspace = true }
+solana-storage-proto = { workspace = true }
+solana-transaction-status = { workspace = true }
+zstd = { workspace = true }

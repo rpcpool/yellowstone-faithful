@@ -1,0 +1,46 @@
+syntax = "proto3";
+
+package OldFaithful;
+
+service OldFaithful {
+  rpc GetVersion(VersionRequest) returns (VersionResponse);
+
+  rpc GetBlock(BlockRequest) returns (BlockResponse);
+  rpc GetTransaction(TransactionRequest) returns (TransactionResponse);
+}
+
+message VersionRequest {}
+
+message VersionResponse {
+  string version = 1;
+}
+
+message BlockRequest {
+  uint64 slot = 1;
+}
+
+message BlockResponse {
+  bytes previous_blockhash = 1;
+  bytes blockhash = 2;
+  uint64 parent_slot = 3;
+  uint64 slot = 4;
+  int64 block_time = 5;
+  uint64 block_height = 6;
+  repeated Transaction transactions = 7;
+  repeated bytes rewards = 8;
+}
+
+message TransactionRequest {
+  bytes signature = 1;
+}
+
+message TransactionResponse {
+  Transaction transaction = 1;
+  uint64 slot = 2;
+  int64 block_time = 3;
+}
+
+message Transaction {
+  bytes transaction = 1;
+  bytes meta = 2; // bincode or protobuf
+}
