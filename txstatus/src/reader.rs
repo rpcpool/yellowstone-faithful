@@ -242,18 +242,18 @@ mod tests {
 
         let n = d.read_u16().unwrap();
         assert_eq!(18360, n);
-        assert_eq!(6, d.remaining());
+        assert_eq!(8, d.remaining());
 
         let n = d.read_u16().unwrap();
         assert_eq!(28917, n);
-        assert_eq!(4, d.remaining());
+        assert_eq!(6, d.remaining());
 
         let n = d.read_u16().unwrap();
         assert_eq!(1023, n);
-        assert_eq!(2, d.remaining());
+        assert_eq!(4, d.remaining());
 
         let n = d.read_u16().unwrap();
-        assert_eq!(0, n);
+        assert_eq!(2, n);
 
         let n = d.read_u16().unwrap();
         assert_eq!(33, n);
