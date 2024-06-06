@@ -14,8 +14,6 @@ message VersionRequest {}
 
 message VersionResponse {
   string version = 1;
-  string commit = 2;
-  repeated uint64 epochs = 3; 
 }
 
 message BlockRequest {
@@ -41,11 +39,11 @@ message TransactionResponse {
   Transaction transaction = 1;
   uint64 slot = 2;
   int64 block_time = 3;
-  optional uint64 position = 4; // position in the block
+  optional uint64 index = 4; // position in the block
 }
 
 message Transaction {
-  bytes transaction = 1;          // solana native transaction
-  bytes meta = 2;                 // bincode or protobuf
-  optional uint64 position = 4;   // position in the block
+  bytes transaction = 1;     // solana native transaction
+  bytes meta = 2;            // bincode or protobuf
+  optional uint64 index = 4; // position in the block
 }

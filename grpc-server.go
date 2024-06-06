@@ -55,8 +55,6 @@ func (me *MultiEpoch) GetVersion(context.Context, *old_faithful_grpc.VersionRequ
 			}
 			return GitTag
 		}(),
-		Commit: GitCommit,
-		Epochs: me.GetEpochNumbers(),
 	}
 	return resp, nil
 }
@@ -292,7 +290,7 @@ func (multi *MultiEpoch) GetBlock(ctx context.Context, params *old_faithful_grpc
 			{
 				pos, ok := transactionNode.GetPositionIndex()
 				if ok {
-					txResp.Position = ptrToUint64(uint64(pos))
+					txResp.Index = ptrToUint64(uint64(pos))
 				}
 				txResp.Transaction, txResp.Meta, err = getTransactionAndMetaFromNode(transactionNode, epochHandler.GetDataFrameByCid)
 				if err != nil {
@@ -305,10 +303,10 @@ func (multi *MultiEpoch) GetBlock(ctx context.Context, params *old_faithful_grpc
 	}
 
 	sort.Slice(allTransactions, func(i, j int) bool {
-		if allTransactions[i].Position == nil || allTransactions[j].Position == nil {
+		if allTransactions[i].Index == nil || allTransactions[j].Index == nil {
 			return false
 		}
-		return *allTransactions[i].Position < *allTransactions[j].Position
+		return *allTransactions[i].Index < *allTransactions[j].Index
 	})
 	tim.time("get transactions")
 	resp.Transactions = allTransactions
@@ -421,7 +419,7 @@ func (multi *MultiEpoch) GetTransaction(ctx context.Context, params *old_faithfu
 	{
 		pos, ok := transactionNode.GetPositionIndex()
 		if ok {
-			response.Position = ptrToUint64(uint64(pos))
+			response.Index = ptrToUint64(uint64(pos))
 		}
 		response.Transaction.Transaction, response.Transaction.Meta, err = getTransactionAndMetaFromNode(transactionNode, epochHandler.GetDataFrameByCid)
 		if err != nil {
