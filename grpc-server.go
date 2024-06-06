@@ -203,7 +203,6 @@ func (multi *MultiEpoch) GetBlock(ctx context.Context, params *old_faithful_grpc
 			}
 		}
 	}
-	blocktime := uint64(block.Meta.Blocktime)
 
 	allTransactionNodes := make([][]*ipldbindcode.Transaction, len(block.Entries))
 	mu := &sync.Mutex{}
@@ -293,7 +292,7 @@ func (multi *MultiEpoch) GetBlock(ctx context.Context, params *old_faithful_grpc
 			{
 				pos, ok := transactionNode.GetPositionIndex()
 				if ok {
-					txResp.Position = uint64(pos)
+					txResp.Position = ptrToUint64(uint64(pos))
 				}
 				txResp.Transaction, txResp.Meta, err = getTransactionAndMetaFromNode(transactionNode, epochHandler.GetDataFrameByCid)
 				if err != nil {
@@ -306,10 +305,14 @@ func (multi *MultiEpoch) GetBlock(ctx context.Context, params *old_faithful_grpc
 	}
 
 	sort.Slice(allTransactions, func(i, j int) bool {
-		return allTransactions[i].Position < allTransactions[j].Position
+		if allTransactions[i].Position == nil || allTransactions[j].Position == nil {
+			return false
+		}
+		return *allTransactions[i].Position < *allTransactions[j].Position
 	})
 	tim.time("get transactions")
 	resp.Transactions = allTransactions
+	blocktime := uint64(block.Meta.Blocktime)
 	if blocktime != 0 {
 		resp.BlockTime = int64(blocktime)
 	}
@@ -418,7 +421,7 @@ func (multi *MultiEpoch) GetTransaction(ctx context.Context, params *old_faithfu
 	{
 		pos, ok := transactionNode.GetPositionIndex()
 		if ok {
-			response.Position = uint64(pos)
+			response.Position = ptrToUint64(uint64(pos))
 		}
 		response.Transaction.Transaction, response.Transaction.Meta, err = getTransactionAndMetaFromNode(transactionNode, epochHandler.GetDataFrameByCid)
 		if err != nil {
