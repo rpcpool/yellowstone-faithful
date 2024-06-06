@@ -45,13 +45,13 @@ func newCmd_rpc() *cli.Command {
 			&cli.StringFlag{
 				Name:        "listen",
 				Usage:       "Listen address",
-				Value:       ":8899",
+				Value:       "", // If empty, JSON RPC server is not started
 				Destination: &listenOn,
 			},
 			&cli.StringFlag{
 				Name:        "grpc-listen",
 				Usage:       "Listen address for gRPC",
-				Value:       ":8898",
+				Value:       "", // If empty, gRPC server is not started
 				Destination: &grpcListenOn,
 			},
 			&cli.BoolFlag{
@@ -104,6 +104,9 @@ func newCmd_rpc() *cli.Command {
 			},
 		),
 		Action: func(c *cli.Context) error {
+			if listenOn == "" && grpcListenOn == "" {
+				return cli.Exit("either --listen or --grpc-listen must be provided (or both)", 1)
+			}
 			src := c.Args().Slice()
 			configFiles, err := GetListOfConfigFiles(
 				src,
@@ -331,13 +334,15 @@ func newCmd_rpc() *cli.Command {
 					return nil
 				})
 			}
-			allListeners.Go(func() error {
-				err := multi.ListenAndServe(c.Context, listenOn, listenerConfig)
-				if err != nil {
-					return fmt.Errorf("failed to start JSON RPC server: %w", err)
-				}
-				return nil
-			})
+			if listenOn != "" {
+				allListeners.Go(func() error {
+					err := multi.ListenAndServe(c.Context, listenOn, listenerConfig)
+					if err != nil {
+						return fmt.Errorf("failed to start JSON RPC server: %w", err)
+					}
+					return nil
+				})
+			}
 
 			return allListeners.Wait()
 		},
