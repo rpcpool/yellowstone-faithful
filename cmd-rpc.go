@@ -32,6 +32,7 @@ func newCmd_rpc() *cli.Command {
 	var epochSearchConcurrency int
 	var epochLoadConcurrency int
 	var maxCacheSizeMB int
+	var grpcListenOn string
 	return &cli.Command{
 		Name:        "rpc",
 		Usage:       "Start a Solana JSON RPC server.",
@@ -46,6 +47,12 @@ func newCmd_rpc() *cli.Command {
 				Usage:       "Listen address",
 				Value:       ":8899",
 				Destination: &listenOn,
+			},
+			&cli.StringFlag{
+				Name:        "grpc-listen",
+				Usage:       "Listen address for gRPC",
+				Value:       ":8898",
+				Destination: &grpcListenOn,
 			},
 			&cli.BoolFlag{
 				Name:        "gsfa-only-signatures",
@@ -313,8 +320,26 @@ func newCmd_rpc() *cli.Command {
 					ProxyConfig: proxyConfig,
 				}
 			}
+			allListeners := new(errgroup.Group)
 
-			return multi.ListenAndServe(c.Context, listenOn, listenerConfig)
+			if grpcListenOn != "" {
+				allListeners.Go(func() error {
+					err := multi.ListenAndServeGRPC(c.Context, grpcListenOn)
+					if err != nil {
+						return fmt.Errorf("failed to start gRPC server: %w", err)
+					}
+					return nil
+				})
+			}
+			allListeners.Go(func() error {
+				err := multi.ListenAndServe(c.Context, listenOn, listenerConfig)
+				if err != nil {
+					return fmt.Errorf("failed to start JSON RPC server: %w", err)
+				}
+				return nil
+			})
+
+			return allListeners.Wait()
 		},
 	}
 }

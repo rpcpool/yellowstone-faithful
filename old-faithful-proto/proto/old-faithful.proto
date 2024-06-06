@@ -1,6 +1,7 @@
 syntax = "proto3";
 
 package OldFaithful;
+option go_package = "github.com/rpcpool/yellowstone-faithful/old-faithful-proto;old_faithful_grpc";
 
 service OldFaithful {
   rpc GetVersion(VersionRequest) returns (VersionResponse);
@@ -13,6 +14,8 @@ message VersionRequest {}
 
 message VersionResponse {
   string version = 1;
+  string commit = 2;
+  repeated uint64 epochs = 3; 
 }
 
 message BlockRequest {
@@ -27,7 +30,7 @@ message BlockResponse {
   int64 block_time = 5;
   uint64 block_height = 6;
   repeated Transaction transactions = 7;
-  repeated bytes rewards = 8;
+  bytes rewards = 8;
 }
 
 message TransactionRequest {
@@ -38,9 +41,11 @@ message TransactionResponse {
   Transaction transaction = 1;
   uint64 slot = 2;
   int64 block_time = 3;
+  uint64 position = 4;
 }
 
 message Transaction {
   bytes transaction = 1;
   bytes meta = 2; // bincode or protobuf
+  uint64 position = 4;
 }

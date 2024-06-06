@@ -210,3 +210,26 @@ func parseTransactionAndMetaFromNode(
 	}
 	return
 }
+
+func getTransactionAndMetaFromNode(
+	transactionNode *ipldbindcode.Transaction,
+	dataFrameGetter func(ctx context.Context, wantedCid cid.Cid) (*ipldbindcode.DataFrame, error),
+) ([]byte, []byte, error) {
+	transactionBuffer, err := loadDataFromDataFrames(&transactionNode.Data, dataFrameGetter)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to load transaction: %w", err)
+	}
+
+	metaBuffer, err := loadDataFromDataFrames(&transactionNode.Metadata, dataFrameGetter)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to load metadata: %w", err)
+	}
+	if len(metaBuffer) > 0 {
+		uncompressedMeta, err := decompressZstd(metaBuffer)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to decompress metadata: %w", err)
+		}
+		return transactionBuffer, uncompressedMeta, nil
+	}
+	return transactionBuffer, nil, nil
+}
