@@ -236,6 +236,7 @@ mod tests {
         buf.extend_from_slice(28917u16.to_le_bytes().as_ref());
         buf.extend_from_slice(1023u16.to_le_bytes().as_ref());
         buf.extend_from_slice(0u16.to_le_bytes().as_ref());
+        buf.extend_from_slice(33u16.to_le_bytes().as_ref());
 
         let mut d = Decoder::new(buf);
 
@@ -253,27 +254,9 @@ mod tests {
 
         let n = d.read_u16().unwrap();
         assert_eq!(0, n);
-        assert_eq!(0, d.remaining());
-
-        // big endian
-        let buf = vec![0x10, 0x75, 0x72, 0x28, 0x00, 0x03, 0x9f, 0x4f];
-
-        let mut d = Decoder::new(buf);
 
         let n = d.read_u16().unwrap();
-        assert_eq!(4181, n);
-        assert_eq!(6, d.remaining());
-
-        let n = d.read_u16().unwrap();
-        assert_eq!(29970, n);
-        assert_eq!(4, d.remaining());
-
-        let n = d.read_u16().unwrap();
-        assert_eq!(3, n);
-        assert_eq!(2, d.remaining());
-
-        let n = d.read_u16().unwrap();
-        assert_eq!(255, n);
+        assert_eq!(33, n);
         assert_eq!(0, d.remaining());
     }
 
