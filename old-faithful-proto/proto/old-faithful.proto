@@ -62,8 +62,19 @@ message GetRequest {
 message GetResponse {
   uint64 id = 1;
   oneof response {
-    VersionResponse version = 2;
-    BlockResponse block = 3;
-    TransactionResponse transaction = 4;
+    GetResponseError error = 2;
+    VersionResponse version = 3;
+    BlockResponse block = 4;
+    TransactionResponse transaction = 5;
   }
+}
+
+enum GetResponseErrorCode {
+  INTERNAL = 0;
+  NOT_FOUND = 1;
+}
+
+message GetResponseError {
+  GetResponseErrorCode code = 1;
+  string message = 2;
 }
