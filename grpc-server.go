@@ -456,7 +456,7 @@ func (multi *MultiEpoch) Get(ser old_faithful_grpc.OldFaithful_GetServer) error 
 			if err != nil {
 				gerr, ok := status.FromError(err)
 				if ok {
-					return ser.Send(&old_faithful_grpc.GetResponse{
+					err := ser.Send(&old_faithful_grpc.GetResponse{
 						Id: id,
 						Response: &old_faithful_grpc.GetResponse_Error{
 							Error: &old_faithful_grpc.GetResponseError{
@@ -472,6 +472,10 @@ func (multi *MultiEpoch) Get(ser old_faithful_grpc.OldFaithful_GetServer) error 
 							},
 						},
 					})
+					if err != nil {
+						return status.Errorf(codes.Internal, "request %d; failed to send block error response: %v", id, err)
+					}
+					continue
 				}
 				return status.Errorf(codes.Internal, "request %d; failed to get block: %v", id, err)
 			}
@@ -487,7 +491,7 @@ func (multi *MultiEpoch) Get(ser old_faithful_grpc.OldFaithful_GetServer) error 
 			if err != nil {
 				gerr, ok := status.FromError(err)
 				if ok {
-					return ser.Send(&old_faithful_grpc.GetResponse{
+					err := ser.Send(&old_faithful_grpc.GetResponse{
 						Id: id,
 						Response: &old_faithful_grpc.GetResponse_Error{
 							Error: &old_faithful_grpc.GetResponseError{
@@ -503,6 +507,10 @@ func (multi *MultiEpoch) Get(ser old_faithful_grpc.OldFaithful_GetServer) error 
 							},
 						},
 					})
+					if err != nil {
+						return status.Errorf(codes.Internal, "request %d; failed to send transaction error response: %v", id, err)
+					}
+					continue
 				}
 				return status.Errorf(codes.Internal, "request %d; failed to get transaction: %v", id, err)
 			}
@@ -518,7 +526,7 @@ func (multi *MultiEpoch) Get(ser old_faithful_grpc.OldFaithful_GetServer) error 
 			if err != nil {
 				gerr, ok := status.FromError(err)
 				if ok {
-					return ser.Send(&old_faithful_grpc.GetResponse{
+					err := ser.Send(&old_faithful_grpc.GetResponse{
 						Id: id,
 						Response: &old_faithful_grpc.GetResponse_Error{
 							Error: &old_faithful_grpc.GetResponseError{
@@ -534,6 +542,10 @@ func (multi *MultiEpoch) Get(ser old_faithful_grpc.OldFaithful_GetServer) error 
 							},
 						},
 					})
+					if err != nil {
+						return status.Errorf(codes.Internal, "request %d; failed to send version error response: %v", id, err)
+					}
+					continue
 				}
 				return status.Errorf(codes.Internal, "request %d; failed to get version: %v", id, err)
 			}
