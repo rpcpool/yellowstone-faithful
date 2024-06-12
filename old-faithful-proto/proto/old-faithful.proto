@@ -8,6 +8,8 @@ service OldFaithful {
 
   rpc GetBlock(BlockRequest) returns (BlockResponse);
   rpc GetTransaction(TransactionRequest) returns (TransactionResponse);
+
+  rpc Get(stream GetRequest) returns (stream GetResponse);
 }
 
 message VersionRequest {}
@@ -46,4 +48,33 @@ message Transaction {
   bytes transaction = 1;     // solana native transaction
   bytes meta = 2;            // bincode or protobuf
   optional uint64 index = 4; // position in the block
+}
+
+message GetRequest {
+  uint64 id = 1;
+  oneof request {
+    VersionRequest version = 2;
+    BlockRequest block = 3;
+    TransactionRequest transaction = 4;
+  }
+}
+
+message GetResponse {
+  uint64 id = 1;
+  oneof response {
+    GetResponseError error = 2;
+    VersionResponse version = 3;
+    BlockResponse block = 4;
+    TransactionResponse transaction = 5;
+  }
+}
+
+enum GetResponseErrorCode {
+  INTERNAL = 0;
+  NOT_FOUND = 1;
+}
+
+message GetResponseError {
+  GetResponseErrorCode code = 1;
+  string message = 2;
 }
