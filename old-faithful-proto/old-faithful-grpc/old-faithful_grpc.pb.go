@@ -22,6 +22,7 @@ const (
 	OldFaithful_GetVersion_FullMethodName     = "/OldFaithful.OldFaithful/GetVersion"
 	OldFaithful_GetBlock_FullMethodName       = "/OldFaithful.OldFaithful/GetBlock"
 	OldFaithful_GetTransaction_FullMethodName = "/OldFaithful.OldFaithful/GetTransaction"
+	OldFaithful_Get_FullMethodName            = "/OldFaithful.OldFaithful/Get"
 )
 
 // OldFaithfulClient is the client API for OldFaithful service.
@@ -31,6 +32,7 @@ type OldFaithfulClient interface {
 	GetVersion(ctx context.Context, in *VersionRequest, opts ...grpc.CallOption) (*VersionResponse, error)
 	GetBlock(ctx context.Context, in *BlockRequest, opts ...grpc.CallOption) (*BlockResponse, error)
 	GetTransaction(ctx context.Context, in *TransactionRequest, opts ...grpc.CallOption) (*TransactionResponse, error)
+	Get(ctx context.Context, opts ...grpc.CallOption) (OldFaithful_GetClient, error)
 }
 
 type oldFaithfulClient struct {
@@ -71,6 +73,38 @@ func (c *oldFaithfulClient) GetTransaction(ctx context.Context, in *TransactionR
 	return out, nil
 }
 
+func (c *oldFaithfulClient) Get(ctx context.Context, opts ...grpc.CallOption) (OldFaithful_GetClient, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &OldFaithful_ServiceDesc.Streams[0], OldFaithful_Get_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &oldFaithfulGetClient{ClientStream: stream}
+	return x, nil
+}
+
+type OldFaithful_GetClient interface {
+	Send(*GetRequest) error
+	Recv() (*GetResponse, error)
+	grpc.ClientStream
+}
+
+type oldFaithfulGetClient struct {
+	grpc.ClientStream
+}
+
+func (x *oldFaithfulGetClient) Send(m *GetRequest) error {
+	return x.ClientStream.SendMsg(m)
+}
+
+func (x *oldFaithfulGetClient) Recv() (*GetResponse, error) {
+	m := new(GetResponse)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 // OldFaithfulServer is the server API for OldFaithful service.
 // All implementations must embed UnimplementedOldFaithfulServer
 // for forward compatibility
@@ -78,6 +112,7 @@ type OldFaithfulServer interface {
 	GetVersion(context.Context, *VersionRequest) (*VersionResponse, error)
 	GetBlock(context.Context, *BlockRequest) (*BlockResponse, error)
 	GetTransaction(context.Context, *TransactionRequest) (*TransactionResponse, error)
+	Get(OldFaithful_GetServer) error
 	mustEmbedUnimplementedOldFaithfulServer()
 }
 
@@ -93,6 +128,9 @@ func (UnimplementedOldFaithfulServer) GetBlock(context.Context, *BlockRequest) (
 }
 func (UnimplementedOldFaithfulServer) GetTransaction(context.Context, *TransactionRequest) (*TransactionResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetTransaction not implemented")
+}
+func (UnimplementedOldFaithfulServer) Get(OldFaithful_GetServer) error {
+	return status.Errorf(codes.Unimplemented, "method Get not implemented")
 }
 func (UnimplementedOldFaithfulServer) mustEmbedUnimplementedOldFaithfulServer() {}
 
@@ -161,6 +199,32 @@ func _OldFaithful_GetTransaction_Handler(srv interface{}, ctx context.Context, d
 	return interceptor(ctx, in, info, handler)
 }
 
+func _OldFaithful_Get_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(OldFaithfulServer).Get(&oldFaithfulGetServer{ServerStream: stream})
+}
+
+type OldFaithful_GetServer interface {
+	Send(*GetResponse) error
+	Recv() (*GetRequest, error)
+	grpc.ServerStream
+}
+
+type oldFaithfulGetServer struct {
+	grpc.ServerStream
+}
+
+func (x *oldFaithfulGetServer) Send(m *GetResponse) error {
+	return x.ServerStream.SendMsg(m)
+}
+
+func (x *oldFaithfulGetServer) Recv() (*GetRequest, error) {
+	m := new(GetRequest)
+	if err := x.ServerStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 // OldFaithful_ServiceDesc is the grpc.ServiceDesc for OldFaithful service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -181,6 +245,13 @@ var OldFaithful_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _OldFaithful_GetTransaction_Handler,
 		},
 	},
-	Streams:  []grpc.StreamDesc{},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "Get",
+			Handler:       _OldFaithful_Get_Handler,
+			ServerStreams: true,
+			ClientStreams: true,
+		},
+	},
 	Metadata: "old-faithful.proto",
 }
