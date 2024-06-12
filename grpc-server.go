@@ -454,6 +454,10 @@ func (multi *MultiEpoch) Get(ser old_faithful_grpc.OldFaithful_GetServer) error 
 			params := req.GetBlock()
 			resp, err := multi.GetBlock(ctx, params)
 			if err != nil {
+				gerr, ok := status.FromError(err)
+				if ok {
+					return status.Errorf(gerr.Code(), "request %d; failed to get block: %v", id, gerr.Message())
+				}
 				return status.Errorf(codes.Internal, "request %d; failed to get block: %v", id, err)
 			}
 			if err := ser.Send(&old_faithful_grpc.GetResponse{
@@ -466,6 +470,10 @@ func (multi *MultiEpoch) Get(ser old_faithful_grpc.OldFaithful_GetServer) error 
 			params := req.GetTransaction()
 			resp, err := multi.GetTransaction(ctx, params)
 			if err != nil {
+				gerr, ok := status.FromError(err)
+				if ok {
+					return status.Errorf(gerr.Code(), "request %d; failed to get transaction: %v", id, gerr.Message())
+				}
 				return status.Errorf(codes.Internal, "request %d; failed to get transaction: %v", id, err)
 			}
 			if err := ser.Send(&old_faithful_grpc.GetResponse{
@@ -478,6 +486,10 @@ func (multi *MultiEpoch) Get(ser old_faithful_grpc.OldFaithful_GetServer) error 
 			params := req.GetVersion()
 			resp, err := multi.GetVersion(ctx, params)
 			if err != nil {
+				gerr, ok := status.FromError(err)
+				if ok {
+					return status.Errorf(gerr.Code(), "request %d; failed to get version: %v", id, gerr.Message())
+				}
 				return status.Errorf(codes.Internal, "request %d; failed to get version: %v", id, err)
 			}
 			if err := ser.Send(&old_faithful_grpc.GetResponse{
