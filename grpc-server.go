@@ -456,7 +456,22 @@ func (multi *MultiEpoch) Get(ser old_faithful_grpc.OldFaithful_GetServer) error 
 			if err != nil {
 				gerr, ok := status.FromError(err)
 				if ok {
-					return status.Errorf(gerr.Code(), "request %d; failed to get block: %v", id, gerr.Message())
+					return ser.Send(&old_faithful_grpc.GetResponse{
+						Id: id,
+						Response: &old_faithful_grpc.GetResponse_Error{
+							Error: &old_faithful_grpc.GetResponseError{
+								Code: func() old_faithful_grpc.GetResponseErrorCode {
+									switch gerr.Code() {
+									case codes.NotFound:
+										return old_faithful_grpc.GetResponseErrorCode_NOT_FOUND
+									default:
+										return old_faithful_grpc.GetResponseErrorCode_INTERNAL
+									}
+								}(),
+								Message: gerr.Message(),
+							},
+						},
+					})
 				}
 				return status.Errorf(codes.Internal, "request %d; failed to get block: %v", id, err)
 			}
@@ -472,7 +487,22 @@ func (multi *MultiEpoch) Get(ser old_faithful_grpc.OldFaithful_GetServer) error 
 			if err != nil {
 				gerr, ok := status.FromError(err)
 				if ok {
-					return status.Errorf(gerr.Code(), "request %d; failed to get transaction: %v", id, gerr.Message())
+					return ser.Send(&old_faithful_grpc.GetResponse{
+						Id: id,
+						Response: &old_faithful_grpc.GetResponse_Error{
+							Error: &old_faithful_grpc.GetResponseError{
+								Code: func() old_faithful_grpc.GetResponseErrorCode {
+									switch gerr.Code() {
+									case codes.NotFound:
+										return old_faithful_grpc.GetResponseErrorCode_NOT_FOUND
+									default:
+										return old_faithful_grpc.GetResponseErrorCode_INTERNAL
+									}
+								}(),
+								Message: gerr.Message(),
+							},
+						},
+					})
 				}
 				return status.Errorf(codes.Internal, "request %d; failed to get transaction: %v", id, err)
 			}
@@ -488,7 +518,22 @@ func (multi *MultiEpoch) Get(ser old_faithful_grpc.OldFaithful_GetServer) error 
 			if err != nil {
 				gerr, ok := status.FromError(err)
 				if ok {
-					return status.Errorf(gerr.Code(), "request %d; failed to get version: %v", id, gerr.Message())
+					return ser.Send(&old_faithful_grpc.GetResponse{
+						Id: id,
+						Response: &old_faithful_grpc.GetResponse_Error{
+							Error: &old_faithful_grpc.GetResponseError{
+								Code: func() old_faithful_grpc.GetResponseErrorCode {
+									switch gerr.Code() {
+									case codes.NotFound:
+										return old_faithful_grpc.GetResponseErrorCode_NOT_FOUND
+									default:
+										return old_faithful_grpc.GetResponseErrorCode_INTERNAL
+									}
+								}(),
+								Message: gerr.Message(),
+							},
+						},
+					})
 				}
 				return status.Errorf(codes.Internal, "request %d; failed to get version: %v", id, err)
 			}
