@@ -5,7 +5,14 @@ edition = "2021"
 publish = false
 
 [dependencies]
+anyhow = { workspace = true }
+bincode = { workspace = true }
 prost = { workspace = true }
+prost_011 = { workspace = true }
+serde = { workspace = true }
+solana-sdk = { workspace = true }
+solana-storage-proto = { workspace = true }
+solana-transaction-status = { workspace = true }
 tonic = { workspace = true }
 
 [build-dependencies]

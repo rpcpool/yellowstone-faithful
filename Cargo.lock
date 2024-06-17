@@ -3139,8 +3139,14 @@ name = "old-faithful-proto"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bincode",
+ "prost 0.11.9",
  "prost 0.12.6",
  "protobuf-src",
+ "serde",
+ "solana-sdk",
+ "solana-storage-proto",
+ "solana-transaction-status",
  "tonic 0.11.0",
  "tonic-build 0.11.0",
 ]
