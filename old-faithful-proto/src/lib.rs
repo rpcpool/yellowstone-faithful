@@ -6,12 +6,14 @@ pub mod proto {
 
 pub mod decode {
     use {
-        super::{proto, solana::StoredConfirmedBlockTransaction},
+        super::{proto, solana::StoredConfirmedBlockTransactionStatusMeta},
         anyhow::Context,
         prost_011::Message,
+        solana_sdk::transaction::VersionedTransaction,
         solana_storage_proto::convert::generated,
         solana_transaction_status::{
-            ConfirmedBlock, ConfirmedTransactionWithStatusMeta, TransactionWithStatusMeta,
+            ConfirmedBlock, ConfirmedTransactionWithStatusMeta, TransactionStatusMeta,
+            TransactionWithStatusMeta, VersionedTransactionWithStatusMeta,
         },
     };
 
@@ -20,10 +22,11 @@ pub mod decode {
     }
 
     pub fn confirmed_transaction(
-        tx: proto::TransactionResponse,
+        tx: &proto::TransactionResponse,
     ) -> anyhow::Result<ConfirmedTransactionWithStatusMeta> {
         versioned_transaction(
             tx.transaction
+                .as_ref()
                 .ok_or_else(|| anyhow::anyhow!("failed to get Transaction"))?,
         )
         .map(|tx_with_meta| ConfirmedTransactionWithStatusMeta {
@@ -34,58 +37,38 @@ pub mod decode {
     }
 
     pub fn versioned_transaction(
-        tx: proto::Transaction,
+        tx: &proto::Transaction,
     ) -> anyhow::Result<TransactionWithStatusMeta> {
-        Ok(
-            match generated::ConfirmedTransaction::decode(tx.meta.as_ref()) {
+        let transaction: VersionedTransaction = bincode::deserialize(&tx.transaction)
+            .context("failed to decode VersionedTransaction")?;
+
+        let meta: TransactionStatusMeta =
+            match generated::TransactionStatusMeta::decode(tx.meta.as_ref()) {
                 Ok(meta) => meta
                     .try_into()
-                    .context("failed to decode protobuf struct to solana")?,
-                Err(_error) => bincode::deserialize::<StoredConfirmedBlockTransaction>(&tx.meta)
-                    .context("failed to decode with bincode")?
-                    .into(),
-            },
-        )
+                    .context("failed to decode protobuf of TransactionStatusMeta")?,
+                Err(_error) => {
+                    bincode::deserialize::<StoredConfirmedBlockTransactionStatusMeta>(&tx.meta)
+                        .context("failed to decode bincode of TransactionStatusMeta")?
+                        .into()
+                }
+            };
+
+        Ok(TransactionWithStatusMeta::Complete(
+            VersionedTransactionWithStatusMeta { transaction, meta },
+        ))
     }
 }
 
 mod solana {
     use {
         serde::{Deserialize, Serialize},
-        solana_sdk::{
-            message::v0::LoadedAddresses,
-            transaction::{TransactionError, VersionedTransaction},
-        },
-        solana_transaction_status::{
-            TransactionStatusMeta, TransactionWithStatusMeta, VersionedTransactionWithStatusMeta,
-        },
+        solana_sdk::{message::v0::LoadedAddresses, transaction::TransactionError},
+        solana_transaction_status::TransactionStatusMeta,
     };
 
     #[derive(Serialize, Deserialize)]
-    pub struct StoredConfirmedBlockTransaction {
-        transaction: VersionedTransaction,
-        meta: Option<StoredConfirmedBlockTransactionStatusMeta>,
-    }
-
-    impl From<StoredConfirmedBlockTransaction> for TransactionWithStatusMeta {
-        fn from(tx_with_meta: StoredConfirmedBlockTransaction) -> Self {
-            let StoredConfirmedBlockTransaction { transaction, meta } = tx_with_meta;
-            match meta {
-                None => Self::MissingMetadata(
-                    transaction
-                        .into_legacy_transaction()
-                        .expect("versioned transactions always have meta"),
-                ),
-                Some(meta) => Self::Complete(VersionedTransactionWithStatusMeta {
-                    transaction,
-                    meta: meta.into(),
-                }),
-            }
-        }
-    }
-
-    #[derive(Serialize, Deserialize)]
-    struct StoredConfirmedBlockTransactionStatusMeta {
+    pub struct StoredConfirmedBlockTransactionStatusMeta {
         err: Option<TransactionError>,
         fee: u64,
         pre_balances: Vec<u64>,
