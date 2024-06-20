@@ -23,10 +23,10 @@ pub mod decode {
         },
     };
 
-    pub fn confirmed_block(block: proto::BlockResponse) -> anyhow::Result<ConfirmedBlock> {
-        let previous_blockhash = <[u8; HASH_BYTES]>::try_from(block.previous_blockhash)
+    pub fn confirmed_block(block: &proto::BlockResponse) -> anyhow::Result<ConfirmedBlock> {
+        let previous_blockhash = <[u8; HASH_BYTES]>::try_from(block.previous_blockhash.clone())
             .map_err(|_error| anyhow::anyhow!("failed to decode previous_blockhash"))?;
-        let blockhash = <[u8; HASH_BYTES]>::try_from(block.blockhash)
+        let blockhash = <[u8; HASH_BYTES]>::try_from(block.blockhash.clone())
             .map_err(|_error| anyhow::anyhow!("failed to decode blockhash"))?;
 
         let rewards: Vec<Reward> = match generated::Rewards::decode(block.rewards.as_ref()) {

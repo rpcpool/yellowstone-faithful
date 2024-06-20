@@ -14,6 +14,36 @@ struct FixtureItem<T> {
 }
 
 #[derive(Debug, Deserialize)]
+struct FixtureConfirmedBlock {
+    #[serde(deserialize_with = "deserialize_hex")]
+    previous_blockhash: Vec<u8>,
+    #[serde(deserialize_with = "deserialize_hex")]
+    blockhash: Vec<u8>,
+    parent_slot: Slot,
+    slot: Slot,
+    block_time: UnixTimestamp,
+    block_height: Slot,
+    transactions: Vec<FixtureConfirmedTransactionInner>,
+    #[serde(deserialize_with = "deserialize_hex")]
+    rewards: Vec<u8>,
+}
+
+impl From<FixtureConfirmedBlock> for proto::BlockResponse {
+    fn from(data: FixtureConfirmedBlock) -> Self {
+        proto::BlockResponse {
+            previous_blockhash: data.previous_blockhash,
+            blockhash: data.blockhash,
+            parent_slot: data.parent_slot,
+            slot: data.slot,
+            block_time: data.block_time,
+            block_height: data.block_height,
+            transactions: data.transactions.into_iter().map(Into::into).collect(),
+            rewards: data.rewards,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
 struct FixtureConfirmedTransaction {
     transaction: FixtureConfirmedTransactionInner,
     slot: Slot,
@@ -58,6 +88,19 @@ where
     let input = String::deserialize(deserializer)?;
     const_hex::decode(input)
         .map_err(|error| de::Error::custom(format!("failed to decode hex: {error:?}")))
+}
+
+#[test]
+fn confirmed_block() {
+    let items: Vec<FixtureItem<FixtureConfirmedBlock>> =
+        serde_json::from_str(include_str!("decode_confirmed_block.json"))
+            .expect("invalid confirmed blocks");
+
+    for item in items {
+        let response: proto::BlockResponse = item.value.into();
+        let result = decode::confirmed_block(&response);
+        assert!(result.is_ok(), "failed to decode {}", item.name);
+    }
 }
 
 #[test]
