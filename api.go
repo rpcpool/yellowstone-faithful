@@ -12,6 +12,10 @@ import (
 )
 
 func (multi *MultiEpoch) apiHandler(reqCtx *fasthttp.RequestCtx) {
+	if !reqCtx.IsGet() {
+		reqCtx.SetStatusCode(fasthttp.StatusMethodNotAllowed)
+		return
+	}
 	// Add a CLI command that takes a config file (or a command line argument) pointing at slot-to-cid and sig-to-cid and looks up the CID for a given block or transaction.
 	// slot-to-cid API endpoint: /api/v1/slot-to-cid/{slot}
 	// sig-to-cid API endpoint: /api/v1/sig-to-cid/{sig}
