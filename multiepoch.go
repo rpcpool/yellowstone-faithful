@@ -299,6 +299,13 @@ func newMultiEpochHandler(handler *MultiEpoch, lsConf *ListenerConfig) func(ctx 
 					return
 				}
 			}
+			{
+				// handle the /api/v1/* endpoint
+				if strings.HasPrefix(string(reqCtx.Path()), "/api/v1/") {
+					handler.apiHandler(reqCtx)
+					return
+				}
+			}
 		}
 		{
 			// make sure the method is POST
