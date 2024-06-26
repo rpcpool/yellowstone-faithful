@@ -33,6 +33,7 @@ func newCmd_rpc() *cli.Command {
 	var epochSearchConcurrency int
 	var epochLoadConcurrency int
 	var maxCacheSizeMB int
+	var lotusAPIAddress string
 	return &cli.Command{
 		Name:        "rpc",
 		Usage:       "Start a Solana JSON RPC server.",
@@ -96,6 +97,12 @@ func newCmd_rpc() *cli.Command {
 				Value:       0,
 				Destination: &maxCacheSizeMB,
 			},
+			&cli.StringFlag{
+				Name:        "filecoin-api-address",
+				Usage:       "Address of the filecoin API to find provider info",
+				Value:       defaultLotusAPIAddress,
+				Destination: &lotusAPIAddress,
+			},
 		),
 		Action: func(c *cli.Context) error {
 			src := c.Args().Slice()
@@ -136,7 +143,6 @@ func newCmd_rpc() *cli.Command {
 			klog.Infof("Loaded %d epoch configs", len(configs))
 			klog.Info("Initializing epochs async...")
 
-			lotusAPIAddress := "https://api.node.glif.io"
 			cl := jsonrpc.NewClient(lotusAPIAddress)
 			minerInfo := splitcarfetcher.NewMinerInfo(
 				cl,
