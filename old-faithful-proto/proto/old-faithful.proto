@@ -1,12 +1,15 @@
 syntax = "proto3";
 
 package OldFaithful;
+option go_package = "github.com/rpcpool/yellowstone-faithful/old-faithful-proto;old_faithful_grpc";
 
 service OldFaithful {
   rpc GetVersion(VersionRequest) returns (VersionResponse);
 
   rpc GetBlock(BlockRequest) returns (BlockResponse);
   rpc GetTransaction(TransactionRequest) returns (TransactionResponse);
+
+  rpc Get(stream GetRequest) returns (stream GetResponse);
 }
 
 message VersionRequest {}
@@ -27,7 +30,7 @@ message BlockResponse {
   int64 block_time = 5;
   uint64 block_height = 6;
   repeated Transaction transactions = 7;
-  repeated bytes rewards = 8;
+  bytes rewards = 8; // protobuf or bincode (or empty)
 }
 
 message TransactionRequest {
@@ -38,9 +41,40 @@ message TransactionResponse {
   Transaction transaction = 1;
   uint64 slot = 2;
   int64 block_time = 3;
+  optional uint64 index = 4; // position in the block
 }
 
 message Transaction {
-  bytes transaction = 1;
-  bytes meta = 2; // bincode or protobuf
+  bytes transaction = 1;     // solana native transaction
+  bytes meta = 2;            // bincode or protobuf
+  optional uint64 index = 4; // position in the block
+}
+
+message GetRequest {
+  uint64 id = 1;
+  oneof request {
+    VersionRequest version = 2;
+    BlockRequest block = 3;
+    TransactionRequest transaction = 4;
+  }
+}
+
+message GetResponse {
+  uint64 id = 1;
+  oneof response {
+    GetResponseError error = 2;
+    VersionResponse version = 3;
+    BlockResponse block = 4;
+    TransactionResponse transaction = 5;
+  }
+}
+
+enum GetResponseErrorCode {
+  INTERNAL = 0;
+  NOT_FOUND = 1;
+}
+
+message GetResponseError {
+  GetResponseErrorCode code = 1;
+  string message = 2;
 }

@@ -15,6 +15,7 @@ import (
 	"github.com/libp2p/go-reuseport"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
+	old_faithful_grpc "github.com/rpcpool/yellowstone-faithful/old-faithful-proto/old-faithful-grpc"
 	"github.com/sourcegraph/jsonrpc2"
 	"github.com/valyala/fasthttp"
 	"github.com/valyala/fasthttp/fasthttpadaptor"
@@ -30,6 +31,7 @@ type MultiEpoch struct {
 	mu      sync.RWMutex
 	options *Options
 	epochs  map[uint64]*Epoch
+	old_faithful_grpc.UnimplementedOldFaithfulServer
 }
 
 func NewMultiEpoch(options *Options) *MultiEpoch {
