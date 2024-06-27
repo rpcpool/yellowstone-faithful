@@ -5,7 +5,7 @@ import (
 
 	"github.com/novifinancial/serde-reflection/serde-generate/runtime/golang/bincode"
 	"github.com/novifinancial/serde-reflection/serde-generate/runtime/golang/serde"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 )
 
 type CompiledInstruction struct {

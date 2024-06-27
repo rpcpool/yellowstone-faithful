@@ -2,21 +2,23 @@ package linkedlog
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
 	"os"
+	"slices"
+	"sort"
 	"sync"
 
 	"github.com/gagliardetto/solana-go"
-	"github.com/ronanh/intcomp"
-	"golang.org/x/sync/errgroup"
+	"github.com/rpcpool/yellowstone-faithful/indexes"
 )
 
 type LinkedLog struct {
 	file    *os.File
-	cache   *bufio.Writer
+	buffer  *bufio.Writer
 	mu      sync.Mutex
 	offset  uint64
 	writeMu sync.Mutex
@@ -38,10 +40,10 @@ func NewLinkedLog(filename string) (*LinkedLog, error) {
 	if err != nil {
 		return nil, err
 	}
-	cache := bufio.NewWriterSize(file, MiB*256)
+	buf := bufio.NewWriterSize(file, MiB*12)
 	ll := &LinkedLog{
-		file:  file,
-		cache: cache,
+		file:   file,
+		buffer: buf,
 	}
 	currentOffset, err := ll.getCurrentOffset()
 	if err != nil {
@@ -58,7 +60,7 @@ func (s *LinkedLog) Close() error {
 func (c *LinkedLog) close() (err error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if err = c.cache.Flush(); err != nil {
+	if err = c.buffer.Flush(); err != nil {
 		return err
 	}
 	err = c.file.Close()
@@ -68,29 +70,27 @@ func (c *LinkedLog) close() (err error) {
 	return
 }
 
-// Flush flushes the cache to disk
+// Flush flushes the buffer to disk
 func (s *LinkedLog) Flush() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.cache.Flush()
+	return s.buffer.Flush()
 }
 
 // getCurrentOffset returns the number of bytes in the file
 func (s *LinkedLog) getCurrentOffset() (uint64, error) {
-	size, err := s.getSize()
+	stat, err := s.file.Stat()
 	if err != nil {
 		return 0, err
 	}
-	return uint64(size), nil
+	return uint64(stat.Size()), nil
 }
 
-// getSize returns the size of the file in bytes
+// getSize returns the size of the file in bytes considering the buffer
 func (s *LinkedLog) getSize() (int64, error) {
-	fi, err := s.file.Stat()
-	if err != nil {
-		return 0, err
-	}
-	return fi.Size(), nil
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	return int64(s.offset), nil
 }
 
 // write writes the given bytes to the file and returns the offset at which
@@ -98,7 +98,7 @@ func (s *LinkedLog) getSize() (int64, error) {
 func (s *LinkedLog) write(b []byte) (uint64, uint32, error) {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
-	numWritten, err := s.cache.Write(b)
+	numWritten, err := s.buffer.Write(b)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -110,123 +110,147 @@ func (s *LinkedLog) write(b []byte) (uint64, uint32, error) {
 const mib = 1024 * 1024
 
 // Read reads the block stored at the given offset.
-func (s *LinkedLog) Read(offset uint64) ([]uint64, uint64, error) {
+func (s *LinkedLog) Read(offset uint64) ([]OffsetAndSizeAndBlocktime, indexes.OffsetAndSize, error) {
 	lenBuf := make([]byte, binary.MaxVarintLen64)
 	_, err := s.file.ReadAt(lenBuf, int64(offset))
 	if err != nil {
-		return nil, 0, err
+		return nil, indexes.OffsetAndSize{}, err
 	}
 	// debugln_(func() []any { return []any{"lenBuf:", bin.FormatByteSlice(lenBuf)} })
 	// Read the length of the compressed indexes
 	compactedIndexesLen, n := binary.Uvarint(lenBuf)
 	if n <= 0 {
-		return nil, 0, errors.New("invalid compacted indexes length")
+		return nil, indexes.OffsetAndSize{}, errors.New("invalid compacted indexes length")
 	}
-	if compactedIndexesLen > 256*mib {
-		return nil, 0, fmt.Errorf("compacted indexes length too large: %d", compactedIndexesLen)
+	return s.ReadWithSize(offset, compactedIndexesLen)
+}
+
+func sizeOfUvarint(n uint64) int {
+	return binary.PutUvarint(make([]byte, binary.MaxVarintLen64), n)
+}
+
+func (s *LinkedLog) ReadWithSize(offset uint64, size uint64) ([]OffsetAndSizeAndBlocktime, indexes.OffsetAndSize, error) {
+	if size > 256*mib {
+		return nil, indexes.OffsetAndSize{}, fmt.Errorf("compacted indexes length too large: %d", size)
 	}
 	// debugln("compactedIndexesLen:", compactedIndexesLen)
 	// Read the compressed indexes
-	data := make([]byte, compactedIndexesLen)
-	_, err = s.file.ReadAt(data, int64(offset)+int64(n))
+	data := make([]byte, size-uint64(sizeOfUvarint(size))) // The size bytes have already been read.
+	_, err := s.file.ReadAt(data, int64(offset)+int64(sizeOfUvarint(size)))
 	if err != nil {
-		return nil, 0, err
+		return nil, indexes.OffsetAndSize{}, err
 	}
 	// debugln_(func() []any { return []any{"data:", bin.FormatByteSlice(data)} })
-	// the indexes are up until the last 8 bytes, which are the `next` offset.
-	indexes := data[:len(data)-8]
-	nextOffset := binary.LittleEndian.Uint64(data[len(data)-8:])
+	// the indexesBytes are up until the last 8 bytes, which are the `next` offset.
+	indexesBytes := data[:len(data)-9]
+	var nextOffset indexes.OffsetAndSize
+	err = nextOffset.FromBytes(data[len(data)-9:])
+	if err != nil {
+		return nil, indexes.OffsetAndSize{}, fmt.Errorf("error while reading next offset: %w", err)
+	}
+	// fmt.Println("nextOffset:", nextOffset, offset, size, bin.FormatByteSlice(data)) // DEBUG
 	// Decompress the indexes
-	sigIndexes := intcomp.UncompressUint64(uint64SliceFromBytes(indexes), make([]uint64, 0))
+	sigIndexes, err := decompressIndexes(indexesBytes)
+	if err != nil {
+		return nil, indexes.OffsetAndSize{}, fmt.Errorf("error while decompressing indexes: %w", err)
+	}
 	return sigIndexes, nextOffset, nil
 }
 
-// Put map[PublicKey][]uint64 to file
+func decompressIndexes(data []byte) ([]OffsetAndSizeAndBlocktime, error) {
+	decompressed, err := decompressZSTD(data)
+	if err != nil {
+		return nil, fmt.Errorf("error while decompressing data: %w", err)
+	}
+	return OffsetAndSizeAndBlocktimeSliceFromBytes(decompressed)
+}
+
+type KeyToOffsetAndSizeAndBlocktimeSlice []KeyToOffsetAndSizeAndBlocktime
+
+// Has returns true if the given public key is in the slice.
+func (s KeyToOffsetAndSizeAndBlocktimeSlice) Has(key solana.PublicKey) bool {
+	for _, k := range s {
+		if k.Key == key {
+			return true
+		}
+	}
+	return false
+}
+
+type KeyToOffsetAndSizeAndBlocktime struct {
+	Key    solana.PublicKey
+	Values []*OffsetAndSizeAndBlocktime
+}
+
 func (s *LinkedLog) Put(
-	dataMap map[solana.PublicKey][]uint64,
-	callbackBefore func(pk solana.PublicKey) (uint64, error),
+	callbackBefore func(pk solana.PublicKey) (indexes.OffsetAndSize, error),
 	callbackAfter func(pk solana.PublicKey, offset uint64, ln uint32) error,
+	values ...KeyToOffsetAndSizeAndBlocktime,
 ) (uint64, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	pubkeys := make(solana.PublicKeySlice, 0, len(dataMap))
-	for k := range dataMap {
-		pubkeys = append(pubkeys, k)
-	}
-	// Sort pubkeys
-	pubkeys.Sort()
+	// sort by public key:
+	sort.Slice(values, func(i, j int) bool {
+		return bytes.Compare(values[i].Key[:], values[j].Key[:]) < 0
+	})
 
 	previousSize, err := s.getSize()
 	if err != nil {
 		return 0, err
 	}
 
-	wg := new(errgroup.Group)
-	wg.SetLimit(256)
-	for pkIndex := range pubkeys {
-		pk := pubkeys[pkIndex]
-		sigIndexes := dataMap[pk]
-		reverseUint64Slice(sigIndexes) // reverse the slice so that the most recent indexes are first
-		wg.Go(func() error {
-			compactedIndexes := intcomp.CompressUint64(sigIndexes, make([]uint64, 0))
+	for pkIndex := range values {
+		val := values[pkIndex]
+		if len(val.Values) == 0 {
+			continue
+		}
+		slices.Reverse[[]*OffsetAndSizeAndBlocktime](val.Values) // reverse the slice so that the most recent indexes are first
+		err := func() error {
+			encodedIndexes, err := createIndexesPayload(val.Values)
+			if err != nil {
+				return fmt.Errorf("error while creating payload: %w", err)
+			}
+			payloadLen := uint64(len(encodedIndexes)) + indexes.IndexValueSize_CidToOffsetAndSize
+			payloadLenAsBytes := encodeUvarint(payloadLen)
 
-			encodedIndexes := uint64SliceToBytes(compactedIndexes)
-			finalPayload := make([]byte, 0)
-
-			// Write the size of the compressed indexes
-			uvLen := encodeUvarint(uint64(len(encodedIndexes)) + 8)
-			finalPayload = append(finalPayload, uvLen...)
-			// Write the compressed indexes
+			// The payload:
+			finalPayload := make([]byte, 0, len(payloadLenAsBytes)+len(encodedIndexes)+indexes.IndexValueSize_CidToOffsetAndSize)
+			// 1/3 - the size of the compressed indexes
+			finalPayload = append(finalPayload, payloadLenAsBytes...)
+			// 2/3 - the compressed indexes
 			finalPayload = append(finalPayload, encodedIndexes...)
 
 			{
-				previousListOffset, err := callbackBefore(pk)
+				previousListOffset, err := callbackBefore(val.Key)
 				if err != nil {
 					return err
 				}
-				// Write the offset of the previous list for this pubkey:
-				finalPayload = append(finalPayload, uint64ToBytes(previousListOffset)...)
+				// 3/3 - the offset and size of the previous list for this pubkey:
+				finalPayload = append(finalPayload, previousListOffset.Bytes()...)
 			}
 
 			offset, numWrittenBytes, err := s.write(finalPayload)
 			if err != nil {
 				return err
 			}
-			return callbackAfter(pk, offset, numWrittenBytes)
-		})
+			// fmt.Printf("offset=%d, numWrittenBytes=%d ll=%d\n", offset, numWrittenBytes, ll) // DEBUG
+			// fmt.Println("finalPayload:", bin.FormatByteSlice(finalPayload))                  // DEBUG
+			return callbackAfter(val.Key, offset, numWrittenBytes)
+		}()
+		if err != nil {
+			return 0, err
+		}
 	}
-	return uint64(previousSize), wg.Wait()
+	return uint64(previousSize), nil
 }
 
-func reverseUint64Slice(s []uint64) {
-	for i, j := 0, len(s)-1; i < j; i, j = i+1, j-1 {
-		s[i], s[j] = s[j], s[i]
+func createIndexesPayload(indexes []*OffsetAndSizeAndBlocktime) ([]byte, error) {
+	buf := make([]byte, 0, 9*len(indexes))
+	for _, index := range indexes {
+		buf = append(buf, index.Bytes()...)
 	}
-}
-
-func uint64ToBytes(i uint64) []byte {
-	b := make([]byte, 8)
-	binary.LittleEndian.PutUint64(b, i)
-	return b
-}
-
-func uint64SliceFromBytes(buf []byte) []uint64 {
-	if len(buf)%8 != 0 {
-		panic(fmt.Sprintf("buf length must be a multiple of 8, got %d", len(buf)))
-	}
-	slice := make([]uint64, len(buf)/8)
-	for i := 0; i < len(slice); i++ {
-		slice[i] = binary.LittleEndian.Uint64(buf[i*8:])
-	}
-	return slice
-}
-
-func uint64SliceToBytes(slice []uint64) []byte {
-	buf := make([]byte, len(slice)*8)
-	for i, num := range slice {
-		binary.LittleEndian.PutUint64(buf[i*8:], num)
-	}
-	return buf
+	buf = slices.Clip(buf)
+	return (compressZSTD(buf))
 }
 
 func encodeUvarint(n uint64) []byte {

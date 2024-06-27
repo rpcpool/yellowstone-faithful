@@ -397,9 +397,8 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 				} else {
 					txResp.Version = "legacy"
 				}
-				txResp.Meta = meta
 
-				encodedTx, err := encodeTransactionResponseBasedOnWantedEncoding(*params.Options.Encoding, tx, meta)
+				encodedTx, encodedMeta, err := encodeTransactionResponseBasedOnWantedEncoding(*params.Options.Encoding, tx, meta)
 				if err != nil {
 					return &jsonrpc2.Error{
 						Code:    jsonrpc2.CodeInternalError,
@@ -407,6 +406,7 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 					}, fmt.Errorf("failed to encode transaction: %v", err)
 				}
 				txResp.Transaction = encodedTx
+				txResp.Meta = encodedMeta
 			}
 
 			allTransactions = append(allTransactions, txResp)

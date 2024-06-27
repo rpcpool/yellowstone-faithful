@@ -3,17 +3,15 @@ package main
 import (
 	"context"
 	"fmt"
-	"runtime"
 	"sort"
 	"sync"
 
-	"github.com/gagliardetto/solana-go"
 	"github.com/rpcpool/yellowstone-faithful/gsfa"
-	metalatest "github.com/rpcpool/yellowstone-faithful/parse_legacy_transaction_status_meta/v-latest"
-	metaoldest "github.com/rpcpool/yellowstone-faithful/parse_legacy_transaction_status_meta/v-oldest"
-	"github.com/rpcpool/yellowstone-faithful/third_party/solana_proto/confirmed_block"
+	"github.com/rpcpool/yellowstone-faithful/gsfa/linkedlog"
+	"github.com/rpcpool/yellowstone-faithful/indexes"
+	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
+	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
 	"github.com/sourcegraph/jsonrpc2"
-	"golang.org/x/sync/errgroup"
 	"k8s.io/klog/v2"
 )
 
@@ -44,10 +42,10 @@ func (ser *MultiEpoch) getGsfaReadersInEpochDescendingOrder() ([]*gsfa.GsfaReade
 	return gsfaReaders, epochNums
 }
 
-func countSignatures(v map[uint64][]solana.Signature) int {
+func countTransactions(v gsfa.EpochToTransactionObjects) int {
 	var count int
-	for _, sigs := range v {
-		count += len(sigs)
+	for _, txs := range v {
+		count += len(txs)
 	}
 	return count
 }
@@ -85,39 +83,15 @@ func (multi *MultiEpoch) handleGetSignaturesForAddress(ctx context.Context, conn
 		}, fmt.Errorf("failed to create gsfa multiepoch reader: %w", err)
 	}
 
-	// Get the signatures:
-	foundSignatures, err := gsfaMulti.GetBeforeUntil(
-		ctx,
-		pk,
-		limit,
-		params.Before,
-		params.Until,
-	)
-	if err != nil {
-		return &jsonrpc2.Error{
-			Code:    jsonrpc2.CodeInternalError,
-			Message: "Internal error",
-		}, fmt.Errorf("failed to get signatures: %w", err)
-	}
-
-	if len(foundSignatures) == 0 {
-		err = conn.ReplyRaw(
-			ctx,
-			req.ID,
-			[]map[string]any{},
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to reply: %w", err)
-		}
-		return nil, nil
-	}
-
 	var blockTimeCache struct {
 		m  map[uint64]uint64
 		mu sync.Mutex
 	}
 	blockTimeCache.m = make(map[uint64]uint64)
 	getBlockTime := func(slot uint64, ser *Epoch) uint64 {
+		// NOTE: this means that you have to potentially fetch 1k blocks to get the blocktime for each transaction.
+		// TODO: include blocktime into the transaction data, or in the gsfaindex.
+		// return 0
 		blockTimeCache.mu.Lock()
 		defer blockTimeCache.mu.Unlock()
 		if blockTime, ok := blockTimeCache.m[slot]; ok {
@@ -132,12 +106,56 @@ func (multi *MultiEpoch) handleGetSignaturesForAddress(ctx context.Context, conn
 		return uint64(block.Meta.Blocktime)
 	}
 
-	wg := new(errgroup.Group)
-	wg.SetLimit(runtime.NumCPU() * 2)
+	// Get the transactions:
+	foundTransactions, err := gsfaMulti.GetBeforeUntil(
+		ctx,
+		pk,
+		limit,
+		params.Before,
+		params.Until,
+		func(epochNum uint64, oas linkedlog.OffsetAndSizeAndBlocktime) (*ipldbindcode.Transaction, error) {
+			epoch, err := multi.GetEpoch(epochNum)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get epoch %d: %w", epochNum, err)
+			}
+			raw, err := epoch.GetNodeByOffsetAndSize(ctx, nil, &indexes.OffsetAndSize{
+				Offset: oas.Offset,
+				Size:   oas.Size,
+			})
+			if err != nil {
+				return nil, fmt.Errorf("failed to get signature: %w", err)
+			}
+			decoded, err := iplddecoders.DecodeTransaction(raw)
+			if err != nil {
+				return nil, fmt.Errorf("error while decoding transaction from nodex at offset %d: %w", oas.Offset, err)
+			}
+			blockTimeCache.m[uint64(decoded.Slot)] = uint64(oas.Blocktime)
+			return decoded, nil
+		},
+	)
+	if err != nil {
+		return &jsonrpc2.Error{
+			Code:    jsonrpc2.CodeInternalError,
+			Message: "Internal error",
+		}, fmt.Errorf("failed to get signatures: %w", err)
+	}
+
+	if len(foundTransactions) == 0 {
+		err = conn.ReplyRaw(
+			ctx,
+			req.ID,
+			[]map[string]any{},
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to reply: %w", err)
+		}
+		return nil, nil
+	}
+
 	// The response is an array of objects: [{signature: string}]
-	response := make([]map[string]any, countSignatures(foundSignatures))
+	response := make([]map[string]any, countTransactions(foundTransactions))
 	numBefore := 0
-	for ei := range foundSignatures {
+	for ei := range foundTransactions {
 		epoch := ei
 		ser, err := multi.GetEpoch(epoch)
 		if err != nil {
@@ -147,43 +165,35 @@ func (multi *MultiEpoch) handleGetSignaturesForAddress(ctx context.Context, conn
 			}, fmt.Errorf("failed to get epoch %d: %w", epoch, err)
 		}
 
-		sigs := foundSignatures[ei]
+		sigs := foundTransactions[ei]
 		for i := range sigs {
 			ii := numBefore + i
-			sig := sigs[i]
-			wg.Go(func() error {
+			transactionNode := sigs[i]
+			err := func() error {
+				sig, err := transactionNode.Signature()
+				if err != nil {
+					klog.Errorf("failed to get signature: %v", err)
+					return nil
+				}
 				response[ii] = map[string]any{
 					"signature": sig.String(),
 				}
 				if signaturesOnly {
 					return nil
 				}
-				transactionNode, _, err := ser.GetTransaction(ctx, sig)
-				if err != nil {
-					klog.Errorf("failed to get tx %s: %v", sig, err)
-					return nil
-				}
-				if transactionNode != nil {
+
+				{
 					{
 						tx, meta, err := parseTransactionAndMetaFromNode(transactionNode, ser.GetDataFrameByCid)
 						if err == nil {
-							switch metaValue := meta.(type) {
-							case *confirmed_block.TransactionStatusMeta:
-								response[ii]["err"] = metaValue.Err
-							case *metalatest.TransactionStatusMeta:
-								response[ii]["err"] = metaValue.Status
-							case *metaoldest.TransactionStatusMeta:
-								response[ii]["err"] = metaValue.Status
-							}
-
-							if _, ok := response[ii]["err"]; ok {
-								response[ii]["err"], _ = parseTransactionError(response[ii]["err"])
-							}
+							response[ii]["err"] = getErr(meta)
 
 							memoData := getMemoInstructionDataFromTransaction(&tx)
 							if memoData != nil {
 								response[ii]["memo"] = string(memoData)
 							}
+						} else {
+							klog.Errorf("failed to parse transaction and meta for signature %s: %v", sig, err)
 						}
 
 						if _, ok := response[ii]["memo"]; !ok {
@@ -203,17 +213,16 @@ func (multi *MultiEpoch) handleGetSignaturesForAddress(ctx context.Context, conn
 					response[ii]["confirmationStatus"] = "finalized"
 				}
 				return nil
-			})
+			}()
+			if err != nil {
+				return &jsonrpc2.Error{
+					Code:    jsonrpc2.CodeInternalError,
+					Message: "Internal error",
+				}, fmt.Errorf("failed to get tx data: %w", err)
+			}
 		}
 		numBefore += len(sigs)
 	}
-	if err := wg.Wait(); err != nil {
-		return &jsonrpc2.Error{
-			Code:    jsonrpc2.CodeInternalError,
-			Message: "Internal error",
-		}, fmt.Errorf("failed to get tx data: %w", err)
-	}
-
 	// reply with the data
 	err = conn.ReplyRaw(
 		ctx,

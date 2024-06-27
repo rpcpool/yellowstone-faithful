@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -13,9 +12,9 @@ import (
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/dustin/go-humanize"
-	carv1 "github.com/ipld/go-car"
 	"github.com/ipld/go-car/util"
 	carv2 "github.com/ipld/go-car/v2"
+	"github.com/rpcpool/yellowstone-faithful/carreader"
 	"github.com/rpcpool/yellowstone-faithful/indexes"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
 	"k8s.io/klog/v2"
@@ -45,13 +44,13 @@ func CreateIndex_cid2offset(
 	}
 	defer carFile.Close()
 
-	rd, err := newCarReader(carFile)
+	rd, err := carreader.New(carFile)
 	if err != nil {
 		return "", fmt.Errorf("failed to create car reader: %w", err)
 	}
 	// check it has 1 root
-	if len(rd.header.Roots) != 1 {
-		return "", fmt.Errorf("car file must have exactly 1 root, but has %d", len(rd.header.Roots))
+	if len(rd.Header.Roots) != 1 {
+		return "", fmt.Errorf("car file must have exactly 1 root, but has %d", len(rd.Header.Roots))
 	}
 
 	klog.Infof("Getting car file size")
@@ -72,7 +71,7 @@ func CreateIndex_cid2offset(
 		return "", fmt.Errorf("failed to create tmp dir: %w", err)
 	}
 
-	rootCid := rd.header.Roots[0]
+	rootCid := rd.Header.Roots[0]
 
 	klog.Infof("Creating builder with %d items and target file size %d", numItems, targetFileSize)
 	c2o, err := indexes.NewWriter_CidToOffsetAndSize(
@@ -88,11 +87,11 @@ func CreateIndex_cid2offset(
 	defer c2o.Close()
 	totalOffset := uint64(0)
 	{
-		var buf bytes.Buffer
-		if err = carv1.WriteHeader(rd.header, &buf); err != nil {
+		if size, err := rd.HeaderSize(); err != nil {
 			return "", err
+		} else {
+			totalOffset += size
 		}
-		totalOffset = uint64(buf.Len())
 	}
 	numItemsIndexed := uint64(0)
 	klog.Infof("Indexing...")
@@ -157,13 +156,13 @@ func VerifyIndex_cid2offset(ctx context.Context, carPath string, indexFilePath s
 	}
 	defer carFile.Close()
 
-	rd, err := newCarReader(carFile)
+	rd, err := carreader.New(carFile)
 	if err != nil {
 		return fmt.Errorf("failed to create car reader: %w", err)
 	}
 	// check it has 1 root
-	if len(rd.header.Roots) != 1 {
-		return fmt.Errorf("car file must have exactly 1 root, but has %d", len(rd.header.Roots))
+	if len(rd.Header.Roots) != 1 {
+		return fmt.Errorf("car file must have exactly 1 root, but has %d", len(rd.Header.Roots))
 	}
 
 	c2o, err := indexes.Open_CidToOffsetAndSize(indexFilePath)
@@ -172,7 +171,7 @@ func VerifyIndex_cid2offset(ctx context.Context, carPath string, indexFilePath s
 	}
 	{
 		// find root cid
-		rootCID := rd.header.Roots[0]
+		rootCID := rd.Header.Roots[0]
 		offset, err := c2o.Get(rootCID)
 		if err != nil {
 			return fmt.Errorf("failed to get offset from index: %w", err)
@@ -215,11 +214,11 @@ func VerifyIndex_cid2offset(ctx context.Context, carPath string, indexFilePath s
 
 	totalOffset := uint64(0)
 	{
-		var buf bytes.Buffer
-		if err = carv1.WriteHeader(rd.header, &buf); err != nil {
+		if size, err := rd.HeaderSize(); err != nil {
 			return err
+		} else {
+			totalOffset += size
 		}
-		totalOffset = uint64(buf.Len())
 	}
 	for {
 		c, sectionLen, err := rd.NextInfo()

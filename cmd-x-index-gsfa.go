@@ -2,30 +2,25 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
-	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/dustin/go-humanize"
-	bin "github.com/gagliardetto/binary"
 	"github.com/gagliardetto/solana-go"
 	"github.com/ipfs/go-cid"
-	"github.com/ipfs/go-libipfs/blocks"
-	"github.com/ipld/go-car"
+	"github.com/rpcpool/yellowstone-faithful/accum"
+	"github.com/rpcpool/yellowstone-faithful/carreader"
 	"github.com/rpcpool/yellowstone-faithful/gsfa"
 	"github.com/rpcpool/yellowstone-faithful/indexes"
 	"github.com/rpcpool/yellowstone-faithful/indexmeta"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
-	"github.com/rpcpool/yellowstone-faithful/readahead"
-	concurrently "github.com/tejzpr/ordered-concurrently/v3"
 	"github.com/urfave/cli/v2"
 	"k8s.io/klog/v2"
 )
@@ -44,11 +39,6 @@ func newCmd_Index_gsfa() *cli.Command {
 			return nil
 		},
 		Flags: []cli.Flag{
-			&cli.Uint64Flag{
-				Name:  "flush-every",
-				Usage: "flush every N transactions",
-				Value: 1_000_000,
-			},
 			// verify hash of transactions:
 			&cli.BoolFlag{
 				Name:  "verify-hash",
@@ -78,6 +68,11 @@ func newCmd_Index_gsfa() *cli.Command {
 					return nil
 				},
 			},
+			&cli.StringFlag{
+				Name:  "tmp-dir",
+				Usage: "temporary directory to use for storing intermediate files",
+				Value: os.TempDir(),
+			},
 		},
 		Action: func(c *cli.Context) error {
 			carPath := c.Args().First()
@@ -93,11 +88,7 @@ func newCmd_Index_gsfa() *cli.Command {
 				defer file.Close()
 			}
 
-			cachingReader, err := readahead.NewCachingReaderFromReader(file, readahead.DefaultChunkSize)
-			if err != nil {
-				klog.Exitf("Failed to create caching reader: %s", err)
-			}
-			rd, err := car.NewCarReader(cachingReader)
+			rd, err := carreader.New(file)
 			if err != nil {
 				klog.Exitf("Failed to open CAR: %s", err)
 			}
@@ -135,12 +126,6 @@ func newCmd_Index_gsfa() *cli.Command {
 				return fmt.Errorf("failed to create index dir: %w", err)
 			}
 
-			flushEvery := c.Uint64("flush-every")
-			if flushEvery == 0 {
-				return fmt.Errorf("flush-every must be > 0")
-			}
-			klog.Infof("Will flush to index every %s transactions", humanize.Comma(int64(flushEvery)))
-
 			meta := indexmeta.Meta{}
 			if err := meta.AddUint64(indexmeta.MetadataKey_Epoch, epoch); err != nil {
 				return fmt.Errorf("failed to add epoch to sig_exists index metadata: %w", err)
@@ -151,117 +136,163 @@ func newCmd_Index_gsfa() *cli.Command {
 			if err := meta.AddString(indexmeta.MetadataKey_Network, string(network)); err != nil {
 				return fmt.Errorf("failed to add network to sig_exists index metadata: %w", err)
 			}
-			accu, err := gsfa.NewGsfaWriter(
+			tmpDir := c.String("tmp-dir")
+			indexW, err := gsfa.NewGsfaWriter(
 				gsfaIndexDir,
-				flushEvery,
 				meta,
+				epoch,
+				rootCID,
+				network,
+				tmpDir,
 			)
 			if err != nil {
 				return fmt.Errorf("error while opening gsfa index writer: %w", err)
 			}
+			numProcessedTransactions := new(atomic.Int64)
+			startedAt := time.Now()
 			defer func() {
-				if err := accu.Flush(); err != nil {
-					klog.Errorf("Error while flushing: %s", err)
-				}
-				if err := accu.Close(); err != nil {
+				klog.Infof("Indexed %s transactions", humanize.Comma(int64(numProcessedTransactions.Load())))
+				klog.Info("Finalizing index -- this may take a while, DO NOT EXIT")
+				klog.Info("Closing index")
+				if err := indexW.Close(); err != nil {
 					klog.Errorf("Error while closing: %s", err)
 				}
-			}()
-
-			startedAt := time.Now()
-			numTransactionsSeen := 0
-			defer func() {
+				klog.Infof("Success: gSFA index created at %s with %d transactions", gsfaIndexDir, numProcessedTransactions.Load())
 				klog.Infof("Finished in %s", time.Since(startedAt))
-				klog.Infof("Indexed %s transactions", humanize.Comma(int64(numTransactionsSeen)))
 			}()
-			dotEvery := 100_000
-			klog.Infof("A dot is printed every %s transactions", humanize.Comma(int64(dotEvery)))
 
-			verifyHash = c.Bool("verify-hash")
-			numWorkers := c.Uint("w")
+			verifyHash := c.Bool("verify-hash")
+			ipldbindcode.DisableHashVerification = !verifyHash
 
-			if numWorkers == 0 {
-				numWorkers = uint(runtime.NumCPU())
-			}
-			workerInputChan := make(chan concurrently.WorkFunction, numWorkers)
-			waitExecuted := new(sync.WaitGroup)
-			waitResultsReceived := new(sync.WaitGroup)
-			numReceivedAtomic := new(atomic.Int64)
+			epochStart, epochEnd := CalcEpochLimits(epoch)
 
-			outputChan := concurrently.Process(
-				context.Background(),
-				workerInputChan,
-				&concurrently.Options{PoolSize: int(numWorkers), OutChannelBuffer: int(numWorkers)},
-			)
-			go func() {
-				// process the results from the workers
-				for result := range outputChan {
-					switch resValue := result.Value.(type) {
-					case error:
-						panic(resValue)
-					case TransactionWithSlot:
-						tx := resValue.Transaction
-						slot := resValue.Slot
-						sig := tx.Signatures[0]
-						err = accu.Push(slot, sig, tx.Message.AccountKeys)
+			numSlots := uint64(0)
+			numMaxObjects := uint64(0)
+
+			lastPrintedAt := time.Now()
+			lastTimeDid1kSlots := time.Now()
+			var eta time.Duration
+			etaSampleSlots := uint64(2_000)
+			var tookToDo1kSlots time.Duration
+			accum := accum.NewObjectAccumulator(
+				rd,
+				iplddecoders.KindBlock,
+				func(owm1 *accum.ObjectWithMetadata, owm2 []accum.ObjectWithMetadata) error {
+					numSlots++
+					numObjects := len(owm2) + 1
+					if numObjects > int(numMaxObjects) {
+						numMaxObjects = uint64(numObjects)
+					}
+
+					if owm1 == nil {
+						transactions, err := objectsToTransactions(&ipldbindcode.Block{
+							Meta: ipldbindcode.SlotMeta{
+								Blocktime: 0,
+							},
+						}, owm2)
+						if err != nil {
+							return fmt.Errorf("error while converting objects to transactions: %w", err)
+						}
+						if len(transactions) == 0 {
+							return nil
+						}
+						spew.Dump(owm1, transactions, len(owm2))
+					}
+
+					// decode the block:
+					block, err := iplddecoders.DecodeBlock(owm1.ObjectData)
+					if err != nil {
+						return fmt.Errorf("error while decoding block: %w", err)
+					}
+					if numSlots%etaSampleSlots == 0 {
+						tookToDo1kSlots = time.Since(lastTimeDid1kSlots)
+						lastTimeDid1kSlots = time.Now()
+					}
+					if tookToDo1kSlots > 0 {
+						eta = time.Duration(float64(tookToDo1kSlots) / float64(etaSampleSlots) * float64(epochEnd-epochStart-numSlots))
+					}
+					transactions, err := objectsToTransactions(block, owm2)
+					if err != nil {
+						return fmt.Errorf("error while converting objects to transactions: %w", err)
+					}
+					for ii := range transactions {
+						txWithInfo := transactions[ii]
+						numProcessedTransactions.Add(1)
+						err = indexW.Push(
+							txWithInfo.Offset,
+							txWithInfo.Length,
+							txWithInfo.Slot,
+							txWithInfo.Blocktime,
+							txWithInfo.Transaction.Message.AccountKeys,
+						)
 						if err != nil {
 							klog.Exitf("Error while pushing to gsfa index: %s", err)
 						}
-						waitResultsReceived.Done()
-						numReceivedAtomic.Add(-1)
-					default:
-						panic(fmt.Errorf("unexpected result type: %T", result.Value))
-					}
-				}
-			}()
 
-			for {
-				block, err := rd.Next()
-				if err != nil {
-					if errors.Is(err, io.EOF) {
-						fmt.Println("EOF")
-						break
+						if time.Since(lastPrintedAt) > time.Millisecond*500 {
+							percentDone := float64(txWithInfo.Slot-epochStart) / float64(epochEnd-epochStart) * 100
+							// clear line, then print progress
+							msg := fmt.Sprintf(
+								"\rCreating gSFA index for epoch %d - %s | %s | %.2f%% | slot %s | tx %s",
+								epoch,
+								time.Now().Format("2006-01-02 15:04:05"),
+								time.Since(startedAt).Truncate(time.Second),
+								percentDone,
+								humanize.Comma(int64(txWithInfo.Slot)),
+								humanize.Comma(int64(numProcessedTransactions.Load())),
+							)
+							if eta > 0 {
+								msg += fmt.Sprintf(" | ETA %s", eta.Truncate(time.Second))
+							}
+							fmt.Print(msg)
+							lastPrintedAt = time.Now()
+						}
 					}
-					return err
-				}
-				kind := iplddecoders.Kind(block.RawData()[1])
+					return nil
+				},
+				// Ignore these kinds in the accumulator (only need transactions):
+				iplddecoders.KindEntry,
+				iplddecoders.KindRewards,
+				iplddecoders.KindDataFrame,
+			)
 
-				switch kind {
-				case iplddecoders.KindTransaction:
-					numTransactionsSeen++
-					if numTransactionsSeen%dotEvery == 0 {
-						fmt.Print(".")
-					}
-					{
-						waitExecuted.Add(1)
-						waitResultsReceived.Add(1)
-						numReceivedAtomic.Add(1)
-						workerInputChan <- newTxParserWorker(
-							block,
-							func() {
-								waitExecuted.Done()
-							},
-						)
-					}
-				default:
-					continue
-				}
+			if err := accum.Run(context.Background()); err != nil {
+				return fmt.Errorf("error while accumulating objects: %w", err)
 			}
 
-			{
-				klog.Infof("Waiting for all transactions to be parsed...")
-				waitExecuted.Wait()
-				klog.Infof("All transactions parsed.")
-
-				klog.Infof("Waiting to receive all results...")
-				close(workerInputChan)
-				waitResultsReceived.Wait()
-				klog.Infof("All results received")
-			}
-			klog.Infof("Success: GSFA index created at %s", gsfaIndexDir)
 			return nil
 		},
 	}
+}
+
+func objectsToTransactions(
+	block *ipldbindcode.Block,
+	objects []accum.ObjectWithMetadata,
+) ([]*TransactionWithSlot, error) {
+	transactions := make([]*TransactionWithSlot, 0, len(objects))
+	for _, object := range objects {
+		// check if the object is a transaction:
+		kind := iplddecoders.Kind(object.ObjectData[1])
+		if kind != iplddecoders.KindTransaction {
+			continue
+		}
+		decoded, err := iplddecoders.DecodeTransaction(object.ObjectData)
+		if err != nil {
+			return nil, fmt.Errorf("error while decoding transaction from nodex %s: %w", object.Cid, err)
+		}
+		tx, err := decoded.GetSolanaTransaction()
+		if err != nil {
+			return nil, fmt.Errorf("error while getting solana transaction from object %s: %w", object.Cid, err)
+		}
+		transactions = append(transactions, &TransactionWithSlot{
+			Offset:      object.Offset,
+			Length:      object.SectionLength,
+			Slot:        uint64(decoded.Slot),
+			Blocktime:   uint64(block.Meta.Blocktime),
+			Transaction: *tx,
+		})
+	}
+	return transactions, nil
 }
 
 func formatIndexDirname_gsfa(epoch uint64, rootCid cid.Cid, network indexes.Network) string {
@@ -275,63 +306,9 @@ func formatIndexDirname_gsfa(epoch uint64, rootCid cid.Cid, network indexes.Netw
 }
 
 type TransactionWithSlot struct {
+	Offset      uint64
+	Length      uint64
 	Slot        uint64
+	Blocktime   uint64
 	Transaction solana.Transaction
-}
-
-type txParserWorker struct {
-	blk  blocks.Block
-	done func()
-}
-
-func newTxParserWorker(
-	blk blocks.Block,
-	done func(),
-) *txParserWorker {
-	return &txParserWorker{
-		blk:  blk,
-		done: done,
-	}
-}
-
-var verifyHash bool
-
-func (w txParserWorker) Run(ctx context.Context) interface{} {
-	defer func() {
-		w.done()
-	}()
-
-	block := w.blk
-
-	decoded, err := iplddecoders.DecodeTransaction(block.RawData())
-	if err != nil {
-		return fmt.Errorf("error while decoding transaction from nodex %s: %w", block.Cid(), err)
-	}
-	{
-		if total, ok := decoded.Data.GetTotal(); !ok || total == 1 {
-			completeData := decoded.Data.Bytes()
-			if verifyHash {
-				// verify hash (if present)
-				if ha, ok := decoded.Data.GetHash(); ok {
-					err := ipldbindcode.VerifyHash(completeData, ha)
-					if err != nil {
-						klog.Exitf("Error while verifying hash for %s: %s", block.Cid(), err)
-					}
-				}
-			}
-			var tx solana.Transaction
-			if err := bin.UnmarshalBin(&tx, completeData); err != nil {
-				klog.Exitf("Error while unmarshaling transaction from nodex %s: %s", block.Cid(), err)
-			} else if len(tx.Signatures) == 0 {
-				klog.Exitf("Error while unmarshaling transaction from nodex %s: no signatures", block.Cid())
-			}
-			return TransactionWithSlot{
-				Slot:        uint64(decoded.Slot),
-				Transaction: tx,
-			}
-		} else {
-			klog.Warningf("Transaction data is split into multiple objects for %s; skipping", block.Cid())
-		}
-	}
-	return nil
 }

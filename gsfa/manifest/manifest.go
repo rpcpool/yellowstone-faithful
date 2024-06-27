@@ -20,7 +20,7 @@ type Manifest struct {
 
 var (
 	_MAGIC   = [...]byte{'g', 's', 'f', 'a', 'm', 'n', 'f', 's'}
-	_Version = uint64(2)
+	_Version = uint64(3)
 )
 
 var headerLenWithoutMeta = len(_MAGIC) + 8 // 8 bytes for the version
@@ -124,7 +124,7 @@ func NewManifest(filename string, meta indexmeta.Meta) (*Manifest, error) {
 		if err != nil {
 			return nil, err
 		}
-		if header.Version() != _Version && header.Version() != 1 {
+		if header.Version() != _Version {
 			return nil, fmt.Errorf("unsupported manifest version: %d", header.Version())
 		}
 		man.header = header

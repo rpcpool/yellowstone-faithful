@@ -23,6 +23,7 @@ import (
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/rpcpool/yellowstone-faithful/bucketteer"
+	"github.com/rpcpool/yellowstone-faithful/carreader"
 	deprecatedbucketter "github.com/rpcpool/yellowstone-faithful/deprecated/bucketteer"
 	"github.com/rpcpool/yellowstone-faithful/gsfa"
 	hugecache "github.com/rpcpool/yellowstone-faithful/huge-cache"
@@ -420,7 +421,7 @@ func NewEpochFromConfig(
 			if err != nil {
 				return nil, fmt.Errorf("failed to get local CAR data reader: %w", err)
 			}
-			header, err := readHeader(dr)
+			header, err := carreader.ReadHeader(dr)
 			if err != nil {
 				return nil, fmt.Errorf("failed to read local CAR header: %w", err)
 			}
@@ -622,7 +623,7 @@ func (s *Epoch) GetNodeByCid(ctx context.Context, wantedCid cid.Cid) ([]byte, er
 		// not found or error
 		return nil, fmt.Errorf("failed to find offset for CID %s: %w", wantedCid, err)
 	}
-	return s.GetNodeByOffsetAndSize(ctx, wantedCid, oas)
+	return s.GetNodeByOffsetAndSize(ctx, &wantedCid, oas)
 }
 
 func (s *Epoch) ReadAtFromCar(ctx context.Context, offset uint64, length uint64) ([]byte, error) {
@@ -647,7 +648,7 @@ func (s *Epoch) ReadAtFromCar(ctx context.Context, offset uint64, length uint64)
 	return data, nil
 }
 
-func (s *Epoch) GetNodeByOffsetAndSize(ctx context.Context, wantedCid cid.Cid, offsetAndSize *indexes.OffsetAndSize) ([]byte, error) {
+func (s *Epoch) GetNodeByOffsetAndSize(ctx context.Context, wantedCid *cid.Cid, offsetAndSize *indexes.OffsetAndSize) ([]byte, error) {
 	if offsetAndSize == nil {
 		return nil, fmt.Errorf("offsetAndSize must not be nil")
 	}
@@ -706,7 +707,7 @@ func readNodeSizeFromReaderAtWithOffset(reader io.ReaderAt, offset uint64) (uint
 	return dataLen, nil
 }
 
-func readNodeWithKnownSize(br *bufio.Reader, wantedCid cid.Cid, length uint64) ([]byte, error) {
+func readNodeWithKnownSize(br *bufio.Reader, wantedCid *cid.Cid, length uint64) ([]byte, error) {
 	section := make([]byte, length)
 	_, err := io.ReadFull(br, section)
 	if err != nil {
@@ -715,7 +716,7 @@ func readNodeWithKnownSize(br *bufio.Reader, wantedCid cid.Cid, length uint64) (
 	return parseNodeFromSection(section, wantedCid)
 }
 
-func parseNodeFromSection(section []byte, wantedCid cid.Cid) ([]byte, error) {
+func parseNodeFromSection(section []byte, wantedCid *cid.Cid) ([]byte, error) {
 	// read an uvarint from the buffer
 	gotLen, usize := binary.Uvarint(section)
 	if usize <= 0 {
@@ -730,7 +731,7 @@ func parseNodeFromSection(section []byte, wantedCid cid.Cid) ([]byte, error) {
 		return nil, fmt.Errorf("failed to read cid: %w", err)
 	}
 	// verify that the CID we read matches the one we expected.
-	if !gotCid.Equals(wantedCid) {
+	if wantedCid != nil && !gotCid.Equals(*wantedCid) {
 		return nil, fmt.Errorf("CID mismatch: expected %s, got %s", wantedCid, gotCid)
 	}
 	return data[cidLen:], nil

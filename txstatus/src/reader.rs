@@ -126,6 +126,22 @@ impl Decoder {
         Ok(out)
     }
 
+    pub fn read_u16(&mut self) -> Result<u16, Error> {
+        if self.remaining() < type_size::UINT16 {
+            return Err(Error::InvalidValue {
+                msg: format!(
+                    "uint16 requires [{}] bytes, remaining [{}]",
+                    type_size::UINT16,
+                    self.remaining()
+                ),
+            });
+        }
+        let buf = self.read_bytes(type_size::UINT16)?;
+        let buf: [u8; 2] = buf.try_into().unwrap();
+        let out = u16::from_le_bytes(buf);
+        Ok(out)
+    }
+
     pub fn read_u32(&mut self, order: byte_order::ByteOrder) -> Result<u32, Error> {
         if self.remaining() < type_size::UINT32 {
             return Err(Error::InvalidValue {
@@ -209,6 +225,39 @@ mod tests {
 
         let n = d.read_u8().unwrap();
         assert_eq!(100, n);
+        assert_eq!(0, d.remaining());
+    }
+
+    #[test]
+    fn test_decoder_u16() {
+        // little endian
+        let mut buf = vec![];
+        buf.extend_from_slice(18360u16.to_le_bytes().as_ref());
+        buf.extend_from_slice(28917u16.to_le_bytes().as_ref());
+        buf.extend_from_slice(1023u16.to_le_bytes().as_ref());
+        buf.extend_from_slice(0u16.to_le_bytes().as_ref());
+        buf.extend_from_slice(33u16.to_le_bytes().as_ref());
+
+        let mut d = Decoder::new(buf);
+
+        let n = d.read_u16().unwrap();
+        assert_eq!(18360, n);
+        assert_eq!(8, d.remaining());
+
+        let n = d.read_u16().unwrap();
+        assert_eq!(28917, n);
+        assert_eq!(6, d.remaining());
+
+        let n = d.read_u16().unwrap();
+        assert_eq!(1023, n);
+        assert_eq!(4, d.remaining());
+
+        let n = d.read_u16().unwrap();
+        assert_eq!(0, n);
+        assert_eq!(2, d.remaining());
+
+        let n = d.read_u16().unwrap();
+        assert_eq!(33, n);
         assert_eq!(0, d.remaining());
     }
 

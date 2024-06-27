@@ -8,18 +8,17 @@ import (
 	"path/filepath"
 
 	"github.com/gagliardetto/solana-go"
+	"github.com/rpcpool/yellowstone-faithful/compactindexsized"
 	"github.com/rpcpool/yellowstone-faithful/gsfa/linkedlog"
 	"github.com/rpcpool/yellowstone-faithful/gsfa/manifest"
-	"github.com/rpcpool/yellowstone-faithful/gsfa/offsetstore"
-	"github.com/rpcpool/yellowstone-faithful/gsfa/sff"
+	"github.com/rpcpool/yellowstone-faithful/indexes"
 	"github.com/rpcpool/yellowstone-faithful/indexmeta"
 )
 
 type GsfaReader struct {
 	epoch   *uint64
-	offsets *offsetstore.OffsetStore
+	offsets *indexes.PubkeyToOffsetAndSize_Reader
 	ll      *linkedlog.LinkedLog
-	sff     *sff.SignaturesFlatFile
 	man     *manifest.Manifest
 }
 
@@ -40,18 +39,12 @@ func NewGsfaReader(indexRootDir string) (*GsfaReader, error) {
 	}
 	index := &GsfaReader{}
 	{
-		offsetsIndexDir := filepath.Join(indexRootDir, "offsets-index")
-		offsets, err := offsetstore.Open(
-			context.Background(),
-			filepath.Join(offsetsIndexDir, "index"),
-			filepath.Join(offsetsIndexDir, "data"),
-			offsetstoreOptions...,
-		)
+		offsetsIndex := filepath.Join(indexRootDir, string(indexes.Kind_PubkeyToOffsetAndSize)+".index")
+		offsets, err := indexes.Open_PubkeyToOffsetAndSize(offsetsIndex)
 		if err != nil {
-			return nil, fmt.Errorf("error while opening index: %w", err)
+			return nil, fmt.Errorf("error while opening offsets index: %w", err)
 		}
 		index.offsets = offsets
-		index.offsets.Start()
 	}
 	{
 		ll, err := linkedlog.NewLinkedLog(filepath.Join(indexRootDir, "linked-log"))
@@ -59,13 +52,6 @@ func NewGsfaReader(indexRootDir string) (*GsfaReader, error) {
 			return nil, err
 		}
 		index.ll = ll
-	}
-	{
-		sff, err := sff.NewSignaturesFlatFile(filepath.Join(indexRootDir, "signatures-flatfile"))
-		if err != nil {
-			return nil, err
-		}
-		index.sff = sff
 	}
 	{
 		man, err := manifest.NewManifest(filepath.Join(indexRootDir, "manifest"), indexmeta.Meta{})
@@ -92,7 +78,6 @@ func (index *GsfaReader) Close() error {
 	return errors.Join(
 		index.offsets.Close(),
 		index.ll.Close(),
-		index.sff.Close(),
 	)
 }
 
@@ -108,47 +93,43 @@ func (index *GsfaReader) Get(
 	ctx context.Context,
 	pk solana.PublicKey,
 	limit int,
-) ([]solana.Signature, error) {
+) ([]linkedlog.OffsetAndSizeAndBlocktime, error) {
 	if limit <= 0 {
-		return []solana.Signature{}, nil
+		return []linkedlog.OffsetAndSizeAndBlocktime{}, nil
 	}
-	locs, err := index.offsets.Get(context.Background(), pk)
+	lastOffset, err := index.offsets.Get(pk)
 	if err != nil {
-		if offsetstore.IsNotFound(err) {
-			return nil, offsetstore.ErrNotFound{PubKey: pk}
+		if compactindexsized.IsNotFound(err) {
+			return nil, fmt.Errorf("pubkey %s not found: %w", pk, err)
 		}
 		return nil, fmt.Errorf("error while getting initial offset: %w", err)
 	}
-	debugln("locs.OffsetToFirst:", locs)
+	debugln("locs.OffsetToFirst:", lastOffset)
 
-	var sigs []solana.Signature
-	next := locs.OffsetToLatest // Start from the latest, and go back in time.
+	var allTransactionLocations []linkedlog.OffsetAndSizeAndBlocktime
+	next := lastOffset // Start from the latest, and go back in time.
 
 	for {
-		if next == 0 {
+		if next == nil || next.IsZero() { // no previous.
 			break
 		}
-		if limit > 0 && len(sigs) >= limit {
+		if limit > 0 && len(allTransactionLocations) >= limit {
 			break
 		}
-		sigIndexes, newNext, err := index.ll.Read(next)
+		locations, newNext, err := index.ll.ReadWithSize(next.Offset, next.Size)
 		if err != nil {
 			return nil, fmt.Errorf("error while reading linked log with next=%d: %w", next, err)
 		}
-		debugln("sigIndexes:", sigIndexes, "newNext:", newNext)
-		next = newNext
-		for _, sigIndex := range sigIndexes {
-			sig, err := index.sff.Get(sigIndex)
-			if err != nil {
-				return nil, fmt.Errorf("error while getting signature at index=%d: %w", sigIndex, err)
-			}
-			if limit > 0 && len(sigs) >= limit {
+		debugln("sigIndexes:", locations, "newNext:", newNext)
+		next = &newNext
+		for _, sigIndex := range locations {
+			if limit > 0 && len(allTransactionLocations) >= limit {
 				break
 			}
-			sigs = append(sigs, sig)
+			allTransactionLocations = append(allTransactionLocations, sigIndex)
 		}
 	}
-	return sigs, nil
+	return allTransactionLocations, nil
 }
 
 func (index *GsfaReader) GetBeforeUntil(
@@ -157,21 +138,22 @@ func (index *GsfaReader) GetBeforeUntil(
 	limit int,
 	before *solana.Signature, // Before this signature, exclusive (i.e. get signatures older than this signature, excluding it).
 	until *solana.Signature, // Until this signature, inclusive (i.e. stop at this signature, including it).
-) ([]solana.Signature, error) {
+	fetcher func(sigIndex linkedlog.OffsetAndSizeAndBlocktime) (solana.Signature, error),
+) ([]linkedlog.OffsetAndSizeAndBlocktime, error) {
 	if limit <= 0 {
-		return []solana.Signature{}, nil
+		return []linkedlog.OffsetAndSizeAndBlocktime{}, nil
 	}
-	locs, err := index.offsets.Get(context.Background(), pk)
+	locs, err := index.offsets.Get(pk)
 	if err != nil {
-		if offsetstore.IsNotFound(err) {
-			return nil, offsetstore.ErrNotFound{PubKey: pk}
+		if compactindexsized.IsNotFound(err) {
+			return nil, fmt.Errorf("pubkey %s not found: %w", pk, err)
 		}
 		return nil, fmt.Errorf("error while getting initial offset: %w", err)
 	}
 	debugln("locs.OffsetToFirst:", locs)
 
-	var sigs []solana.Signature
-	next := locs.OffsetToLatest // Start from the latest, and go back in time.
+	var allTransactionLocations []linkedlog.OffsetAndSizeAndBlocktime
+	next := locs // Start from the latest, and go back in time.
 
 	reachedBefore := false
 	if before == nil {
@@ -180,22 +162,22 @@ func (index *GsfaReader) GetBeforeUntil(
 
 bigLoop:
 	for {
-		if next == 0 {
+		if next == nil || next.IsZero() { // no previous.
 			break
 		}
-		if limit > 0 && len(sigs) >= limit {
+		if limit > 0 && len(allTransactionLocations) >= limit {
 			break
 		}
-		sigIndexes, newNext, err := index.ll.Read(next)
+		locations, newNext, err := index.ll.ReadWithSize(next.Offset, next.Size)
 		if err != nil {
-			return nil, fmt.Errorf("error while reading linked log with next=%d: %w", next, err)
+			return nil, fmt.Errorf("error while reading linked log with next=%v: %w", next, err)
 		}
-		debugln("sigIndexes:", sigIndexes, "newNext:", newNext)
-		next = newNext
-		for _, sigIndex := range sigIndexes {
-			sig, err := index.sff.Get(sigIndex)
+		debugln("sigIndexes:", locations, "newNext:", newNext)
+		next = &newNext
+		for _, txLoc := range locations {
+			sig, err := fetcher(txLoc)
 			if err != nil {
-				return nil, fmt.Errorf("error while getting signature at index=%d: %w", sigIndex, err)
+				return nil, fmt.Errorf("error while getting signature at index=%v: %w", txLoc, err)
 			}
 			if !reachedBefore && sig == *before {
 				reachedBefore = true
@@ -204,14 +186,14 @@ bigLoop:
 			if !reachedBefore {
 				continue
 			}
-			if limit > 0 && len(sigs) >= limit {
+			if limit > 0 && len(allTransactionLocations) >= limit {
 				break
 			}
-			sigs = append(sigs, sig)
+			allTransactionLocations = append(allTransactionLocations, txLoc)
 			if until != nil && sig == *until {
 				break bigLoop
 			}
 		}
 	}
-	return sigs, nil
+	return allTransactionLocations, nil
 }

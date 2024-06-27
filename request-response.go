@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 
 	bin "github.com/gagliardetto/binary"
@@ -376,116 +377,262 @@ func parseGetTransactionRequest(raw *json.RawMessage) (*GetTransactionRequest, e
 
 var zstdEncoderPool = zstdpool.NewEncoderPool()
 
+func compiledInstructionsToJsonParsed(
+	tx solana.Transaction,
+	inst solana.CompiledInstruction,
+	meta any,
+) (json.RawMessage, error) {
+	programId, err := tx.ResolveProgramIDIndex(inst.ProgramIDIndex)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve program ID index: %w", err)
+	}
+	keys := tx.Message.AccountKeys
+	instrParams := txstatus.Parameters{
+		ProgramID: programId,
+		Instruction: txstatus.CompiledInstruction{
+			ProgramIDIndex: uint8(inst.ProgramIDIndex),
+			Accounts: func() []uint8 {
+				out := make([]uint8, len(inst.Accounts))
+				for i, v := range inst.Accounts {
+					out[i] = uint8(v)
+				}
+				return out
+			}(),
+			Data: inst.Data,
+		},
+		AccountKeys: txstatus.AccountKeys{
+			StaticKeys: func() []solana.PublicKey {
+				return clone(keys)
+			}(),
+			// TODO: test this:
+			DynamicKeys: func() *txstatus.LoadedAddresses {
+				switch vv := meta.(type) {
+				case *confirmed_block.TransactionStatusMeta:
+					return &txstatus.LoadedAddresses{
+						Writable: func() []solana.PublicKey {
+							return byteSlicesToKeySlices(vv.LoadedWritableAddresses)
+						}(),
+						Readonly: func() []solana.PublicKey {
+							return byteSlicesToKeySlices(vv.LoadedReadonlyAddresses)
+						}(),
+					}
+				default:
+					return nil
+				}
+			}(),
+		},
+		StackHeight: func() *uint32 {
+			// TODO: get the stack height from somewhere
+			return nil
+		}(),
+	}
+
+	parsedInstructionJSON, err := instrParams.ParseInstruction()
+	if err != nil || parsedInstructionJSON == nil || !strings.HasPrefix(strings.TrimSpace(string(parsedInstructionJSON)), "{") {
+		nonParseadInstructionJSON := map[string]any{
+			"accounts": func() []string {
+				out := make([]string, len(inst.Accounts))
+				for i, v := range inst.Accounts {
+					out[i] = tx.Message.AccountKeys[v].String()
+				}
+				return out
+			}(),
+			"data":        base58.Encode(inst.Data),
+			"programId":   programId.String(),
+			"stackHeight": nil,
+		}
+		asRaw, _ := jsoniter.ConfigCompatibleWithStandardLibrary.Marshal(nonParseadInstructionJSON)
+		return asRaw, nil
+	} else {
+		return parsedInstructionJSON, nil
+	}
+}
+
 func encodeTransactionResponseBasedOnWantedEncoding(
 	encoding solana.EncodingType,
 	tx solana.Transaction,
 	meta any,
-) (any, error) {
+) (any, any, error) {
 	switch encoding {
 	case solana.EncodingBase58, solana.EncodingBase64, solana.EncodingBase64Zstd:
 		txBuf, err := tx.MarshalBinary()
 		if err != nil {
-			return nil, fmt.Errorf("failed to marshal transaction: %w", err)
+			return nil, nil, fmt.Errorf("failed to marshal transaction: %w", err)
 		}
-		return encodeBytesResponseBasedOnWantedEncoding(encoding, txBuf)
+		tOut, err := encodeBytesResponseBasedOnWantedEncoding(encoding, txBuf)
+		return tOut, meta, err
 	case solana.EncodingJSONParsed:
 		if !txstatus.IsEnabled() {
-			return nil, fmt.Errorf("unsupported encoding")
+			return nil, nil, fmt.Errorf("unsupported encoding")
+		}
+
+		{
+			unwrappedMeta, ok := meta.(*confirmed_block.TransactionStatusMeta)
+			if ok {
+				{
+					tables := map[solana.PublicKey]solana.PublicKeySlice{}
+					writable := byteSlicesToKeySlices(unwrappedMeta.LoadedWritableAddresses)
+					readonly := byteSlicesToKeySlices(unwrappedMeta.LoadedReadonlyAddresses)
+					for _, addr := range tx.Message.AddressTableLookups {
+						numTakeWritable := len(addr.WritableIndexes)
+						numTakeReadonly := len(addr.ReadonlyIndexes)
+						tableKey := addr.AccountKey
+						{
+							// now need to rebuild the address table taking into account the indexes, and put the keys into the tables
+							maxIndex := 0
+							for _, indexB := range addr.WritableIndexes {
+								index := int(indexB)
+								if index > maxIndex {
+									maxIndex = index
+								}
+							}
+							for _, indexB := range addr.ReadonlyIndexes {
+								index := int(indexB)
+								if index > maxIndex {
+									maxIndex = index
+								}
+							}
+							tables[tableKey] = make([]solana.PublicKey, maxIndex+1)
+						}
+						if numTakeWritable > 0 {
+							writableForTable := writable[:numTakeWritable]
+							for i, indexB := range addr.WritableIndexes {
+								index := int(indexB)
+								tables[tableKey][index] = writableForTable[i]
+							}
+							writable = writable[numTakeWritable:]
+						}
+						if numTakeReadonly > 0 {
+							readableForTable := readonly[:numTakeReadonly]
+							for i, indexB := range addr.ReadonlyIndexes {
+								index := int(indexB)
+								tables[tableKey][index] = readableForTable[i]
+							}
+							readonly = readonly[numTakeReadonly:]
+						}
+					}
+					err := tx.Message.SetAddressTables(tables)
+					if err != nil {
+						return nil, nil, fmt.Errorf("failed to set address tables: %w", err)
+					}
+				}
+				if tx.Message.IsVersioned() {
+					err := tx.Message.ResolveLookups()
+					if err != nil {
+						panic(err)
+					}
+				}
+			}
 		}
 
 		parsedInstructions := make([]json.RawMessage, 0)
 
 		for _, inst := range tx.Message.Instructions {
-			programId, _ := tx.ResolveProgramIDIndex(inst.ProgramIDIndex)
-			instrParams := txstatus.Parameters{
-				ProgramID: programId,
-				Instruction: txstatus.CompiledInstruction{
-					ProgramIDIndex: uint8(inst.ProgramIDIndex),
-					Accounts: func() []uint8 {
-						out := make([]uint8, len(inst.Accounts))
-						for i, v := range inst.Accounts {
-							out[i] = uint8(v)
-						}
-						return out
-					}(),
-					Data: inst.Data,
-				},
-				AccountKeys: txstatus.AccountKeys{
-					StaticKeys: tx.Message.AccountKeys,
-					// TODO: test this:
-					DynamicKeys: func() *txstatus.LoadedAddresses {
-						switch v := meta.(type) {
-						case *confirmed_block.TransactionStatusMeta:
-							return &txstatus.LoadedAddresses{
-								Writable: func() []solana.PublicKey {
-									out := make([]solana.PublicKey, len(v.LoadedWritableAddresses))
-									for i, v := range v.LoadedWritableAddresses {
-										out[i] = solana.PublicKeyFromBytes(v)
-									}
-									return out
-								}(),
-								Readonly: func() []solana.PublicKey {
-									out := make([]solana.PublicKey, len(v.LoadedReadonlyAddresses))
-									for i, v := range v.LoadedReadonlyAddresses {
-										out[i] = solana.PublicKeyFromBytes(v)
-									}
-									return out
-								}(),
-							}
-						default:
-							return nil
-						}
-					}(),
-				},
-				StackHeight: nil,
+			parsedInstructionJSON, err := compiledInstructionsToJsonParsed(tx, inst, meta)
+			if err != nil {
+				return nil, nil, fmt.Errorf("failed to compile instruction: %w", err)
 			}
-
-			parsedInstructionJSON, err := instrParams.ParseInstruction()
-			if err != nil || parsedInstructionJSON == nil || !strings.HasPrefix(strings.TrimSpace(string(parsedInstructionJSON)), "{") {
-				nonParseadInstructionJSON := map[string]any{
-					"accounts": func() []string {
-						out := make([]string, len(inst.Accounts))
-						for i, v := range inst.Accounts {
-							if v >= uint16(len(tx.Message.AccountKeys)) {
-								continue
-							}
-							out[i] = tx.Message.AccountKeys[v].String()
-						}
-						// TODO: validate that the order is correct
-						switch v := meta.(type) {
-						case *confirmed_block.TransactionStatusMeta:
-							for _, wr := range v.LoadedWritableAddresses {
-								out = append(out, solana.PublicKeyFromBytes(wr).String())
-							}
-							for _, ro := range v.LoadedReadonlyAddresses {
-								out = append(out, solana.PublicKeyFromBytes(ro).String())
-							}
-						}
-						return out
-					}(),
-					"data":        base58.Encode(inst.Data),
-					"programId":   programId.String(),
-					"stackHeight": nil,
-				}
-				asRaw, _ := jsoniter.ConfigCompatibleWithStandardLibrary.Marshal(nonParseadInstructionJSON)
-				parsedInstructions = append(parsedInstructions, asRaw)
-			} else {
-				parsedInstructions = append(parsedInstructions, parsedInstructionJSON)
-			}
+			parsedInstructions = append(parsedInstructions, parsedInstructionJSON)
 		}
 
 		resp, err := txstatus.FromTransaction(tx)
 		if err != nil {
-			return nil, fmt.Errorf("failed to convert transaction to txstatus.Transaction: %w", err)
+			return nil, nil, fmt.Errorf("failed to convert transaction to txstatus.Transaction: %w", err)
 		}
 		resp.Message.Instructions = parsedInstructions
 
-		return resp, nil
+		{
+			// now try to encode unwrappedMeta:
+			unwrappedMeta, ok := meta.(*confirmed_block.TransactionStatusMeta)
+			if ok {
+				// convert meta to json:
+				metaJSON, err := toMapAny(unwrappedMeta)
+				if err != nil {
+					return nil, nil, fmt.Errorf("failed to marshal meta: %w", err)
+				}
+				for innerIndex, insts := range unwrappedMeta.InnerInstructions {
+					inner := make([]solana.CompiledInstruction, len(insts.Instructions))
+					for j, inst := range insts.Instructions {
+						inner[j] = solana.CompiledInstruction{
+							ProgramIDIndex: uint16(inst.ProgramIdIndex),
+							Accounts:       byeSliceToUint16Slice(inst.Accounts),
+							Data:           clone(inst.Data),
+						}
+					}
+					for instIndex, inst := range inner {
+						parsedInstructionJSON, err := compiledInstructionsToJsonParsed(tx, inst, unwrappedMeta)
+						if err != nil {
+							return nil, nil, fmt.Errorf("failed to compile instruction: %w", err)
+						}
+						// now replace the inner instruction with the parsed instruction:
+						{
+							if _, ok := metaJSON["inner_instructions"]; !ok {
+								metaJSON["inner_instructions"] = []any{}
+							} else {
+								innerInstructions, ok := metaJSON["inner_instructions"].([]any)
+								if ok && len(innerInstructions) > innerIndex {
+									relevantInner := innerInstructions[innerIndex].(map[string]any)
+									{
+										_, ok := relevantInner["instructions"].([]any)
+										if ok {
+											metaJSON["inner_instructions"].([]any)[innerIndex].(map[string]any)["instructions"].([]any)[instIndex] = parsedInstructionJSON
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+				return resp, metaJSON, nil
+			}
+		}
+
+		return resp, meta, nil
 	case solana.EncodingJSON:
-		return tx, nil
+		return tx, meta, nil
 	default:
-		return nil, fmt.Errorf("unsupported encoding")
+		return nil, nil, fmt.Errorf("unsupported encoding")
 	}
+}
+
+func clone[T any](in []T) []T {
+	out := make([]T, len(in))
+	copy(out, in)
+	return out
+}
+
+func byeSliceToUint16Slice(in []byte) []uint16 {
+	out := make([]uint16, len(in))
+	for i, v := range in {
+		out[i] = uint16(v)
+	}
+	return out
+}
+
+func byteSlicesToKeySlices(keys [][]byte) []solana.PublicKey {
+	var out []solana.PublicKey
+	for _, key := range keys {
+		var k solana.PublicKey
+		copy(k[:], key)
+		out = append(out, k)
+	}
+	return out
+}
+
+func toUniqueSorted(accountIndexes []uint16) []uint16 {
+	seen := make(map[uint16]struct{})
+	var out []uint16
+	for _, v := range accountIndexes {
+		if _, ok := seen[v]; ok {
+			continue
+		}
+		seen[v] = struct{}{}
+		out = append(out, v)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return out[i] < out[j]
+	})
+	return out
 }
 
 func encodeBytesResponseBasedOnWantedEncoding(

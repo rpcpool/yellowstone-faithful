@@ -40,7 +40,7 @@ type Builder struct {
 func NewBuilderSized(
 	tmpDir string,
 	numItems uint,
-	valueSize uint,
+	valueSizeBytes uint,
 ) (*Builder, error) {
 	if tmpDir == "" {
 		var err error
@@ -49,11 +49,11 @@ func NewBuilderSized(
 			return nil, fmt.Errorf("failed to create temp dir: %w", err)
 		}
 	}
-	if valueSize == 0 {
-		return nil, fmt.Errorf("valueSize must be > 0")
+	if valueSizeBytes == 0 {
+		return nil, fmt.Errorf("valueSizeBytes must be > 0")
 	}
-	if valueSize > 256 {
-		return nil, fmt.Errorf("valueSize must be <= 256")
+	if valueSizeBytes > 255 {
+		return nil, fmt.Errorf("valueSizeBytes must be <= 255")
 	}
 	if numItems == 0 {
 		return nil, fmt.Errorf("numItems must be > 0")
@@ -74,12 +74,12 @@ func NewBuilderSized(
 		closers = append(closers, f)
 		buckets[i].file = f
 		buckets[i].writer = bufio.NewWriter(f)
-		buckets[i].valueSize = uint(valueSize)
+		buckets[i].valueSize = uint(valueSizeBytes)
 	}
 
 	return &Builder{
 		Header: Header{
-			ValueSize:  uint64(valueSize),
+			ValueSize:  uint64(valueSizeBytes),
 			NumBuckets: uint32(numBuckets),
 			Metadata:   &indexmeta.Meta{},
 		},
