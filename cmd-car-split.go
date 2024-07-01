@@ -12,6 +12,26 @@ import (
 	"k8s.io/klog/v2"
 )
 
+const (
+	nulRootCarHeader = "\x19" + // 25 bytes of CBOR (encoded as varint :cryingbear: )
+		// map with 2 keys
+		"\xA2" +
+		// text-key with length 5
+		"\x65" + "roots" +
+		// 1 element array
+		"\x81" +
+		// tag 42
+		"\xD8\x2A" +
+		// bytes with length 5
+		"\x45" +
+		// nul-identity-cid prefixed with \x00 as required in DAG-CBOR: https://github.com/ipld/specs/blob/master/block-layer/codecs/dag-cbor.md#links
+		"\x00\x01\x55\x00\x00" +
+		// text-key with length 7
+		"\x67" + "version" +
+		// 1, we call this v0 due to the nul-identity CID being an open question: https://github.com/ipld/go-car/issues/26#issuecomment-604299576
+		"\x01"
+)
+
 func newCmd_SplitCar() *cli.Command {
 	return &cli.Command{
 		Name:        "split-car",
@@ -63,7 +83,21 @@ func newCmd_SplitCar() *cli.Command {
 				iplddecoders.KindBlock,
 				func(owm1 *accum.ObjectWithMetadata, owm2 []accum.ObjectWithMetadata) error {
 					size := 0
+					suffix := 0
+					firstSlot := 0
+					for _, owm := range owm2 {
+						// create new car file with suffix
+						// write header to car file
+						for size < maxSize {
+							// if object is Block, update firstSlot
+							// write data
+						}
+						// write subsetBlock
+						// close file
 
+					}
+
+					//append epochBlock to last file
 					return nil
 				},
 				iplddecoders.KindEpoch,
