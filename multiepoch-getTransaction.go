@@ -34,6 +34,10 @@ func (multi *MultiEpoch) findEpochNumberFromSignature(ctx context.Context, sig s
 	// - if one epoch, just return that epoch
 	// - if multiple epochs, use sigToEpoch to find the epoch number
 	// - if sigToEpoch is not available, linear search through all epochs
+	ttok := time.Now()
+	defer func() {
+		klog.V(4).Infof("findEpochNumberFromSignature took %s", time.Since(ttok))
+	}()
 
 	if epochs := multi.GetEpochNumbers(); len(epochs) == 1 {
 		return epochs[0], nil
@@ -48,45 +52,53 @@ func (multi *MultiEpoch) findEpochNumberFromSignature(ctx context.Context, sig s
 	buckets := multi.getAllBucketteers()
 
 	// Search all epochs in parallel:
-	wg := NewFirstResponse(ctx, multi.options.EpochSearchConcurrency)
+	jobGroup := NewJobGroup[uint64]()
 	for i := range numbers {
 		epochNumber := numbers[i]
-		wg.Spawn(func() (any, error) {
+		jobGroup.Add(func(ctx context.Context) (uint64, error) {
+			if ctx.Err() != nil {
+				return 0, ctx.Err()
+			}
 			bucket, ok := buckets[epochNumber]
 			if !ok {
-				return nil, nil
+				return 0, ErrNotFound
 			}
 			has, err := bucket.Has(sig)
 			if err != nil {
 				return 0, fmt.Errorf("failed to check if signature exists in bucket: %w", err)
 			}
 			if !has {
-				return nil, nil
+				return 0, ErrNotFound
 			}
 			epoch, err := multi.GetEpoch(epochNumber)
 			if err != nil {
-				return nil, fmt.Errorf("failed to get epoch %d: %w", epochNumber, err)
+				return 0, fmt.Errorf("failed to get epoch %d: %w", epochNumber, err)
 			}
 			if _, err := epoch.FindCidFromSignature(ctx, sig); err == nil {
 				return epochNumber, nil
 			}
 			// Not found in this epoch.
-			return nil, nil
+			return 0, ErrNotFound
 		})
 	}
-	switch result := wg.Wait().(type) {
-	case nil:
+	val, err := jobGroup.RunWithConcurrency(ctx, multi.options.EpochSearchConcurrency)
+	// val, err := jobGroup.RunWithConcurrency(ctx, multi.options.EpochSearchConcurrency)
+	if err != nil {
+		errs, ok := err.(ErrorSlice)
+		if !ok {
+			// An error occurred while searching one of the epochs.
+			return 0, err
+		}
 		// All epochs were searched, but the signature was not found.
-		return 0, ErrNotFound
-	case error:
-		// An error occurred while searching one of the epochs.
-		return 0, result
-	case uint64:
-		// The signature was found in one of the epochs.
-		return result, nil
-	default:
-		return 0, fmt.Errorf("unexpected result: (%T) %v", result, result)
+		if errs.All(func(err error) bool {
+			return errors.Is(err, ErrNotFound)
+		}) {
+			return 0, ErrNotFound
+		}
+		return 0, err
 	}
+	// The signature was found in one of the epochs.
+	return val, nil
 }
 
 func (multi *MultiEpoch) handleGetTransaction(ctx context.Context, conn *requestContext, req *jsonrpc2.Request) (*jsonrpc2.Error, error) {

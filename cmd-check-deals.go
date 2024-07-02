@@ -50,10 +50,13 @@ func (f *commaSeparatedStringSliceFlag) Len() int {
 	return len(f.slice)
 }
 
+const defaultLotusAPIAddress = "https://api.node.glif.io"
+
 func newCmd_check_deals() *cli.Command {
 	var includePatterns cli.StringSlice
 	var excludePatterns cli.StringSlice
 	var providerAllowlist commaSeparatedStringSliceFlag
+	var lotusAPIAddress string
 	return &cli.Command{
 		Name:        "check-deals",
 		Description: "Validate remote split car retrieval for the given config files",
@@ -78,6 +81,12 @@ func newCmd_check_deals() *cli.Command {
 				Name:  "provider-allowlist",
 				Usage: "List of providers to allow checking (comma-separated, can be specified multiple times); will ignore all pieces that correspond to a provider not in the allowlist.",
 				Value: &providerAllowlist,
+			},
+			&cli.StringFlag{
+				Name:        "filecoin-api-address",
+				Usage:       "Address of the filecoin API to find provider info",
+				Value:       defaultLotusAPIAddress,
+				Destination: &lotusAPIAddress,
 			},
 		},
 		Action: func(c *cli.Context) error {
@@ -116,7 +125,6 @@ func newCmd_check_deals() *cli.Command {
 				klog.Infof("Provider allowlist: <empty>")
 			}
 
-			lotusAPIAddress := "https://api.node.glif.io"
 			cl := jsonrpc.NewClient(lotusAPIAddress)
 			dm := splitcarfetcher.NewMinerInfo(
 				cl,
