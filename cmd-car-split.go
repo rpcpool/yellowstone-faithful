@@ -126,6 +126,9 @@ func newCmd_SplitCar() *cli.Command {
 				defer fileMutex.Unlock()
 
 				if currentFile == nil || currentFileSize+int64(len(data)) > maxFileSize {
+
+					// To do: Construct and write the SubSet node
+
 					if err := createNewFile(); err != nil {
 						return err
 					}
@@ -185,7 +188,7 @@ func newCmd_SplitCar() *cli.Command {
 				klog.Exitf("error while accumulating objects: %w", err)
 			}
 
-			// To do: Construct and write the SubSet node
+			// To do: construct and write the epoch node to the last file
 
 			return nil
 		},
