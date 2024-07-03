@@ -63,6 +63,7 @@ require (
 	github.com/allegro/bigcache/v3 v3.1.0
 	github.com/anjor/carlet v0.0.0-00010101000000-000000000000
 	github.com/filecoin-project/go-address v1.1.0
+	github.com/filecoin-project/go-leb128 v0.0.0-20190212224330-8d79a5489543
 	github.com/fsnotify/fsnotify v1.5.4
 	github.com/goware/urlx v0.3.2
 	github.com/ipld/go-car v0.5.0
@@ -81,7 +82,6 @@ require (
 	google.golang.org/grpc v1.64.0
 	gopkg.in/yaml.v2 v2.4.0
 	gopkg.in/yaml.v3 v3.0.1
-	k8s.io/klog v1.0.0
 )
 
 require (
