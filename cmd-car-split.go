@@ -86,7 +86,7 @@ func newCmd_SplitCar() *cli.Command {
 				}
 			}
 
-			maxSize := c.Int("size")
+			maxFileSize := c.Int64("size")
 
 			var (
 				currentFileSize int64
