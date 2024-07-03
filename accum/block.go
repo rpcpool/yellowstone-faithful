@@ -6,6 +6,7 @@ import (
 	"io"
 	"sync"
 
+	"github.com/filecoin-project/go-leb128"
 	"github.com/ipfs/go-cid"
 	"github.com/rpcpool/yellowstone-faithful/carreader"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
@@ -171,6 +172,48 @@ func (oa *ObjectAccumulator) flush(head *ObjectWithMetadata, other []ObjectWithM
 	}
 	return oa.callback(head, other)
 }
+
+// RawSection returns the CAR object as it would be written to a CAR file.
+func (obj ObjectWithMetadata) RawSection() ([]byte, error) {
+	buf := make([]byte, 0)
+	// section is an encoded CAR object
+	// length = len(cid) + len(data)
+	// section = leb128(length) || cid || data
+
+	sectionLen := len(obj.Cid.Bytes()) + len(obj.ObjectData)
+	// write uvarint length of the section
+	buf = append(buf, leb128.FromUInt64(uint64(sectionLen))...)
+	// write cid
+	buf = append(buf, obj.Cid.Bytes()...)
+	// write data
+	buf = append(buf, obj.ObjectData...)
+	return buf, nil
+}
+
+// {
+// 	raw, err := objm.RawSection()
+// 	if err != nil {
+// 		panic(err)
+// 	}
+// 	rawLen := (len(raw))
+// 	if rawLen != int(sectionLength) {
+// 		panic(fmt.Sprintf("section length mismatch: got %d, expected %d", rawLen, sectionLength))
+// 	}
+
+// 	_c, _sectionLen, _data, err := carreader.ReadNodeInfoWithData(bufio.NewReader(bytes.NewReader(raw)))
+// 	if err != nil {
+// 		panic(err)
+// 	}
+// 	if _c != c {
+// 		panic(fmt.Sprintf("cid mismatch: got %s, expected %s", _c, c))
+// 	}
+// 	if _sectionLen != sectionLength {
+// 		panic(fmt.Sprintf("section length mismatch: got %d, expected %d", _sectionLen, sectionLength))
+// 	}
+// 	if !bytes.Equal(_data, data) {
+// 		panic(fmt.Sprintf("data mismatch: got %x, expected %x", _data, data))
+// 	}
+// }
 
 func clone[T any](s []T) []T {
 	v := make([]T, len(s))
