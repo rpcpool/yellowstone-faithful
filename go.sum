@@ -140,6 +140,8 @@ github.com/filecoin-project/go-fil-commp-hashhash v0.2.0/go.mod h1:VH3fAFOru4yyW
 github.com/filecoin-project/go-hamt-ipld/v3 v3.1.0/go.mod h1:bxmzgT8tmeVQA1/gvBwFmYdT8SOFUwB3ovSUfG1Ux0g=
 github.com/filecoin-project/go-hamt-ipld/v3 v3.2.0 h1:McvVkfSvpreP8zA5hplCUdzEZgqToSFdZzIEegm1/8Y=
 github.com/filecoin-project/go-hamt-ipld/v3 v3.2.0/go.mod h1:T6p2jInnwr6aML/731EEwBg3dEbzlGS8a5SgKXBHcJs=
+github.com/filecoin-project/go-leb128 v0.0.0-20190212224330-8d79a5489543 h1:aMJGfgqe1QDhAVwxRg5fjCRF533xHidiKsugk7Vvzug=
+github.com/filecoin-project/go-leb128 v0.0.0-20190212224330-8d79a5489543/go.mod h1:mjrHv1cDGJWDlGmC0eDc1E5VJr8DmL9XMUcaFwiuKg8=
 github.com/filecoin-project/go-padreader v0.0.0-20200903213702-ed5fae088b20/go.mod h1:mPn+LRRd5gEKNAtc+r3ScpW2JRU/pj4NBKdADYWHiak=
 github.com/filecoin-project/go-retrieval-types v1.2.0 h1:fz6DauLVP3GRg7UuW7HZ6sE+GTmaUW70DTXBF1r9cK0=
 github.com/filecoin-project/go-retrieval-types v1.2.0/go.mod h1:ojW6wSw2GPyoRDBGqw1K6JxUcbfa5NOSIiyQEeh7KK0=
