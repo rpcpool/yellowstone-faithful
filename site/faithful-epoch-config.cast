@@ -1,3 +1,4 @@
+<<<<<<< Updated upstream
 {"version": 2, "width": 176, "height": 59, "timestamp": 1720044985, "env": {"SHELL": "/bin/bash", "TERM": "xterm-256color"}}
 [0.535574, "o", "\u001b[0;32m@linuskendall \u001b[0m➜ \u001b[1;34m/workspaces/yellowstone-faithful \u001b[0;36m(\u001b[1;31mdocs_gifs\u001b[0;36m) \u001b[0m$ "]
 [6.578399, "o", "c"]
@@ -20,3 +21,28 @@
 [9.357252, "o", "\r\n"]
 [9.359493, "o", "version: 1\r\nepoch: 100\r\ndata:\r\n  car:\r\n    uri: https://files.old-faithful.net/100/epoch-100.car\r\nindexes:\r\n  cid_to_offset_and_size:\r\n    uri: https://files.old-faithful.net/100/epoch-100-bafyreibqt2nvroysxlxctgb52xxn27ectsllv2xyka4qar7ga6vupmbs3i-mainnet-cid-to-offset-and-size.index\r\n  slot_to_cid:\r\n    uri: https://files.old-faithful.net/100/epoch-100-bafyreibqt2nvroysxlxctgb52xxn27ectsllv2xyka4qar7ga6vupmbs3i-mainnet-slot-to-cid.index\r\n  sig_to_cid:\r\n    uri:  https://files.old-faithful.net/100/epoch-100-bafyreibqt2nvroysxlxctgb52xxn27ectsllv2xyka4qar7ga6vupmbs3i-mainnet-sig-to-cid.index\r\n  sig_exists:\r\n    uri: https://files.old-faithful.net/100/epoch-100-bafyreibqt2nvroysxlxctgb52xxn27ectsllv2xyka4qar7ga6vupmbs3i-mainnet-sig-exists.index\r\n"]
 [9.373233, "o", "\u001b[0;32m@linuskendall \u001b[0m➜ \u001b[1;34m/workspaces/yellowstone-faithful \u001b[0;36m(\u001b[1;31mdocs_gifs\u001b[0;36m) \u001b[0m$ "]
+=======
+{"version": 2, "width": 176, "height": 16, "timestamp": 1720045112, "env": {"SHELL": "/bin/bash", "TERM": "xterm-256color"}}
+[0.435035, "o", "\u001b[0;32m@linuskendall \u001b[0m➜ \u001b[1;34m/workspaces/yellowstone-faithful \u001b[0;36m(\u001b[1;31mmain\u001b[0;36m) \u001b[0m$ "]
+[1.566651, "o", "c"]
+[1.814546, "o", "a"]
+[1.815117, "o", "t"]
+[1.994883, "o", " "]
+[2.007205, "o", "e"]
+[2.199239, "o", "p"]
+[2.263477, "o", "o"]
+[2.36228, "o", "c"]
+[2.513683, "o", "h"]
+[2.874243, "o", "-"]
+[3.049118, "o", "1"]
+[3.140296, "o", "0"]
+[3.29497, "o", "0"]
+[3.551174, "o", "."]
+[3.80601, "o", "y"]
+[4.027889, "o", "m"]
+[4.111386, "o", "l"]
+[4.398295, "o", "\r\n"]
+[4.400814, "o", "version: 1"]
+[4.40112, "o", "\r\nepoch: 100\r\ndata:\r\n  car:\r\n    uri: https://files.old-faithful.net/100/epoch-100.car\r\nindexes:\r\n  cid_to_offset_and_size:\r\n    uri: https://files.old-faithful.net/100/epoch-100-bafyreibqt2nvroysxlxctgb52xxn27ectsllv2xyka4qar7ga6vupmbs3i-mainnet-cid-to-offset-and-size.index\r\n  slot_to_cid:\r\n    uri: https://files.old-faithful.net/100/epoch-100-bafyreibqt2nvroysxlxctgb52xxn27ectsllv2xyka4qar7ga6vupmbs3i-mainnet-slot-to-cid.index\r\n  sig_to_cid:\r\n    uri:  https://files.old-faithful.net/100/epoch-100-bafyreibqt2nvroysxlxctgb52xxn27ectsllv2xyka4qar7ga6vupmbs3i-mainnet-sig-to-cid.index\r\n  sig_exists:\r\n    uri: https://files.old-faithful.net/100/epoch-100-bafyreibqt2nvroysxlxctgb52xxn27ectsllv2xyka4qar7ga6vupmbs3i-mainnet-sig-exists.index\r\n"]
+[4.414999, "o", "\u001b[0;32m@linuskendall \u001b[0m➜ \u001b[1;34m/workspaces/yellowstone-faithful \u001b[0;36m(\u001b[1;31mmain\u001b[0;36m) \u001b[0m$ "]
+>>>>>>> Stashed changes
