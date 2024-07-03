@@ -20,6 +20,7 @@ const _ = grpc.SupportPackageIsVersion8
 
 const (
 	OldFaithful_GetVersion_FullMethodName     = "/OldFaithful.OldFaithful/GetVersion"
+	OldFaithful_GetBlockTime_FullMethodName   = "/OldFaithful.OldFaithful/GetBlockTime"
 	OldFaithful_GetBlock_FullMethodName       = "/OldFaithful.OldFaithful/GetBlock"
 	OldFaithful_GetTransaction_FullMethodName = "/OldFaithful.OldFaithful/GetTransaction"
 	OldFaithful_Get_FullMethodName            = "/OldFaithful.OldFaithful/Get"
@@ -30,6 +31,7 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type OldFaithfulClient interface {
 	GetVersion(ctx context.Context, in *VersionRequest, opts ...grpc.CallOption) (*VersionResponse, error)
+	GetBlockTime(ctx context.Context, in *BlockTimeRequest, opts ...grpc.CallOption) (*BlockTimeResponse, error)
 	GetBlock(ctx context.Context, in *BlockRequest, opts ...grpc.CallOption) (*BlockResponse, error)
 	GetTransaction(ctx context.Context, in *TransactionRequest, opts ...grpc.CallOption) (*TransactionResponse, error)
 	Get(ctx context.Context, opts ...grpc.CallOption) (OldFaithful_GetClient, error)
@@ -47,6 +49,16 @@ func (c *oldFaithfulClient) GetVersion(ctx context.Context, in *VersionRequest, 
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(VersionResponse)
 	err := c.cc.Invoke(ctx, OldFaithful_GetVersion_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *oldFaithfulClient) GetBlockTime(ctx context.Context, in *BlockTimeRequest, opts ...grpc.CallOption) (*BlockTimeResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(BlockTimeResponse)
+	err := c.cc.Invoke(ctx, OldFaithful_GetBlockTime_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -110,6 +122,7 @@ func (x *oldFaithfulGetClient) Recv() (*GetResponse, error) {
 // for forward compatibility
 type OldFaithfulServer interface {
 	GetVersion(context.Context, *VersionRequest) (*VersionResponse, error)
+	GetBlockTime(context.Context, *BlockTimeRequest) (*BlockTimeResponse, error)
 	GetBlock(context.Context, *BlockRequest) (*BlockResponse, error)
 	GetTransaction(context.Context, *TransactionRequest) (*TransactionResponse, error)
 	Get(OldFaithful_GetServer) error
@@ -122,6 +135,9 @@ type UnimplementedOldFaithfulServer struct {
 
 func (UnimplementedOldFaithfulServer) GetVersion(context.Context, *VersionRequest) (*VersionResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetVersion not implemented")
+}
+func (UnimplementedOldFaithfulServer) GetBlockTime(context.Context, *BlockTimeRequest) (*BlockTimeResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetBlockTime not implemented")
 }
 func (UnimplementedOldFaithfulServer) GetBlock(context.Context, *BlockRequest) (*BlockResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetBlock not implemented")
@@ -159,6 +175,24 @@ func _OldFaithful_GetVersion_Handler(srv interface{}, ctx context.Context, dec f
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(OldFaithfulServer).GetVersion(ctx, req.(*VersionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _OldFaithful_GetBlockTime_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(BlockTimeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OldFaithfulServer).GetBlockTime(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: OldFaithful_GetBlockTime_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OldFaithfulServer).GetBlockTime(ctx, req.(*BlockTimeRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -235,6 +269,10 @@ var OldFaithful_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetVersion",
 			Handler:    _OldFaithful_GetVersion_Handler,
+		},
+		{
+			MethodName: "GetBlockTime",
+			Handler:    _OldFaithful_GetBlockTime_Handler,
 		},
 		{
 			MethodName: "GetBlock",
