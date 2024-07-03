@@ -555,8 +555,69 @@ func (multi *MultiEpoch) Get(ser old_faithful_grpc.OldFaithful_GetServer) error 
 			}); err != nil {
 				return status.Errorf(codes.Internal, "request %d; failed to send version response: %v", id, err)
 			}
+		case *old_faithful_grpc.GetRequest_BlockTime:
+			params := req.GetBlockTime()
+			resp, err := multi.GetBlockTime(ctx, params)
+			if err != nil {
+				gerr, ok := status.FromError(err)
+				if ok {
+					err := ser.Send(&old_faithful_grpc.GetResponse{
+						Id: id,
+						Response: &old_faithful_grpc.GetResponse_Error{
+							Error: &old_faithful_grpc.GetResponseError{
+								Code: func() old_faithful_grpc.GetResponseErrorCode {
+									switch gerr.Code() {
+									case codes.NotFound:
+										return old_faithful_grpc.GetResponseErrorCode_NOT_FOUND
+									}
+									return old_faithful_grpc.GetResponseErrorCode_INTERNAL
+								}(),
+								Message: gerr.Message(),
+							},
+						},
+					})
+					if err != nil {
+						return status.Errorf(codes.Internal, "request %d; failed to send blocktime error response: %v", id, err)
+					}
+					continue
+				}
+				return status.Errorf(codes.Internal, "request %d; failed to get blocktime: %v", id, err)
+			}
+			if err := ser.Send(&old_faithful_grpc.GetResponse{
+				Id:       id,
+				Response: &old_faithful_grpc.GetResponse_BlockTime{BlockTime: resp},
+			}); err != nil {
+				return status.Errorf(codes.Internal, "request %d; failed to send blocktime response: %v", id, err)
+			}
 		default:
 			return status.Errorf(codes.InvalidArgument, "unknown request type %T", req.Request)
 		}
 	}
+}
+
+func (multi *MultiEpoch) GetBlockTime(ctx context.Context, params *old_faithful_grpc.BlockTimeRequest) (*old_faithful_grpc.BlockTimeResponse, error) {
+	slot := params.Slot
+	epochNumber := CalcEpochForSlot(slot)
+	epochHandler, err := multi.GetEpoch(epochNumber)
+	if err != nil {
+		return nil, status.Errorf(codes.NotFound, "Epoch %d is not available", epochNumber)
+	}
+
+	block, _, err := epochHandler.GetBlock(WithSubrapghPrefetch(ctx, false), slot)
+	if err != nil {
+		if errors.Is(err, compactindexsized.ErrNotFound) {
+			return nil, status.Errorf(codes.NotFound, "Slot %d was skipped, or missing in long-term storage", slot)
+		} else {
+			return nil, status.Errorf(codes.Internal, "Failed to get block: %v", err)
+		}
+	}
+
+	blocktime := uint64(block.Meta.Blocktime)
+	if blocktime == 0 {
+		return nil, status.Errorf(codes.NotFound, "Blocktime for slot %d is not available", slot)
+	}
+
+	return &old_faithful_grpc.BlockTimeResponse{
+		BlockTime: uint64(blocktime),
+	}, nil
 }
