@@ -618,6 +618,6 @@ func (multi *MultiEpoch) GetBlockTime(ctx context.Context, params *old_faithful_
 	}
 
 	return &old_faithful_grpc.BlockTimeResponse{
-		BlockTime: uint64(blocktime),
+		BlockTime: int64(blocktime),
 	}, nil
 }

@@ -6,8 +6,8 @@ option go_package = "github.com/rpcpool/yellowstone-faithful/old-faithful-proto;
 service OldFaithful {
   rpc GetVersion(VersionRequest) returns (VersionResponse);
 
-  rpc GetBlockTime(BlockTimeRequest) returns (BlockTimeResponse);
   rpc GetBlock(BlockRequest) returns (BlockResponse);
+  rpc GetBlockTime(BlockTimeRequest) returns (BlockTimeResponse);
   rpc GetTransaction(TransactionRequest) returns (TransactionResponse);
 
   rpc Get(stream GetRequest) returns (stream GetResponse);
@@ -17,14 +17,6 @@ message VersionRequest {}
 
 message VersionResponse {
   string version = 1;
-}
-
-message BlockTimeRequest {
-  uint64 slot = 1;
-}
-
-message BlockTimeResponse {
-  uint64 block_time = 1;
 }
 
 message BlockRequest {
@@ -40,6 +32,14 @@ message BlockResponse {
   uint64 block_height = 6;
   repeated Transaction transactions = 7;
   bytes rewards = 8; // protobuf or bincode (or empty)
+}
+
+message BlockTimeRequest {
+  uint64 slot = 1;
+}
+
+message BlockTimeResponse {
+  int64 block_time = 1;
 }
 
 message TransactionRequest {
