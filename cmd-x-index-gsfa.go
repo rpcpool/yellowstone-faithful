@@ -71,7 +71,7 @@ func newCmd_Index_gsfa() *cli.Command {
 			&cli.StringFlag{
 				Name:  "tmp-dir",
 				Usage: "temporary directory to use for storing intermediate files; WILL BE DELETED",
-				Value: filepath.Join(os.TempDir(), fmt.Sprintf("yellowstone-faithful-gsfa-%d", time.Now().UnixNano())),
+				Value: os.TempDir(),
 			},
 		},
 		Action: func(c *cli.Context) error {
@@ -137,6 +137,7 @@ func newCmd_Index_gsfa() *cli.Command {
 				return fmt.Errorf("failed to add network to sig_exists index metadata: %w", err)
 			}
 			tmpDir := c.String("tmp-dir")
+			tmpDir = filepath.Join(tmpDir, fmt.Sprintf("yellowstone-faithful-gsfa-%d", time.Now().UnixNano()))
 			if err := os.MkdirAll(tmpDir, 0o755); err != nil {
 				return fmt.Errorf("failed to create tmp dir: %w", err)
 			}
