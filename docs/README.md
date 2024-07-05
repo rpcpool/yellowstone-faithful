@@ -67,6 +67,27 @@ On each, run the script and specify a range of _epochs_ to go through where the 
 `create-cars.sh 600-620`
 
 There's some functions that send notifications to Slack and create metric files, you can comment it out if not relevant for you.
+## Manual CAR generation
+
+create-cars.sh only tries to find snapshots in the EU region GCP bucket.
+
+When script fails to find the required snapshots, you may try to do it manually following the steps below:
+
+```
+export EPOCH=500
+# try to find snapshots in other regions
+download_ledgers_gcp.py $EPOCH us
+# or download_ledgers_gcp.py $EPOCH ap
+
+# check the given snapshots contain all required slots
+/usr/local/bin/radiance car create2 --db snapshot1/rocksdb $EPOCH --db snapshots2/rocksdb --out="$CARDIR/epoch-$EPOCH.car" --check
+
+# generate car
+/usr/local/bin/radiance car create2 --db snapshot1/rocksdb $EPOCH --db snapshots2/rocksdb --out="$CARDIR/epoch-$EPOCH.car"
+
+```
+
+Then you can create a copy of `create-cars.sh` that skips the downloading and cargen steps and proceeds with the remaining tasks.
 
 ## Costs
 
@@ -83,7 +104,5 @@ Import dashboard.yml in this directory into Grafana, update the variable with yo
 
 ## Gotchas
 
-1. In some cases the script won't find the required snapshots, you'll need to find and download all required snapshots and run radiance.
-2. First 8 epochs are missing bounds.txt file so you may need to do it manually.
-3. Around epoch 32 there was a change in `shred revision`, depending on what snapshot you use you may need to adjust `SHRED_REVISION_CHANGE_EPOCH` (currently set at 32, but could be 24)
-3. Create cars tries to use download_ledgers_gcp.py to pull snapshots from EU region only, if it can't find you'll need to run it manually `download_ledgers_gcp.py <epoch> <ap|us>` to find the required snapshots in the other regions and run radiance with the necessary parameters.
+1. First 8 epochs are missing bounds.txt file so you may need to do it manually.
+2. Around epoch 32 there was a change in `shred revision`, depending on what snapshot you use you may need to adjust `SHRED_REVISION_CHANGE_EPOCH` (currently set at 32, but could be 24)
