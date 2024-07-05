@@ -56,12 +56,18 @@ func newCmd_SplitCar() *cli.Command {
 		Description: "Splits an epoch car file into smaller chunks. Each chunk corresponds to a subset.",
 		ArgsUsage:   "<epoch-car-path>",
 		Flags: []cli.Flag{
-			&cli.IntFlag{
+			&cli.Int64Flag{
 				Name:     "size",
 				Aliases:  []string{"s"},
 				Value:    31 * 1024 * 1024 * 1024, // 31 GiB
 				Usage:    "Target size in bytes to chunk CARs to.",
 				Required: false,
+			},
+			&cli.IntFlag{
+				Name:     "epoch",
+				Aliases:  []string{"e"},
+				Usage:    "Epoch number",
+				Required: true,
 			},
 		},
 		Action: func(c *cli.Context) error {
@@ -95,6 +101,7 @@ func newCmd_SplitCar() *cli.Command {
 				}
 			}
 
+			epoch := c.Int("epoch")
 			maxFileSize := c.Int64("size")
 
 			var (
@@ -136,7 +143,7 @@ func newCmd_SplitCar() *cli.Command {
 					currentFile.Close()
 				}
 				currentFileNum++
-				filename := fmt.Sprintf("%d.car", currentFileNum)
+				filename := fmt.Sprintf("epoch-%d-%d.car", epoch, currentFileNum)
 				currentFile, err = os.Create(filename)
 				if err != nil {
 					return err
@@ -250,16 +257,16 @@ func writeNode(node datamodel.Node, f *os.File) (cid.Cid, error) {
 	var buf bytes.Buffer
 	err := dagcbor.Encode(node, &buf)
 	if err != nil {
-		return nil, err
+		return cid.Cid{}, err
 	}
 
 	bd := cid.V1Builder{MhLength: -1, MhType: uint64(multicodec.Sha2_256), Codec: uint64(multicodec.DagCbor)}
-	cid, err := bd.Sum(buf.Bytes())
+	cd, err := bd.Sum(buf.Bytes())
 	if err != nil {
-		return nil, err
+		return cid.Cid{}, err
 	}
 
-	c := []byte(cid.KeyString())
+	c := []byte(cd.KeyString())
 	d := buf.Bytes()
 
 	sizeVi := appendVarint(nil, uint64(len(c))+uint64(len(d)))
@@ -267,12 +274,12 @@ func writeNode(node datamodel.Node, f *os.File) (cid.Cid, error) {
 	if _, err := f.Write(sizeVi); err == nil {
 		if _, err := f.Write(c); err == nil {
 			if _, err := f.Write(d); err != nil {
-				return nil, err
+				return cid.Cid{}, err
 			}
 
 		}
 	}
-	return cid, nil
+	return cd, nil
 }
 
 func appendVarint(tgt []byte, v uint64) []byte {
