@@ -75,6 +75,7 @@ When script fails to find the required snapshots, you may try to do it manually 
 
 ```
 export EPOCH=500
+
 # try to find snapshots in other regions
 download_ledgers_gcp.py $EPOCH us
 # or download_ledgers_gcp.py $EPOCH ap
