@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -8,8 +9,15 @@ import (
 	"os"
 	"sync"
 
+	"github.com/ipfs/go-cid"
+	"github.com/ipld/go-ipld-prime/codec/dagcbor"
+	"github.com/ipld/go-ipld-prime/datamodel"
+	"github.com/ipld/go-ipld-prime/fluent/qp"
+	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	"github.com/multiformats/go-multicodec"
 	"github.com/rpcpool/yellowstone-faithful/accum"
 	"github.com/rpcpool/yellowstone-faithful/carreader"
+	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
 	"github.com/urfave/cli/v2"
 	"k8s.io/klog/v2"
@@ -35,10 +43,11 @@ const (
 		"\x01"
 )
 
-type FileInfo struct {
-	FileName  string
-	FirstSlot int
-	LastSlot  int
+type subsetInfo struct {
+	fileName   string
+	firstSlot  int
+	lastSlot   int
+	blockLinks []datamodel.Link
 }
 
 func newCmd_SplitCar() *cli.Command {
@@ -89,11 +98,11 @@ func newCmd_SplitCar() *cli.Command {
 			maxFileSize := c.Int64("size")
 
 			var (
-				currentFileSize int64
-				currentFileNum  int
-				currentFile     *os.File
-				fileMutex       sync.Mutex
-				currentFileInfo FileInfo
+				currentFileSize   int64
+				currentFileNum    int
+				currentFile       *os.File
+				fileMutex         sync.Mutex
+				currentSubsetInfo subsetInfo
 			)
 
 			createNewFile := func() error {
@@ -101,6 +110,26 @@ func newCmd_SplitCar() *cli.Command {
 				defer fileMutex.Unlock()
 
 				if currentFile != nil {
+					subsetNode, err := qp.BuildMap(ipldbindcode.Prototypes.Subset, -1, func(ma datamodel.MapAssembler) {
+						qp.MapEntry(ma, "kind", qp.Int(int64(iplddecoders.KindSubset)))
+						qp.MapEntry(ma, "first", qp.Int(int64(currentSubsetInfo.firstSlot)))
+						qp.MapEntry(ma, "last", qp.Int(int64(currentSubsetInfo.lastSlot)))
+						qp.MapEntry(ma, "blocks",
+							qp.List(-1, func(la datamodel.ListAssembler) {
+								for _, bl := range currentSubsetInfo.blockLinks {
+									qp.ListEntry(la, qp.Link(bl))
+								}
+							}))
+					})
+					if err != nil {
+						return err
+					}
+
+					err = writeNode(subsetNode, currentFile)
+					if err != nil {
+						return err
+					}
+
 					currentFile.Close()
 				}
 				currentFileNum++
@@ -117,7 +146,7 @@ func newCmd_SplitCar() *cli.Command {
 
 				// Set the currentFileSize to the size of the header
 				currentFileSize = int64(len(nulRootCarHeader))
-				currentFileInfo = FileInfo{FileName: filename, FirstSlot: -1, LastSlot: -1}
+				currentSubsetInfo = subsetInfo{fileName: filename, firstSlot: -1, lastSlot: -1}
 				return nil
 			}
 
@@ -126,8 +155,6 @@ func newCmd_SplitCar() *cli.Command {
 				defer fileMutex.Unlock()
 
 				if currentFile == nil || currentFileSize+int64(len(data)) > maxFileSize {
-
-					// To do: Construct and write the SubSet node
 
 					if err := createNewFile(); err != nil {
 						return err
@@ -142,7 +169,8 @@ func newCmd_SplitCar() *cli.Command {
 				return nil
 			}
 
-			processObject := func(data []byte) error {
+			processObject := func(owm *accum.ObjectWithMetadata) error {
+				data := owm.ObjectData
 				kind, err := iplddecoders.GetKind(data)
 				if err != nil {
 					return err
@@ -154,12 +182,14 @@ func newCmd_SplitCar() *cli.Command {
 						return err
 					}
 
-					if currentFileInfo.FirstSlot == -1 || block.Slot < currentFileInfo.FirstSlot {
-						currentFileInfo.FirstSlot = block.Slot
+					if currentSubsetInfo.firstSlot == -1 || block.Slot < currentSubsetInfo.firstSlot {
+						currentSubsetInfo.firstSlot = block.Slot
 					}
-					if block.Slot > currentFileInfo.LastSlot {
-						currentFileInfo.LastSlot = block.Slot
+					if block.Slot > currentSubsetInfo.lastSlot {
+						currentSubsetInfo.lastSlot = block.Slot
 					}
+
+					currentSubsetInfo.blockLinks = append(currentSubsetInfo.blockLinks, cidlink.Link{Cid: owm.Cid})
 				}
 
 				return writeObject(data)
@@ -170,12 +200,12 @@ func newCmd_SplitCar() *cli.Command {
 				iplddecoders.KindBlock,
 				func(owm1 *accum.ObjectWithMetadata, owm2 []accum.ObjectWithMetadata) error {
 					for _, owm := range owm2 {
-						if err := processObject(owm.ObjectData); err != nil {
+						if err := processObject(&owm); err != nil {
 							return err
 						}
 					}
 
-					if err := processObject(owm1.ObjectData); err != nil {
+					if err := processObject(owm1); err != nil {
 						return err
 					}
 					return nil
@@ -193,4 +223,42 @@ func newCmd_SplitCar() *cli.Command {
 			return nil
 		},
 	}
+}
+
+func writeNode(node datamodel.Node, f *os.File) error {
+	var buf bytes.Buffer
+	err := dagcbor.Encode(node, &buf)
+	if err != nil {
+		return err
+	}
+
+	bd := cid.V1Builder{MhLength: -1, MhType: uint64(multicodec.Sha2_256), Codec: uint64(multicodec.DagCbor)}
+	cid, err := bd.Sum(buf.Bytes())
+	if err != nil {
+		return err
+	}
+
+	c := []byte(cid.KeyString())
+	d := buf.Bytes()
+
+	sizeVi := appendVarint(nil, uint64(len(c))+uint64(len(d)))
+
+	if _, err := f.Write(sizeVi); err == nil {
+		if _, err := f.Write(c); err == nil {
+			if _, err := f.Write(d); err != nil {
+				return err
+			}
+
+		}
+	}
+	return nil
+
+}
+
+func appendVarint(tgt []byte, v uint64) []byte {
+	for v > 127 {
+		tgt = append(tgt, byte(v|128))
+		v >>= 7
+	}
+	return append(tgt, byte(v))
 }
