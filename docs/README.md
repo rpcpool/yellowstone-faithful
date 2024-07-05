@@ -66,8 +66,7 @@ On each, run the script and specify a range of _epochs_ to go through where the 
 
 `create-cars.sh 600-620`
 
-If not relevant you can comment out the code related to sending notifications to Slack and creating metric files in this file before running it.
-
+There's some functions that send notifications to Slack and create metric files, you can comment it out if not relevant for you.
 
 ## Costs
 
