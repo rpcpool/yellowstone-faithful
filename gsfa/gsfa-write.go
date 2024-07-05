@@ -190,7 +190,7 @@ func (a *GsfaWriter) Push(
 	for _, publicKey := range publicKeys {
 		current, ok := a.accum.Get(publicKey)
 		if !ok {
-			current = make([]*linkedlog.OffsetAndSizeAndBlocktime, 0)
+			current = make([]*linkedlog.OffsetAndSizeAndBlocktime, 0, itemsPerBatch)
 			current = append(current, oas)
 			a.accum.Set(publicKey, current)
 		} else {
