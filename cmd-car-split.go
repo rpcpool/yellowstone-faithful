@@ -103,6 +103,7 @@ func newCmd_SplitCar() *cli.Command {
 				currentFile       *os.File
 				fileMutex         sync.Mutex
 				currentSubsetInfo subsetInfo
+				subsetLinks       []datamodel.Link
 			)
 
 			createNewFile := func() error {
@@ -125,10 +126,12 @@ func newCmd_SplitCar() *cli.Command {
 						return err
 					}
 
-					err = writeNode(subsetNode, currentFile)
+					cid, err := writeNode(subsetNode, currentFile)
 					if err != nil {
 						return err
 					}
+
+					subsetLinks = append(subsetLinks, cidlink.Link{Cid: cid})
 
 					currentFile.Close()
 				}
@@ -218,24 +221,42 @@ func newCmd_SplitCar() *cli.Command {
 				klog.Exitf("error while accumulating objects: %w", err)
 			}
 
-			// To do: construct and write the epoch node to the last file
+			epochNode, err := qp.BuildMap(ipldbindcode.Prototypes.Epoch, -1, func(ma datamodel.MapAssembler) {
+				qp.MapEntry(ma, "kind", qp.Int(int64(iplddecoders.KindEpoch)))
+				qp.MapEntry(ma, "epoch", qp.Int(int64(epoch)))
+				qp.MapEntry(ma, "subsets",
+					qp.List(-1, func(la datamodel.ListAssembler) {
+						for _, sl := range subsetLinks {
+							qp.ListEntry(la, qp.Link(sl))
+						}
+					}),
+				)
+			})
+			if err != nil {
+				return err
+			}
+
+			_, err = writeNode(epochNode, currentFile)
+			if err != nil {
+				return err
+			}
 
 			return nil
 		},
 	}
 }
 
-func writeNode(node datamodel.Node, f *os.File) error {
+func writeNode(node datamodel.Node, f *os.File) (cid.Cid, error) {
 	var buf bytes.Buffer
 	err := dagcbor.Encode(node, &buf)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	bd := cid.V1Builder{MhLength: -1, MhType: uint64(multicodec.Sha2_256), Codec: uint64(multicodec.DagCbor)}
 	cid, err := bd.Sum(buf.Bytes())
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	c := []byte(cid.KeyString())
@@ -246,13 +267,12 @@ func writeNode(node datamodel.Node, f *os.File) error {
 	if _, err := f.Write(sizeVi); err == nil {
 		if _, err := f.Write(c); err == nil {
 			if _, err := f.Write(d); err != nil {
-				return err
+				return nil, err
 			}
 
 		}
 	}
-	return nil
-
+	return cid, nil
 }
 
 func appendVarint(tgt []byte, v uint64) []byte {
