@@ -95,7 +95,7 @@ Then you can create a copy of `create-cars.sh` that skips the downloading and ca
 Using B2 object storage service and the Hetzner node recommended above your costs:
 
 - servers: €500/month per processor node
-- object storage: over 1300$/month when it's all done: which includes CAR + split file + index storage
+- object storage: 230TB will cost min 1300$/month - data includes CAR + split file + index storage
 
 ## Dashboards
 
