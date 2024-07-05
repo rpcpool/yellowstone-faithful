@@ -28,7 +28,7 @@ Order multiple servers to parallelize the work and speed up the process.
 
 We've uploaded all CAR files + indexes to Backblaze B2 due to storage cost + bandwidth alliance + egress fees.
 
-If we had to start again we could probably have done self hosting as upload/download performance and reliability was lacking at times.
+If we had to start again we could've probably self-hosted as upload/download performance and reliability was lacking at times.
 
 ### Software:
 
