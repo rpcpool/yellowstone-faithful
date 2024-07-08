@@ -202,7 +202,12 @@ func newCmd_SplitCar() *cli.Command {
 					currentSubsetInfo.blockLinks = append(currentSubsetInfo.blockLinks, cidlink.Link{Cid: owm.Cid})
 				}
 
-				return writeObject(data)
+				rs, err := owm.RawSection()
+				if err != nil {
+					return err
+				}
+
+				return writeObject(rs)
 			}
 
 			accum := accum.NewObjectAccumulator(
