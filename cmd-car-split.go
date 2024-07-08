@@ -161,15 +161,22 @@ func newCmd_SplitCar() *cli.Command {
 			}
 
 			writeObject := func(data []byte) error {
+				var needNewFile bool
+
 				fileMutex.Lock()
-				defer fileMutex.Unlock()
-
 				if currentFile == nil || currentFileSize+int64(len(data)) > maxFileSize {
+					needNewFile = true
+				}
+				fileMutex.Unlock()
 
+				if needNewFile {
 					if err := createNewFile(); err != nil {
 						return err
 					}
 				}
+
+				fileMutex.Lock()
+				defer fileMutex.Unlock()
 
 				_, err := currentFile.Write(data)
 				if err != nil {
