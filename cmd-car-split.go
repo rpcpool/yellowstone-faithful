@@ -14,6 +14,7 @@ import (
 	"github.com/ipld/go-ipld-prime/datamodel"
 	"github.com/ipld/go-ipld-prime/fluent/qp"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	"github.com/ipld/go-ipld-prime/schema"
 	"github.com/multiformats/go-multicodec"
 	"github.com/rpcpool/yellowstone-faithful/accum"
 	"github.com/rpcpool/yellowstone-faithful/carreader"
@@ -240,6 +241,28 @@ func newCmd_SplitCar() *cli.Command {
 				return fmt.Errorf("failed to run accumulator while accumulating objects: %w", err)
 			}
 
+			subsetNode, err := qp.BuildMap(ipldbindcode.Prototypes.Subset, -1, func(ma datamodel.MapAssembler) {
+				qp.MapEntry(ma, "kind", qp.Int(int64(iplddecoders.KindSubset)))
+				qp.MapEntry(ma, "first", qp.Int(int64(currentSubsetInfo.firstSlot)))
+				qp.MapEntry(ma, "last", qp.Int(int64(currentSubsetInfo.lastSlot)))
+				qp.MapEntry(ma, "blocks",
+					qp.List(-1, func(la datamodel.ListAssembler) {
+						for _, bl := range currentSubsetInfo.blockLinks {
+							qp.ListEntry(la, qp.Link(bl))
+						}
+					}))
+			})
+			if err != nil {
+				return err
+			}
+
+			cid, err := writeNode(subsetNode, currentFile)
+			if err != nil {
+				return err
+			}
+
+			subsetLinks = append(subsetLinks, cidlink.Link{Cid: cid})
+
 			epochNode, err := qp.BuildMap(ipldbindcode.Prototypes.Epoch, -1, func(ma datamodel.MapAssembler) {
 				qp.MapEntry(ma, "kind", qp.Int(int64(iplddecoders.KindEpoch)))
 				qp.MapEntry(ma, "epoch", qp.Int(int64(epoch)))
@@ -259,6 +282,7 @@ func newCmd_SplitCar() *cli.Command {
 			if err != nil {
 				return err
 			}
+			currentFile.Close()
 
 			return nil
 		},
@@ -266,26 +290,28 @@ func newCmd_SplitCar() *cli.Command {
 }
 
 func writeNode(node datamodel.Node, f *os.File) (cid.Cid, error) {
+	node = node.(schema.TypedNode).Representation()
 	var buf bytes.Buffer
 	err := dagcbor.Encode(node, &buf)
 	if err != nil {
 		return cid.Cid{}, err
 	}
 
+	data := buf.Bytes()
+
 	bd := cid.V1Builder{MhLength: -1, MhType: uint64(multicodec.Sha2_256), Codec: uint64(multicodec.DagCbor)}
-	cd, err := bd.Sum(buf.Bytes())
+	cd, err := bd.Sum(data)
 	if err != nil {
 		return cid.Cid{}, err
 	}
 
 	c := []byte(cd.KeyString())
-	d := buf.Bytes()
 
-	sizeVi := appendVarint(nil, uint64(len(c))+uint64(len(d)))
+	sizeVi := appendVarint(nil, uint64(len(c))+uint64(len(data)))
 
 	if _, err := f.Write(sizeVi); err == nil {
 		if _, err := f.Write(c); err == nil {
-			if _, err := f.Write(d); err != nil {
+			if _, err := f.Write(data); err != nil {
 				return cid.Cid{}, err
 			}
 
