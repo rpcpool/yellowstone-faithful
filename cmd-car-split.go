@@ -79,14 +79,14 @@ func newCmd_SplitCar() *cli.Command {
 			} else {
 				file, err = os.Open(carPath)
 				if err != nil {
-					klog.Exit(err.Error())
+					return fmt.Errorf("failed to open CAR: %s", err)
 				}
 				defer file.Close()
 			}
 
 			rd, err := carreader.New(file)
 			if err != nil {
-				klog.Exitf("Failed to open CAR: %s", err)
+				return fmt.Errorf("failed to open CAR: %s", err)
 			}
 			{
 				// print roots:
@@ -173,7 +173,7 @@ func newCmd_SplitCar() *cli.Command {
 
 				_, err := currentFile.Write(data)
 				if err != nil {
-					return fmt.Errorf("failed to write object: %w", err)
+					return fmt.Errorf("failed to write object to car file: %s, error: %w", currentFile.Name(), err)
 				}
 				currentFileSize += int64(len(data))
 				return nil
@@ -225,7 +225,7 @@ func newCmd_SplitCar() *cli.Command {
 			)
 
 			if err := accum.Run((context.Background())); err != nil {
-				klog.Exitf("error while accumulating objects: %w", err)
+				return fmt.Errorf("failed to run accumulator while accumulating objects: %w", err)
 			}
 
 			epochNode, err := qp.BuildMap(ipldbindcode.Prototypes.Epoch, -1, func(ma datamodel.MapAssembler) {
