@@ -7,7 +7,6 @@ import (
 	"io"
 	"io/fs"
 	"os"
-	"sync"
 
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime/codec/dagcbor"
@@ -109,7 +108,6 @@ func newCmd_SplitCar() *cli.Command {
 				currentFileSize   int64
 				currentFileNum    int
 				currentFile       *os.File
-				fileMutex         sync.Mutex
 				currentSubsetInfo subsetInfo
 				subsetLinks       []datamodel.Link
 			)
@@ -195,57 +193,36 @@ func newCmd_SplitCar() *cli.Command {
 
 					owms := append(owm2, *owm1)
 					dagSize := 0
-					var blockDag []accum.ObjectWithMetadata
+
 					for _, owm := range owms {
-						// build up a block dag
-						blockDag = append(blockDag, owm)
 						dagSize += owm.RawSectionSize()
+					}
 
-						// if the current size + dag size is greater than the max size, then start a new file
-						var needNewFile bool
-						fileMutex.Lock()
-						if currentFile == nil || currentFileSize+int64(dagSize) > maxFileSize {
-							needNewFile = true
-						}
-						fileMutex.Unlock()
-
-						if needNewFile {
-							if err := createNewFile(); err != nil {
-								return fmt.Errorf("failed to create a new file: %w", err)
-							}
-						}
-
-						// if the current object is a block, write it out
-						kind, err := iplddecoders.GetKind(owm.ObjectData)
+					if currentFile == nil || currentFileSize+int64(dagSize) > maxFileSize {
+						err := createNewFile()
 						if err != nil {
-							return fmt.Errorf("failed to get kind: %w", err)
+							return fmt.Errorf("failed to create a new file: %w", err)
 						}
+					}
 
-						if kind == iplddecoders.KindBlock {
-							block, err := iplddecoders.DecodeBlock(owm.ObjectData)
-							if err != nil {
-								return fmt.Errorf("failed to decode block: %w", err)
-							}
+					// owm1 is necessarily a Block
+					block, err := iplddecoders.DecodeBlock(owm1.ObjectData)
+					if err != nil {
+						return fmt.Errorf("failed to decode block: %w", err)
+					}
 
-							if currentSubsetInfo.firstSlot == -1 || block.Slot < currentSubsetInfo.firstSlot {
-								currentSubsetInfo.firstSlot = block.Slot
-							}
-							if block.Slot > currentSubsetInfo.lastSlot {
-								currentSubsetInfo.lastSlot = block.Slot
-							}
+					if currentSubsetInfo.firstSlot == -1 || block.Slot < currentSubsetInfo.firstSlot {
+						currentSubsetInfo.firstSlot = block.Slot
+					}
+					if block.Slot > currentSubsetInfo.lastSlot {
+						currentSubsetInfo.lastSlot = block.Slot
+					}
 
-							currentSubsetInfo.blockLinks = append(currentSubsetInfo.blockLinks, cidlink.Link{Cid: owm.Cid})
+					currentSubsetInfo.blockLinks = append(currentSubsetInfo.blockLinks, cidlink.Link{Cid: owm1.Cid})
 
-							err = writeBlockDag(blockDag)
-							if err != nil {
-								return fmt.Errorf("failed to process dag block: %w", err)
-							}
-
-							// reset blockDag and dagSize
-							blockDag = blockDag[:0]
-							dagSize = 0
-						}
-
+					err = writeBlockDag(owms)
+					if err != nil {
+						return fmt.Errorf("failed to write block dag to file: %w", err)
 					}
 
 					return nil
