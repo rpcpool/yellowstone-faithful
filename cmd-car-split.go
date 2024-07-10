@@ -115,9 +115,6 @@ func newCmd_SplitCar() *cli.Command {
 			)
 
 			createNewFile := func() error {
-				fileMutex.Lock()
-				defer fileMutex.Unlock()
-
 				if currentFile != nil {
 					subsetNode, err := qp.BuildMap(ipldbindcode.Prototypes.Subset, -1, func(ma datamodel.MapAssembler) {
 						qp.MapEntry(ma, "kind", qp.Int(int64(iplddecoders.KindSubset)))
@@ -164,9 +161,6 @@ func newCmd_SplitCar() *cli.Command {
 			}
 
 			writeObject := func(data []byte) error {
-				fileMutex.Lock()
-				defer fileMutex.Unlock()
-
 				_, err := currentFile.Write(data)
 				if err != nil {
 					return fmt.Errorf("failed to write object to car file: %s, error: %w", currentFile.Name(), err)
