@@ -116,33 +116,14 @@ func newCmd_SplitCar() *cli.Command {
 
 			createNewFile := func() error {
 				if currentFile != nil {
-					subsetNode, err := qp.BuildMap(ipldbindcode.Prototypes.Subset, -1, func(ma datamodel.MapAssembler) {
-						qp.MapEntry(ma, "kind", qp.Int(int64(iplddecoders.KindSubset)))
-						qp.MapEntry(ma, "first", qp.Int(int64(currentSubsetInfo.firstSlot)))
-						qp.MapEntry(ma, "last", qp.Int(int64(currentSubsetInfo.lastSlot)))
-						qp.MapEntry(ma, "blocks",
-							qp.List(-1, func(la datamodel.ListAssembler) {
-								for _, bl := range currentSubsetInfo.blockLinks {
-									qp.ListEntry(la, qp.Link(bl))
-								}
-							}))
-					})
+					sl, err := writeSubsetNode(currentSubsetInfo, bufferedWriter)
 					if err != nil {
-						return fmt.Errorf("failed to construct a subsetNode: %w", err)
+						return fmt.Errorf("failed to write subset node: %w", err)
 					}
+					subsetLinks = append(subsetLinks, sl)
 
-					cid, err := writeNode(subsetNode, currentFile)
+					err = closeFile(bufferedWriter, currentFile)
 					if err != nil {
-						return fmt.Errorf("failed to write a subsetNode: %w", err)
-					}
-
-					subsetLinks = append(subsetLinks, cidlink.Link{Cid: cid})
-
-					if err = bufferedWriter.Flush(); err != nil {
-						return fmt.Errorf("failed to flush bufferedWriter: %w", err)
-					}
-
-					if err = currentFile.Close(); err != nil {
 						return fmt.Errorf("failed to close file: %w", err)
 					}
 				}
@@ -244,27 +225,11 @@ func newCmd_SplitCar() *cli.Command {
 				return fmt.Errorf("failed to run accumulator while accumulating objects: %w", err)
 			}
 
-			subsetNode, err := qp.BuildMap(ipldbindcode.Prototypes.Subset, -1, func(ma datamodel.MapAssembler) {
-				qp.MapEntry(ma, "kind", qp.Int(int64(iplddecoders.KindSubset)))
-				qp.MapEntry(ma, "first", qp.Int(int64(currentSubsetInfo.firstSlot)))
-				qp.MapEntry(ma, "last", qp.Int(int64(currentSubsetInfo.lastSlot)))
-				qp.MapEntry(ma, "blocks",
-					qp.List(-1, func(la datamodel.ListAssembler) {
-						for _, bl := range currentSubsetInfo.blockLinks {
-							qp.ListEntry(la, qp.Link(bl))
-						}
-					}))
-			})
+			sl, err := writeSubsetNode(currentSubsetInfo, bufferedWriter)
 			if err != nil {
-				return fmt.Errorf("failed to construct subsetNode: %w", err)
+				return fmt.Errorf("failed to write subset node: %w", err)
 			}
-
-			cid, err := writeNode(subsetNode, bufferedWriter)
-			if err != nil {
-				return fmt.Errorf("failed to write subsetNode: %w", err)
-			}
-
-			subsetLinks = append(subsetLinks, cidlink.Link{Cid: cid})
+			subsetLinks = append(subsetLinks, sl)
 
 			epochNode, err := qp.BuildMap(ipldbindcode.Prototypes.Epoch, -1, func(ma datamodel.MapAssembler) {
 				qp.MapEntry(ma, "kind", qp.Int(int64(iplddecoders.KindEpoch)))
@@ -286,19 +251,46 @@ func newCmd_SplitCar() *cli.Command {
 				return fmt.Errorf("failed to write epochNode: %w", err)
 			}
 
-			err = bufferedWriter.Flush()
-			if err != nil {
-				return fmt.Errorf("failed to flush buffer: %w", err)
-			}
-
-			err = currentFile.Close()
-			if err != nil {
-				return fmt.Errorf("failed to close file: %w", err)
-			}
-
-			return nil
+			return closeFile(bufferedWriter, currentFile)
 		},
 	}
+}
+
+func writeSubsetNode(currentSubsetInfo subsetInfo, bufferedWriter *bufio.Writer) (datamodel.Link, error) {
+	subsetNode, err := qp.BuildMap(ipldbindcode.Prototypes.Subset, -1, func(ma datamodel.MapAssembler) {
+		qp.MapEntry(ma, "kind", qp.Int(int64(iplddecoders.KindSubset)))
+		qp.MapEntry(ma, "first", qp.Int(int64(currentSubsetInfo.firstSlot)))
+		qp.MapEntry(ma, "last", qp.Int(int64(currentSubsetInfo.lastSlot)))
+		qp.MapEntry(ma, "blocks",
+			qp.List(-1, func(la datamodel.ListAssembler) {
+				for _, bl := range currentSubsetInfo.blockLinks {
+					qp.ListEntry(la, qp.Link(bl))
+				}
+			}))
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to write a subsetNode: %w", err)
+	}
+
+	cid, err := writeNode(subsetNode, bufferedWriter)
+	if err != nil {
+		return nil, fmt.Errorf("failed to write a subsetNode: %w", err)
+	}
+
+	return cidlink.Link{Cid: cid}, nil
+}
+
+func closeFile(bufferedWriter *bufio.Writer, currentFile *os.File) error {
+	err := bufferedWriter.Flush()
+	if err != nil {
+		return fmt.Errorf("failed to flush buffer: %w", err)
+	}
+
+	err = currentFile.Close()
+	if err != nil {
+		return fmt.Errorf("failed to close file: %w", err)
+	}
+	return nil
 }
 
 func writeNode(node datamodel.Node, w io.Writer) (cid.Cid, error) {
