@@ -199,13 +199,12 @@ func newCmd_SplitCar() *cli.Command {
 					var blockDag []accum.ObjectWithMetadata
 					dagSize := 0
 					for _, owm := range owms {
+						// build up a block dag
 						blockDag = append(blockDag, owm)
 						dagSize += owm.RawSectionSize()
 
-						// check if the current size + dag size is greater than the max size
-						// if it is create new file
+						// if the current size + dag size is greater than the max size, then start a new file
 						var needNewFile bool
-
 						fileMutex.Lock()
 						if currentFile == nil || currentFileSize+int64(dagSize) > maxFileSize {
 							needNewFile = true
@@ -218,6 +217,7 @@ func newCmd_SplitCar() *cli.Command {
 							}
 						}
 
+						// if the current object is a block, write it out
 						kind, err := iplddecoders.GetKind(owm.ObjectData)
 						if err != nil {
 							return fmt.Errorf("failed to get kind: %w", err)
@@ -242,7 +242,10 @@ func newCmd_SplitCar() *cli.Command {
 							if err != nil {
 								return fmt.Errorf("failed to process dag block: %w", err)
 							}
+
+							// reset blockDag and dagSize
 							blockDag = blockDag[:0]
+							dagSize = 0
 						}
 
 					}
