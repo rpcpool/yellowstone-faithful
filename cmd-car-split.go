@@ -80,14 +80,14 @@ func newCmd_SplitCar() *cli.Command {
 			} else {
 				file, err = os.Open(carPath)
 				if err != nil {
-					return fmt.Errorf("failed to open CAR: %s", err)
+					return fmt.Errorf("failed to open CAR: %w", err)
 				}
 				defer file.Close()
 			}
 
 			rd, err := carreader.New(file)
 			if err != nil {
-				return fmt.Errorf("failed to open CAR: %s", err)
+				return fmt.Errorf("failed to open CAR: %w", err)
 			}
 			{
 				// print roots:
@@ -131,30 +131,30 @@ func newCmd_SplitCar() *cli.Command {
 							}))
 					})
 					if err != nil {
-						return fmt.Errorf("failed to construct a subsetNode: %s", err)
+						return fmt.Errorf("failed to construct a subsetNode: %w", err)
 					}
 
 					cid, err := writeNode(subsetNode, currentFile)
 					if err != nil {
-						return fmt.Errorf("failed to write a subsetNode: %s", err)
+						return fmt.Errorf("failed to write a subsetNode: %w", err)
 					}
 
 					subsetLinks = append(subsetLinks, cidlink.Link{Cid: cid})
 
 					if err = currentFile.Close(); err != nil {
-						return fmt.Errorf("failed to close file: %s", err)
+						return fmt.Errorf("failed to close file: %w", err)
 					}
 				}
 				currentFileNum++
 				filename := fmt.Sprintf("epoch-%d-%d.car", epoch, currentFileNum)
 				currentFile, err = os.Create(filename)
 				if err != nil {
-					return fmt.Errorf("failed to create file %s: %s", filename, err)
+					return fmt.Errorf("failed to create file %s: %w", filename, err)
 				}
 				// Write the header
 				_, err = io.WriteString(currentFile, nulRootCarHeader)
 				if err != nil {
-					return fmt.Errorf("failed to write header: %s", err)
+					return fmt.Errorf("failed to write header: %w", err)
 				}
 
 				// Set the currentFileSize to the size of the header
@@ -174,7 +174,7 @@ func newCmd_SplitCar() *cli.Command {
 
 				if needNewFile {
 					if err := createNewFile(); err != nil {
-						return fmt.Errorf("failed to create a new file: %s", err)
+						return fmt.Errorf("failed to create a new file: %w", err)
 					}
 				}
 
@@ -193,13 +193,13 @@ func newCmd_SplitCar() *cli.Command {
 				data := owm.ObjectData
 				kind, err := iplddecoders.GetKind(data)
 				if err != nil {
-					return fmt.Errorf("failed to get kind: %s", err)
+					return fmt.Errorf("failed to get kind: %w", err)
 				}
 
 				if kind == iplddecoders.KindBlock {
 					block, err := iplddecoders.DecodeBlock(data)
 					if err != nil {
-						return fmt.Errorf("failed to decode block: %s", err)
+						return fmt.Errorf("failed to decode block: %w", err)
 					}
 
 					if currentSubsetInfo.firstSlot == -1 || block.Slot < currentSubsetInfo.firstSlot {
@@ -214,7 +214,7 @@ func newCmd_SplitCar() *cli.Command {
 
 				rs, err := owm.RawSection()
 				if err != nil {
-					return fmt.Errorf("failed to get raw section: %s", err)
+					return fmt.Errorf("failed to get raw section: %w", err)
 				}
 
 				return writeObject(rs)
@@ -226,12 +226,12 @@ func newCmd_SplitCar() *cli.Command {
 				func(owm1 *accum.ObjectWithMetadata, owm2 []accum.ObjectWithMetadata) error {
 					for _, owm := range owm2 {
 						if err := processObject(&owm); err != nil {
-							return fmt.Errorf("failed to process object: %s", err)
+							return fmt.Errorf("failed to process object: %w", err)
 						}
 					}
 
 					if err := processObject(owm1); err != nil {
-						return fmt.Errorf("failed to process object: %s", err)
+						return fmt.Errorf("failed to process object: %w", err)
 					}
 					return nil
 				},
@@ -255,12 +255,12 @@ func newCmd_SplitCar() *cli.Command {
 					}))
 			})
 			if err != nil {
-				return fmt.Errorf("failed to construct subsetNode: %s", err)
+				return fmt.Errorf("failed to construct subsetNode: %w", err)
 			}
 
 			cid, err := writeNode(subsetNode, currentFile)
 			if err != nil {
-				return fmt.Errorf("failed to write subsetNode: %s", err)
+				return fmt.Errorf("failed to write subsetNode: %w", err)
 			}
 
 			subsetLinks = append(subsetLinks, cidlink.Link{Cid: cid})
@@ -277,16 +277,16 @@ func newCmd_SplitCar() *cli.Command {
 				)
 			})
 			if err != nil {
-				return fmt.Errorf("failed to construct epochNode: %s", err)
+				return fmt.Errorf("failed to construct epochNode: %w", err)
 			}
 
 			_, err = writeNode(epochNode, currentFile)
 			if err != nil {
-				return fmt.Errorf("failed to write epochNode: %s", err)
+				return fmt.Errorf("failed to write epochNode: %w", err)
 			}
 			err = currentFile.Close()
 			if err != nil {
-				return fmt.Errorf("failed to close file: %s", err)
+				return fmt.Errorf("failed to close file: %w", err)
 			}
 
 			return nil
