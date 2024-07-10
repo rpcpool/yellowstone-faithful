@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"fmt"
@@ -108,6 +109,7 @@ func newCmd_SplitCar() *cli.Command {
 				currentFileSize   int64
 				currentFileNum    int
 				currentFile       *os.File
+				bufferedWriter    *bufio.Writer
 				currentSubsetInfo subsetInfo
 				subsetLinks       []datamodel.Link
 			)
@@ -136,6 +138,10 @@ func newCmd_SplitCar() *cli.Command {
 
 					subsetLinks = append(subsetLinks, cidlink.Link{Cid: cid})
 
+					if err = bufferedWriter.Flush(); err != nil {
+						return fmt.Errorf("failed to flush bufferedWriter: %w", err)
+					}
+
 					if err = currentFile.Close(); err != nil {
 						return fmt.Errorf("failed to close file: %w", err)
 					}
@@ -146,8 +152,11 @@ func newCmd_SplitCar() *cli.Command {
 				if err != nil {
 					return fmt.Errorf("failed to create file %s: %w", filename, err)
 				}
+
+				bufferedWriter = bufio.NewWriter(currentFile)
+
 				// Write the header
-				_, err = io.WriteString(currentFile, nulRootCarHeader)
+				_, err = io.WriteString(bufferedWriter, nulRootCarHeader)
 				if err != nil {
 					return fmt.Errorf("failed to write header: %w", err)
 				}
@@ -159,7 +168,7 @@ func newCmd_SplitCar() *cli.Command {
 			}
 
 			writeObject := func(data []byte) error {
-				_, err := currentFile.Write(data)
+				_, err := bufferedWriter.Write(data)
 				if err != nil {
 					return fmt.Errorf("failed to write object to car file: %s, error: %w", currentFile.Name(), err)
 				}
@@ -250,7 +259,7 @@ func newCmd_SplitCar() *cli.Command {
 				return fmt.Errorf("failed to construct subsetNode: %w", err)
 			}
 
-			cid, err := writeNode(subsetNode, currentFile)
+			cid, err := writeNode(subsetNode, bufferedWriter)
 			if err != nil {
 				return fmt.Errorf("failed to write subsetNode: %w", err)
 			}
@@ -272,10 +281,16 @@ func newCmd_SplitCar() *cli.Command {
 				return fmt.Errorf("failed to construct epochNode: %w", err)
 			}
 
-			_, err = writeNode(epochNode, currentFile)
+			_, err = writeNode(epochNode, bufferedWriter)
 			if err != nil {
 				return fmt.Errorf("failed to write epochNode: %w", err)
 			}
+
+			err = bufferedWriter.Flush()
+			if err != nil {
+				return fmt.Errorf("failed to flush buffer: %w", err)
+			}
+
 			err = currentFile.Close()
 			if err != nil {
 				return fmt.Errorf("failed to close file: %w", err)
@@ -286,7 +301,7 @@ func newCmd_SplitCar() *cli.Command {
 	}
 }
 
-func writeNode(node datamodel.Node, f *os.File) (cid.Cid, error) {
+func writeNode(node datamodel.Node, w io.Writer) (cid.Cid, error) {
 	node = node.(schema.TypedNode).Representation()
 	var buf bytes.Buffer
 	err := dagcbor.Encode(node, &buf)
@@ -306,9 +321,9 @@ func writeNode(node datamodel.Node, f *os.File) (cid.Cid, error) {
 
 	sizeVi := appendVarint(nil, uint64(len(c))+uint64(len(data)))
 
-	if _, err := f.Write(sizeVi); err == nil {
-		if _, err := f.Write(c); err == nil {
-			if _, err := f.Write(data); err != nil {
+	if _, err := w.Write(sizeVi); err == nil {
+		if _, err := w.Write(c); err == nil {
+			if _, err := w.Write(data); err != nil {
 				return cid.Cid{}, err
 			}
 
