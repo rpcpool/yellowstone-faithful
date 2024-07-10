@@ -189,9 +189,13 @@ func newCmd_SplitCar() *cli.Command {
 				rd,
 				iplddecoders.KindBlock,
 				func(owm1 *accum.ObjectWithMetadata, owm2 []accum.ObjectWithMetadata) error {
+					if owm1 == nil {
+						return nil
+					}
+
 					owms := append(owm2, *owm1)
-					var blockDag []accum.ObjectWithMetadata
 					dagSize := 0
+					var blockDag []accum.ObjectWithMetadata
 					for _, owm := range owms {
 						// build up a block dag
 						blockDag = append(blockDag, owm)
