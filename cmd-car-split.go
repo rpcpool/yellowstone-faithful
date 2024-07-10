@@ -164,20 +164,6 @@ func newCmd_SplitCar() *cli.Command {
 			}
 
 			writeObject := func(data []byte) error {
-				var needNewFile bool
-
-				fileMutex.Lock()
-				if currentFile == nil || currentFileSize+int64(len(data)) > maxFileSize {
-					needNewFile = true
-				}
-				fileMutex.Unlock()
-
-				if needNewFile {
-					if err := createNewFile(); err != nil {
-						return fmt.Errorf("failed to create a new file: %w", err)
-					}
-				}
-
 				fileMutex.Lock()
 				defer fileMutex.Unlock()
 
@@ -189,50 +175,78 @@ func newCmd_SplitCar() *cli.Command {
 				return nil
 			}
 
-			processObject := func(owm *accum.ObjectWithMetadata) error {
-				data := owm.ObjectData
-				kind, err := iplddecoders.GetKind(data)
-				if err != nil {
-					return fmt.Errorf("failed to get kind: %w", err)
-				}
-
-				if kind == iplddecoders.KindBlock {
-					block, err := iplddecoders.DecodeBlock(data)
+			writeBlockDag := func(blockDag []accum.ObjectWithMetadata) error {
+				for _, owm := range blockDag {
+					rs, err := owm.RawSection()
 					if err != nil {
-						return fmt.Errorf("failed to decode block: %w", err)
+						return fmt.Errorf("failed to get raw section: %w", err)
 					}
 
-					if currentSubsetInfo.firstSlot == -1 || block.Slot < currentSubsetInfo.firstSlot {
-						currentSubsetInfo.firstSlot = block.Slot
+					err = writeObject(rs)
+					if err != nil {
+						return fmt.Errorf("failed to write object: %w", err)
 					}
-					if block.Slot > currentSubsetInfo.lastSlot {
-						currentSubsetInfo.lastSlot = block.Slot
-					}
-
-					currentSubsetInfo.blockLinks = append(currentSubsetInfo.blockLinks, cidlink.Link{Cid: owm.Cid})
 				}
 
-				rs, err := owm.RawSection()
-				if err != nil {
-					return fmt.Errorf("failed to get raw section: %w", err)
-				}
-
-				return writeObject(rs)
+				return nil
 			}
 
 			accum := accum.NewObjectAccumulator(
 				rd,
 				iplddecoders.KindBlock,
 				func(owm1 *accum.ObjectWithMetadata, owm2 []accum.ObjectWithMetadata) error {
-					for _, owm := range owm2 {
-						if err := processObject(&owm); err != nil {
-							return fmt.Errorf("failed to process object: %w", err)
+					owms := append(owm2, *owm1)
+					var blockDag []accum.ObjectWithMetadata
+					dagSize := 0
+					for _, owm := range owms {
+						blockDag = append(blockDag, owm)
+						dagSize += owm.RawSectionSize()
+
+						// check if the current size + dag size is greater than the max size
+						// if it is create new file
+						var needNewFile bool
+
+						fileMutex.Lock()
+						if currentFile == nil || currentFileSize+int64(dagSize) > maxFileSize {
+							needNewFile = true
 						}
+						fileMutex.Unlock()
+
+						if needNewFile {
+							if err := createNewFile(); err != nil {
+								return fmt.Errorf("failed to create a new file: %w", err)
+							}
+						}
+
+						kind, err := iplddecoders.GetKind(owm.ObjectData)
+						if err != nil {
+							return fmt.Errorf("failed to get kind: %w", err)
+						}
+
+						if kind == iplddecoders.KindBlock {
+							block, err := iplddecoders.DecodeBlock(owm.ObjectData)
+							if err != nil {
+								return fmt.Errorf("failed to decode block: %w", err)
+							}
+
+							if currentSubsetInfo.firstSlot == -1 || block.Slot < currentSubsetInfo.firstSlot {
+								currentSubsetInfo.firstSlot = block.Slot
+							}
+							if block.Slot > currentSubsetInfo.lastSlot {
+								currentSubsetInfo.lastSlot = block.Slot
+							}
+
+							currentSubsetInfo.blockLinks = append(currentSubsetInfo.blockLinks, cidlink.Link{Cid: owm.Cid})
+
+							err = writeBlockDag(blockDag)
+							if err != nil {
+								return fmt.Errorf("failed to process dag block: %w", err)
+							}
+							blockDag = blockDag[:0]
+						}
+
 					}
 
-					if err := processObject(owm1); err != nil {
-						return fmt.Errorf("failed to process object: %w", err)
-					}
 					return nil
 				},
 				iplddecoders.KindEpoch,
