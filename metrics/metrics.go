@@ -53,14 +53,6 @@ var MethodToNumProxied = promauto.NewCounterVec(
 	[]string{"method"},
 )
 
-var ResponseTimeHistogram = promauto.NewHistogramVec(
-	prometheus.HistogramOpts{
-		Name: "response_time_histogram",
-		Help: "Response time histogram",
-	},
-	[]string{"method"},
-)
-
 // - Version information of this binary
 var Version = promauto.NewGaugeVec(
 	prometheus.GaugeOpts{
@@ -70,20 +62,29 @@ var Version = promauto.NewGaugeVec(
 	[]string{"started_at", "tag", "commit", "compiler", "goarch", "goos", "goamd64", "vcs", "vcs_revision", "vcs_time", "vcs_modified"},
 )
 
-var IndexLookups = promauto.NewHistogramVec(
+var IndexLookupHistogram = promauto.NewHistogramVec(
 	prometheus.HistogramOpts{
-		Name:    "index_lookups",
-		Help:    "Index lookups",
+		Name:    "index_lookup_latency_histogram",
+		Help:    "Index lookup latency",
 		Buckets: prometheus.ExponentialBuckets(0.000001, 10, 10),
 	},
 	[]string{"index_type"},
 )
 
-var CarLookups = promauto.NewHistogramVec(
+var CarLookupHistogram = promauto.NewHistogramVec(
 	prometheus.HistogramOpts{
-		Name:    "car_lookups",
-		Help:    "Car lookups",
+		Name:    "car_lookup_latency_histogram",
+		Help:    "Car lookup latency",
 		Buckets: prometheus.ExponentialBuckets(0.000001, 10, 10),
 	},
 	[]string{"car"},
+)
+
+var RpcResponseLatencyHistogram = promauto.NewHistogramVec(
+	prometheus.HistogramOpts{
+		Name:    "rpc_response_latency_histogram",
+		Help:    "RPC response latency histogram",
+		Buckets: prometheus.ExponentialBuckets(0.000001, 10, 10),
+	},
+	[]string{"rpc_method"},
 )

@@ -53,7 +53,7 @@ func (r *readCloserWrapper) ReadAt(p []byte, off int64) (n int, err error) {
 					indexName = byDot[len(byDot)-1]
 				}
 				// TODO: distinguish between remote and local index reads
-				metrics.IndexLookups.WithLabelValues(indexName).Observe(float64(took.Seconds()))
+				metrics.IndexLookupHistogram.WithLabelValues(indexName).Observe(float64(took.Seconds()))
 			}
 			// if has suffix .car, then it's a car file
 			if strings.HasSuffix(r.name, ".car") || r.isSplitCar {
@@ -64,7 +64,7 @@ func (r *readCloserWrapper) ReadAt(p []byte, off int64) (n int, err error) {
 				}
 				carName := filepath.Base(r.name)
 				// TODO: distinguish between remote and local index reads
-				metrics.CarLookups.WithLabelValues(carName).Observe(float64(took.Seconds()))
+				metrics.CarLookupHistogram.WithLabelValues(carName).Observe(float64(took.Seconds()))
 			}
 			klog.V(5).Infof(prefix+" %s:%d+%d (%s)\n", (r.name), off, len(p), took)
 		}
