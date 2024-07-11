@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"os"
 
+	"github.com/filecoin-project/go-leb128"
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime/codec/dagcbor"
 	"github.com/ipld/go-ipld-prime/datamodel"
@@ -311,7 +312,7 @@ func writeNode(node datamodel.Node, w io.Writer) (cid.Cid, error) {
 
 	c := cd.Bytes()
 
-	sizeVi := appendVarint(nil, uint64(len(c))+uint64(len(data)))
+	sizeVi := leb128.FromUInt64(uint64(len(c)) + uint64(len(data)))
 
 	if _, err := w.Write(sizeVi); err == nil {
 		if _, err := w.Write(c); err == nil {
@@ -322,12 +323,4 @@ func writeNode(node datamodel.Node, w io.Writer) (cid.Cid, error) {
 		}
 	}
 	return cd, nil
-}
-
-func appendVarint(tgt []byte, v uint64) []byte {
-	for v > 127 {
-		tgt = append(tgt, byte(v|128))
-		v >>= 7
-	}
-	return append(tgt, byte(v))
 }
