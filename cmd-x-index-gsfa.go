@@ -21,6 +21,8 @@ import (
 	"github.com/rpcpool/yellowstone-faithful/indexmeta"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
+	solanatxmetaparsers "github.com/rpcpool/yellowstone-faithful/solana-tx-meta-parsers"
+	"github.com/rpcpool/yellowstone-faithful/third_party/solana_proto/confirmed_block"
 	"github.com/urfave/cli/v2"
 	"k8s.io/klog/v2"
 )
@@ -222,12 +224,17 @@ func newCmd_Index_gsfa() *cli.Command {
 					for ii := range transactions {
 						txWithInfo := transactions[ii]
 						numProcessedTransactions.Add(1)
+						accountKeys := txWithInfo.Transaction.Message.AccountKeys
+						if txWithInfo.Metadata != nil {
+							accountKeys = append(accountKeys, byteSlicesToKeySlice(txWithInfo.Metadata.LoadedReadonlyAddresses)...)
+							accountKeys = append(accountKeys, byteSlicesToKeySlice(txWithInfo.Metadata.LoadedWritableAddresses)...)
+						}
 						err = indexW.Push(
 							txWithInfo.Offset,
 							txWithInfo.Length,
 							txWithInfo.Slot,
 							txWithInfo.Blocktime,
-							txWithInfo.Transaction.Message.AccountKeys,
+							accountKeys,
 						)
 						if err != nil {
 							klog.Exitf("Error while pushing to gsfa index: %s", err)
@@ -274,9 +281,14 @@ func objectsToTransactions(
 	objects []accum.ObjectWithMetadata,
 ) ([]*TransactionWithSlot, error) {
 	transactions := make([]*TransactionWithSlot, 0, len(objects))
+	dataBlocks := make([]accum.ObjectWithMetadata, 0)
 	for _, object := range objects {
 		// check if the object is a transaction:
 		kind := iplddecoders.Kind(object.ObjectData[1])
+		if kind == iplddecoders.KindDataFrame {
+			dataBlocks = append(dataBlocks, object)
+			continue
+		}
 		if kind != iplddecoders.KindTransaction {
 			continue
 		}
@@ -284,17 +296,65 @@ func objectsToTransactions(
 		if err != nil {
 			return nil, fmt.Errorf("error while decoding transaction from nodex %s: %w", object.Cid, err)
 		}
+		tws := &TransactionWithSlot{
+			Offset:    object.Offset,
+			Length:    object.SectionLength,
+			Slot:      uint64(decoded.Slot),
+			Blocktime: uint64(block.Meta.Blocktime),
+		}
+		if total, ok := decoded.Metadata.GetTotal(); !ok || total == 1 {
+			completeBuffer := decoded.Metadata.Bytes()
+			if ha, ok := decoded.Metadata.GetHash(); ok {
+				err := ipldbindcode.VerifyHash(completeBuffer, ha)
+				if err != nil {
+					return nil, fmt.Errorf("failed to verify metadata hash: %w", err)
+				}
+			}
+			if len(completeBuffer) > 0 {
+				uncompressedMeta, err := decompressZstd(completeBuffer)
+				if err != nil {
+					return nil, fmt.Errorf("failed to decompress metadata: %w", err)
+				}
+				status, err := solanatxmetaparsers.ParseTransactionStatusMeta(uncompressedMeta)
+				if err == nil {
+					tws.Metadata = status
+				}
+			}
+		} else {
+			metaBuffer, err := loadDataFromDataFrames(&decoded.Metadata, func(ctx context.Context, wantedCid cid.Cid) (*ipldbindcode.DataFrame, error) {
+				for _, dataBlock := range dataBlocks {
+					if dataBlock.Cid == wantedCid {
+						df, err := iplddecoders.DecodeDataFrame(dataBlock.ObjectData)
+						if err != nil {
+							return nil, err
+						}
+						return df, nil
+					}
+				}
+				return nil, fmt.Errorf("dataframe not found")
+			})
+			if err != nil {
+				return nil, fmt.Errorf("failed to load metadata: %w", err)
+			}
+			// reset dataBlocks:
+			dataBlocks = dataBlocks[:0]
+			if len(metaBuffer) > 0 {
+				uncompressedMeta, err := decompressZstd(metaBuffer)
+				if err != nil {
+					return nil, fmt.Errorf("failed to decompress metadata: %w", err)
+				}
+				status, err := solanatxmetaparsers.ParseTransactionStatusMeta(uncompressedMeta)
+				if err == nil {
+					tws.Metadata = status
+				}
+			}
+		}
 		tx, err := decoded.GetSolanaTransaction()
 		if err != nil {
 			return nil, fmt.Errorf("error while getting solana transaction from object %s: %w", object.Cid, err)
 		}
-		transactions = append(transactions, &TransactionWithSlot{
-			Offset:      object.Offset,
-			Length:      object.SectionLength,
-			Slot:        uint64(decoded.Slot),
-			Blocktime:   uint64(block.Meta.Blocktime),
-			Transaction: *tx,
-		})
+		tws.Transaction = *tx
+		transactions = append(transactions, tws)
 	}
 	return transactions, nil
 }
@@ -315,4 +375,5 @@ type TransactionWithSlot struct {
 	Slot        uint64
 	Blocktime   uint64
 	Transaction solana.Transaction
+	Metadata    *confirmed_block.TransactionStatusMeta
 }

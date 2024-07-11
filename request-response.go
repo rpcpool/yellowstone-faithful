@@ -410,10 +410,10 @@ func compiledInstructionsToJsonParsed(
 				case *confirmed_block.TransactionStatusMeta:
 					return &txstatus.LoadedAddresses{
 						Writable: func() []solana.PublicKey {
-							return byteSlicesToKeySlices(vv.LoadedWritableAddresses)
+							return byteSlicesToKeySlice(vv.LoadedWritableAddresses)
 						}(),
 						Readonly: func() []solana.PublicKey {
-							return byteSlicesToKeySlices(vv.LoadedReadonlyAddresses)
+							return byteSlicesToKeySlice(vv.LoadedReadonlyAddresses)
 						}(),
 					}
 				default:
@@ -471,8 +471,8 @@ func encodeTransactionResponseBasedOnWantedEncoding(
 			if ok {
 				{
 					tables := map[solana.PublicKey]solana.PublicKeySlice{}
-					writable := byteSlicesToKeySlices(unwrappedMeta.LoadedWritableAddresses)
-					readonly := byteSlicesToKeySlices(unwrappedMeta.LoadedReadonlyAddresses)
+					writable := byteSlicesToKeySlice(unwrappedMeta.LoadedWritableAddresses)
+					readonly := byteSlicesToKeySlice(unwrappedMeta.LoadedReadonlyAddresses)
 					for _, addr := range tx.Message.AddressTableLookups {
 						numTakeWritable := len(addr.WritableIndexes)
 						numTakeReadonly := len(addr.ReadonlyIndexes)
@@ -609,7 +609,7 @@ func byeSliceToUint16Slice(in []byte) []uint16 {
 	return out
 }
 
-func byteSlicesToKeySlices(keys [][]byte) []solana.PublicKey {
+func byteSlicesToKeySlice(keys [][]byte) []solana.PublicKey {
 	var out []solana.PublicKey
 	for _, key := range keys {
 		var k solana.PublicKey
