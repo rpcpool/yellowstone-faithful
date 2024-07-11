@@ -309,7 +309,7 @@ func writeNode(node datamodel.Node, w io.Writer) (cid.Cid, error) {
 		return cid.Cid{}, err
 	}
 
-	c := []byte(cd.KeyString())
+	c := cd.Bytes()
 
 	sizeVi := appendVarint(nil, uint64(len(c))+uint64(len(data)))
 
