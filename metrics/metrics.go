@@ -69,3 +69,21 @@ var Version = promauto.NewGaugeVec(
 	},
 	[]string{"started_at", "tag", "commit", "compiler", "goarch", "goos", "goamd64", "vcs", "vcs_revision", "vcs_time", "vcs_modified"},
 )
+
+var IndexLookups = promauto.NewHistogramVec(
+	prometheus.HistogramOpts{
+		Name:    "index_lookups",
+		Help:    "Index lookups",
+		Buckets: prometheus.ExponentialBuckets(0.000001, 10, 10),
+	},
+	[]string{"index_type"},
+)
+
+var CarLookups = promauto.NewHistogramVec(
+	prometheus.HistogramOpts{
+		Name:    "car_lookups",
+		Help:    "Car lookups",
+		Buckets: prometheus.ExponentialBuckets(0.000001, 10, 10),
+	},
+	[]string{"car"},
+)
