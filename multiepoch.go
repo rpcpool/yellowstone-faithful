@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"runtime/debug"
 	"sort"
 	"strings"
 	"sync"
@@ -15,6 +16,7 @@ import (
 	"github.com/libp2p/go-reuseport"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
+	"github.com/rpcpool/yellowstone-faithful/metrics"
 	old_faithful_grpc "github.com/rpcpool/yellowstone-faithful/old-faithful-proto/old-faithful-grpc"
 	"github.com/sourcegraph/jsonrpc2"
 	"github.com/valyala/fasthttp"
@@ -286,8 +288,8 @@ func newMultiEpochHandler(handler *MultiEpoch, lsConf *ListenerConfig) func(ctx 
 				return
 			}
 			klog.V(2).Infof("[%s] request %q took %s", reqID, sanitizeMethod(method), time.Since(startedAt))
-			metrics_statusCode.WithLabelValues(fmt.Sprint(reqCtx.Response.StatusCode())).Inc()
-			metrics_responseTimeHistogram.WithLabelValues(sanitizeMethod(method)).Observe(time.Since(startedAt).Seconds())
+			metrics.StatusCode.WithLabelValues(fmt.Sprint(reqCtx.Response.StatusCode())).Inc()
+			metrics.ResponseTimeHistogram.WithLabelValues(sanitizeMethod(method)).Observe(time.Since(startedAt).Seconds())
 		}()
 		{
 			// handle the /metrics endpoint
@@ -353,9 +355,9 @@ func newMultiEpochHandler(handler *MultiEpoch, lsConf *ListenerConfig) func(ctx 
 			return
 		}
 		method = rpcRequest.Method
-		metrics_RpcRequestByMethod.WithLabelValues(sanitizeMethod(method)).Inc()
+		metrics.RpcRequestByMethod.WithLabelValues(sanitizeMethod(method)).Inc()
 		defer func() {
-			metrics_methodToCode.WithLabelValues(sanitizeMethod(method), fmt.Sprint(reqCtx.Response.StatusCode())).Inc()
+			metrics.MethodToCode.WithLabelValues(sanitizeMethod(method), fmt.Sprint(reqCtx.Response.StatusCode())).Inc()
 		}()
 
 		klog.V(2).Infof("[%s] method=%q", reqID, sanitizeMethod(method))
@@ -373,7 +375,7 @@ func newMultiEpochHandler(handler *MultiEpoch, lsConf *ListenerConfig) func(ctx 
 				body,
 				reqID,
 			)
-			metrics_methodToNumProxied.WithLabelValues(sanitizeMethod(method)).Inc()
+			metrics.MethodToNumProxied.WithLabelValues(sanitizeMethod(method)).Inc()
 			return
 		}
 
@@ -406,7 +408,7 @@ func newMultiEpochHandler(handler *MultiEpoch, lsConf *ListenerConfig) func(ctx 
 			klog.Errorf("[%s] failed to handle %q: %v", reqID, sanitizeMethod(method), err)
 		}
 		if errorResp != nil {
-			metrics_methodToSuccessOrFailure.WithLabelValues(sanitizeMethod(method), "failure").Inc()
+			metrics.MethodToSuccessOrFailure.WithLabelValues(sanitizeMethod(method), "failure").Inc()
 			if proxy != nil && lsConf.ProxyConfig.ProxyFailedRequests {
 				klog.Warningf("[%s] Failed local method %q, proxying to %q", reqID, rpcRequest.Method, proxy.Addr)
 				// proxy the request to the target
@@ -419,7 +421,7 @@ func newMultiEpochHandler(handler *MultiEpoch, lsConf *ListenerConfig) func(ctx 
 					body,
 					reqID,
 				)
-				metrics_methodToNumProxied.WithLabelValues(sanitizeMethod(method)).Inc()
+				metrics.MethodToNumProxied.WithLabelValues(sanitizeMethod(method)).Inc()
 				return
 			} else {
 				if errors.Is(err, ErrNotFound) {
@@ -439,7 +441,7 @@ func newMultiEpochHandler(handler *MultiEpoch, lsConf *ListenerConfig) func(ctx 
 			}
 			return
 		}
-		metrics_methodToSuccessOrFailure.WithLabelValues(sanitizeMethod(method), "success").Inc()
+		metrics.MethodToSuccessOrFailure.WithLabelValues(sanitizeMethod(method), "success").Inc()
 	}
 }
 
@@ -541,4 +543,61 @@ func (ser *MultiEpoch) handleRequest(ctx context.Context, conn *requestContext, 
 			Message: "Method not found",
 		}, fmt.Errorf("method not found")
 	}
+}
+
+func init() {
+	// Add an entry to the metric with the version information.
+	labeledValues := map[string]string{
+		"started_at":   StartedAt.Format(time.RFC3339),
+		"tag":          GitTag,
+		"commit":       GitCommit,
+		"compiler":     "",
+		"goarch":       "",
+		"goos":         "",
+		"goamd64":      "",
+		"vcs":          "",
+		"vcs_revision": "",
+		"vcs_time":     "",
+		"vcs_modified": "",
+	}
+	if info, ok := debug.ReadBuildInfo(); ok {
+		for _, setting := range info.Settings {
+			if isAnyOf(setting.Key,
+				"-compiler",
+				"GOARCH",
+				"GOOS",
+				"GOAMD64",
+				"vcs",
+				"vcs.revision",
+				"vcs.time",
+				"vcs.modified",
+			) {
+				switch setting.Key {
+				case "-compiler":
+					labeledValues["compiler"] = setting.Value
+				case "GOARCH":
+					labeledValues["goarch"] = setting.Value
+				case "GOOS":
+					labeledValues["goos"] = setting.Value
+				case "GOAMD64":
+					labeledValues["goamd64"] = setting.Value
+				case "vcs":
+					labeledValues["vcs"] = setting.Value
+				case "vcs.revision":
+					labeledValues["vcs_revision"] = setting.Value
+				case "vcs.time":
+					labeledValues["vcs_time"] = setting.Value
+				case "vcs.modified":
+					labeledValues["vcs_modified"] = setting.Value
+				}
+			}
+		}
+	}
+	metrics.Version.With(labeledValues).Set(1)
+}
+
+var StartedAt = time.Now()
+
+func GetUptime() time.Duration {
+	return time.Since(StartedAt)
 }
