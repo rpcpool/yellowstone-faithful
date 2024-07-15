@@ -66,11 +66,11 @@ type carFile struct {
 	fileSize   int64
 }
 
-type metadata struct {
-	fileName  string `yaml:"filename"`
-	firstSlot int    `yaml:"firstSlot"`
-	lastSlot  int    `yaml:"lastSlot"`
-	cid       string `yaml:"cid"`
+type Metadata struct {
+	FileName  string `yaml:"filename"`
+	FirstSlot int    `yaml:"firstSlot"`
+	LastSlot  int    `yaml:"lastSlot"`
+	Cid       string `yaml:"cid"`
 }
 
 func newCmd_SplitCar() *cli.Command {
@@ -182,11 +182,11 @@ func newCmd_SplitCar() *cli.Command {
 					carFiles = append(carFiles, carFile{name: fmt.Sprintf("epoch-%d-%d.car", epoch, currentFileNum), commP: commCid, payloadCid: sl.(cidlink.Link).Cid, paddedSize: ps, fileSize: currentFileSize})
 
 					// write metadata
-					m := metadata{
-						fileName:  currentSubsetInfo.fileName,
-						firstSlot: currentSubsetInfo.firstSlot,
-						lastSlot:  currentSubsetInfo.lastSlot,
-						cid:       sl.String(),
+					m := Metadata{
+						FileName:  currentSubsetInfo.fileName,
+						FirstSlot: currentSubsetInfo.firstSlot,
+						LastSlot:  currentSubsetInfo.lastSlot,
+						Cid:       sl.String(),
 					}
 
 					err = writeMetadata(m, epoch)
@@ -308,11 +308,11 @@ func newCmd_SplitCar() *cli.Command {
 			subsetLinks = append(subsetLinks, sl)
 
 			// write metadata
-			m := metadata{
-				fileName:  currentSubsetInfo.fileName,
-				firstSlot: currentSubsetInfo.firstSlot,
-				lastSlot:  currentSubsetInfo.lastSlot,
-				cid:       sl.String(),
+			m := Metadata{
+				FileName:  currentSubsetInfo.fileName,
+				FirstSlot: currentSubsetInfo.firstSlot,
+				LastSlot:  currentSubsetInfo.lastSlot,
+				Cid:       sl.String(),
 			}
 
 			err = writeMetadata(m, epoch)
@@ -447,7 +447,7 @@ func writeNode(node datamodel.Node, w io.Writer) (cid.Cid, error) {
 	return cd, nil
 }
 
-func writeMetadata(metadata SubsetMetadata, epoch int) error {
+func writeMetadata(metadata Metadata, epoch int) error {
 	metadataFileName := fmt.Sprintf("epoch-%d-metadata.yaml", epoch)
 
 	// Open file in append mode
