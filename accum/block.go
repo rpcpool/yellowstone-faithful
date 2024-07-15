@@ -190,6 +190,17 @@ func (obj ObjectWithMetadata) RawSection() ([]byte, error) {
 	return buf, nil
 }
 
+func (obj ObjectWithMetadata) RawSectionSize() int {
+	sectionLen := len(obj.Cid.Bytes()) + len(obj.ObjectData)
+	lenBytes := leb128.FromUInt64(uint64(sectionLen))
+
+	// Size is:
+	// length of LEB128-encoded section length +
+	// length of CID bytes +
+	// length of object data
+	return len(lenBytes) + sectionLen
+}
+
 // {
 // 	raw, err := objm.RawSection()
 // 	if err != nil {

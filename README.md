@@ -4,7 +4,7 @@
 
 This is currently in RFC stage, which means that it is not intended for production use and that there may be breaking changes to the format, the CLI utilities or any other details related to the project.
 
-For more documentation, please visit [https://old-faithful.net](https://old-faithful.net).
+For more documentation, please visit [https://docs.old-faithful.net](https://docs.old-faithful.net).
 
 > ❗ **Request for comment**: We are currently looking for feedback and comments on the new archival format and the RPC server setup. We invite all interested parties to test the archival access and open issues on this repo with questions/comments/requests for improvements.
 

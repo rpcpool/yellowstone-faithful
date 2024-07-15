@@ -58,6 +58,7 @@ func main() {
 			newCmd_rpc(),
 			newCmd_check_deals(),
 			newCmd_MergeCars(),
+			newCmd_SplitCar(),
 		},
 	}
 
