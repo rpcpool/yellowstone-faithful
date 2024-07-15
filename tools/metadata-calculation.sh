@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Requires installing stream-commp
+# go install github.com/filecoin-project/go-fil-commp-hashhash/cmd/stream-commp@latest
+
 set -o pipefail
 set -e
 
