@@ -8,6 +8,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"path/filepath"
 
 	"github.com/filecoin-project/go-leb128"
 	"github.com/ipfs/go-cid"
@@ -71,6 +72,12 @@ func newCmd_SplitCar() *cli.Command {
 				Usage:    "Epoch number",
 				Required: true,
 			},
+			&cli.StringFlag{
+				Name:     "output-dir",
+				Aliases:  []string{"o"},
+				Usage:    "Output directory",
+				Required: false,
+			},
 		},
 		Action: func(c *cli.Context) error {
 			carPath := c.Args().First()
@@ -105,6 +112,10 @@ func newCmd_SplitCar() *cli.Command {
 
 			epoch := c.Int("epoch")
 			maxFileSize := c.Int64("size")
+			outputDir := c.String("output-dir")
+			if outputDir == "" {
+				outputDir = "."
+			}
 
 			var (
 				currentFileSize   int64
@@ -129,7 +140,7 @@ func newCmd_SplitCar() *cli.Command {
 					}
 				}
 				currentFileNum++
-				filename := fmt.Sprintf("epoch-%d-%d.car", epoch, currentFileNum)
+				filename := filepath.Join(outputDir, fmt.Sprintf("epoch-%d-%d.car", epoch, currentFileNum))
 				currentFile, err = os.Create(filename)
 				if err != nil {
 					return fmt.Errorf("failed to create file %s: %w", filename, err)
