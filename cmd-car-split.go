@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"os"
 	"strconv"
+	"path/filepath"
 
 	commcid "github.com/filecoin-project/go-fil-commcid"
 	commp "github.com/filecoin-project/go-fil-commp-hashhash"
@@ -87,6 +88,12 @@ func newCmd_SplitCar() *cli.Command {
 				Value:    "metadata.csv",
 				Required: false,
 				Usage:    "Filename for metadata. Defaults to metadata.csv",
+      },
+      &cli.StringFlag{
+				Name:     "output-dir",
+				Aliases:  []string{"o"},
+				Usage:    "Output directory",
+				Required: false,
 			},
 		},
 		Action: func(c *cli.Context) error {
@@ -122,6 +129,10 @@ func newCmd_SplitCar() *cli.Command {
 
 			epoch := c.Int("epoch")
 			maxFileSize := c.Int64("size")
+			outputDir := c.String("output-dir")
+			if outputDir == "" {
+				outputDir = "."
+			}
 
 			var (
 				currentFileSize   int64
@@ -163,7 +174,7 @@ func newCmd_SplitCar() *cli.Command {
 				}
 
 				currentFileNum++
-				filename := fmt.Sprintf("epoch-%d-%d.car", epoch, currentFileNum)
+				filename := filepath.Join(outputDir, fmt.Sprintf("epoch-%d-%d.car", epoch, currentFileNum))
 				currentFile, err = os.Create(filename)
 				if err != nil {
 					return fmt.Errorf("failed to create file %s: %w", filename, err)
