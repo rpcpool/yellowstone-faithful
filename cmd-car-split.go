@@ -391,29 +391,3 @@ func writeNode(node datamodel.Node, w io.Writer) (cid.Cid, error) {
 	}
 	return cd, nil
 }
-
-func cleanup(cp *commp.Calc, namePrefix string, i int, f *os.File) (carFile, error) {
-	rawCommP, paddedSize, err := cp.Digest()
-	if err != nil {
-		return carFile{}, err
-	}
-
-	commCid, err := commcid.DataCommitmentV1ToCID(rawCommP)
-	if err != nil {
-		return carFile{}, err
-	}
-
-	f.Close()
-	// oldn := fmt.Sprintf("%s%d.car", namePrefix, i)
-	// newn := fmt.Sprintf("%s%s.car", namePrefix, commCid)
-	// err = os.Rename(oldn, newn)
-	if err != nil {
-		return CarFile{}, err
-	}
-
-	return CarFile{
-		Name:       newn,
-		CommP:      commCid,
-		PaddedSize: paddedSize,
-	}, nil
-}
