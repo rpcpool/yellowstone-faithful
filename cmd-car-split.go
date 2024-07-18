@@ -9,8 +9,8 @@ import (
 	"io"
 	"io/fs"
 	"os"
-	"strconv"
 	"path/filepath"
+	"strconv"
 
 	commcid "github.com/filecoin-project/go-fil-commcid"
 	commp "github.com/filecoin-project/go-fil-commp-hashhash"
@@ -88,12 +88,13 @@ func newCmd_SplitCar() *cli.Command {
 				Value:    "metadata.csv",
 				Required: false,
 				Usage:    "Filename for metadata. Defaults to metadata.csv",
-      },
-      &cli.StringFlag{
+			},
+			&cli.StringFlag{
 				Name:     "output-dir",
 				Aliases:  []string{"o"},
 				Usage:    "Output directory",
 				Required: false,
+				Value:    ".",
 			},
 		},
 		Action: func(c *cli.Context) error {
@@ -130,6 +131,8 @@ func newCmd_SplitCar() *cli.Command {
 			epoch := c.Int("epoch")
 			maxFileSize := c.Int64("size")
 			outputDir := c.String("output-dir")
+			meta := c.String("metadata")
+
 			if outputDir == "" {
 				outputDir = "."
 			}
