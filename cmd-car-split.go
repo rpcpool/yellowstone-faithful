@@ -4,11 +4,15 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/csv"
 	"fmt"
 	"io"
 	"io/fs"
 	"os"
+	"strconv"
 
+	commcid "github.com/filecoin-project/go-fil-commcid"
+	commp "github.com/filecoin-project/go-fil-commp-hashhash"
 	"github.com/filecoin-project/go-leb128"
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime/codec/dagcbor"
@@ -52,6 +56,12 @@ type subsetInfo struct {
 	blockLinks []datamodel.Link
 }
 
+type carFile struct {
+	name       string
+	commP      cid.Cid
+	paddedSize uint64
+}
+
 func newCmd_SplitCar() *cli.Command {
 	return &cli.Command{
 		Name:        "split-car",
@@ -70,6 +80,13 @@ func newCmd_SplitCar() *cli.Command {
 				Aliases:  []string{"e"},
 				Usage:    "Epoch number",
 				Required: true,
+			},
+			&cli.StringFlag{
+				Name:     "metadata",
+				Aliases:  []string{"m"},
+				Value:    "metadata.csv",
+				Required: false,
+				Usage:    "Filename for metadata. Defaults to metadata.csv",
 			},
 		},
 		Action: func(c *cli.Context) error {
@@ -113,21 +130,38 @@ func newCmd_SplitCar() *cli.Command {
 				bufferedWriter    *bufio.Writer
 				currentSubsetInfo subsetInfo
 				subsetLinks       []datamodel.Link
+				cp                *commp.Calc
+				writer            io.Writer
+				carFiles          []carFile
 			)
 
 			createNewFile := func() error {
+
 				if currentFile != nil {
-					sl, err := writeSubsetNode(currentSubsetInfo, bufferedWriter)
+					sl, err := writeSubsetNode(currentSubsetInfo, writer)
 					if err != nil {
 						return fmt.Errorf("failed to write subset node: %w", err)
 					}
 					subsetLinks = append(subsetLinks, sl)
+
+					rawCommP, ps, err := cp.Digest()
+					if err != nil {
+						return fmt.Errorf("failed to calculate commp digest: %w", err)
+					}
+
+					commCid, err := commcid.DataCommitmentV1ToCID(rawCommP)
+					if err != nil {
+						return fmt.Errorf("failed to calculate commitment to cid: %w", err)
+					}
+
+					carFiles = append(carFiles, carFile{name: fmt.Sprintf("epoch-%d-%d.car", epoch, currentFileNum), commP: commCid, paddedSize: ps})
 
 					err = closeFile(bufferedWriter, currentFile)
 					if err != nil {
 						return fmt.Errorf("failed to close file: %w", err)
 					}
 				}
+
 				currentFileNum++
 				filename := fmt.Sprintf("epoch-%d-%d.car", epoch, currentFileNum)
 				currentFile, err = os.Create(filename)
@@ -136,9 +170,10 @@ func newCmd_SplitCar() *cli.Command {
 				}
 
 				bufferedWriter = bufio.NewWriter(currentFile)
+				writer = io.MultiWriter(bufferedWriter, cp)
 
 				// Write the header
-				_, err = io.WriteString(bufferedWriter, nulRootCarHeader)
+				_, err = io.WriteString(writer, nulRootCarHeader)
 				if err != nil {
 					return fmt.Errorf("failed to write header: %w", err)
 				}
@@ -150,7 +185,7 @@ func newCmd_SplitCar() *cli.Command {
 			}
 
 			writeObject := func(data []byte) error {
-				_, err := bufferedWriter.Write(data)
+				_, err := writer.Write(data)
 				if err != nil {
 					return fmt.Errorf("failed to write object to car file: %s, error: %w", currentFile.Name(), err)
 				}
@@ -226,7 +261,7 @@ func newCmd_SplitCar() *cli.Command {
 				return fmt.Errorf("failed to run accumulator while accumulating objects: %w", err)
 			}
 
-			sl, err := writeSubsetNode(currentSubsetInfo, bufferedWriter)
+			sl, err := writeSubsetNode(currentSubsetInfo, writer)
 			if err != nil {
 				return fmt.Errorf("failed to write subset node: %w", err)
 			}
@@ -247,9 +282,41 @@ func newCmd_SplitCar() *cli.Command {
 				return fmt.Errorf("failed to construct epochNode: %w", err)
 			}
 
-			_, err = writeNode(epochNode, bufferedWriter)
+			_, err = writeNode(epochNode, writer)
 			if err != nil {
 				return fmt.Errorf("failed to write epochNode: %w", err)
+			}
+
+			rawCommP, ps, err := cp.Digest()
+			if err != nil {
+				return fmt.Errorf("failed to calculate commp digest: %w", err)
+			}
+
+			commCid, err := commcid.DataCommitmentV1ToCID(rawCommP)
+			if err != nil {
+				return fmt.Errorf("failed to calculate commitment to cid: %w", err)
+			}
+
+			carFiles = append(carFiles, carFile{name: fmt.Sprintf("epoch-%d-%d.car", epoch, currentFileNum), commP: commCid, paddedSize: ps})
+
+			f, err := os.Create(meta)
+			defer f.Close()
+			if err != nil {
+				return err
+			}
+
+			w := csv.NewWriter(f)
+			err = w.Write([]string{"timestamp", "filename prefix", "car file", "piece cid", "padded piece size"})
+			if err != nil {
+				return err
+			}
+			defer w.Flush()
+			for _, c := range carFiles {
+				err = w.Write([]string{
+					c.name,
+					c.commP.String(),
+					strconv.FormatUint(c.paddedSize, 10),
+				})
 			}
 
 			return closeFile(bufferedWriter, currentFile)
@@ -257,7 +324,7 @@ func newCmd_SplitCar() *cli.Command {
 	}
 }
 
-func writeSubsetNode(currentSubsetInfo subsetInfo, bufferedWriter *bufio.Writer) (datamodel.Link, error) {
+func writeSubsetNode(currentSubsetInfo subsetInfo, writer io.Writer) (datamodel.Link, error) {
 	subsetNode, err := qp.BuildMap(ipldbindcode.Prototypes.Subset, -1, func(ma datamodel.MapAssembler) {
 		qp.MapEntry(ma, "kind", qp.Int(int64(iplddecoders.KindSubset)))
 		qp.MapEntry(ma, "first", qp.Int(int64(currentSubsetInfo.firstSlot)))
@@ -273,7 +340,7 @@ func writeSubsetNode(currentSubsetInfo subsetInfo, bufferedWriter *bufio.Writer)
 		return nil, fmt.Errorf("failed to write a subsetNode: %w", err)
 	}
 
-	cid, err := writeNode(subsetNode, bufferedWriter)
+	cid, err := writeNode(subsetNode, writer)
 	if err != nil {
 		return nil, fmt.Errorf("failed to write a subsetNode: %w", err)
 	}
@@ -323,4 +390,30 @@ func writeNode(node datamodel.Node, w io.Writer) (cid.Cid, error) {
 		}
 	}
 	return cd, nil
+}
+
+func cleanup(cp *commp.Calc, namePrefix string, i int, f *os.File) (carFile, error) {
+	rawCommP, paddedSize, err := cp.Digest()
+	if err != nil {
+		return carFile{}, err
+	}
+
+	commCid, err := commcid.DataCommitmentV1ToCID(rawCommP)
+	if err != nil {
+		return carFile{}, err
+	}
+
+	f.Close()
+	// oldn := fmt.Sprintf("%s%d.car", namePrefix, i)
+	// newn := fmt.Sprintf("%s%s.car", namePrefix, commCid)
+	// err = os.Rename(oldn, newn)
+	if err != nil {
+		return CarFile{}, err
+	}
+
+	return CarFile{
+		Name:       newn,
+		CommP:      commCid,
+		PaddedSize: paddedSize,
+	}, nil
 }
