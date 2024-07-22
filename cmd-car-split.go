@@ -174,6 +174,8 @@ func newCmd_SplitCar() *cli.Command {
 					if err != nil {
 						return fmt.Errorf("failed to close file: %w", err)
 					}
+
+					cp.Reset()
 				}
 
 				currentFileNum++
