@@ -139,7 +139,7 @@ func newCmd_SplitCar() *cli.Command {
 			}
 
 			var (
-				currentFileSize   uint64
+				currentFileSize   int64
 				currentFileNum    int
 				currentFile       *os.File
 				bufferedWriter    *bufio.Writer
