@@ -61,7 +61,7 @@ type carFile struct {
 	name       string
 	commP      cid.Cid
 	paddedSize uint64
-	fileSize   uint64
+	fileSize   int64
 }
 
 func newCmd_SplitCar() *cli.Command {
