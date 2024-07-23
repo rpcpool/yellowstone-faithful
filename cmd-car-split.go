@@ -138,6 +138,8 @@ func newCmd_SplitCar() *cli.Command {
 				outputDir = "."
 			}
 
+			cp := new(commp.Calc)
+
 			var (
 				currentFileSize   int64
 				currentFileNum    int
@@ -145,7 +147,6 @@ func newCmd_SplitCar() *cli.Command {
 				bufferedWriter    *bufio.Writer
 				currentSubsetInfo subsetInfo
 				subsetLinks       []datamodel.Link
-				cp                *commp.Calc
 				writer            io.Writer
 				carFiles          []carFile
 			)
@@ -323,7 +324,7 @@ func newCmd_SplitCar() *cli.Command {
 			}
 
 			w := csv.NewWriter(f)
-			err = w.Write([]string{"timestamp", "filename prefix", "car file", "piece cid", "padded piece size", "file size"})
+			err = w.Write([]string{"car file", "piece cid", "padded piece size", "file size"})
 			if err != nil {
 				return err
 			}
@@ -333,6 +334,7 @@ func newCmd_SplitCar() *cli.Command {
 					c.name,
 					c.commP.String(),
 					strconv.FormatUint(c.paddedSize, 10),
+					strconv.FormatInt(c.fileSize, 10),
 				})
 			}
 
