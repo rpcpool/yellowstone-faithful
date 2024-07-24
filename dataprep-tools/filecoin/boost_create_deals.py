@@ -82,7 +82,7 @@ online = environ.get("DEALTYPE") == "online"
 
 
 def create_deals(metadata_obj):
-    """ "
+    """
     Create deals for the files in the metadata object provided as an argument.
 
     Will attempt to lock and update `deal.csv` in the remote storage container.
