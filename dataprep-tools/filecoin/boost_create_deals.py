@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import math
 import sys
 import logging
 import os
@@ -121,7 +122,7 @@ def get_collateral(padded_size, verified=True):
         "Min" in resp["result"]
     ), f"Min key not found in StateDealProviderCollateralBounds response result: {resp}"
 
-    return resp["result"]["Min"] * 1.2  # add 20% to the min
+    return math.ceil(resp["result"]["Min"] * 1.2)  # add 20% to the min and round up to nearest integer
 
 
 def get_providers(
@@ -136,7 +137,7 @@ def get_providers(
     provider_collateral = get_collateral(padded_size=padded_size, verified=verified)
 
     api_key = environ.get("CID_GRAVITY_KEY")
-    headers = {"X-API=KEY": api_key}
+    headers = {"X-API-KEY": api_key}
 
     response = requests.post(
         url="https://service.cidgravity.com/private/v1/get-best-available-providers",
@@ -165,6 +166,10 @@ def get_providers(
     assert (
         "providers" in resp["result"]
     ), f"providers key not found in response from CID gravity: {resp}"
+
+    providers = resp["result"]["providers"]
+
+    assert len(providers) > 0, f"empty list of providers returned: {resp}"
 
     return resp["result"]["providers"]
 
