@@ -122,7 +122,9 @@ def get_collateral(padded_size, verified=True):
         "Min" in resp["result"]
     ), f"Min key not found in StateDealProviderCollateralBounds response result: {resp}"
 
-    return math.ceil(resp["result"]["Min"] * 1.2)  # add 20% to the min and round up to nearest integer
+    return math.ceil(
+        resp["result"]["Min"] * 1.2
+    )  # add 20% to the min and round up to nearest integer
 
 
 def get_providers(
@@ -289,9 +291,8 @@ def create_deals(metadata_obj):
 
             providers = get_providers(
                 piece_cid=file_item["commp_piece_cid"],
-                size=file_item["file_size"]
-                padded_size=file_item["padded_size"]
-
+                size=file_item["file_size"],
+                padded_size=file_item["padded_size"],
             )
 
             for provider in providers:
@@ -306,7 +307,10 @@ def create_deals(metadata_obj):
 
                 if file_item["commp_piece_cid"] not in replications:
                     replications[file_item["commp_piece_cid"]] = []
-                elif len(replications[file_item["commp_piece_cid"]]) >= replication_factor:
+                elif (
+                    len(replications[file_item["commp_piece_cid"]])
+                    >= replication_factor
+                ):
                     logging.info(
                         "skipping %s, already replicated %s times"
                         % (
