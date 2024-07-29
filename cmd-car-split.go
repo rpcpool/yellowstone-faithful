@@ -60,6 +60,7 @@ type subsetInfo struct {
 type carFile struct {
 	name       string
 	commP      cid.Cid
+	payloadCid cid.Cid
 	paddedSize uint64
 	fileSize   int64
 }
@@ -170,7 +171,7 @@ func newCmd_SplitCar() *cli.Command {
 						return fmt.Errorf("failed to calculate commitment to cid: %w", err)
 					}
 
-					carFiles = append(carFiles, carFile{name: fmt.Sprintf("epoch-%d-%d.car", epoch, currentFileNum), commP: commCid, paddedSize: ps, fileSize: currentFileSize})
+					carFiles = append(carFiles, carFile{name: fmt.Sprintf("epoch-%d-%d.car", epoch, currentFileNum), commP: commCid, payloadCid: sl.(cidlink.Link).Cid, paddedSize: ps, fileSize: currentFileSize})
 
 					err = closeFile(bufferedWriter, currentFile)
 					if err != nil {
@@ -315,7 +316,7 @@ func newCmd_SplitCar() *cli.Command {
 				return fmt.Errorf("failed to calculate commitment to cid: %w", err)
 			}
 
-			carFiles = append(carFiles, carFile{name: fmt.Sprintf("epoch-%d-%d.car", epoch, currentFileNum), commP: commCid, paddedSize: ps, fileSize: currentFileSize})
+			carFiles = append(carFiles, carFile{name: fmt.Sprintf("epoch-%d-%d.car", epoch, currentFileNum), commP: commCid, payloadCid: sl.(cidlink.Link).Cid, paddedSize: ps, fileSize: currentFileSize})
 
 			f, err := os.Create(meta)
 			defer f.Close()
@@ -324,7 +325,7 @@ func newCmd_SplitCar() *cli.Command {
 			}
 
 			w := csv.NewWriter(f)
-			err = w.Write([]string{"car file", "piece cid", "padded piece size", "file size"})
+			err = w.Write([]string{"car file", "piece cid", "payload cid", "padded piece size", "file size"})
 			if err != nil {
 				return err
 			}
@@ -333,6 +334,7 @@ func newCmd_SplitCar() *cli.Command {
 				err = w.Write([]string{
 					c.name,
 					c.commP.String(),
+					c.payloadCid.String(),
 					strconv.FormatUint(c.paddedSize, 10),
 					strconv.FormatInt(c.fileSize, 10),
 				})
