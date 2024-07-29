@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 
+import math
 import sys
 import logging
 import os
 import json
 import datetime
 import socket
+import requests
 from os import environ
 
 from random import shuffle
@@ -38,6 +40,8 @@ start_epoch_head_offset = int(604800 / 30)
 #   DRY_RUN: if set to true, the script will not actually create deals
 #   DEALTYPE: if set to online, the script will create online deals, otherwise offline deals
 #   DEALS_FOLDER: the folder to store the deals csv output file in
+#   FILECOIN_RPC_ENDPOINT: the filecoin rpc endpoint
+#   CID_GRAVITY_KEY: api key for cid gravity
 #
 # It expects the following arguments:
 #   epoch: the epoch to create deals for
@@ -72,6 +76,7 @@ application_key = environ.get("STORAGE_KEY")
 storage_name = environ.get("STORAGE_NAME")
 url_format = environ.get("PUBLIC_URL_FORMAT")
 upload_client = environ.get("UPLOAD_CLIENT")
+rpc_endpoint = environ.get("FILECOIN_RPC_ENDPOINT", "https://api.node.glif.io")
 
 if upload_client == "S3":
     client = S3Client(endpoint, storage_name, url_format, key_id, application_key)
@@ -79,6 +84,96 @@ else:
     client = BunnyCDNClient(endpoint, storage_name, url_format, "", application_key)
 
 online = environ.get("DEALTYPE") == "online"
+
+
+def get_chain_head():
+    response = requests.post(
+        url=rpc_endpoint,
+        json={"jsonrpc": "2.0", "id": 1, "method": "Filecoin.ChainHead", "params": []},
+    )
+    assert response.status_code == 200, f"failed to get chain head: {response.text}"
+
+    resp = response.json()
+    assert "result" in resp, f"result key not found in ChainHead response: {resp}"
+    assert (
+        "Height" in resp["result"]
+    ), f"Height key not found in ChainHead response: {resp}"
+
+    return resp["result"]["Height"]
+
+
+def get_collateral(padded_size, verified=True):
+    response = requests.post(
+        url=rpc_endpoint,
+        json={
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "Filecoin.StateDealProviderCollateralBounds",
+            "params": [int(padded_size), verified, []],
+        },
+    )
+    assert response.status_code == 200, f"failed to get chain head: {response.text}"
+
+    resp = response.json()
+    assert (
+        "result" in resp
+    ), f"result key not found in StateDealProviderCollateralBounds response: {resp}"
+    assert (
+        "Min" in resp["result"]
+    ), f"Min key not found in StateDealProviderCollateralBounds response result: {resp}"
+
+    return math.ceil(
+        int(resp["result"]["Min"]) * 1.2
+    )  # add 20% to the min and round up to nearest integer
+
+
+def get_providers(
+    piece_cid,
+    size,
+    padded_size,
+):
+
+    head = get_chain_head()
+    start_epoch = head + start_epoch_head_offset
+
+    provider_collateral = get_collateral(padded_size=padded_size, verified=True)
+
+    api_key = environ.get("CID_GRAVITY_KEY")
+    headers = {"X-API-KEY": api_key}
+
+    response = requests.post(
+        url="https://service.cidgravity.com/private/v1/get-best-available-providers",
+        headers=headers,
+        json={
+            "pieceCid": piece_cid,
+            "startEpoch": start_epoch,
+            "duration": 1468800,
+            "storagePricePerEpoch": 0,
+            "providerCollateral": provider_collateral,
+            "verifiedDeal": True,
+            "transferSize": size,
+            "transferType": "http",
+            "removeUnsealedCopy": False,
+        },
+    )
+
+    assert (
+        response.status_code == 200
+    ), f"failed to get provider from CID gravity: {response.text}"
+
+    resp = response.json()
+    assert (
+        "result" in resp
+    ), f"result key not found in response from CID gravity: {resp}"
+    assert (
+        "providers" in resp["result"]
+    ), f"providers key not found in response from CID gravity: {resp}"
+
+    providers = resp["result"]["providers"]
+
+    assert len(providers) > 0, f"empty list of providers returned: {resp}"
+
+    return resp["result"]["providers"]
 
 
 def create_deals(metadata_obj):
@@ -94,11 +189,11 @@ def create_deals(metadata_obj):
 
     deal_data = []
     for line in metadata_split_lines:
-        file_name = os.path.basename(line[2])
+        file_name = os.path.basename(line[0])
         # Only allow the new metadata
         assert (
             len(line) == 4
-        ), f"metadata.csv should have 4 columns, instead found f{len(line)}"
+        ), f"metadata.csv should have 4 columns, instead found {len(line)}, {line}"
         commp_piece_cid = line[1]
         padded_size = line[2]
 
@@ -106,11 +201,9 @@ def create_deals(metadata_obj):
         if not check_obj[0]:
             logging.info("%s not found" % file_name)
             sys.exit(1)
-            continue
         elif check_obj[1] <= 1:
             logging.info("%s size too small" % file_name)
             sys.exit(1)
-            continue
         elif check_obj[1] != int(padded_size):
             logging.debug(
                 "%s size mismatch %s != %s" % (file_name, check_obj[1], padded_size)
@@ -137,11 +230,6 @@ def create_deals(metadata_obj):
         }
 
         deal_data.append(deal_data_item)
-
-    providers = environ.get("PROVIDERS").split(",")
-    shuffle(providers)
-    logging.info("provider set: ")
-    logging.info(providers)
 
     replication_factor = int(environ.get("REPLICATION_FACTOR"))
     deals_providers = {}
@@ -197,11 +285,18 @@ def create_deals(metadata_obj):
         if not check_existing_deals[0]:
             csv_writer.writeheader()
 
-        for provider in providers:
-            logging.info("making deal with %s", provider)
-            for file_item in deal_data:
-                logging.info("creating deal for ")
-                logging.info(file_item)
+        for file_item in deal_data:
+            logging.info("creating deal for ")
+            logging.info(file_item)
+
+            providers = get_providers(
+                piece_cid=file_item["commp_piece_cid"],
+                size=file_item["file_size"],
+                padded_size=file_item["padded_size"],
+            )
+            logging.info(f"found providers: {providers}")
+
+            for provider in providers:
 
                 if file_item["commp_piece_cid"] in replications:
                     if provider in replications[file_item["commp_piece_cid"]]:
