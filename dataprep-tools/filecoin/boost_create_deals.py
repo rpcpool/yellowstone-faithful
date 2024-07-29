@@ -97,10 +97,11 @@ def create_deals(metadata_obj):
         file_name = os.path.basename(line[2])
         # Only allow the new metadata
         assert (
-            len(line) == 4
-        ), f"metadata.csv should have 4 columns, instead found f{len(line)}"
+            len(line) == 5
+        ), f"metadata.csv should have 5 columns, instead found f{len(line)}"
         commp_piece_cid = line[1]
         padded_size = line[2]
+        payload_cid = line[3]
 
         check_obj = client.check_exists(epoch + "/" + file_name)
         if not check_obj[0]:
@@ -322,9 +323,9 @@ if __name__ == "__main__":
     client.connect()
 
     # Load the payload CI
-    payload_cid = client.read_object("%s/epoch-%s.cid" % (epoch, epoch)).strip()
+    epoch_cid = client.read_object("%s/epoch-%s.cid" % (epoch, epoch)).strip()
 
-    logging.info("creating deals for epoch %s with payload %s", epoch, payload_cid)
+    logging.info("creating deals for epoch %s with payload %s", epoch, epoch_cid)
 
     # Load metadata csv produced by split-and-commp
     ret = 0
