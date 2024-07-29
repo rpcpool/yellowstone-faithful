@@ -109,7 +109,7 @@ def get_collateral(padded_size, verified=True):
             "jsonrpc": "2.0",
             "id": 1,
             "method": "Filecoin.StateDealProviderCollateralBounds",
-            "params": [padded_size, verified, []],
+            "params": [int(padded_size), verified, []],
         },
     )
     assert response.status_code == 200, f"failed to get chain head: {response.text}"
@@ -123,7 +123,7 @@ def get_collateral(padded_size, verified=True):
     ), f"Min key not found in StateDealProviderCollateralBounds response result: {resp}"
 
     return math.ceil(
-        resp["result"]["Min"] * 1.2
+        int(resp["result"]["Min"]) * 1.2
     )  # add 20% to the min and round up to nearest integer
 
 
@@ -136,7 +136,7 @@ def get_providers(
     head = get_chain_head()
     start_epoch = head + start_epoch_head_offset
 
-    provider_collateral = get_collateral(padded_size=padded_size, verified=verified)
+    provider_collateral = get_collateral(padded_size=padded_size, verified=True)
 
     api_key = environ.get("CID_GRAVITY_KEY")
     headers = {"X-API-KEY": api_key}
@@ -193,7 +193,7 @@ def create_deals(metadata_obj):
         # Only allow the new metadata
         assert (
             len(line) == 4
-        ), f"metadata.csv should have 4 columns, instead found {len(line)}"
+        ), f"metadata.csv should have 4 columns, instead found {len(line)}, {line}"
         commp_piece_cid = line[1]
         padded_size = line[2]
 
@@ -294,6 +294,7 @@ def create_deals(metadata_obj):
                 size=file_item["file_size"],
                 padded_size=file_item["padded_size"],
             )
+            logging.info(f"found providers: {providers}")
 
             for provider in providers:
 
