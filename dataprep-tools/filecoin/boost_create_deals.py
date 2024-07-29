@@ -40,7 +40,7 @@ start_epoch_head_offset = int(604800 / 30)
 #   DRY_RUN: if set to true, the script will not actually create deals
 #   DEALTYPE: if set to online, the script will create online deals, otherwise offline deals
 #   DEALS_FOLDER: the folder to store the deals csv output file in
-#   FULLNODE_API_INFO: the filecoin rpc endpoint
+#   FILECOIN_RPC_ENDPOINT: the filecoin rpc endpoint
 #   CID_GRAVITY_KEY: api key for cid gravity
 #
 # It expects the following arguments:
@@ -76,7 +76,7 @@ application_key = environ.get("STORAGE_KEY")
 storage_name = environ.get("STORAGE_NAME")
 url_format = environ.get("PUBLIC_URL_FORMAT")
 upload_client = environ.get("UPLOAD_CLIENT")
-rpc_endpoint = environ.get("FULLNODE_API_INFO", "https://api.node.glif.io")
+rpc_endpoint = environ.get("FILECOIN_RPC_ENDPOINT", "https://api.node.glif.io")
 
 if upload_client == "S3":
     client = S3Client(endpoint, storage_name, url_format, key_id, application_key)
@@ -193,7 +193,7 @@ def create_deals(metadata_obj):
         # Only allow the new metadata
         assert (
             len(line) == 4
-        ), f"metadata.csv should have 4 columns, instead found f{len(line)}"
+        ), f"metadata.csv should have 4 columns, instead found {len(line)}"
         commp_piece_cid = line[1]
         padded_size = line[2]
 
