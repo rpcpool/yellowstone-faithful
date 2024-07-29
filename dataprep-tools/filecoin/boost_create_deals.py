@@ -189,7 +189,7 @@ def create_deals(metadata_obj):
 
     deal_data = []
     for line in metadata_split_lines:
-        file_name = os.path.basename(line[2])
+        file_name = os.path.basename(line[0])
         # Only allow the new metadata
         assert (
             len(line) == 4
