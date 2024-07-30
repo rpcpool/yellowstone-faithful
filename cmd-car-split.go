@@ -54,6 +54,7 @@ type carFile struct {
 
 type Metadata struct {
 	FileName  string `yaml:"filename"`
+	FileSize  int64  `yaml:"fileSize"`
 	FirstSlot int    `yaml:"firstSlot"`
 	LastSlot  int    `yaml:"lastSlot"`
 	Cid       string `yaml:"cid"`
@@ -144,6 +145,7 @@ func newCmd_SplitCar() *cli.Command {
 				subsetLinks       []datamodel.Link
 				writer            io.Writer
 				carFiles          []carFile
+				metadata          []Metadata
 			)
 
 			createNewFile := func() error {
@@ -168,18 +170,7 @@ func newCmd_SplitCar() *cli.Command {
 					cf := carFile{name: fmt.Sprintf("epoch-%d-%d.car", epoch, currentFileNum), commP: commCid, payloadCid: sl.(cidlink.Link).Cid, paddedSize: ps, fileSize: currentFileSize}
 					carFiles = append(carFiles, cf)
 
-					// write metadata
-					m := Metadata{
-						FileName:  currentSubsetInfo.fileName,
-						FirstSlot: currentSubsetInfo.firstSlot,
-						LastSlot:  currentSubsetInfo.lastSlot,
-						Cid:       sl.String(),
-					}
-
-					err = writeMetadata(m, epoch)
-					if err != nil {
-						return fmt.Errorf("failed to write metadata: %w", err)
-					}
+					metadata = append(metadata, Metadata{FileName: currentSubsetInfo.fileName, FileSize: currentFileSize, FirstSlot: currentSubsetInfo.firstSlot, LastSlot: currentSubsetInfo.lastSlot, Cid: sl.String()})
 
 					err = closeFile(bufferedWriter, currentFile)
 					if err != nil {
@@ -302,18 +293,7 @@ func newCmd_SplitCar() *cli.Command {
 			}
 			subsetLinks = append(subsetLinks, sl)
 
-			// write metadata
-			m := Metadata{
-				FileName:  currentSubsetInfo.fileName,
-				FirstSlot: currentSubsetInfo.firstSlot,
-				LastSlot:  currentSubsetInfo.lastSlot,
-				Cid:       sl.String(),
-			}
-
-			err = writeMetadata(m, epoch)
-			if err != nil {
-				return fmt.Errorf("failed to write metadata: %w", err)
-			}
+			metadata = append(metadata, Metadata{FileName: currentSubsetInfo.fileName, FileSize: currentFileSize, FirstSlot: currentSubsetInfo.firstSlot, LastSlot: currentSubsetInfo.lastSlot, Cid: sl.String()})
 
 			epochNode, err := qp.BuildMap(ipldbindcode.Prototypes.Epoch, -1, func(ma datamodel.MapAssembler) {
 				qp.MapEntry(ma, "kind", qp.Int(int64(iplddecoders.KindEpoch)))
@@ -378,6 +358,16 @@ func newCmd_SplitCar() *cli.Command {
 					strconv.FormatUint(c.paddedSize, 10),
 					strconv.FormatInt(c.fileSize, 10),
 				})
+				if err != nil {
+					return fmt.Errorf("failed to write metatadata csv: %w", err)
+				}
+			}
+
+			for _, m := range metadata {
+				err = writeMetadata(m, epoch)
+				if err != nil {
+					return fmt.Errorf("failed to write metatadata yaml: %w", err)
+				}
 			}
 
 			return nil
