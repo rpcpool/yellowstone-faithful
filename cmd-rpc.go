@@ -15,6 +15,7 @@ import (
 	"github.com/allegro/bigcache/v3"
 	"github.com/fsnotify/fsnotify"
 	hugecache "github.com/rpcpool/yellowstone-faithful/huge-cache"
+	"github.com/rpcpool/yellowstone-faithful/metrics"
 	splitcarfetcher "github.com/rpcpool/yellowstone-faithful/split-car-fetcher"
 	"github.com/ryanuber/go-glob"
 	"github.com/urfave/cli/v2"
@@ -202,13 +203,13 @@ func newCmd_rpc() *cli.Command {
 							return nil
 						}()
 						if err != nil {
-							metrics_epochsAvailable.WithLabelValues(fmt.Sprintf("%d", epochNum)).Set(0)
+							metrics.EpochsAvailable.WithLabelValues(fmt.Sprintf("%d", epochNum)).Set(0)
 							klog.Error(err)
 							numFailed.Add(1)
 							// NOTE: DO NOT return the error here, as we want to continue loading other epochs
 							return nil
 						}
-						metrics_epochsAvailable.WithLabelValues(fmt.Sprintf("%d", epochNum)).Set(1)
+						metrics.EpochsAvailable.WithLabelValues(fmt.Sprintf("%d", epochNum)).Set(1)
 						numSucceeded.Add(1)
 						return nil
 					})
@@ -275,7 +276,7 @@ func newCmd_rpc() *cli.Command {
 									return
 								}
 								klog.V(2).Infof("Epoch %d added/replaced in %s", epoch.Epoch(), time.Since(startedAt))
-								metrics_epochsAvailable.WithLabelValues(fmt.Sprintf("%d", epoch.Epoch())).Set(1)
+								metrics.EpochsAvailable.WithLabelValues(fmt.Sprintf("%d", epoch.Epoch())).Set(1)
 							}
 						case fsnotify.Create:
 							{
@@ -298,7 +299,7 @@ func newCmd_rpc() *cli.Command {
 									return
 								}
 								klog.V(2).Infof("Epoch %d added in %s", epoch.Epoch(), time.Since(startedAt))
-								metrics_epochsAvailable.WithLabelValues(fmt.Sprintf("%d", epoch.Epoch())).Set(1)
+								metrics.EpochsAvailable.WithLabelValues(fmt.Sprintf("%d", epoch.Epoch())).Set(1)
 							}
 						case fsnotify.Remove:
 							{
@@ -310,7 +311,7 @@ func newCmd_rpc() *cli.Command {
 									klog.Errorf("error removing epoch for config file %q: %s", event.Name, err.Error())
 								}
 								klog.V(2).Infof("Epoch %d removed in %s", epNumber, time.Since(startedAt))
-								metrics_epochsAvailable.WithLabelValues(fmt.Sprintf("%d", epNumber)).Set(0)
+								metrics.EpochsAvailable.WithLabelValues(fmt.Sprintf("%d", epNumber)).Set(0)
 							}
 						case fsnotify.Rename:
 							klog.V(3).Infof("File %q was renamed; do nothing", event.Name)

@@ -23,6 +23,7 @@ import (
 type GsfaWriter struct {
 	mu                   sync.Mutex
 	indexRootDir         string
+	popRank              *rollingRankOfTopPerformers // top pubkeys by flush count
 	offsets              *hashmap.Map[solana.PublicKey, [2]uint64]
 	ll                   *linkedlog.LinkedLog
 	man                  *manifest.Manifest
@@ -61,6 +62,7 @@ func NewGsfaWriter(
 	ctx, cancel := context.WithCancel(context.Background())
 	index := &GsfaWriter{
 		fullBufferWriterChan: make(chan linkedlog.KeyToOffsetAndSizeAndBlocktime, 50), // TODO: make this configurable
+		popRank:              newRollingRankOfTopPerformers(10_000),
 		offsets:              hashmap.New[solana.PublicKey, [2]uint64](int(1_000_000)),
 		accum:                hashmap.New[solana.PublicKey, []*linkedlog.OffsetAndSizeAndBlocktime](int(1_000_000)),
 		ctx:                  ctx,
@@ -120,6 +122,9 @@ func (a *GsfaWriter) fullBufferWriter() {
 				has := tmpBuf.Has(buffer.Key)
 				if len(tmpBuf) == howManyBuffersToFlushConcurrently || has {
 					for _, buf := range tmpBuf {
+						if len(buf.Values) == 0 {
+							continue
+						}
 						// Write the buffer to the linked log.
 						klog.V(5).Infof("Flushing %d transactions for key %s", len(buf.Values), buf.Key)
 						if err := a.flushKVs(buf); err != nil {
@@ -131,7 +136,7 @@ func (a *GsfaWriter) fullBufferWriter() {
 				tmpBuf = append(tmpBuf, buffer)
 			}
 		case <-time.After(1 * time.Second):
-			klog.Infof("Read %d buffers from channel", numReadFromChan)
+			klog.V(5).Infof("Read %d buffers from channel", numReadFromChan)
 		}
 	}
 }
@@ -153,39 +158,45 @@ func (a *GsfaWriter) Push(
 	}
 	publicKeys = publicKeys.Dedupe()
 	publicKeys.Sort()
-	if slot%1000 == 0 {
-		if a.accum.Len() > 130_000 {
-			// flush all
-			klog.Infof("Flushing all %d keys", a.accum.Len())
+	if slot%500 == 0 && a.accum.Len() > 100_000 {
+		// flush all
+		klog.V(4).Infof("Flushing all %d keys", a.accum.Len())
 
-			var keys solana.PublicKeySlice = a.accum.Keys()
-			keys.Sort()
+		var keys solana.PublicKeySlice = a.accum.Keys()
+		keys.Sort()
 
-			for iii := range keys {
-				key := keys[iii]
-				values, _ := a.accum.Get(key)
+		a.popRank.purge()
 
-				if len(values) < 100 && len(values) > 0 {
-					if err := a.flushKVs(linkedlog.KeyToOffsetAndSizeAndBlocktime{
-						Key:    key,
-						Values: values,
-					}); err != nil {
-						return err
-					}
-					a.accum.Delete(key)
+		for iii := range keys {
+			key := keys[iii]
+			values, _ := a.accum.Get(key)
+			// The objective is to have as big of a batch for each key as possible (max is 1000).
+			// So we optimize for delaying the flush for the most popular keys (popular=has been flushed a lot of times).
+			// And we flush the less popular keys, periodically if they haven't seen much activity.
+
+			// if this key has less than 100 values and is not in the top list of keys by flush count, then
+			// it's very likely that this key isn't going to get a lot of values soon
+			if len(values) < 100 && len(values) > 0 && !a.popRank.has(key) {
+				if err := a.flushKVs(linkedlog.KeyToOffsetAndSizeAndBlocktime{
+					Key:    key,
+					Values: values,
+				}); err != nil {
+					return err
 				}
+				a.accum.Delete(key)
 			}
 		}
 	}
 	for _, publicKey := range publicKeys {
 		current, ok := a.accum.Get(publicKey)
 		if !ok {
-			current = make([]*linkedlog.OffsetAndSizeAndBlocktime, 0)
+			current = make([]*linkedlog.OffsetAndSizeAndBlocktime, 0, itemsPerBatch)
 			current = append(current, oas)
 			a.accum.Set(publicKey, current)
 		} else {
 			current = append(current, oas)
 			if len(current) >= itemsPerBatch {
+				a.popRank.Incr(publicKey, 1)
 				a.fullBufferWriterChan <- linkedlog.KeyToOffsetAndSizeAndBlocktime{
 					Key:    publicKey,
 					Values: clone(current),
