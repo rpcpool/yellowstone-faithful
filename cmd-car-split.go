@@ -67,11 +67,12 @@ type carFile struct {
 }
 
 type Metadata struct {
-	FileName  string `yaml:"filename"`
-	FileSize  int64  `yaml:"fileSize"`
-	FirstSlot int    `yaml:"firstSlot"`
-	LastSlot  int    `yaml:"lastSlot"`
-	Cid       string `yaml:"cid"`
+	FileName   string `yaml:"filename"`
+	FileSize   int64  `yaml:"fileSize"`
+	FirstSlot  int    `yaml:"firstSlot"`
+	LastSlot   int    `yaml:"lastSlot"`
+	Cid        string `yaml:"cid"`
+	HeaderSize int64  `yaml:"headerSize"`
 }
 
 func newCmd_SplitCar() *cli.Command {
@@ -183,7 +184,7 @@ func newCmd_SplitCar() *cli.Command {
 
 					carFiles = append(carFiles, carFile{name: fmt.Sprintf("epoch-%d-%d.car", epoch, currentFileNum), commP: commCid, payloadCid: sl.(cidlink.Link).Cid, paddedSize: ps, fileSize: currentFileSize})
 
-					metadata = append(metadata, Metadata{FileName: currentSubsetInfo.fileName, FileSize: currentFileSize, FirstSlot: currentSubsetInfo.firstSlot, LastSlot: currentSubsetInfo.lastSlot, Cid: sl.String()})
+					metadata = append(metadata, Metadata{FileName: currentSubsetInfo.fileName, FileSize: currentFileSize, FirstSlot: currentSubsetInfo.firstSlot, LastSlot: currentSubsetInfo.lastSlot, Cid: sl.String(), HeaderSize: int64(len(nulRootCarHeader))})
 
 					err = closeFile(bufferedWriter, currentFile)
 					if err != nil {
