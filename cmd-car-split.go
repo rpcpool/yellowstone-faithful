@@ -363,11 +363,9 @@ func newCmd_SplitCar() *cli.Command {
 				}
 			}
 
-			for _, m := range metadata {
-				err = writeMetadata(m, epoch)
-				if err != nil {
-					return fmt.Errorf("failed to write metatadata yaml: %w", err)
-				}
+			err = writeMetadata(metadata, epoch)
+			if err != nil {
+				return fmt.Errorf("failed to write metatadata yaml: %w", err)
 			}
 
 			return nil
@@ -444,7 +442,7 @@ func writeNode(node datamodel.Node, w io.Writer) (cid.Cid, error) {
 	return cd, nil
 }
 
-func writeMetadata(metadata Metadata, epoch int) error {
+func writeMetadata(metadata []Metadata, epoch int) error {
 	metadataFileName := fmt.Sprintf("epoch-%d-metadata.yaml", epoch)
 
 	// Open file in append mode
