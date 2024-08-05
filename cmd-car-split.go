@@ -27,6 +27,7 @@ import (
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
 	"github.com/urfave/cli/v2"
+	"gopkg.in/yaml.v2"
 	"k8s.io/klog/v2"
 )
 
@@ -63,6 +64,15 @@ type carFile struct {
 	payloadCid cid.Cid
 	paddedSize uint64
 	fileSize   int64
+}
+
+type Metadata struct {
+	FileName   string `yaml:"filename"`
+	FileSize   int64  `yaml:"fileSize"`
+	FirstSlot  int    `yaml:"firstSlot"`
+	LastSlot   int    `yaml:"lastSlot"`
+	Cid        string `yaml:"cid"`
+	HeaderSize int64  `yaml:"headerSize"`
 }
 
 func newCmd_SplitCar() *cli.Command {
@@ -150,6 +160,7 @@ func newCmd_SplitCar() *cli.Command {
 				subsetLinks       []datamodel.Link
 				writer            io.Writer
 				carFiles          []carFile
+				metadata          []Metadata
 			)
 
 			createNewFile := func() error {
@@ -172,6 +183,8 @@ func newCmd_SplitCar() *cli.Command {
 					}
 
 					carFiles = append(carFiles, carFile{name: fmt.Sprintf("epoch-%d-%d.car", epoch, currentFileNum), commP: commCid, payloadCid: sl.(cidlink.Link).Cid, paddedSize: ps, fileSize: currentFileSize})
+
+					metadata = append(metadata, Metadata{FileName: currentSubsetInfo.fileName, FileSize: currentFileSize, FirstSlot: currentSubsetInfo.firstSlot, LastSlot: currentSubsetInfo.lastSlot, Cid: sl.String(), HeaderSize: int64(len(nulRootCarHeader))})
 
 					err = closeFile(bufferedWriter, currentFile)
 					if err != nil {
@@ -286,6 +299,8 @@ func newCmd_SplitCar() *cli.Command {
 			}
 			subsetLinks = append(subsetLinks, sl)
 
+			metadata = append(metadata, Metadata{FileName: currentSubsetInfo.fileName, FileSize: currentFileSize, FirstSlot: currentSubsetInfo.firstSlot, LastSlot: currentSubsetInfo.lastSlot, Cid: sl.String()})
+
 			epochNode, err := qp.BuildMap(ipldbindcode.Prototypes.Epoch, -1, func(ma datamodel.MapAssembler) {
 				qp.MapEntry(ma, "kind", qp.Int(int64(iplddecoders.KindEpoch)))
 				qp.MapEntry(ma, "epoch", qp.Int(int64(epoch)))
@@ -338,6 +353,14 @@ func newCmd_SplitCar() *cli.Command {
 					strconv.FormatUint(c.paddedSize, 10),
 					strconv.FormatInt(c.fileSize, 10),
 				})
+				if err != nil {
+					return fmt.Errorf("failed to write metatadata csv: %w", err)
+				}
+			}
+
+			err = writeMetadata(metadata, epoch)
+			if err != nil {
+				return fmt.Errorf("failed to write metatadata yaml: %w", err)
 			}
 
 			return closeFile(bufferedWriter, currentFile)
@@ -411,4 +434,23 @@ func writeNode(node datamodel.Node, w io.Writer) (cid.Cid, error) {
 		}
 	}
 	return cd, nil
+}
+
+func writeMetadata(metadata []Metadata, epoch int) error {
+	metadataFileName := fmt.Sprintf("epoch-%d-metadata.yaml", epoch)
+
+	// Open file in append mode
+	metadataFile, err := os.OpenFile(metadataFileName, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to open metadata file: %w", err)
+	}
+	defer metadataFile.Close()
+
+	encoder := yaml.NewEncoder(metadataFile)
+	err = encoder.Encode(metadata)
+	if err != nil {
+		return fmt.Errorf("failed to encode metadata: %w", err)
+	}
+
+	return nil
 }
