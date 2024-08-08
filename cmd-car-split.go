@@ -190,8 +190,12 @@ func newCmd_SplitCar() *cli.Command {
 					return fmt.Errorf("failed to write header: %w", err)
 				}
 
+				hs, err := car.HeaderSize(&hdr)
+				if err != nil {
+					return fmt.Errorf("failed to get header size: %w", err)
+				}
 				// Set the currentFileSize to the size of the header
-				currentFileSize = int64(len(nulRootCarHeader))
+				currentFileSize = int64(hs)
 				currentSubsetInfo = subsetInfo{fileName: filename, firstSlot: -1, lastSlot: -1}
 				return nil
 			}
@@ -236,7 +240,7 @@ func newCmd_SplitCar() *cli.Command {
 						dagSize += owm.RawSectionSize()
 					}
 
-					if currentFile == nil || currentFileSize+int64(dagSize) > maxFileSize {
+					if currentFile == nil || currentFileSize+int64(dagSize) > maxFileSize || len(currentSubsetInfo.blockLinks) > maxLinks {
 						err := createNewFile()
 						if err != nil {
 							return fmt.Errorf("failed to create a new file: %w", err)
