@@ -48,6 +48,8 @@ const (
 		"\x67" + "version" +
 		// 1, we call this v0 due to the nul-identity CID being an open question: https://github.com/ipld/go-car/issues/26#issuecomment-604299576
 		"\x01"
+
+	maxLinks = 20
 )
 
 type subsetInfo struct {
@@ -243,7 +245,7 @@ func newCmd_SplitCar() *cli.Command {
 						dagSize += owm.RawSectionSize()
 					}
 
-					if currentFile == nil || currentFileSize+int64(dagSize) > maxFileSize {
+					if currentFile == nil || currentFileSize+int64(dagSize) > maxFileSize || len(currentSubsetInfo.blockLinks) > maxLinks {
 						err := createNewFile()
 						if err != nil {
 							return fmt.Errorf("failed to create a new file: %w", err)
