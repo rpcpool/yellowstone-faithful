@@ -37,7 +37,7 @@ type Block struct {
 type BlockMeta struct {
   kind      Int
   # Block link
-  block    Link      # &Transaction
+  block    Link      # &Block, maybe this needs to be a string instead of a link to actually make this a separate dag?
   # Link to the rewards for this block.
   rewards   Link     # &Rewards
   # Transaction metadata, @TODO: does this risk being too big?
@@ -88,7 +88,7 @@ type TransactionMeta struct {
   kind Int
 
   # Link to the tranasction
-  transaction Link # &Transaction
+  transaction Link # &Transaction, maybe this needs to be a string intead of a link to preserve this as a DAG?
 
   # Raw tx metadata data.
   metadata DataFrame
