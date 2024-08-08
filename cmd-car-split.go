@@ -34,6 +34,8 @@ import (
 
 var CBOR_SHA256_DUMMY_CID = cid.MustParse("bafyreics5uul5lbtxslcigtoa5fkba7qgwu7cyb7ih7z6fzsh4lgfgraau")
 
+const maxLinks = 432000 / 18 // 18 subsets
+
 type subsetInfo struct {
 	fileName   string
 	firstSlot  int
