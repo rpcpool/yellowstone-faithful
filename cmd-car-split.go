@@ -49,7 +49,7 @@ const (
 		// 1, we call this v0 due to the nul-identity CID being an open question: https://github.com/ipld/go-car/issues/26#issuecomment-604299576
 		"\x01"
 
-	maxLinks = 20
+	maxLinks = 432000 / 18 // 18 subsets
 )
 
 type subsetInfo struct {
