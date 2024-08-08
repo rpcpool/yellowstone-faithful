@@ -36,6 +36,8 @@ type Block struct {
 
 type BlockMeta struct {
   kind      Int
+  # Block link
+  block    Link      # &Transaction
   # Link to the rewards for this block.
   rewards   Link     # &Rewards
   # Transaction metadata, @TODO: does this risk being too big?
@@ -84,6 +86,9 @@ type Transaction struct {
 
 type TransactionMeta struct {
   kind Int
+
+  # Link to the tranasction
+  transaction Link # &Transaction
 
   # Raw tx metadata data.
   metadata DataFrame
