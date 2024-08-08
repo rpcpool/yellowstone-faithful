@@ -20,6 +20,8 @@ type Subset struct {
   last   Int
   # The list of blocks in this subset.
   blocks [ Link ] # [ &Block ]
+  # Block metadata
+  blocks_metadata [ Link ] # [& BlockMeta]
 } representation tuple
 
 type Block struct {
@@ -30,9 +32,15 @@ type Block struct {
   entries   [ Link ] # [ &Entry ]
   # The metadata for this block.
   meta      SlotMeta
+} representation tuple
+
+type BlockMeta struct {
+  kind      Int
   # Link to the rewards for this block.
   rewards   Link     # &Rewards
-} representation tuple
+  # Transaction metadata, @TODO: does this risk being too big?
+  entries [ Link ] # [ &TransactionMeta ]
+}
 
 type Rewards struct {
   kind       Int
@@ -68,13 +76,18 @@ type Transaction struct {
   kind     Int
   # Raw transaction data.
   data     DataFrame
-  # Raw tx metadata data.
-  metadata DataFrame
   # The slot number where this transaction was created.
   slot     Int
   # The index of the position of this transaction in the block (0-indexed).
   index nullable optional  Int
 } representation tuple
+
+type TransactionMeta struct {
+  kind Int
+
+  # Raw tx metadata data.
+  metadata DataFrame
+}
 
 type Hash bytes
 type Buffer bytes
