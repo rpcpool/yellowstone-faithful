@@ -3,6 +3,7 @@ package indexes
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 
@@ -129,4 +130,77 @@ func (w *CidToSubsetOffsetAndSize_Writer) Close() error {
 		return fmt.Errorf("attempted to close a cid-to-subset-offset-and-size index that was not sealed")
 	}
 	return w.index.Close()
+}
+
+func (w *CidToSubsetOffsetAndSize_Writer) GetFilePath() string {
+	return w.finalPath
+}
+
+type CidToSubsetOffsetAndSize_Reader struct {
+	file  io.Closer
+	meta  *Metadata
+	index *compactindexsized.DB
+}
+
+func Open_CidToSubsetOffsetAndSize(file string) (*CidToSubsetOffsetAndSize_Reader, error) {
+	reader, err := os.Open(file)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open index file: %w", err)
+	}
+
+	return OpenWithReader_CidToSubsetOffsetAndSize(reader)
+}
+
+func OpenWithReader_CidToSubsetOffsetAndSize(reader ReaderAtCloser) (*CidToSubsetOffsetAndSize_Reader, error) {
+	index, err := compactindexsized.Open(reader)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open index: %w", err)
+	}
+	meta, err := getDefaultMetadata(index)
+	if err != nil {
+		return nil, err
+	}
+	if !IsValidNetwork(meta.Network) {
+		return nil, fmt.Errorf("invalid network")
+	}
+	if meta.RootCid == cid.Undef {
+		return nil, fmt.Errorf("root cid is undefined")
+	}
+	if err := meta.AssertIndexKind(Kind_CidToSubsetOffsetAndSize); err != nil {
+		return nil, err
+	}
+	return &CidToSubsetOffsetAndSize_Reader{
+		file:  reader,
+		meta:  meta,
+		index: index,
+	}, nil
+}
+
+func (r *CidToSubsetOffsetAndSize_Reader) Get(cid_ cid.Cid) (*SubsetOffsetAndSize, error) {
+	if cid_ == cid.Undef {
+		return nil, fmt.Errorf("cid is undefined")
+	}
+	key := cid_.Bytes()
+	value, err := r.index.Lookup(key)
+	if err != nil {
+		return nil, err
+	}
+	soas := &SubsetOffsetAndSize{}
+	if err := soas.FromBytes(value); err != nil {
+		return nil, err
+	}
+	return soas, nil
+}
+
+func (r *CidToSubsetOffsetAndSize_Reader) Close() error {
+	return r.file.Close()
+}
+
+// Meta returns the metadata for the index.
+func (r *CidToSubsetOffsetAndSize_Reader) Meta() *Metadata {
+	return r.meta
+}
+
+func (r *CidToSubsetOffsetAndSize_Reader) Prefetch(b bool) {
+	r.index.Prefetch(b)
 }
