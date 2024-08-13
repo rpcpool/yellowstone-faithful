@@ -27,13 +27,12 @@ const (
 )
 
 // todo: not sure if this file name is correct
-func formatFilename_CidToSubsetOffsetAndSize(epoch uint64, rootCid cid.Cid, network Network) string {
+func formatFilename_CidToSubsetOffsetAndSize(epoch uint64, network Network) string {
 	return fmt.Sprintf(
-		"epoch-%d-%s-%s-%s",
+		"epoch-%d-%s-%s",
 		epoch,
-		rootCid.String(),
 		network,
-		"cid-to-offset-and-size.index",
+		"cid-to-subset-offset-and-size.index",
 	)
 }
 
@@ -41,16 +40,12 @@ var Kind_CidToSubsetOffsetAndSize = []byte("cid-to-subset-offset-and-size")
 
 func NewWriter_CidToSubsetOffsetAndSize(
 	epoch uint64,
-	rootCid cid.Cid,
 	network Network,
 	tmpDir string,
 	numItems uint64,
 ) (*CidToSubsetOffsetAndSize_Writer, error) {
 	if !IsValidNetwork(network) {
 		return nil, ErrInvalidNetwork
-	}
-	if rootCid == cid.Undef {
-		return nil, ErrInvalidRootCid
 	}
 	index, err := compactindexsized.NewBuilderSized(
 		tmpDir,
@@ -62,7 +57,6 @@ func NewWriter_CidToSubsetOffsetAndSize(
 	}
 	meta := &Metadata{
 		Epoch:     epoch,
-		RootCid:   rootCid,
 		Network:   network,
 		IndexKind: Kind_CidToSubsetOffsetAndSize,
 	}
@@ -107,7 +101,7 @@ func (w *CidToSubsetOffsetAndSize_Writer) Seal(ctx context.Context, dstDir strin
 		return fmt.Errorf("already sealed")
 	}
 
-	filepath := filepath.Join(dstDir, formatFilename_CidToSubsetOffsetAndSize(w.meta.Epoch, w.meta.RootCid, w.meta.Network))
+	filepath := filepath.Join(dstDir, formatFilename_CidToSubsetOffsetAndSize(w.meta.Epoch, w.meta.Network))
 	w.finalPath = filepath
 
 	file, err := os.Create(filepath)
@@ -162,9 +156,6 @@ func OpenWithReader_CidToSubsetOffsetAndSize(reader ReaderAtCloser) (*CidToSubse
 	}
 	if !IsValidNetwork(meta.Network) {
 		return nil, fmt.Errorf("invalid network")
-	}
-	if meta.RootCid == cid.Undef {
-		return nil, fmt.Errorf("root cid is undefined")
 	}
 	if err := meta.AssertIndexKind(Kind_CidToSubsetOffsetAndSize); err != nil {
 		return nil, err

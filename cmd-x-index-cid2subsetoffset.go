@@ -77,32 +77,32 @@ func newCmd_Index_cid2subsetOffset() *cli.Command {
 				defer func() {
 					klog.Infof("Finished in %s", time.Since(startedAt))
 				}()
-				klog.Infof("Creating CID-to-offset index for %s", carPath)
-				indexFilepath, err := CreateIndex_cid2offset(
+				klog.Infof("Creating CID-to-offset index")
+				indexFilepath, err := CreateIndex_cid2subsetOffset(
 					context.TODO(),
 					epoch,
 					network,
 					tmpDir,
-					carPath,
+					carPaths,
 					indexDir,
 				)
 				if err != nil {
 					panic(err)
 				}
 				klog.Info("Index created")
-				if verify {
-					klog.Infof("Verifying index for %s located at %s", carPath, indexFilepath)
-					startedAt := time.Now()
-					defer func() {
-						klog.Infof("Finished in %s", time.Since(startedAt))
-					}()
-					err := VerifyIndex_cid2offset(context.TODO(), carPath, indexFilepath)
-					if err != nil {
-						return cli.Exit(err, 1)
-					}
-					klog.Info("Index verified")
-					return nil
-				}
+				// if verify {
+				// 	klog.Infof("Verifying index located at %s", indexFilepath)
+				// 	startedAt := time.Now()
+				// 	defer func() {
+				// 		klog.Infof("Finished in %s", time.Since(startedAt))
+				// 	}()
+				// 	err := VerifyIndex_cid2subsetOffset(context.TODO(), indexFilepath)
+				// 	if err != nil {
+				// 		return cli.Exit(err, 1)
+				// 	}
+				// 	klog.Info("Index verified")
+				// 	return nil
+				// }
 			}
 			return nil
 		},
