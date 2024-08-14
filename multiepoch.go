@@ -276,11 +276,15 @@ func newMultiEpochHandler(handler *MultiEpoch, lsConf *ListenerConfig) func(ctx 
 		}
 		klog.Infof("Will proxy unhandled RPC methods to %q", addr)
 	}
+	metricsHandler := fasthttpadaptor.NewFastHTTPHandler(promhttp.Handler())
 	return func(reqCtx *fasthttp.RequestCtx) {
 		startedAt := time.Now()
 		reqID := randomRequestID()
 		var method string = "<unknown>"
 		defer func() {
+			if method == "/metrics" || method == "/health" {
+				return
+			}
 			klog.V(2).Infof("[%s] request %q took %s", reqID, sanitizeMethod(method), time.Since(startedAt))
 			metrics_statusCode.WithLabelValues(fmt.Sprint(reqCtx.Response.StatusCode())).Inc()
 			metrics_responseTimeHistogram.WithLabelValues(sanitizeMethod(method)).Observe(time.Since(startedAt).Seconds())
@@ -289,8 +293,7 @@ func newMultiEpochHandler(handler *MultiEpoch, lsConf *ListenerConfig) func(ctx 
 			// handle the /metrics endpoint
 			if string(reqCtx.Path()) == "/metrics" {
 				method = "/metrics"
-				handler := fasthttpadaptor.NewFastHTTPHandler(promhttp.Handler())
-				handler(reqCtx)
+				metricsHandler(reqCtx)
 				return
 			}
 			{
