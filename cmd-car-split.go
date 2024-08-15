@@ -16,6 +16,7 @@ import (
 	commp "github.com/filecoin-project/go-fil-commp-hashhash"
 	"github.com/filecoin-project/go-leb128"
 	"github.com/ipfs/go-cid"
+	"github.com/ipld/go-car/v2"
 	"github.com/ipld/go-ipld-prime/codec/dagcbor"
 	"github.com/ipld/go-ipld-prime/datamodel"
 	"github.com/ipld/go-ipld-prime/fluent/qp"
@@ -171,11 +172,17 @@ func newCmd_SplitCar() *cli.Command {
 						return fmt.Errorf("failed to calculate commitment to cid: %w", err)
 					}
 
-					carFiles = append(carFiles, carFile{name: fmt.Sprintf("epoch-%d-%d.car", epoch, currentFileNum), commP: commCid, payloadCid: sl.(cidlink.Link).Cid, paddedSize: ps, fileSize: currentFileSize})
+					cf := carFile{name: fmt.Sprintf("epoch-%d-%d.car", epoch, currentFileNum), commP: commCid, payloadCid: sl.(cidlink.Link).Cid, paddedSize: ps, fileSize: currentFileSize}
+					carFiles = append(carFiles, cf)
 
 					err = closeFile(bufferedWriter, currentFile)
 					if err != nil {
 						return fmt.Errorf("failed to close file: %w", err)
+					}
+
+					err = car.ReplaceRootsInFile(cf.name, []cid.Cid{cf.payloadCid})
+					if err != nil {
+						return fmt.Errorf("failed to replace root: %w", err)
 					}
 
 					cp.Reset()
@@ -316,7 +323,18 @@ func newCmd_SplitCar() *cli.Command {
 				return fmt.Errorf("failed to calculate commitment to cid: %w", err)
 			}
 
-			carFiles = append(carFiles, carFile{name: fmt.Sprintf("epoch-%d-%d.car", epoch, currentFileNum), commP: commCid, payloadCid: sl.(cidlink.Link).Cid, paddedSize: ps, fileSize: currentFileSize})
+			cf := carFile{name: fmt.Sprintf("epoch-%d-%d.car", epoch, currentFileNum), commP: commCid, payloadCid: sl.(cidlink.Link).Cid, paddedSize: ps, fileSize: currentFileSize}
+			carFiles = append(carFiles, cf)
+
+			err = closeFile(bufferedWriter, currentFile)
+			if err != nil {
+				return fmt.Errorf("failed to close file: %w", err)
+			}
+
+			err = car.ReplaceRootsInFile(cf.name, []cid.Cid{cf.payloadCid})
+			if err != nil {
+				return fmt.Errorf("failed to replace root: %w", err)
+			}
 
 			f, err := os.Create(meta)
 			defer f.Close()
@@ -340,7 +358,8 @@ func newCmd_SplitCar() *cli.Command {
 				})
 			}
 
-			return closeFile(bufferedWriter, currentFile)
+			return nil
+
 		},
 	}
 }
