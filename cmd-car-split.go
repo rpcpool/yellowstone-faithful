@@ -16,6 +16,8 @@ import (
 	commp "github.com/filecoin-project/go-fil-commp-hashhash"
 	"github.com/filecoin-project/go-leb128"
 	"github.com/ipfs/go-cid"
+	"github.com/ipld/go-car"
+	carv2 "github.com/ipld/go-car/v2"
 	"github.com/ipld/go-ipld-prime/codec/dagcbor"
 	"github.com/ipld/go-ipld-prime/datamodel"
 	"github.com/ipld/go-ipld-prime/fluent/qp"
@@ -30,25 +32,7 @@ import (
 	"k8s.io/klog/v2"
 )
 
-const (
-	nulRootCarHeader = "\x19" + // 25 bytes of CBOR (encoded as varint :cryingbear: )
-		// map with 2 keys
-		"\xA2" +
-		// text-key with length 5
-		"\x65" + "roots" +
-		// 1 element array
-		"\x81" +
-		// tag 42
-		"\xD8\x2A" +
-		// bytes with length 5
-		"\x45" +
-		// nul-identity-cid prefixed with \x00 as required in DAG-CBOR: https://github.com/ipld/specs/blob/master/block-layer/codecs/dag-cbor.md#links
-		"\x00\x01\x55\x00\x00" +
-		// text-key with length 7
-		"\x67" + "version" +
-		// 1, we call this v0 due to the nul-identity CID being an open question: https://github.com/ipld/go-car/issues/26#issuecomment-604299576
-		"\x01"
-)
+var CBOR_SHA256_DUMMY_CID = cid.MustParse("bafyreics5uul5lbtxslcigtoa5fkba7qgwu7cyb7ih7z6fzsh4lgfgraau")
 
 type subsetInfo struct {
 	fileName   string
@@ -171,11 +155,17 @@ func newCmd_SplitCar() *cli.Command {
 						return fmt.Errorf("failed to calculate commitment to cid: %w", err)
 					}
 
-					carFiles = append(carFiles, carFile{name: fmt.Sprintf("epoch-%d-%d.car", epoch, currentFileNum), commP: commCid, payloadCid: sl.(cidlink.Link).Cid, paddedSize: ps, fileSize: currentFileSize})
+					cf := carFile{name: fmt.Sprintf("epoch-%d-%d.car", epoch, currentFileNum), commP: commCid, payloadCid: sl.(cidlink.Link).Cid, paddedSize: ps, fileSize: currentFileSize}
+					carFiles = append(carFiles, cf)
 
 					err = closeFile(bufferedWriter, currentFile)
 					if err != nil {
 						return fmt.Errorf("failed to close file: %w", err)
+					}
+
+					err = carv2.ReplaceRootsInFile(cf.name, []cid.Cid{cf.payloadCid})
+					if err != nil {
+						return fmt.Errorf("failed to replace root: %w", err)
 					}
 
 					cp.Reset()
@@ -192,8 +182,11 @@ func newCmd_SplitCar() *cli.Command {
 				writer = io.MultiWriter(bufferedWriter, cp)
 
 				// Write the header
-				_, err = io.WriteString(writer, nulRootCarHeader)
-				if err != nil {
+				hdr := car.CarHeader{
+					Roots:   []cid.Cid{CBOR_SHA256_DUMMY_CID}, // placeholder
+					Version: 1,
+				}
+				if err := car.WriteHeader(&hdr, writer); err != nil {
 					return fmt.Errorf("failed to write header: %w", err)
 				}
 
@@ -316,7 +309,18 @@ func newCmd_SplitCar() *cli.Command {
 				return fmt.Errorf("failed to calculate commitment to cid: %w", err)
 			}
 
-			carFiles = append(carFiles, carFile{name: fmt.Sprintf("epoch-%d-%d.car", epoch, currentFileNum), commP: commCid, payloadCid: sl.(cidlink.Link).Cid, paddedSize: ps, fileSize: currentFileSize})
+			cf := carFile{name: fmt.Sprintf("epoch-%d-%d.car", epoch, currentFileNum), commP: commCid, payloadCid: sl.(cidlink.Link).Cid, paddedSize: ps, fileSize: currentFileSize}
+			carFiles = append(carFiles, cf)
+
+			err = closeFile(bufferedWriter, currentFile)
+			if err != nil {
+				return fmt.Errorf("failed to close file: %w", err)
+			}
+
+			err = carv2.ReplaceRootsInFile(cf.name, []cid.Cid{cf.payloadCid})
+			if err != nil {
+				return fmt.Errorf("failed to replace root: %w", err)
+			}
 
 			f, err := os.Create(meta)
 			defer f.Close()
@@ -340,7 +344,8 @@ func newCmd_SplitCar() *cli.Command {
 				})
 			}
 
-			return closeFile(bufferedWriter, currentFile)
+			return nil
+
 		},
 	}
 }
