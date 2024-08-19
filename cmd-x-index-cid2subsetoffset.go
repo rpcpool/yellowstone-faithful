@@ -90,19 +90,19 @@ func newCmd_Index_cid2subsetOffset() *cli.Command {
 					panic(err)
 				}
 				klog.Info("Index created")
-				// if verify {
-				// 	klog.Infof("Verifying index located at %s", indexFilepath)
-				// 	startedAt := time.Now()
-				// 	defer func() {
-				// 		klog.Infof("Finished in %s", time.Since(startedAt))
-				// 	}()
-				// 	err := VerifyIndex_cid2subsetOffset(context.TODO(), indexFilepath)
-				// 	if err != nil {
-				// 		return cli.Exit(err, 1)
-				// 	}
-				// 	klog.Info("Index verified")
-				// 	return nil
-				// }
+				if verify {
+					klog.Infof("Verifying index located at %s", indexFilepath)
+					startedAt := time.Now()
+					defer func() {
+						klog.Infof("Finished in %s", time.Since(startedAt))
+					}()
+					err := VerifyIndex_cid2subsetOffset(context.TODO(), carPaths, indexFilepath)
+					if err != nil {
+						return cli.Exit(err, 1)
+					}
+					klog.Info("Index verified")
+					return nil
+				}
 			}
 			return nil
 		},
