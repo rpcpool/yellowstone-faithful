@@ -62,6 +62,43 @@ func carCountItems(carPath string) (uint64, error) {
 	return count, nil
 }
 
+func carCountItemsAndFindEpoch(carPath string) (uint64, *ipldbindcode.Epoch, error) {
+	file, err := os.Open(carPath)
+	if err != nil {
+		return 0, nil, err
+	}
+	defer file.Close()
+
+	rd, err := carreader.New(file)
+	if err != nil {
+		return 0, nil, fmt.Errorf("failed to open car file: %w", err)
+	}
+
+	var count uint64
+	var epochObject *ipldbindcode.Epoch
+	for {
+		_, _, block, err := rd.NextNodeBytes()
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			return 0, nil, err
+		}
+		count++
+
+		fdb := block[1]
+		if iplddecoders.Kind(fdb) == iplddecoders.KindEpoch {
+			epochObject, err = iplddecoders.DecodeEpoch(block)
+			if err != nil {
+				return 0, nil, fmt.Errorf("failed to decode Epoch node: %w", err)
+			}
+		}
+	}
+
+	return count, epochObject, nil
+
+}
+
 func carCountItemsByFirstByte(carPath string) (map[byte]uint64, *ipldbindcode.Epoch, error) {
 	file, err := os.Open(carPath)
 	if err != nil {
