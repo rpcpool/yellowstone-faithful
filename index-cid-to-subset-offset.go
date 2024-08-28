@@ -8,19 +8,24 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"time"
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/dustin/go-humanize"
-	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-car/util"
 	carv2 "github.com/ipld/go-car/v2"
-	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/rpcpool/yellowstone-faithful/carreader"
 	"github.com/rpcpool/yellowstone-faithful/indexes"
+	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
 	"k8s.io/klog/v2"
 )
+
+type subsetAndCar struct {
+	subset  *ipldbindcode.Subset
+	carPath string
+}
 
 func CreateIndex_cid2subsetOffset(
 	ctx context.Context,
@@ -31,8 +36,7 @@ func CreateIndex_cid2subsetOffset(
 	indexDir string,
 ) (string, error) {
 	var numItems uint64
-	var orderedCids []cid.Cid
-	carPathMap := make(map[cid.Cid]string)
+	var subsetAndCars []subsetAndCar
 	for _, carPath := range carPaths {
 		// Check if the CAR file exists:
 		exists, err := fileExists(carPath)
@@ -43,39 +47,20 @@ func CreateIndex_cid2subsetOffset(
 			return "", fmt.Errorf("CAR file %q does not exist", carPath)
 		}
 
-		carFile, err := os.Open(carPath)
-		if err != nil {
-			return "", fmt.Errorf("failed to open car file: %w", err)
-		}
-		defer carFile.Close()
-
-		rd, err := carreader.New(carFile)
-		if err != nil {
-			return "", fmt.Errorf("failed to create car reader: %w", err)
-		}
-
-		// check it has 1 root
-		if len(rd.Header.Roots) != 1 {
-			return "", fmt.Errorf("car file must have exactly 1 root, but has %d", len(rd.Header.Roots))
-		}
-
-		carPathMap[rd.Header.Roots[0]] = carPath
-
 		klog.Infof("Counting items in car file: %s", carPath)
-		ni, epochObject, err := carCountItemsAndFindEpoch(carPath)
+		ni, s, err := carCountItemsWithSubset(carPath)
 		if err != nil {
 			return "", fmt.Errorf("failed to count items in CAR: %w", err)
 		}
-		if epochObject != nil {
-			for _, subset := range epochObject.Subsets {
-				orderedCids = append(orderedCids, subset.(cidlink.Link).Cid)
-			}
-		}
+		subsetAndCars = append(subsetAndCars, subsetAndCar{subset: s, carPath: carPath})
 		klog.Infof("Found %s items in car file", humanize.Comma(int64(ni)))
 		numItems += ni
 	}
 
 	klog.Infof("Found a total of %d items in car files", numItems)
+	sort.Slice(subsetAndCars, func(i, j int) bool {
+		return subsetAndCars[i].subset.First < subsetAndCars[j].subset.First
+	})
 
 	tmpDir = filepath.Join(tmpDir, "index-cid-to-subset-offset-"+time.Now().Format("20060102-150405.000000000"))
 	if err := os.MkdirAll(tmpDir, 0o755); err != nil {
@@ -97,8 +82,8 @@ func CreateIndex_cid2subsetOffset(
 	// To do: how to get the subset index?
 	subset := uint64(0)
 	numItemsIndexed := uint64(0)
-	for _, cid := range orderedCids {
-		carPath := carPathMap[cid]
+	for _, info := range subsetAndCars {
+		carPath := info.carPath
 		carFile, err := os.Open(carPath)
 		if err != nil {
 			return "", fmt.Errorf("failed to open car file: %w", err)
