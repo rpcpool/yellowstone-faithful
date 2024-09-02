@@ -70,14 +70,14 @@ data:
     enable: false
 ${GENESIS_CONFIG}
 indexes:
-  cid_to_offset:
-    uri: https://files.old-faithful.net/${EPOCH}/epoch-${EPOCH}.car.${EPOCH_CID}.cid-to-offset.index
+  cid_to_offset_and_size:
+    uri: https://files.old-faithful.net/${EPOCH}/epoch-${EPOCH}-${EPOCH_CID}-mainnet-cid-to-offset-and-size.index
   sig_to_cid:
-    uri: https://files.old-faithful.net/${EPOCH}/epoch-${EPOCH}.car.${EPOCH_CID}.sig-to-cid.index
+    uri: https://files.old-faithful.net/${EPOCH}/epoch-${EPOCH}-${EPOCH_CID}-mainnet-sig-to-cid.index
   slot_to_cid:
-    uri: https://files.old-faithful.net/${EPOCH}/epoch-${EPOCH}.car.${EPOCH_CID}.slot-to-cid.index
+    uri: https://files.old-faithful.net/${EPOCH}/epoch-${EPOCH}-${EPOCH_CID}-mainnet-slot-to-cid.index
   sig_exists:
-    uri: https://files.old-faithful.net/${EPOCH}/epoch-${EPOCH}.car.${EPOCH_CID}.sig-exists.index
+    uri: https://files.old-faithful.net/${EPOCH}/epoch-${EPOCH}-${EPOCH_CID}-mainnet-sig-exists.index
 EOF
 )
 
