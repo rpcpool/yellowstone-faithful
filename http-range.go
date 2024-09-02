@@ -56,6 +56,7 @@ func (r *readCloserWrapper) ReadAt(p []byte, off int64) (n int, err error) {
 			metrics.CarLookupHistogram.WithLabelValues(carName).Observe(float64(took.Seconds()))
 		}
 
+		// Logging only reporting of klog.V(5) is enabled
 		if klog.V(5).Enabled() {
 			var icon string
 			if r.isRemote {
