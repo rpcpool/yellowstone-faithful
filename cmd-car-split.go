@@ -32,9 +32,33 @@ import (
 	"k8s.io/klog/v2"
 )
 
+<<<<<<< HEAD
 var CBOR_SHA256_DUMMY_CID = cid.MustParse("bafyreics5uul5lbtxslcigtoa5fkba7qgwu7cyb7ih7z6fzsh4lgfgraau")
 
 const maxLinks = 432000 / 18 // 18 subsets
+=======
+const (
+	nulRootCarHeader = "\x19" + // 25 bytes of CBOR (encoded as varint :cryingbear: )
+		// map with 2 keys
+		"\xA2" +
+		// text-key with length 5
+		"\x65" + "roots" +
+		// 1 element array
+		"\x81" +
+		// tag 42
+		"\xD8\x2A" +
+		// bytes with length 5
+		"\x45" +
+		// nul-identity-cid prefixed with \x00 as required in DAG-CBOR: https://github.com/ipld/specs/blob/master/block-layer/codecs/dag-cbor.md#links
+		"\x00\x01\x55\x00\x00" +
+		// text-key with length 7
+		"\x67" + "version" +
+		// 1, we call this v0 due to the nul-identity CID being an open question: https://github.com/ipld/go-car/issues/26#issuecomment-604299576
+		"\x01"
+
+	maxLinks = 432000 / 18 // 18 subsets
+)
+>>>>>>> ded9b24a6d92a286f18bda84cdf7ca7c9bb5fa31
 
 type subsetInfo struct {
 	fileName   string
