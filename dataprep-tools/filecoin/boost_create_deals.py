@@ -26,6 +26,7 @@ from triton_upload_clients import BunnyCDNClient, S3Client
 VERSION = "0.0.1"
 
 start_epoch_head_offset = int(604800 / 30)
+default_replication_factor = 3
 
 # This script creates deals for an epoch stored in s3.
 #
@@ -42,6 +43,7 @@ start_epoch_head_offset = int(604800 / 30)
 #   DEALS_FOLDER: the folder to store the deals csv output file in
 #   FILECOIN_RPC_ENDPOINT: the filecoin rpc endpoint
 #   CID_GRAVITY_KEY: api key for cid gravity
+#   USE_CID_GRAVITY: if set to true, the script will use cid gravity to find providers
 #
 # It expects the following arguments:
 #   epoch: the epoch to create deals for
@@ -132,6 +134,12 @@ def get_providers(
     size,
     padded_size,
 ):
+
+    if not environ.get("USE_CID_GRAVITY"):
+        providers = environ.get("PROVIDERS")
+        assert providers, "PROVIDERS environment variable must be set if not using CID gravity"
+        providers = providers.split(",")
+        return provideres
 
     head = get_chain_head()
     start_epoch = head + start_epoch_head_offset
@@ -233,7 +241,7 @@ def create_deals(metadata_obj):
 
         deal_data.append(deal_data_item)
 
-    replication_factor = int(environ.get("REPLICATION_FACTOR"))
+    replication_factor = int(environ.get("REPLICATION_FACTOR", default_replication_factor))
     deals_providers = {}
 
     fields = [
