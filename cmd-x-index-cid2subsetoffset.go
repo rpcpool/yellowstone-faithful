@@ -17,7 +17,7 @@ func newCmd_Index_cid2subsetOffset() *cli.Command {
 	var network indexes.Network
 	var indexDir string
 	return &cli.Command{
-		Name:        "cid-to-offset",
+		Name:        "cid-to-subset-offset",
 		Description: "Given all split CAR files corresponding to a Solana epoch, create an index of the file that maps CIDs to offsets in the CAR file.",
 		ArgsUsage:   "<car-paths> <index-dir>",
 		Before: func(c *cli.Context) error {
