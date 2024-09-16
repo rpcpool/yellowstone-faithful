@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strconv"
 
+	"github.com/anjor/carlet"
 	commcid "github.com/filecoin-project/go-fil-commcid"
 	commp "github.com/filecoin-project/go-fil-commp-hashhash"
 	"github.com/filecoin-project/go-leb128"
@@ -28,6 +29,7 @@ import (
 	"github.com/rpcpool/yellowstone-faithful/carreader"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
+	splitcarfetcher "github.com/rpcpool/yellowstone-faithful/split-car-fetcher"
 	"github.com/urfave/cli/v2"
 	"gopkg.in/yaml.v2"
 	"k8s.io/klog/v2"
@@ -49,16 +51,7 @@ type carFile struct {
 	commP      cid.Cid
 	payloadCid cid.Cid
 	paddedSize uint64
-	fileSize   int64
-}
-
-type Metadata struct {
-	FileName   string `yaml:"filename"`
-	FileSize   int64  `yaml:"fileSize"`
-	FirstSlot  int    `yaml:"firstSlot"`
-	LastSlot   int    `yaml:"lastSlot"`
-	Cid        string `yaml:"cid"`
-	HeaderSize int64  `yaml:"headerSize"`
+	fileSize   uint64
 }
 
 func newCmd_SplitCar() *cli.Command {
@@ -127,7 +120,7 @@ func newCmd_SplitCar() *cli.Command {
 			}
 
 			epoch := c.Int("epoch")
-			maxFileSize := c.Int64("size")
+			maxFileSize := uint64(c.Int64("size"))
 			outputDir := c.String("output-dir")
 			meta := c.String("metadata")
 
@@ -138,7 +131,7 @@ func newCmd_SplitCar() *cli.Command {
 			cp := new(commp.Calc)
 
 			var (
-				currentFileSize   int64
+				currentFileSize   uint64
 				currentFileNum    int
 				currentFile       *os.File
 				bufferedWriter    *bufio.Writer
@@ -146,7 +139,7 @@ func newCmd_SplitCar() *cli.Command {
 				subsetLinks       []datamodel.Link
 				writer            io.Writer
 				carFiles          []carFile
-				metadata          []Metadata
+				metadata          *splitcarfetcher.Metadata
 			)
 
 			createNewFile := func() error {
@@ -171,7 +164,7 @@ func newCmd_SplitCar() *cli.Command {
 					cf := carFile{name: fmt.Sprintf("epoch-%d-%d.car", epoch, currentFileNum), commP: commCid, payloadCid: sl.(cidlink.Link).Cid, paddedSize: ps, fileSize: currentFileSize}
 					carFiles = append(carFiles, cf)
 
-					metadata = append(metadata, Metadata{FileName: currentSubsetInfo.fileName, FileSize: currentFileSize, FirstSlot: currentSubsetInfo.firstSlot, LastSlot: currentSubsetInfo.lastSlot, Cid: sl.String(), HeaderSize: int64(len(nulRootCarHeader))})
+					metadata.CarPieces.CarPieces = append(metadata.CarPieces.CarPieces, carlet.CarFile{Name: currentSubsetInfo.fileName, ContentSize: currentFileSize, HeaderSize: uint64(len(nulRootCarHeader))})
 
 					err = closeFile(bufferedWriter, currentFile)
 					if err != nil {
@@ -206,7 +199,7 @@ func newCmd_SplitCar() *cli.Command {
 				}
 
 				// Set the currentFileSize to the size of the header
-				currentFileSize = int64(len(nulRootCarHeader))
+				currentFileSize = uint64(len(nulRootCarHeader))
 				currentSubsetInfo = subsetInfo{fileName: filename, firstSlot: -1, lastSlot: -1}
 				return nil
 			}
@@ -216,7 +209,7 @@ func newCmd_SplitCar() *cli.Command {
 				if err != nil {
 					return fmt.Errorf("failed to write object to car file: %s, error: %w", currentFile.Name(), err)
 				}
-				currentFileSize += int64(len(data))
+				currentFileSize += uint64(len(data))
 				return nil
 			}
 
@@ -251,7 +244,7 @@ func newCmd_SplitCar() *cli.Command {
 						dagSize += owm.RawSectionSize()
 					}
 
-					if currentFile == nil || currentFileSize+int64(dagSize) > maxFileSize || len(currentSubsetInfo.blockLinks) > maxLinks {
+					if currentFile == nil || currentFileSize+uint64(dagSize) > maxFileSize || len(currentSubsetInfo.blockLinks) > maxLinks {
 						err := createNewFile()
 						if err != nil {
 							return fmt.Errorf("failed to create a new file: %w", err)
@@ -294,7 +287,7 @@ func newCmd_SplitCar() *cli.Command {
 			}
 			subsetLinks = append(subsetLinks, sl)
 
-			metadata = append(metadata, Metadata{FileName: currentSubsetInfo.fileName, FileSize: currentFileSize, FirstSlot: currentSubsetInfo.firstSlot, LastSlot: currentSubsetInfo.lastSlot, Cid: sl.String()})
+			metadata.CarPieces.CarPieces = append(metadata.CarPieces.CarPieces, carlet.CarFile{Name: currentSubsetInfo.fileName, ContentSize: currentFileSize, HeaderSize: uint64(len(nulRootCarHeader))})
 
 			epochNode, err := qp.BuildMap(ipldbindcode.Prototypes.Epoch, -1, func(ma datamodel.MapAssembler) {
 				qp.MapEntry(ma, "kind", qp.Int(int64(iplddecoders.KindEpoch)))
@@ -357,7 +350,7 @@ func newCmd_SplitCar() *cli.Command {
 					c.commP.String(),
 					c.payloadCid.String(),
 					strconv.FormatUint(c.paddedSize, 10),
-					strconv.FormatInt(c.fileSize, 10),
+					strconv.FormatUint(c.fileSize, 10),
 				})
 				if err != nil {
 					return fmt.Errorf("failed to write metatadata csv: %w", err)
@@ -443,7 +436,7 @@ func writeNode(node datamodel.Node, w io.Writer) (cid.Cid, error) {
 	return cd, nil
 }
 
-func writeMetadata(metadata []Metadata, epoch int) error {
+func writeMetadata(metadata *splitcarfetcher.Metadata, epoch int) error {
 	metadataFileName := fmt.Sprintf("epoch-%d-metadata.yaml", epoch)
 
 	// Open file in append mode
