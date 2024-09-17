@@ -161,10 +161,24 @@ func newCmd_SplitCar() *cli.Command {
 						return fmt.Errorf("failed to calculate commitment to cid: %w", err)
 					}
 
-					cf := carFile{name: fmt.Sprintf("epoch-%d-%d.car", epoch, currentFileNum), commP: commCid, payloadCid: sl.(cidlink.Link).Cid, paddedSize: ps, fileSize: currentFileSize}
+					cf := carFile{
+						name:       fmt.Sprintf("epoch-%d-%d.car", epoch, currentFileNum),
+						commP:      commCid,
+						payloadCid: sl.(cidlink.Link).Cid,
+						paddedSize: ps,
+						fileSize:   currentFileSize,
+					}
 					carFiles = append(carFiles, cf)
 
-					metadata.CarPieces.CarPieces = append(metadata.CarPieces.CarPieces, carlet.CarFile{Name: currentSubsetInfo.fileName, ContentSize: currentFileSize, HeaderSize: uint64(len(nulRootCarHeader)), CommP: commCid})
+					metadata.CarPieces.CarPieces = append(
+						metadata.CarPieces.CarPieces,
+						carlet.CarFile{
+							Name:        currentSubsetInfo.fileName,
+							ContentSize: currentFileSize - uint64(len(nulRootCarHeader)),
+							HeaderSize:  uint64(len(nulRootCarHeader)),
+							CommP:       commCid,
+							PaddedSize:  ps,
+						})
 
 					err = closeFile(bufferedWriter, currentFile)
 					if err != nil {
@@ -317,8 +331,23 @@ func newCmd_SplitCar() *cli.Command {
 				return fmt.Errorf("failed to calculate commitment to cid: %w", err)
 			}
 
-			carFiles = append(carFiles, carFile{name: fmt.Sprintf("epoch-%d-%d.car", epoch, currentFileNum), commP: commCid, payloadCid: sl.(cidlink.Link).Cid, paddedSize: ps, fileSize: currentFileSize})
-			metadata.CarPieces.CarPieces = append(metadata.CarPieces.CarPieces, carlet.CarFile{Name: currentSubsetInfo.fileName, ContentSize: currentFileSize, HeaderSize: uint64(len(nulRootCarHeader)), CommP: commCid})
+			cf := carFile{
+				name:       fmt.Sprintf("epoch-%d-%d.car", epoch, currentFileNum),
+				commP:      commCid,
+				payloadCid: sl.(cidlink.Link).Cid,
+				paddedSize: ps,
+				fileSize:   currentFileSize,
+			}
+
+			carFiles = append(carFiles, cf)
+			metadata.CarPieces.CarPieces = append(
+				metadata.CarPieces.CarPieces,
+				carlet.CarFile{
+					Name:        currentSubsetInfo.fileName,
+					ContentSize: currentFileSize - uint64(len(nulRootCarHeader)),
+					HeaderSize:  uint64(len(nulRootCarHeader)),
+					CommP:       commCid,
+				})
 
 			err = closeFile(bufferedWriter, currentFile)
 			if err != nil {
