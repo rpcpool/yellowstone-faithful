@@ -164,7 +164,7 @@ func newCmd_SplitCar() *cli.Command {
 					cf := carFile{name: fmt.Sprintf("epoch-%d-%d.car", epoch, currentFileNum), commP: commCid, payloadCid: sl.(cidlink.Link).Cid, paddedSize: ps, fileSize: currentFileSize}
 					carFiles = append(carFiles, cf)
 
-					metadata.CarPieces.CarPieces = append(metadata.CarPieces.CarPieces, carlet.CarFile{Name: currentSubsetInfo.fileName, ContentSize: currentFileSize, HeaderSize: uint64(len(nulRootCarHeader))})
+					metadata.CarPieces.CarPieces = append(metadata.CarPieces.CarPieces, carlet.CarFile{Name: currentSubsetInfo.fileName, ContentSize: currentFileSize, HeaderSize: uint64(len(nulRootCarHeader)), CommP: commCid})
 
 					err = closeFile(bufferedWriter, currentFile)
 					if err != nil {
@@ -287,8 +287,6 @@ func newCmd_SplitCar() *cli.Command {
 			}
 			subsetLinks = append(subsetLinks, sl)
 
-			metadata.CarPieces.CarPieces = append(metadata.CarPieces.CarPieces, carlet.CarFile{Name: currentSubsetInfo.fileName, ContentSize: currentFileSize, HeaderSize: uint64(len(nulRootCarHeader))})
-
 			epochNode, err := qp.BuildMap(ipldbindcode.Prototypes.Epoch, -1, func(ma datamodel.MapAssembler) {
 				qp.MapEntry(ma, "kind", qp.Int(int64(iplddecoders.KindEpoch)))
 				qp.MapEntry(ma, "epoch", qp.Int(int64(epoch)))
@@ -319,8 +317,8 @@ func newCmd_SplitCar() *cli.Command {
 				return fmt.Errorf("failed to calculate commitment to cid: %w", err)
 			}
 
-			cf := carFile{name: fmt.Sprintf("epoch-%d-%d.car", epoch, currentFileNum), commP: commCid, payloadCid: sl.(cidlink.Link).Cid, paddedSize: ps, fileSize: currentFileSize}
-			carFiles = append(carFiles, cf)
+			carFiles = append(carFiles, carFile{name: fmt.Sprintf("epoch-%d-%d.car", epoch, currentFileNum), commP: commCid, payloadCid: sl.(cidlink.Link).Cid, paddedSize: ps, fileSize: currentFileSize})
+			metadata.CarPieces.CarPieces = append(metadata.CarPieces.CarPieces, carlet.CarFile{Name: currentSubsetInfo.fileName, ContentSize: currentFileSize, HeaderSize: uint64(len(nulRootCarHeader)), CommP: commCid})
 
 			err = closeFile(bufferedWriter, currentFile)
 			if err != nil {
