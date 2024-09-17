@@ -35,7 +35,14 @@ import (
 	"k8s.io/klog/v2"
 )
 
-var CBOR_SHA256_DUMMY_CID = cid.MustParse("bafyreics5uul5lbtxslcigtoa5fkba7qgwu7cyb7ih7z6fzsh4lgfgraau")
+var (
+	CBOR_SHA256_DUMMY_CID = cid.MustParse("bafyreics5uul5lbtxslcigtoa5fkba7qgwu7cyb7ih7z6fzsh4lgfgraau")
+	hdr                   = &car.CarHeader{
+		Roots:   []cid.Cid{CBOR_SHA256_DUMMY_CID}, // placeholder
+		Version: 1,
+	}
+	hdrSize, _ = car.HeaderSize(hdr)
+)
 
 const maxLinks = 432000 / 18 // 18 subsets
 
@@ -174,8 +181,8 @@ func newCmd_SplitCar() *cli.Command {
 						metadata.CarPieces.CarPieces,
 						carlet.CarFile{
 							Name:        currentSubsetInfo.fileName,
-							ContentSize: currentFileSize - uint64(len(nulRootCarHeader)),
-							HeaderSize:  uint64(len(nulRootCarHeader)),
+							ContentSize: currentFileSize - hdrSize,
+							HeaderSize:  hdrSize,
 							CommP:       commCid,
 							PaddedSize:  ps,
 						})
@@ -203,12 +210,7 @@ func newCmd_SplitCar() *cli.Command {
 				bufferedWriter = bufio.NewWriter(currentFile)
 				writer = io.MultiWriter(bufferedWriter, cp)
 
-				// Write the header
-				hdr := car.CarHeader{
-					Roots:   []cid.Cid{CBOR_SHA256_DUMMY_CID}, // placeholder
-					Version: 1,
-				}
-				if err := car.WriteHeader(&hdr, writer); err != nil {
+				if err := car.WriteHeader(hdr, writer); err != nil {
 					return fmt.Errorf("failed to write header: %w", err)
 				}
 
@@ -344,8 +346,8 @@ func newCmd_SplitCar() *cli.Command {
 				metadata.CarPieces.CarPieces,
 				carlet.CarFile{
 					Name:        currentSubsetInfo.fileName,
-					ContentSize: currentFileSize - uint64(len(nulRootCarHeader)),
-					HeaderSize:  uint64(len(nulRootCarHeader)),
+					ContentSize: currentFileSize - hdrSize,
+					HeaderSize:  hdrSize,
 					CommP:       commCid,
 				})
 
