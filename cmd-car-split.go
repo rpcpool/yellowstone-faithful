@@ -72,7 +72,7 @@ func newCmd_SplitCar() *cli.Command {
 			&cli.Int64Flag{
 				Name:     "size",
 				Aliases:  []string{"s"},
-				Value:    31 * 1024 * 1024 * 1024, // 31 GiB
+				Value:    4 * 1024 * 1024 * 1024, // 4 GiB
 				Usage:    "Target size in bytes to chunk CARs to.",
 				Required: false,
 			},
