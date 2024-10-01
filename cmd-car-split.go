@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/base64"
+	"encoding/binary"
 	"encoding/csv"
 	"fmt"
 	"io"
@@ -109,7 +111,35 @@ func newCmd_SplitCar() *cli.Command {
 				defer file.Close()
 			}
 
-			rd, err := carreader.New(file)
+			var (
+				currentFileSize   uint64
+				currentFileNum    int
+				currentFile       *os.File
+				bufferedWriter    *bufio.Writer
+				currentSubsetInfo subsetInfo
+				subsetLinks       []datamodel.Link
+				writer            io.Writer
+				carFiles          []carFile
+				metadata          *splitcarfetcher.Metadata
+			)
+
+			metadata = &splitcarfetcher.Metadata{}
+			headerBuf := new(bytes.Buffer)
+			teeReader := io.TeeReader(file, headerBuf)
+
+			streamBuf := bufio.NewReaderSize(teeReader, 1<<20)
+
+			actualHeader, headerSize, err := readHeader(streamBuf)
+			if err != nil {
+				return fmt.Errorf("failed to read header: %w", err)
+			}
+
+			encodedHeader := base64.StdEncoding.EncodeToString(actualHeader)
+
+			metadata.CarPieces = &carlet.CarPiecesAndMetadata{OriginalCarHeader: encodedHeader, OriginalCarHeaderSize: uint64(headerSize)}
+
+			combinedReader := io.MultiReader(headerBuf, file)
+			rd, err := carreader.New(io.NopCloser(combinedReader))
 			if err != nil {
 				return fmt.Errorf("failed to open CAR: %w", err)
 			}
@@ -136,18 +166,6 @@ func newCmd_SplitCar() *cli.Command {
 			}
 
 			cp := new(commp.Calc)
-
-			var (
-				currentFileSize   uint64
-				currentFileNum    int
-				currentFile       *os.File
-				bufferedWriter    *bufio.Writer
-				currentSubsetInfo subsetInfo
-				subsetLinks       []datamodel.Link
-				writer            io.Writer
-				carFiles          []carFile
-				metadata          *splitcarfetcher.Metadata
-			)
 
 			createNewFile := func() error {
 
@@ -261,6 +279,7 @@ func newCmd_SplitCar() *cli.Command {
 					}
 
 					if currentFile == nil || currentFileSize+uint64(dagSize) > maxFileSize || len(currentSubsetInfo.blockLinks) > maxLinks {
+						klog.Infof("Creating new file, currentFileSize: %d, dagSize: %d, maxFileSize: %d, maxLinks: %d, currentSubsetInfo.blockLinks: %d", currentFileSize, dagSize, maxFileSize, maxLinks, len(currentSubsetInfo.blockLinks))
 						err := createNewFile()
 						if err != nil {
 							return fmt.Errorf("failed to create a new file: %w", err)
@@ -482,4 +501,32 @@ func writeMetadata(metadata *splitcarfetcher.Metadata, epoch int) error {
 	}
 
 	return nil
+}
+
+func readHeader(streamBuf *bufio.Reader) ([]byte, int64, error) {
+	maybeHeaderLen, err := streamBuf.Peek(varintSize)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to read header: %s", err)
+	}
+
+	hdrLen, viLen := binary.Uvarint(maybeHeaderLen)
+	if hdrLen <= 0 || viLen < 0 {
+		return nil, 0, fmt.Errorf("unexpected header len = %d, varint len = %d", hdrLen, viLen)
+	}
+
+	actualViLen, err := io.CopyN(io.Discard, streamBuf, int64(viLen))
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to discard header varint: %s", err)
+	}
+	streamLen := actualViLen
+
+	headerBuf := new(bytes.Buffer)
+
+	actualHdrLen, err := io.CopyN(headerBuf, streamBuf, int64(hdrLen))
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to read header: %s", err)
+	}
+	streamLen += actualHdrLen
+
+	return headerBuf.Bytes(), streamLen, nil
 }
