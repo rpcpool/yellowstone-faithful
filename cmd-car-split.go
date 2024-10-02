@@ -34,7 +34,7 @@ import (
 
 var CBOR_SHA256_DUMMY_CID = cid.MustParse("bafyreics5uul5lbtxslcigtoa5fkba7qgwu7cyb7ih7z6fzsh4lgfgraau")
 
-const maxLinks = 432000 / 18 // 18 subsets
+const numSlots = 432000
 
 type subsetInfo struct {
 	fileName   string
@@ -84,6 +84,13 @@ func newCmd_SplitCar() *cli.Command {
 				Required: false,
 				Value:    ".",
 			},
+			&cli.IntFlag{
+				Name: "numSubsets",
+				Aliases: []string{"n"},
+				Usage: "Minimum number of subsets",
+				Required: false,
+				Value: 18, // 18 subsets
+			}
 		},
 		Action: func(c *cli.Context) error {
 			carPath := c.Args().First()
