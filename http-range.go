@@ -80,7 +80,7 @@ func (r *readCloserWrapper) ReadAt(p []byte, off int64) (n int, err error) {
 				metrics.IndexLookupHistogram.WithLabelValues(indexName).Observe(float64(took.Seconds()))
 			}
 			// if has suffix .car, then it's a car file
-			if strings.HasSuffix(r.name, ".car") || r.isSplitCar {
+			if isCar {
 				if r.isSplitCar {
 					prefix = icon + azureBG("[READ-SPLIT-CAR]")
 				} else {
