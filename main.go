@@ -57,6 +57,8 @@ func main() {
 			newCmd_Version(),
 			newCmd_rpc(),
 			newCmd_check_deals(),
+			newCmd_MergeCars(),
+			newCmd_SplitCar(),
 		},
 	}
 
