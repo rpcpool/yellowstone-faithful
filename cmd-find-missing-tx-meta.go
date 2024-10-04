@@ -31,6 +31,7 @@ func newCmd_find_missing_tx_metadata() *cli.Command {
 			&cli.BoolFlag{
 				Name:  "silent",
 				Usage: "Do not print progress",
+				Value: false,
 			},
 			&cli.StringSliceFlag{
 				Name:  "watch",
@@ -52,6 +53,10 @@ func newCmd_find_missing_tx_metadata() *cli.Command {
 			}
 
 			silent := c.Bool("silent")
+
+			if silent {
+				klog.Infoln("Silent mode is ON")
+			}
 
 			rd, err := carreader.New(file)
 			if err != nil {
@@ -86,6 +91,9 @@ func newCmd_find_missing_tx_metadata() *cli.Command {
 					klog.Exitf("Invalid signature: %s", sigStr)
 				}
 				watch = append(watch, sig)
+			}
+			if len(watch) > 0 {
+				klog.Infof("Watching for %d transactions", len(watch))
 			}
 			listOfTransactionsWithMissingMetadata := make([]solana.Signature, 0)
 			accum := accum.NewObjectAccumulator(
