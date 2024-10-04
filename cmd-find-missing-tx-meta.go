@@ -95,7 +95,7 @@ func newCmd_find_missing_tx_metadata() *cli.Command {
 			if len(watch) > 0 {
 				klog.Infof("Watching for %d transactions", len(watch))
 			}
-			listOfTransactionsWithMissingMetadata := make([]solana.Signature, 0)
+			numTransactionsWithMissingMetadata := new(atomic.Uint64)
 			accum := accum.NewObjectAccumulator(
 				rd,
 				iplddecoders.KindBlock,
@@ -157,7 +157,7 @@ func newCmd_find_missing_tx_metadata() *cli.Command {
 						}
 
 						if txWithInfo.Metadata == nil {
-							listOfTransactionsWithMissingMetadata = append(listOfTransactionsWithMissingMetadata, txWithInfo.Transaction.Signatures[0])
+							numTransactionsWithMissingMetadata.Add(1)
 							_, err := fileMissingMetadata.WriteString(txWithInfo.Transaction.Signatures[0].String() + "\n")
 							if err != nil {
 								return fmt.Errorf("error while writing to file: %w", err)
@@ -169,7 +169,7 @@ func newCmd_find_missing_tx_metadata() *cli.Command {
 							// clear line, then print progress
 							msg := fmt.Sprintf(
 								"\rChecking missing tx meta - %d missing - %s | %s | %.2f%% | slot %s | tx %s",
-								len(listOfTransactionsWithMissingMetadata),
+								numTransactionsWithMissingMetadata.Load(),
 								time.Now().Format("2006-01-02 15:04:05"),
 								time.Since(startedAt).Truncate(time.Second),
 								percentDone,
@@ -201,8 +201,9 @@ func newCmd_find_missing_tx_metadata() *cli.Command {
 			klog.Infof("Checked %s transactions", humanize.Comma(int64(numProcessedTransactions.Load())))
 			klog.Infof("Finished in %s", time.Since(startedAt))
 
-			klog.Infof("Transactions with missing metadata: %d", len(listOfTransactionsWithMissingMetadata))
-			if len(listOfTransactionsWithMissingMetadata) > 0 {
+			klog.Infof("Transactions with missing metadata: %d", numTransactionsWithMissingMetadata.Load())
+			if numTransactionsWithMissingMetadata.Load() > 0 {
+				file.Close()
 				os.Exit(1)
 			}
 			os.Exit(0)
