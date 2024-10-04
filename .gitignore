@@ -4,3 +4,5 @@
 _site
 /.cargo
 /target
+
+.zed

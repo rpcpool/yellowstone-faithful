@@ -538,6 +538,8 @@ func (ser *MultiEpoch) handleRequest(ctx context.Context, conn *requestContext, 
 		return ser.handleGetFirstAvailableBlock(ctx, conn, req)
 	case "getSlot":
 		return ser.handleGetSlot(ctx, conn, req)
+	case "getSignaturesForAddressCids":
+		return ser.handleGetSignaturesForAddressCids(ctx, conn, req)
 	default:
 		return &jsonrpc2.Error{
 			Code:    jsonrpc2.CodeMethodNotFound,
