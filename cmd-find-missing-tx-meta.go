@@ -168,8 +168,8 @@ func newCmd_find_missing_tx_metadata() *cli.Command {
 							percentDone := float64(txWithInfo.Slot-epochStart) / float64(epochEnd-epochStart) * 100
 							// clear line, then print progress
 							msg := fmt.Sprintf(
-								"\rChecking missing tx meta - %d missing - %s | %s | %.2f%% | slot %s | tx %s",
-								numTransactionsWithMissingMetadata.Load(),
+								"\rChecking missing tx meta - %s missing - %s | %s | %.2f%% | slot %s | tx %s",
+								humanize.Comma(int64(numTransactionsWithMissingMetadata.Load())),
 								time.Now().Format("2006-01-02 15:04:05"),
 								time.Since(startedAt).Truncate(time.Second),
 								percentDone,
