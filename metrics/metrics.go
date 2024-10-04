@@ -62,11 +62,20 @@ var Version = promauto.NewGaugeVec(
 	[]string{"started_at", "tag", "commit", "compiler", "goarch", "goos", "goamd64", "vcs", "vcs_revision", "vcs_time", "vcs_modified"},
 )
 
+var RpcResponseLatencyHistogram = promauto.NewHistogramVec(
+	prometheus.HistogramOpts{
+		Name:    "rpc_response_latency_histogram",
+		Help:    "RPC response latency histogram",
+		Buckets: latencyBuckets,
+	},
+	[]string{"rpc_method"},
+)
+
 var IndexLookupHistogram = promauto.NewHistogramVec(
 	prometheus.HistogramOpts{
 		Name:    "index_lookup_latency_histogram",
 		Help:    "Index lookup latency",
-		Buckets: prometheus.ExponentialBuckets(0.000001, 10, 10),
+		Buckets: latencyBuckets,
 	},
 	[]string{"index_type", "is_remote", "is_split_car"},
 )
@@ -75,16 +84,18 @@ var CarLookupHistogram = promauto.NewHistogramVec(
 	prometheus.HistogramOpts{
 		Name:    "car_lookup_latency_histogram",
 		Help:    "Car lookup latency",
-		Buckets: prometheus.ExponentialBuckets(0.000001, 10, 10),
+		Buckets: latencyBuckets,
 	},
 	[]string{"car", "is_remote"},
 )
 
-var RpcResponseLatencyHistogram = promauto.NewHistogramVec(
-	prometheus.HistogramOpts{
-		Name:    "rpc_response_latency_histogram",
-		Help:    "RPC response latency histogram",
-		Buckets: prometheus.ExponentialBuckets(0.000001, 10, 10),
-	},
-	[]string{"rpc_method"},
-)
+var latencyBuckets = []float64{
+	// fractional seconds from 0 to 1, with increments of 0.05 (= 50 ms)
+	0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45,
+	0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95,
+	1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5,
+	// then 5-10 with increments of 1
+	6, 7, 8, 9, 10,
+	// then 10-60 with increments of 5
+	15, 20, 25, 30, 35, 40, 45, 50, 55, 60,
+}
