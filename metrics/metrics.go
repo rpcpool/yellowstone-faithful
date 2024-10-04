@@ -68,7 +68,7 @@ var IndexLookupHistogram = promauto.NewHistogramVec(
 		Help:    "Index lookup latency",
 		Buckets: prometheus.ExponentialBuckets(0.000001, 10, 10),
 	},
-	[]string{"index_type"},
+	[]string{"index_type", "is_remote", "is_split_car"},
 )
 
 var CarLookupHistogram = promauto.NewHistogramVec(
@@ -77,7 +77,7 @@ var CarLookupHistogram = promauto.NewHistogramVec(
 		Help:    "Car lookup latency",
 		Buckets: prometheus.ExponentialBuckets(0.000001, 10, 10),
 	},
-	[]string{"car"},
+	[]string{"car", "is_remote"},
 )
 
 var RpcResponseLatencyHistogram = promauto.NewHistogramVec(

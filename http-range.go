@@ -38,6 +38,21 @@ func (r *readCloserWrapper) ReadAt(p []byte, off int64) (n int, err error) {
 		// if has suffix .index, then it's an index file
 		if strings.HasSuffix(r.name, ".index") {
 			isIndex = true
+		}
+		// if has suffix .car, then it's a car file
+		if strings.HasSuffix(r.name, ".car") || r.isSplitCar {
+			isCar = true
+		}
+
+		if isCar {
+			carName := filepath.Base(r.name)
+			metrics.CarLookupHistogram.WithLabelValues(
+				carName,
+				boolToString(r.isRemote),
+				boolToString(r.isSplitCar),
+			).Observe(float64(took.Seconds()))
+		}
+		if isIndex {
 			// get the index name, which is the part before the .index suffix, after the last .
 			indexName := strings.TrimSuffix(r.name, ".index")
 			// split the index name by . and get the last part
@@ -45,18 +60,14 @@ func (r *readCloserWrapper) ReadAt(p []byte, off int64) (n int, err error) {
 			if len(byDot) > 0 {
 				indexName = byDot[len(byDot)-1]
 			}
-			// TODO: distinguish between remote and local index reads
-			metrics.IndexLookupHistogram.WithLabelValues(indexName).Observe(float64(took.Seconds()))
-		}
-		// if has suffix .car, then it's a car file
-		if strings.HasSuffix(r.name, ".car") || r.isSplitCar {
-			isCar = true
-			carName := filepath.Base(r.name)
-			// TODO: distinguish between remote and local index reads
-			metrics.CarLookupHistogram.WithLabelValues(carName).Observe(float64(took.Seconds()))
+			metrics.IndexLookupHistogram.WithLabelValues(
+				indexName,
+				boolToString(r.isRemote),
+			).Observe(float64(took.Seconds()))
 		}
 
 		if klog.V(5).Enabled() {
+			// Very verbose logging:
 			var icon string
 			if r.isRemote {
 				// add internet icon
@@ -69,15 +80,6 @@ func (r *readCloserWrapper) ReadAt(p []byte, off int64) (n int, err error) {
 			prefix := icon + "[READ-UNKNOWN]"
 			if isIndex {
 				prefix = icon + azureBG("[READ-INDEX]")
-				// get the index name, which is the part before the .index suffix, after the last .
-				indexName := strings.TrimSuffix(r.name, ".index")
-				// split the index name by . and get the last part
-				byDot := strings.Split(indexName, ".")
-				if len(byDot) > 0 {
-					indexName = byDot[len(byDot)-1]
-				}
-				// TODO: distinguish between remote and local index reads
-				metrics.IndexLookupHistogram.WithLabelValues(indexName).Observe(float64(took.Seconds()))
 			}
 			// if has suffix .car, then it's a car file
 			if isCar {
@@ -86,9 +88,6 @@ func (r *readCloserWrapper) ReadAt(p []byte, off int64) (n int, err error) {
 				} else {
 					prefix = icon + purpleBG("[READ-CAR]")
 				}
-				carName := filepath.Base(r.name)
-				// TODO: distinguish between remote and local index reads
-				metrics.CarLookupHistogram.WithLabelValues(carName).Observe(float64(took.Seconds()))
 			}
 
 			klog.V(5).Infof(prefix+" %s:%d+%d (%s)\n", (r.name), off, len(p), took)
@@ -110,4 +109,11 @@ func azureBG(s string) string {
 // when closing print a newline
 func (r *readCloserWrapper) Close() error {
 	return r.rac.Close()
+}
+
+func boolToString(b bool) string {
+	if b {
+		return "true"
+	}
+	return "false"
 }
