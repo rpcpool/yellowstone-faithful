@@ -261,10 +261,9 @@ func newCmd_Index_gsfa() *cli.Command {
 					}
 					return nil
 				},
-				// Ignore these kinds in the accumulator (only need transactions):
+				// Ignore these kinds in the accumulator (only need Transactions and DataFrames):
 				iplddecoders.KindEntry,
 				iplddecoders.KindRewards,
-				iplddecoders.KindDataFrame,
 			)
 
 			if err := accum.Run(context.Background()); err != nil {
@@ -282,7 +281,8 @@ func objectsToTransactionsAndMetadata(
 ) ([]*TransactionWithSlot, error) {
 	transactions := make([]*TransactionWithSlot, 0, len(objects))
 	dataBlocksMap := make(map[string]accum.ObjectWithMetadata, 0)
-	for _, object := range objects {
+	for objI := range objects {
+		object := objects[objI]
 		// check if the object is a transaction:
 		kind := iplddecoders.Kind(object.ObjectData[1])
 		if kind == iplddecoders.KindDataFrame {
@@ -292,20 +292,20 @@ func objectsToTransactionsAndMetadata(
 		if kind != iplddecoders.KindTransaction {
 			continue
 		}
-		decoded, err := iplddecoders.DecodeTransaction(object.ObjectData)
+		decodedTxObj, err := iplddecoders.DecodeTransaction(object.ObjectData)
 		if err != nil {
 			return nil, fmt.Errorf("error while decoding transaction from nodex %s: %w", object.Cid, err)
 		}
 		tws := &TransactionWithSlot{
 			Offset:    object.Offset,
 			Length:    object.SectionLength,
-			Slot:      uint64(decoded.Slot),
+			Slot:      uint64(decodedTxObj.Slot),
 			Blocktime: uint64(block.Meta.Blocktime),
 		}
-		if total, ok := decoded.Metadata.GetTotal(); !ok || total == 1 {
+		if total, ok := decodedTxObj.Metadata.GetTotal(); !ok || total == 1 {
 			// metadata fit into the transaction object:
-			completeBuffer := decoded.Metadata.Bytes()
-			if ha, ok := decoded.Metadata.GetHash(); ok {
+			completeBuffer := decodedTxObj.Metadata.Bytes()
+			if ha, ok := decodedTxObj.Metadata.GetHash(); ok {
 				err := ipldbindcode.VerifyHash(completeBuffer, ha)
 				if err != nil {
 					return nil, fmt.Errorf("failed to verify metadata hash: %w", err)
@@ -325,7 +325,7 @@ func objectsToTransactionsAndMetadata(
 		} else {
 			// metadata didn't fit into the transaction object, and was split into multiple dataframes:
 			metaBuffer, err := loadDataFromDataFrames(
-				&decoded.Metadata,
+				&decodedTxObj.Metadata,
 				func(ctx context.Context, wantedCid cid.Cid) (*ipldbindcode.DataFrame, error) {
 					if dataBlock, ok := dataBlocksMap[wantedCid.String()]; ok {
 						df, err := iplddecoders.DecodeDataFrame(dataBlock.ObjectData)
@@ -354,7 +354,7 @@ func objectsToTransactionsAndMetadata(
 				}
 			}
 		}
-		tx, err := decoded.GetSolanaTransaction()
+		tx, err := decodedTxObj.GetSolanaTransaction()
 		if err != nil {
 			return nil, fmt.Errorf("error while getting solana transaction from object %s: %w", object.Cid, err)
 		}

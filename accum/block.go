@@ -127,7 +127,7 @@ buffersLoop:
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
-			c, sectionLength, data, err := oa.reader.NextNodeBytes()
+			cid_, sectionLength, data, err := oa.reader.NextNodeBytes()
 			if err != nil {
 				if errors.Is(err, io.EOF) {
 					oa.sendToFlusher(nil, objects)
@@ -144,7 +144,7 @@ buffersLoop:
 			}
 
 			objm := ObjectWithMetadata{
-				Cid:           c,
+				Cid:           cid_,
 				Offset:        currentOffset,
 				SectionLength: sectionLength,
 				ObjectData:    data,
