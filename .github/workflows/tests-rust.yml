@@ -4,31 +4,6 @@ concurrency:
 
 on:
   pull_request:
-  workflow_dispatch:
-
-env:
-  CARGO_TERM_COLOR: always
-
-name: tests
-jobs:
-  test:
-    strategy:
-      matrix:
-        go-version: [1.21.x]
-        os: [ubuntu-latest]
-    runs-on: ${{ matrix.os }}
-    steps:
-      - name: Install Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: ${{ matrix.go-version }}
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Test
-        run: go test ./...
-  test_rust:
     paths:
       - 'Cargo.toml'
       - 'Cargo.lock'
@@ -38,6 +13,23 @@ jobs:
       - 'old-faithful-proto/**'
       - 'geyser-plugin-runner/**'
       - 'tests/rust/**'
+  workflow_dispatch:
+    paths:
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'rust-toolchain.toml'
+      - '.github/workflows/tests.yml'
+      - 'txstatus/**'
+      - 'old-faithful-proto/**'
+      - 'geyser-plugin-runner/**'
+      - 'tests/rust/**'
+
+env:
+  CARGO_TERM_COLOR: always
+
+name: tests_rust
+jobs:
+  test_rust:
     strategy:
       matrix:
         os: [ubuntu-20.04, ubuntu-22.04]
