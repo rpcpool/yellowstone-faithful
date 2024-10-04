@@ -32,7 +32,8 @@ func NewMinerInfo(
 ) *MinerInfoCache {
 	minerInfoCache := ttlcache.New[string, *MinerInfo](
 		ttlcache.WithTTL[string, *MinerInfo](cacheTTL),
-		ttlcache.WithDisableTouchOnHit[string, *MinerInfo]())
+		ttlcache.WithDisableTouchOnHit[string, *MinerInfo](),
+	)
 
 	return &MinerInfoCache{
 		lotusClient:    lotusClient,
@@ -47,7 +48,15 @@ func (d *MinerInfoCache) GetProviderInfo(ctx context.Context, provider address.A
 		return file.Value(), nil
 	}
 
-	minerInfo, err := (&MinerInfoFetcher{Client: d.lotusClient}).GetProviderInfo(ctx, provider.String())
+	ctx, cancel := context.WithTimeout(ctx, d.requestTimeout)
+	defer cancel()
+	minerInfo, err := retryExponentialBackoff(ctx,
+		func() (*MinerInfo, error) {
+			return (&MinerInfoFetcher{Client: d.lotusClient}).GetProviderInfo(ctx, provider.String())
+		},
+		time.Second*2,
+		5,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -57,6 +66,29 @@ func (d *MinerInfoCache) GetProviderInfo(ctx context.Context, provider address.A
 
 type MinerInfoFetcher struct {
 	Client jsonrpc.RPCClient
+}
+
+func retryExponentialBackoff[T any](
+	ctx context.Context,
+	fn func() (T, error),
+	startingBackoff time.Duration,
+	maxRetries int,
+) (T, error) {
+	var err error
+	var out T
+	for i := 0; i < maxRetries; i++ {
+		out, err = fn()
+		if err == nil {
+			return out, nil
+		}
+		select {
+		case <-ctx.Done():
+			return out, fmt.Errorf("context done: %w; last error: %s", ctx.Err(), err)
+		case <-time.After(startingBackoff):
+			startingBackoff *= 2
+		}
+	}
+	return out, err
 }
 
 func (m *MinerInfoFetcher) GetProviderInfo(ctx context.Context, provider string) (*MinerInfo, error) {
