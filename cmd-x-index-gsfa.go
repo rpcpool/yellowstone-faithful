@@ -183,30 +183,30 @@ func newCmd_Index_gsfa() *cli.Command {
 			accum := accum.NewObjectAccumulator(
 				rd,
 				iplddecoders.KindBlock,
-				func(owm1 *accum.ObjectWithMetadata, owm2 []accum.ObjectWithMetadata) error {
+				func(parent *accum.ObjectWithMetadata, children []accum.ObjectWithMetadata) error {
 					numSlots++
-					numObjects := len(owm2) + 1
+					numObjects := len(children) + 1
 					if numObjects > int(numMaxObjects) {
 						numMaxObjects = uint64(numObjects)
 					}
 
-					if owm1 == nil {
-						transactions, err := objectsToTransactions(&ipldbindcode.Block{
+					if parent == nil {
+						transactions, err := objectsToTransactionsAndMetadata(&ipldbindcode.Block{
 							Meta: ipldbindcode.SlotMeta{
 								Blocktime: 0,
 							},
-						}, owm2)
+						}, children)
 						if err != nil {
 							return fmt.Errorf("error while converting objects to transactions: %w", err)
 						}
 						if len(transactions) == 0 {
 							return nil
 						}
-						spew.Dump(owm1, transactions, len(owm2))
+						spew.Dump(parent, transactions, len(children))
 					}
 
 					// decode the block:
-					block, err := iplddecoders.DecodeBlock(owm1.ObjectData)
+					block, err := iplddecoders.DecodeBlock(parent.ObjectData)
 					if err != nil {
 						return fmt.Errorf("error while decoding block: %w", err)
 					}
@@ -217,7 +217,7 @@ func newCmd_Index_gsfa() *cli.Command {
 					if tookToDo1kSlots > 0 {
 						eta = time.Duration(float64(tookToDo1kSlots) / float64(etaSampleSlots) * float64(epochEnd-epochStart-numSlots))
 					}
-					transactions, err := objectsToTransactions(block, owm2)
+					transactions, err := objectsToTransactionsAndMetadata(block, children)
 					if err != nil {
 						return fmt.Errorf("error while converting objects to transactions: %w", err)
 					}
@@ -276,17 +276,17 @@ func newCmd_Index_gsfa() *cli.Command {
 	}
 }
 
-func objectsToTransactions(
+func objectsToTransactionsAndMetadata(
 	block *ipldbindcode.Block,
 	objects []accum.ObjectWithMetadata,
 ) ([]*TransactionWithSlot, error) {
 	transactions := make([]*TransactionWithSlot, 0, len(objects))
-	dataBlocks := make([]accum.ObjectWithMetadata, 0)
+	dataBlocksMap := make(map[string]accum.ObjectWithMetadata, 0)
 	for _, object := range objects {
 		// check if the object is a transaction:
 		kind := iplddecoders.Kind(object.ObjectData[1])
 		if kind == iplddecoders.KindDataFrame {
-			dataBlocks = append(dataBlocks, object)
+			dataBlocksMap[object.Cid.String()] = object
 			continue
 		}
 		if kind != iplddecoders.KindTransaction {
@@ -303,6 +303,7 @@ func objectsToTransactions(
 			Blocktime: uint64(block.Meta.Blocktime),
 		}
 		if total, ok := decoded.Metadata.GetTotal(); !ok || total == 1 {
+			// metadata fit into the transaction object:
 			completeBuffer := decoded.Metadata.Bytes()
 			if ha, ok := decoded.Metadata.GetHash(); ok {
 				err := ipldbindcode.VerifyHash(completeBuffer, ha)
@@ -320,24 +321,28 @@ func objectsToTransactions(
 					tws.Metadata = status
 				}
 			}
+			clear(dataBlocksMap)
 		} else {
-			metaBuffer, err := loadDataFromDataFrames(&decoded.Metadata, func(ctx context.Context, wantedCid cid.Cid) (*ipldbindcode.DataFrame, error) {
-				for _, dataBlock := range dataBlocks {
-					if dataBlock.Cid == wantedCid {
+			// metadata didn't fit into the transaction object, and was split into multiple dataframes:
+			metaBuffer, err := loadDataFromDataFrames(
+				&decoded.Metadata,
+				func(ctx context.Context, wantedCid cid.Cid) (*ipldbindcode.DataFrame, error) {
+					if dataBlock, ok := dataBlocksMap[wantedCid.String()]; ok {
 						df, err := iplddecoders.DecodeDataFrame(dataBlock.ObjectData)
 						if err != nil {
 							return nil, err
 						}
 						return df, nil
 					}
-				}
-				return nil, fmt.Errorf("dataframe not found")
-			})
+					return nil, fmt.Errorf("dataframe not found")
+				})
 			if err != nil {
 				return nil, fmt.Errorf("failed to load metadata: %w", err)
 			}
-			// reset dataBlocks:
-			dataBlocks = dataBlocks[:0]
+			// clear dataBlocksMap so it can accumulate dataframes for the next transaction:
+			clear(dataBlocksMap)
+
+			// if we have a metadata buffer, try to decompress it:
 			if len(metaBuffer) > 0 {
 				uncompressedMeta, err := decompressZstd(metaBuffer)
 				if err != nil {
