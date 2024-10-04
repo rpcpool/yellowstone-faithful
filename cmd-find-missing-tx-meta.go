@@ -55,7 +55,7 @@ func newCmd_find_missing_tx_metadata() *cli.Command {
 			silent := c.Bool("silent")
 
 			if silent {
-				klog.Infoln("Silent mode is ON")
+				klog.Infoln("Silent mode is ON: will not print progress")
 			}
 
 			rd, err := carreader.New(file)
