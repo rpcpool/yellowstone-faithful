@@ -12,6 +12,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 
 	"github.com/anjor/carlet"
@@ -529,4 +530,76 @@ func readHeader(streamBuf *bufio.Reader) ([]byte, int64, error) {
 	streamLen += actualHdrLen
 
 	return headerBuf.Bytes(), streamLen, nil
+}
+
+func SortCarFiles(carFiles []string) ([]string, error) {
+	type carFileInfo struct {
+		path      string
+		firstSlot int64
+	}
+
+	var fileInfos []carFileInfo
+
+	for _, path := range carFiles {
+		file, err := os.Open(path)
+		if err != nil {
+			return nil, fmt.Errorf("failed to open CAR file %s: %w", path, err)
+		}
+		defer file.Close()
+
+		// Create a new CarReader
+		cr, err := carreader.New(file)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create CarReader for %s: %w", path, err)
+		}
+
+		// Get the root CID
+		if len(cr.Header.Roots) != 1 {
+			return nil, fmt.Errorf("expected 1 root CID, got %d in file %s", len(cr.Header.Roots), path)
+		}
+		rootCid := cr.Header.Roots[0]
+
+		// Read nodes until we find the one matching the root CID
+		var subset *ipldbindcode.Subset
+		for {
+			c, _, blockData, err := cr.NextNodeBytes()
+			if err != nil {
+				if err == io.EOF {
+					return nil, fmt.Errorf("reached end of file without finding root node in %s", path)
+				}
+				return nil, fmt.Errorf("failed to read node in file %s: %w", path, err)
+			}
+
+			if c == rootCid {
+				// Parse the block as a Subset object
+				subset, err = iplddecoders.DecodeSubset(blockData)
+				if err != nil {
+					return nil, fmt.Errorf("failed to decode Subset from block in file %s: %w", path, err)
+				}
+				break
+			}
+		}
+
+		if subset == nil {
+			return nil, fmt.Errorf("failed to find root node in file %s", path)
+		}
+
+		fileInfos = append(fileInfos, carFileInfo{
+			path:      path,
+			firstSlot: int64(subset.First),
+		})
+	}
+
+	// Sort the file infos based on the firstSlot
+	sort.Slice(fileInfos, func(i, j int) bool {
+		return fileInfos[i].firstSlot < fileInfos[j].firstSlot
+	})
+
+	// Extract the sorted file paths
+	sortedFiles := make([]string, len(fileInfos))
+	for i, info := range fileInfos {
+		sortedFiles[i] = info.path
+	}
+
+	return sortedFiles, nil
 }
