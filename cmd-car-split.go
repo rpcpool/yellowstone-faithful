@@ -533,6 +533,12 @@ func readHeader(streamBuf *bufio.Reader) ([]byte, int64, error) {
 }
 
 func SortCarFiles(carFiles []string) ([]string, error) {
+	// handle the case where there is only one CAR file
+	// this way we handle the case where user wants to index a single epoch car file
+	if len(carFiles) == 1 {
+		return carFiles, nil
+	}
+
 	type carFileInfo struct {
 		path      string
 		firstSlot int64
