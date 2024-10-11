@@ -103,7 +103,7 @@ func newCmd_find_missing_tx_metadata() *cli.Command {
 			numProcessedTransactions := new(atomic.Int64)
 			startedAt := time.Now()
 
-			numSlots := uint64(0)
+			slotCounter := uint64(0)
 			numMaxObjects := uint64(0)
 
 			lastPrintedAt := time.Now()
@@ -132,7 +132,7 @@ func newCmd_find_missing_tx_metadata() *cli.Command {
 				rd,
 				iplddecoders.KindBlock,
 				func(parent *accum.ObjectWithMetadata, children []accum.ObjectWithMetadata) error {
-					numSlots++
+					slotCounter++
 					numObjects := len(children) + 1
 					if numObjects > int(numMaxObjects) {
 						numMaxObjects = uint64(numObjects)
@@ -158,7 +158,7 @@ func newCmd_find_missing_tx_metadata() *cli.Command {
 					if err != nil {
 						return fmt.Errorf("error while decoding block: %w", err)
 					}
-					if numSlots%etaSampleSlots == 0 {
+					if slotCounter%etaSampleSlots == 0 {
 						tookToDo1kSlots = time.Since(lastTimeDid1kSlots)
 						lastTimeDid1kSlots = time.Now()
 					}
@@ -170,7 +170,11 @@ func newCmd_find_missing_tx_metadata() *cli.Command {
 						epochStart, epochEnd = CalcEpochLimits(epoch)
 					}
 					if tookToDo1kSlots > 0 {
-						eta = time.Duration(float64(tookToDo1kSlots) / float64(etaSampleSlots) * float64(epochEnd-epochStart-numSlots))
+						remainingSlots := epochEnd - uint64(block.Slot)
+						if epochEnd < uint64(block.Slot) {
+							remainingSlots = 0
+						}
+						eta = time.Duration(float64(tookToDo1kSlots) / float64(etaSampleSlots) * float64(remainingSlots))
 					}
 					transactions, err := accum.ObjectsToTransactionsAndMetadata(block, children)
 					if err != nil {
