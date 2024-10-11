@@ -14,6 +14,7 @@ import (
 
 	"github.com/gagliardetto/solana-go"
 	"github.com/rpcpool/yellowstone-faithful/indexes"
+	"github.com/rpcpool/yellowstone-faithful/tooling"
 )
 
 type LinkedLog struct {
@@ -158,7 +159,7 @@ func (s *LinkedLog) ReadWithSize(offset uint64, size uint64) ([]OffsetAndSizeAnd
 }
 
 func decompressIndexes(data []byte) ([]OffsetAndSizeAndBlocktime, error) {
-	decompressed, err := decompressZSTD(data)
+	decompressed, err := tooling.DecompressZstd(data)
 	if err != nil {
 		return nil, fmt.Errorf("error while decompressing data: %w", err)
 	}
@@ -250,7 +251,7 @@ func createIndexesPayload(indexes []*OffsetAndSizeAndBlocktime) ([]byte, error) 
 		buf = append(buf, index.Bytes()...)
 	}
 	buf = slices.Clip(buf)
-	return (compressZSTD(buf))
+	return tooling.CompressZstd(buf)
 }
 
 func encodeUvarint(n uint64) []byte {

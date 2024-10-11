@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"sync/atomic"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/rpcpool/yellowstone-faithful/carreader"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
+	"github.com/rpcpool/yellowstone-faithful/tooling"
 	"github.com/urfave/cli/v2"
 	"k8s.io/klog/v2"
 )
@@ -36,6 +38,18 @@ func newCmd_find_missing_tx_metadata() *cli.Command {
 			&cli.StringSliceFlag{
 				Name:  "watch",
 				Usage: "Watch for these transactions; provide a base58-encoded signature; can be repeated; will print the transaction if found",
+			},
+			// destination dir for the output files
+			&cli.StringFlag{
+				Name:  "output-dir",
+				Usage: "Destination directory for the output files",
+				Value: "",
+			},
+			// skip is the number of objects (any kind) to skip before starting to process.
+			&cli.Uint64Flag{
+				Name:  "skip",
+				Usage: "Number of objects to skip before starting to process",
+				Value: 0,
 			},
 		},
 		Action: func(c *cli.Context) error {
@@ -63,10 +77,27 @@ func newCmd_find_missing_tx_metadata() *cli.Command {
 				klog.Exitf("Failed to open CAR: %s", err)
 			}
 
+			outputDir := c.String("output-dir")
+			if outputDir == "" {
+				outputDir = filepath.Dir(carPath)
+			} else {
+				if err := os.MkdirAll(outputDir, os.ModePerm); err != nil {
+					klog.Exitf("Failed to create output directory: %s", err)
+				}
+			}
+
 			// In the same directory as the CAR file, create a file where we will write the signatures of the transactions that are missing metadata.
-			fileMissingMetadata, err := os.Create(carPath + ".missing-tx-metadata.txt")
+			missingTxPath := filepath.Join(outputDir, filepath.Base(carPath)+".missing-tx-metadata.txt")
+			fileMissingMetadata, err := tooling.NewBufferedWritableFile(missingTxPath)
 			if err != nil {
 				klog.Exitf("Failed to create file for missing metadata: %s", err)
+			}
+
+			// In the same directory as the CAR file, create a file where we will write the errors that occurred while parsing the metadata.
+			txMetaParseErrorPath := filepath.Join(outputDir, filepath.Base(carPath)+".tx-meta-parsing-error.txt")
+			fileTxMetaParsingError, err := tooling.NewBufferedWritableFile(txMetaParseErrorPath)
+			if err != nil {
+				klog.Exitf("Failed to create file for tx meta parsing error: %s", err)
 			}
 
 			numProcessedTransactions := new(atomic.Int64)
@@ -96,6 +127,7 @@ func newCmd_find_missing_tx_metadata() *cli.Command {
 				klog.Infof("Watching for %d transactions", len(watch))
 			}
 			numTransactionsWithMissingMetadata := new(atomic.Uint64)
+			numTransactionsWithMetaParsingError := new(atomic.Uint64)
 			accum := accum.NewObjectAccumulator(
 				rd,
 				iplddecoders.KindBlock,
@@ -107,7 +139,7 @@ func newCmd_find_missing_tx_metadata() *cli.Command {
 					}
 
 					if parent == nil {
-						transactions, err := objectsToTransactionsAndMetadata(&ipldbindcode.Block{
+						transactions, err := accum.ObjectsToTransactionsAndMetadata(&ipldbindcode.Block{
 							Meta: ipldbindcode.SlotMeta{
 								Blocktime: 0,
 							},
@@ -140,7 +172,7 @@ func newCmd_find_missing_tx_metadata() *cli.Command {
 					if tookToDo1kSlots > 0 {
 						eta = time.Duration(float64(tookToDo1kSlots) / float64(etaSampleSlots) * float64(epochEnd-epochStart-numSlots))
 					}
-					transactions, err := objectsToTransactionsAndMetadata(block, children)
+					transactions, err := accum.ObjectsToTransactionsAndMetadata(block, children)
 					if err != nil {
 						return fmt.Errorf("error while converting objects to transactions: %w", err)
 					}
@@ -157,10 +189,20 @@ func newCmd_find_missing_tx_metadata() *cli.Command {
 						}
 
 						if txWithInfo.Metadata == nil {
-							numTransactionsWithMissingMetadata.Add(1)
-							_, err := fileMissingMetadata.WriteString(txWithInfo.Transaction.Signatures[0].String() + "\n")
-							if err != nil {
-								return fmt.Errorf("error while writing to file: %w", err)
+							if txWithInfo.IsMetaNotFound() {
+								numTransactionsWithMissingMetadata.Add(1)
+								err := fileMissingMetadata.WriteString(txWithInfo.Transaction.Signatures[0].String() + "\n")
+								if err != nil {
+									return fmt.Errorf("error while writing to file: %w", err)
+								}
+							}
+							if txWithInfo.IsMetaParseError() {
+								numTransactionsWithMetaParsingError.Add(1)
+								quotedError := fmt.Sprintf("%q", txWithInfo.Error)
+								err := fileTxMetaParsingError.WriteString(quotedError + "\n")
+								if err != nil {
+									return fmt.Errorf("error while writing to file: %w", err)
+								}
 							}
 						}
 
@@ -168,8 +210,9 @@ func newCmd_find_missing_tx_metadata() *cli.Command {
 							percentDone := float64(txWithInfo.Slot-epochStart) / float64(epochEnd-epochStart) * 100
 							// clear line, then print progress
 							msg := fmt.Sprintf(
-								"\rChecking missing tx meta - %s missing - %s | %s | %.2f%% | slot %s | tx %s",
+								"\rChecking tx meta - %s missing, %s parse err - %s | %s | %.2f%% | slot %s | tx %s",
 								humanize.Comma(int64(numTransactionsWithMissingMetadata.Load())),
+								humanize.Comma(int64(numTransactionsWithMetaParsingError.Load())),
 								time.Now().Format("2006-01-02 15:04:05"),
 								time.Since(startedAt).Truncate(time.Second),
 								percentDone,
@@ -192,11 +235,17 @@ func newCmd_find_missing_tx_metadata() *cli.Command {
 				iplddecoders.KindRewards,
 			)
 
+			if skip := c.Uint64("skip"); skip > 0 {
+				klog.Infof("Skipping %s objects", humanize.Comma(int64(skip)))
+				accum.SetSkip(skip)
+			}
+
 			if err := accum.Run(context.Background()); err != nil {
 				return fmt.Errorf("error while accumulating objects: %w", err)
 			}
 
 			fileMissingMetadata.Close()
+			fileTxMetaParsingError.Close()
 
 			klog.Infof("Checked %s transactions", humanize.Comma(int64(numProcessedTransactions.Load())))
 			klog.Infof("Finished in %s", time.Since(startedAt))
