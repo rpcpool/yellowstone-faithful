@@ -8,8 +8,8 @@ publish = false
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+agave-geyser-plugin-interface = { workspace = true }
 colored = { workspace = true }
-solana-geyser-plugin-interface = { workspace = true }
 tracing = { workspace = true }
 
 [package.metadata.docs.rs]

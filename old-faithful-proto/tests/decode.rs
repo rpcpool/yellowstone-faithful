@@ -26,6 +26,7 @@ struct FixtureConfirmedBlock {
     transactions: Vec<FixtureConfirmedTransactionInner>,
     #[serde(deserialize_with = "deserialize_hex")]
     rewards: Vec<u8>,
+    num_partitions: Option<u64>,
 }
 
 impl From<FixtureConfirmedBlock> for proto::BlockResponse {
@@ -39,6 +40,7 @@ impl From<FixtureConfirmedBlock> for proto::BlockResponse {
             block_height: data.block_height,
             transactions: data.transactions.into_iter().map(Into::into).collect(),
             rewards: data.rewards,
+            num_partitions: data.num_partitions,
         }
     }
 }
