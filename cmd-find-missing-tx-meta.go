@@ -51,6 +51,18 @@ func newCmd_find_missing_tx_metadata() *cli.Command {
 				Usage: "Number of objects to skip before starting to process",
 				Value: 0,
 			},
+			// dont' save missing metadata
+			&cli.BoolFlag{
+				Name:  "no-save-missing-metadata",
+				Usage: "Do not save the signatures of transactions that are missing metadata",
+				Value: false,
+			},
+			// dont' save metadata parsing errors
+			&cli.BoolFlag{
+				Name:  "no-save-meta-parsing-errors",
+				Usage: "Do not save the errors that occurred while parsing the metadata",
+				Value: false,
+			},
 		},
 		Action: func(c *cli.Context) error {
 			carPath := c.Args().First()
@@ -70,6 +82,16 @@ func newCmd_find_missing_tx_metadata() *cli.Command {
 
 			if silent {
 				klog.Infoln("Silent mode is ON: will not print progress")
+			}
+
+			noSaveMissingMetadata := c.Bool("no-save-missing-metadata")
+			if noSaveMissingMetadata {
+				klog.Infoln("Will not save missing metadata")
+			}
+
+			noSaveMetaParsingErrors := c.Bool("no-save-meta-parsing-errors")
+			if noSaveMetaParsingErrors {
+				klog.Infoln("Will not save metadata parsing errors")
 			}
 
 			rd, err := carreader.New(file)
@@ -195,17 +217,21 @@ func newCmd_find_missing_tx_metadata() *cli.Command {
 						if txWithInfo.Metadata == nil {
 							if txWithInfo.IsMetaNotFound() {
 								numTransactionsWithMissingMetadata.Add(1)
-								err := fileMissingMetadata.WriteString(txWithInfo.Transaction.Signatures[0].String() + "\n")
-								if err != nil {
-									return fmt.Errorf("error while writing to file: %w", err)
+								if !noSaveMissingMetadata {
+									err := fileMissingMetadata.WriteString(txWithInfo.Transaction.Signatures[0].String() + "\n")
+									if err != nil {
+										return fmt.Errorf("error while writing to file: %w", err)
+									}
 								}
 							}
 							if txWithInfo.IsMetaParseError() {
 								numTransactionsWithMetaParsingError.Add(1)
 								quotedError := fmt.Sprintf("%q", txWithInfo.Error)
-								err := fileTxMetaParsingError.WriteString(quotedError + "\n")
-								if err != nil {
-									return fmt.Errorf("error while writing to file: %w", err)
+								if !noSaveMetaParsingErrors {
+									err := fileTxMetaParsingError.WriteString(quotedError + "\n")
+									if err != nil {
+										return fmt.Errorf("error while writing to file: %w", err)
+									}
 								}
 							}
 						}
@@ -255,6 +281,9 @@ func newCmd_find_missing_tx_metadata() *cli.Command {
 			klog.Infof("Finished in %s", time.Since(startedAt))
 
 			klog.Infof("Transactions with missing metadata: %d", numTransactionsWithMissingMetadata.Load())
+			klog.Infof("Transactions with metadata parsing error: %d", numTransactionsWithMetaParsingError.Load())
+
+			// NOTE: if there are parsing errors, THEY WILL BE IGNORED.
 			if numTransactionsWithMissingMetadata.Load() > 0 {
 				file.Close()
 				os.Exit(1)
