@@ -1,5 +1,13 @@
 package solanaerrors
 
+import (
+	"encoding/base64"
+	"fmt"
+
+	bin "github.com/gagliardetto/binary"
+	jsoniter "github.com/json-iterator/go"
+)
+
 type TransactionErrorType int32
 
 const (
@@ -205,3 +213,96 @@ const (
 	InstructionErrorType_MAX_INSTRUCTION_TRACE_LENGTH_EXCEEDED       InstructionErrorType = 52
 	InstructionErrorType_BUILTIN_PROGRAMS_MUST_CONSUME_COMPUTE_UNITS InstructionErrorType = 53
 )
+
+var fasterJson = jsoniter.ConfigCompatibleWithStandardLibrary
+
+func ParseTransactionError(v any) (map[string]any, error) {
+	// TODO: if any of the following fails, return the original value.
+	// marshal to json
+	b, err := fasterJson.Marshal(v)
+	if err != nil {
+		return nil, err
+	}
+	// then unmarshal to map
+	var m map[string]any
+	err = fasterJson.Unmarshal(b, &m)
+	if err != nil {
+		return nil, err
+	}
+	// get the "err" field
+	errValue, ok := m["err"]
+	if !ok {
+		return nil, nil
+	}
+	// try to parse base64
+	errValueStr, ok := errValue.(string)
+	if !ok {
+		return nil, nil
+	}
+	b, err = base64.StdEncoding.DecodeString(errValueStr)
+	if err != nil {
+		return nil, err
+	}
+	///
+	{
+		dec := bin.NewBinDecoder(b)
+		transactionErrorType, err := dec.ReadUint32(bin.LE)
+		if err != nil {
+			return nil, err
+		}
+		// TODO: is this uint8 or uvarint or something else?
+		errorCode, err := dec.ReadUint8()
+		if err != nil {
+			return nil, err
+		}
+		transactionErrorTypeName, ok := TransactionErrorType_name[int32(transactionErrorType)]
+		if !ok {
+			return nil, fmt.Errorf("unknown transaction error type: %d", transactionErrorType)
+		}
+		transactionErrorTypeName = bin.ToPascalCase(transactionErrorTypeName)
+
+		switch TransactionErrorType(transactionErrorType) {
+		case TransactionErrorType_INSTRUCTION_ERROR:
+
+			instructionErrorType, err := dec.ReadUint32(bin.LE)
+			if err != nil {
+				return nil, err
+			}
+
+			instructionErrorTypeName, ok := InstructionErrorType_name[int32(instructionErrorType)]
+			if !ok {
+				return nil, fmt.Errorf("unknown instruction error type: %d", instructionErrorType)
+			}
+			instructionErrorTypeName = bin.ToPascalCase(instructionErrorTypeName)
+
+			switch InstructionErrorType(instructionErrorType) {
+			case InstructionErrorType_CUSTOM:
+				customErrorType, err := dec.ReadUint32(bin.LE)
+				if err != nil {
+					return nil, err
+				}
+				return map[string]any{
+					transactionErrorTypeName: []any{
+						errorCode,
+						map[string]any{
+							instructionErrorTypeName: customErrorType,
+						},
+					},
+				}, nil
+			}
+
+			return map[string]any{
+				transactionErrorTypeName: []any{
+					errorCode,
+					instructionErrorTypeName,
+				},
+			}, nil
+		default:
+			return map[string]any{
+				transactionErrorTypeName: []any{
+					errorCode,
+				},
+			}, nil
+		}
+	}
+}

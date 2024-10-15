@@ -1,13 +1,10 @@
 package main
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 
-	bin "github.com/gagliardetto/binary"
 	"github.com/gagliardetto/solana-go"
-	solanaerrors "github.com/rpcpool/yellowstone-faithful/solana-errors"
 )
 
 type GetSignaturesForAddressParams struct {
@@ -91,94 +88,3 @@ var (
 	memoProgramIDV1 = solana.MPK("Memo1UhkJRfHyvLMcVucJwxXeuD728EqVDDwQDxFMNo")
 	memoProgramIDV2 = solana.MPK("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr")
 )
-
-func parseTransactionError(v any) (map[string]any, error) {
-	// TODO: if any of the following fails, return the original value.
-	// marshal to json
-	b, err := fasterJson.Marshal(v)
-	if err != nil {
-		return nil, err
-	}
-	// then unmarshal to map
-	var m map[string]any
-	err = fasterJson.Unmarshal(b, &m)
-	if err != nil {
-		return nil, err
-	}
-	// get the "err" field
-	errValue, ok := m["err"]
-	if !ok {
-		return nil, nil
-	}
-	// try to parse base64
-	errValueStr, ok := errValue.(string)
-	if !ok {
-		return nil, nil
-	}
-	b, err = base64.StdEncoding.DecodeString(errValueStr)
-	if err != nil {
-		return nil, err
-	}
-	///
-	{
-		dec := bin.NewBinDecoder(b)
-		transactionErrorType, err := dec.ReadUint32(bin.LE)
-		if err != nil {
-			return nil, err
-		}
-		// TODO: is this uint8 or uvarint or something else?
-		errorCode, err := dec.ReadUint8()
-		if err != nil {
-			return nil, err
-		}
-		transactionErrorTypeName, ok := solanaerrors.TransactionErrorType_name[int32(transactionErrorType)]
-		if !ok {
-			return nil, fmt.Errorf("unknown transaction error type: %d", transactionErrorType)
-		}
-		transactionErrorTypeName = bin.ToPascalCase(transactionErrorTypeName)
-
-		switch solanaerrors.TransactionErrorType(transactionErrorType) {
-		case solanaerrors.TransactionErrorType_INSTRUCTION_ERROR:
-
-			instructionErrorType, err := dec.ReadUint32(bin.LE)
-			if err != nil {
-				return nil, err
-			}
-
-			instructionErrorTypeName, ok := solanaerrors.InstructionErrorType_name[int32(instructionErrorType)]
-			if !ok {
-				return nil, fmt.Errorf("unknown instruction error type: %d", instructionErrorType)
-			}
-			instructionErrorTypeName = bin.ToPascalCase(instructionErrorTypeName)
-
-			switch solanaerrors.InstructionErrorType(instructionErrorType) {
-			case solanaerrors.InstructionErrorType_CUSTOM:
-				customErrorType, err := dec.ReadUint32(bin.LE)
-				if err != nil {
-					return nil, err
-				}
-				return map[string]any{
-					transactionErrorTypeName: []any{
-						errorCode,
-						map[string]any{
-							instructionErrorTypeName: customErrorType,
-						},
-					},
-				}, nil
-			}
-
-			return map[string]any{
-				transactionErrorTypeName: []any{
-					errorCode,
-					instructionErrorTypeName,
-				},
-			}, nil
-		default:
-			return map[string]any{
-				transactionErrorTypeName: []any{
-					errorCode,
-				},
-			}, nil
-		}
-	}
-}
