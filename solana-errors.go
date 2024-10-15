@@ -39,6 +39,8 @@ const (
 	TransactionErrorType_INVALID_LOADED_ACCOUNTS_DATA_SIZE_LIMIT  TransactionErrorType = 33
 	TransactionErrorType_RESANITIZATION_NEEDED                    TransactionErrorType = 34
 	TransactionErrorType_PROGRAM_EXECUTION_TEMPORARILY_RESTRICTED TransactionErrorType = 35
+	TransactionErrorType_UNBALANCED_TRANSACTION                   TransactionErrorType = 36
+	TransactionErrorType_PROGRAM_CACHE_HIT_MAX_LIMIT              TransactionErrorType = 37
 )
 
 // Enum value maps for TransactionErrorType.
@@ -80,6 +82,8 @@ var (
 		33: "INVALID_LOADED_ACCOUNTS_DATA_SIZE_LIMIT",
 		34: "RESANITIZATION_NEEDED",
 		35: "PROGRAM_EXECUTION_TEMPORARILY_RESTRICTED",
+		36: "UNBALANCED_TRANSACTION",
+		37: "PROGRAM_CACHE_HIT_MAX_LIMIT",
 	}
 )
 
