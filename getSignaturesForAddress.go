@@ -7,6 +7,7 @@ import (
 
 	bin "github.com/gagliardetto/binary"
 	"github.com/gagliardetto/solana-go"
+	solanaerrors "github.com/rpcpool/yellowstone-faithful/solana-errors"
 )
 
 type GetSignaturesForAddressParams struct {
@@ -130,28 +131,28 @@ func parseTransactionError(v any) (map[string]any, error) {
 		if err != nil {
 			return nil, err
 		}
-		transactionErrorTypeName, ok := TransactionErrorType_name[int32(transactionErrorType)]
+		transactionErrorTypeName, ok := solanaerrors.TransactionErrorType_name[int32(transactionErrorType)]
 		if !ok {
 			return nil, fmt.Errorf("unknown transaction error type: %d", transactionErrorType)
 		}
 		transactionErrorTypeName = bin.ToPascalCase(transactionErrorTypeName)
 
-		switch TransactionErrorType(transactionErrorType) {
-		case TransactionErrorType_INSTRUCTION_ERROR:
+		switch solanaerrors.TransactionErrorType(transactionErrorType) {
+		case solanaerrors.TransactionErrorType_INSTRUCTION_ERROR:
 
 			instructionErrorType, err := dec.ReadUint32(bin.LE)
 			if err != nil {
 				return nil, err
 			}
 
-			instructionErrorTypeName, ok := InstructionErrorType_name[int32(instructionErrorType)]
+			instructionErrorTypeName, ok := solanaerrors.InstructionErrorType_name[int32(instructionErrorType)]
 			if !ok {
 				return nil, fmt.Errorf("unknown instruction error type: %d", instructionErrorType)
 			}
 			instructionErrorTypeName = bin.ToPascalCase(instructionErrorTypeName)
 
-			switch InstructionErrorType(instructionErrorType) {
-			case InstructionErrorType_CUSTOM:
+			switch solanaerrors.InstructionErrorType(instructionErrorType) {
+			case solanaerrors.InstructionErrorType_CUSTOM:
 				customErrorType, err := dec.ReadUint32(bin.LE)
 				if err != nil {
 					return nil, err
