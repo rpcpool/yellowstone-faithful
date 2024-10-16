@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
@@ -44,7 +45,8 @@ var (
 		Roots:   []cid.Cid{CBOR_SHA256_DUMMY_CID}, // placeholder
 		Version: 1,
 	}
-	hdrSize, _ = car.HeaderSize(hdr)
+	hdrSize, _     = car.HeaderSize(hdr)
+	maxSectionSize = 2 << 20 // 2 MiB
 )
 
 const maxLinks = 432000 / 18 // 18 subsets
@@ -602,4 +604,114 @@ func SortCarFiles(carFiles []string) ([]string, error) {
 	}
 
 	return sortedFiles, nil
+}
+
+func SortCarURLs(carURLs []string) ([]string, error) {
+	type carURLInfo struct {
+		url       string
+		firstSlot int64
+	}
+
+	var urlInfos []carURLInfo
+
+	for _, url := range carURLs {
+		firstSlot, err := getFirstSlotFromURL(url)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get first slot from URL %s: %w", url, err)
+		}
+
+		urlInfos = append(urlInfos, carURLInfo{
+			url:       url,
+			firstSlot: firstSlot,
+		})
+	}
+
+	// Sort the URL infos based on the firstSlot
+	sort.Slice(urlInfos, func(i, j int) bool {
+		return urlInfos[i].firstSlot < urlInfos[j].firstSlot
+	})
+
+	// Extract the sorted URLs
+	sortedURLs := make([]string, len(urlInfos))
+	for i, info := range urlInfos {
+		sortedURLs[i] = info.url
+	}
+
+	return sortedURLs, nil
+
+}
+
+func getFirstSlotFromURL(url string) (int64, error) {
+	// First, make a HEAD request to get the file size
+	headResp, err := http.Head(url)
+	if err != nil {
+		return 0, fmt.Errorf("failed to make HEAD request: %w", err)
+	}
+	defer headResp.Body.Close()
+
+	// parse the file size
+	fileSize, err := strconv.ParseInt(headResp.Header.Get("Content-Length"), 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse Content-Length: %w", err)
+	}
+
+	// get the offset for the last section of the file
+	endOffset := fileSize - int64(maxSectionSize)
+	if endOffset < 0 {
+		endOffset = 0
+	}
+
+	// Now make the GET request with the Range header
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return 0, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Range", fmt.Sprintf("bytes=%d-", endOffset))
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return 0, fmt.Errorf("failed to fetch CAR file: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Check if the server supports range requests
+	if resp.StatusCode != http.StatusPartialContent {
+		return 0, fmt.Errorf("server does not support range requests")
+	}
+
+	// Read the partial content
+	partialContent, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return 0, fmt.Errorf("failed to read partial content: %w", err)
+	}
+
+	readCloser := io.NopCloser(bytes.NewReader(partialContent))
+
+	cr, err := carreader.New(readCloser)
+	if err != nil {
+		return 0, fmt.Errorf("failed to create CarReader: %w", err)
+	}
+
+	roots := cr.Header.Roots
+	if len(roots) != 1 {
+		return 0, fmt.Errorf("expected 1 root CID, got %d", len(roots))
+	}
+	rootCID := roots[0]
+
+	// Find the root CID block in the last 2MiB of the file
+	cidBytes := rootCID.Bytes()
+	index := bytes.LastIndex(partialContent, cidBytes)
+	if index == -1 {
+		return 0, fmt.Errorf("CID block not found in the last 2MiB of the file")
+	}
+	blockData := partialContent[index:]
+
+	// Decode the Subset
+	subset, err := iplddecoders.DecodeSubset(blockData)
+	if err != nil {
+		return 0, fmt.Errorf("failed to decode Subset from block: %w", err)
+	}
+
+	return int64(subset.First), nil
 }
