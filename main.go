@@ -59,6 +59,7 @@ func main() {
 			newCmd_check_deals(),
 			newCmd_MergeCars(),
 			newCmd_SplitCar(),
+			newCmd_find_missing_tx_metadata(),
 		},
 	}
 

@@ -12,6 +12,7 @@ import (
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	solanatxmetaparsers "github.com/rpcpool/yellowstone-faithful/solana-tx-meta-parsers"
+	"github.com/rpcpool/yellowstone-faithful/tooling"
 	"github.com/urfave/cli/v2"
 	"k8s.io/klog/v2"
 )
@@ -97,7 +98,7 @@ func newCmd_XTraverse() *cli.Command {
 								{
 									var transaction solana.Transaction
 									{
-										txBuffer, err := loadDataFromDataFrames(&tx.Data, simpleIter.GetDataFrame)
+										txBuffer, err := tooling.LoadDataFromDataFrames(&tx.Data, simpleIter.GetDataFrame)
 										if err != nil {
 											panic(err)
 										}
@@ -112,12 +113,12 @@ func newCmd_XTraverse() *cli.Command {
 										fmt.Println(transaction.String())
 									}
 									{
-										metaBuffer, err := loadDataFromDataFrames(&tx.Metadata, simpleIter.GetDataFrame)
+										metaBuffer, err := tooling.LoadDataFromDataFrames(&tx.Metadata, simpleIter.GetDataFrame)
 										if err != nil {
 											panic(err)
 										}
 										if len(metaBuffer) > 0 {
-											uncompressedMeta, err := decompressZstd(metaBuffer)
+											uncompressedMeta, err := tooling.DecompressZstd(metaBuffer)
 											if err != nil {
 												panic(err)
 											}

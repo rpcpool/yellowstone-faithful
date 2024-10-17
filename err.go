@@ -3,13 +3,14 @@ package main
 import (
 	metalatest "github.com/rpcpool/yellowstone-faithful/parse_legacy_transaction_status_meta/v-latest"
 	metaoldest "github.com/rpcpool/yellowstone-faithful/parse_legacy_transaction_status_meta/v-oldest"
+	solanaerrors "github.com/rpcpool/yellowstone-faithful/solana-errors"
 	"github.com/rpcpool/yellowstone-faithful/third_party/solana_proto/confirmed_block"
 )
 
 func getErr(meta any) any {
 	switch metaValue := meta.(type) {
 	case *confirmed_block.TransactionStatusMeta:
-		out, _ := parseTransactionError(metaValue.Err)
+		out, _ := solanaerrors.ParseTransactionError(metaValue.Err)
 		return out
 	case *metalatest.TransactionStatusMeta:
 		switch status := metaValue.Status.(type) {

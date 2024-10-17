@@ -9,6 +9,52 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+type TransactionStatusMetaContainer struct {
+	vProtobuf    *confirmed_block.TransactionStatusMeta
+	vSerdeLatest *metalatest.TransactionStatusMeta
+	vSerdeOldest *metaoldest.TransactionStatusMeta
+}
+
+// Ok returns true if the container holds a value.
+func (c *TransactionStatusMetaContainer) Ok() bool {
+	return c.vProtobuf != nil || c.vSerdeLatest != nil || c.vSerdeOldest != nil
+}
+
+// IsEmpty returns true if the container holds no value.
+func (c *TransactionStatusMetaContainer) IsEmpty() bool {
+	return !c.Ok()
+}
+
+// IsProtobuf returns true if the contained value is a protobuf.
+func (c *TransactionStatusMetaContainer) IsProtobuf() bool {
+	return c.vProtobuf != nil
+}
+
+// IsSerdeLatest returns true if the contained value is the latest serde format.
+func (c *TransactionStatusMetaContainer) IsSerdeLatest() bool {
+	return c.vSerdeLatest != nil
+}
+
+// IsSerdeOldest returns true if the contained value is the oldest serde format.
+func (c *TransactionStatusMetaContainer) IsSerdeOldest() bool {
+	return c.vSerdeOldest != nil
+}
+
+// GetProtobuf returns the contained protobuf value.
+func (c *TransactionStatusMetaContainer) GetProtobuf() *confirmed_block.TransactionStatusMeta {
+	return c.vProtobuf
+}
+
+// GetSerdeLatest returns the contained latest serde format value.
+func (c *TransactionStatusMetaContainer) GetSerdeLatest() *metalatest.TransactionStatusMeta {
+	return c.vSerdeLatest
+}
+
+// GetSerdeOldest returns the contained oldest serde format value.
+func (c *TransactionStatusMetaContainer) GetSerdeOldest() *metaoldest.TransactionStatusMeta {
+	return c.vSerdeOldest
+}
+
 func ParseTransactionStatusMeta(buf []byte) (*confirmed_block.TransactionStatusMeta, error) {
 	var status confirmed_block.TransactionStatusMeta
 	err := proto.Unmarshal(buf, &status)
@@ -53,4 +99,24 @@ func ParseAnyTransactionStatusMeta(buf []byte) (any, error) {
 		return status1, nil
 	}
 	return nil, fmt.Errorf("failed to parse tx meta: %w", err)
+}
+
+// ParseTransactionStatusMetaContainer parses the transaction status meta from the given bytes.
+// It tries to parse the bytes as the latest protobuf format, then the latest serde format, and finally the oldest serde format.
+// It returns a container that holds the parsed value.
+func ParseTransactionStatusMetaContainer(buf []byte) (*TransactionStatusMetaContainer, error) {
+	any, err := ParseAnyTransactionStatusMeta(buf)
+	if err != nil {
+		return nil, err
+	}
+	container := &TransactionStatusMetaContainer{}
+	switch v := any.(type) {
+	case *confirmed_block.TransactionStatusMeta:
+		container.vProtobuf = v
+	case *metalatest.TransactionStatusMeta:
+		container.vSerdeLatest = v
+	case *metaoldest.TransactionStatusMeta:
+		container.vSerdeOldest = v
+	}
+	return container, nil
 }

@@ -169,7 +169,6 @@ func newCmd_SplitCar() *cli.Command {
 			cp := new(commp.Calc)
 
 			createNewFile := func() error {
-
 				if currentFile != nil {
 					sl, err := writeSubsetNode(currentSubsetInfo, writer)
 					if err != nil {
@@ -267,16 +266,16 @@ func newCmd_SplitCar() *cli.Command {
 			accum := accum.NewObjectAccumulator(
 				rd,
 				iplddecoders.KindBlock,
-				func(owm1 *accum.ObjectWithMetadata, owm2 []accum.ObjectWithMetadata) error {
-					if owm1 == nil {
+				func(parent *accum.ObjectWithMetadata, children []accum.ObjectWithMetadata) error {
+					if parent == nil {
 						return nil
 					}
 
-					owms := append(owm2, *owm1)
+					family := append(children, *parent)
 					dagSize := 0
 
-					for _, owm := range owms {
-						dagSize += owm.RawSectionSize()
+					for _, member := range family {
+						dagSize += member.RawSectionSize()
 					}
 
 					if currentFile == nil || currentFileSize+uint64(dagSize) > maxFileSize || len(currentSubsetInfo.blockLinks) > maxLinks {
@@ -288,7 +287,7 @@ func newCmd_SplitCar() *cli.Command {
 					}
 
 					// owm1 is necessarily a Block
-					block, err := iplddecoders.DecodeBlock(owm1.ObjectData)
+					block, err := iplddecoders.DecodeBlock(parent.ObjectData)
 					if err != nil {
 						return fmt.Errorf("failed to decode block: %w", err)
 					}
@@ -300,9 +299,9 @@ func newCmd_SplitCar() *cli.Command {
 						currentSubsetInfo.lastSlot = block.Slot
 					}
 
-					currentSubsetInfo.blockLinks = append(currentSubsetInfo.blockLinks, cidlink.Link{Cid: owm1.Cid})
+					currentSubsetInfo.blockLinks = append(currentSubsetInfo.blockLinks, cidlink.Link{Cid: parent.Cid})
 
-					err = writeBlockDag(owms)
+					err = writeBlockDag(family)
 					if err != nil {
 						return fmt.Errorf("failed to write block dag to file: %w", err)
 					}
@@ -412,7 +411,6 @@ func newCmd_SplitCar() *cli.Command {
 			}
 
 			return nil
-
 		},
 	}
 }
@@ -479,7 +477,6 @@ func writeNode(node datamodel.Node, w io.Writer) (cid.Cid, error) {
 			if _, err := w.Write(data); err != nil {
 				return cid.Cid{}, err
 			}
-
 		}
 	}
 	return cd, nil
@@ -489,7 +486,7 @@ func writeMetadata(metadata *splitcarfetcher.Metadata, epoch int) error {
 	metadataFileName := fmt.Sprintf("epoch-%d-metadata.yaml", epoch)
 
 	// Open file in append mode
-	metadataFile, err := os.OpenFile(metadataFileName, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	metadataFile, err := os.OpenFile(metadataFileName, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
 		return fmt.Errorf("failed to open metadata file: %w", err)
 	}

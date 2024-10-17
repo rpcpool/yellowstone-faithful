@@ -12,7 +12,6 @@ import (
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/dustin/go-humanize"
-	"github.com/gagliardetto/solana-go"
 	"github.com/ipfs/go-cid"
 	"github.com/rpcpool/yellowstone-faithful/accum"
 	"github.com/rpcpool/yellowstone-faithful/carreader"
@@ -21,8 +20,6 @@ import (
 	"github.com/rpcpool/yellowstone-faithful/indexmeta"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
-	solanatxmetaparsers "github.com/rpcpool/yellowstone-faithful/solana-tx-meta-parsers"
-	"github.com/rpcpool/yellowstone-faithful/third_party/solana_proto/confirmed_block"
 	"github.com/urfave/cli/v2"
 	"k8s.io/klog/v2"
 )
@@ -183,30 +180,30 @@ func newCmd_Index_gsfa() *cli.Command {
 			accum := accum.NewObjectAccumulator(
 				rd,
 				iplddecoders.KindBlock,
-				func(owm1 *accum.ObjectWithMetadata, owm2 []accum.ObjectWithMetadata) error {
+				func(parent *accum.ObjectWithMetadata, children []accum.ObjectWithMetadata) error {
 					numSlots++
-					numObjects := len(owm2) + 1
+					numObjects := len(children) + 1
 					if numObjects > int(numMaxObjects) {
 						numMaxObjects = uint64(numObjects)
 					}
 
-					if owm1 == nil {
-						transactions, err := objectsToTransactions(&ipldbindcode.Block{
+					if parent == nil {
+						transactions, err := accum.ObjectsToTransactionsAndMetadata(&ipldbindcode.Block{
 							Meta: ipldbindcode.SlotMeta{
 								Blocktime: 0,
 							},
-						}, owm2)
+						}, children)
 						if err != nil {
 							return fmt.Errorf("error while converting objects to transactions: %w", err)
 						}
 						if len(transactions) == 0 {
 							return nil
 						}
-						spew.Dump(owm1, transactions, len(owm2))
+						spew.Dump(parent, transactions, len(children))
 					}
 
 					// decode the block:
-					block, err := iplddecoders.DecodeBlock(owm1.ObjectData)
+					block, err := iplddecoders.DecodeBlock(parent.ObjectData)
 					if err != nil {
 						return fmt.Errorf("error while decoding block: %w", err)
 					}
@@ -217,17 +214,20 @@ func newCmd_Index_gsfa() *cli.Command {
 					if tookToDo1kSlots > 0 {
 						eta = time.Duration(float64(tookToDo1kSlots) / float64(etaSampleSlots) * float64(epochEnd-epochStart-numSlots))
 					}
-					transactions, err := objectsToTransactions(block, owm2)
+					transactions, err := accum.ObjectsToTransactionsAndMetadata(block, children)
 					if err != nil {
 						return fmt.Errorf("error while converting objects to transactions: %w", err)
 					}
+					defer accum.PutTransactionWithSlotSlice(transactions)
+
 					for ii := range transactions {
 						txWithInfo := transactions[ii]
 						numProcessedTransactions.Add(1)
 						accountKeys := txWithInfo.Transaction.Message.AccountKeys
-						if txWithInfo.Metadata != nil {
-							accountKeys = append(accountKeys, byteSlicesToKeySlice(txWithInfo.Metadata.LoadedReadonlyAddresses)...)
-							accountKeys = append(accountKeys, byteSlicesToKeySlice(txWithInfo.Metadata.LoadedWritableAddresses)...)
+						if txWithInfo.Metadata != nil && txWithInfo.Metadata.IsProtobuf() {
+							meta := txWithInfo.Metadata.GetProtobuf()
+							accountKeys = append(accountKeys, byteSlicesToKeySlice(meta.LoadedReadonlyAddresses)...)
+							accountKeys = append(accountKeys, byteSlicesToKeySlice(meta.LoadedWritableAddresses)...)
 						}
 						err = indexW.Push(
 							txWithInfo.Offset,
@@ -261,10 +261,9 @@ func newCmd_Index_gsfa() *cli.Command {
 					}
 					return nil
 				},
-				// Ignore these kinds in the accumulator (only need transactions):
+				// Ignore these kinds in the accumulator (only need Transactions and DataFrames):
 				iplddecoders.KindEntry,
 				iplddecoders.KindRewards,
-				iplddecoders.KindDataFrame,
 			)
 
 			if err := accum.Run(context.Background()); err != nil {
@@ -276,89 +275,6 @@ func newCmd_Index_gsfa() *cli.Command {
 	}
 }
 
-func objectsToTransactions(
-	block *ipldbindcode.Block,
-	objects []accum.ObjectWithMetadata,
-) ([]*TransactionWithSlot, error) {
-	transactions := make([]*TransactionWithSlot, 0, len(objects))
-	dataBlocks := make([]accum.ObjectWithMetadata, 0)
-	for _, object := range objects {
-		// check if the object is a transaction:
-		kind := iplddecoders.Kind(object.ObjectData[1])
-		if kind == iplddecoders.KindDataFrame {
-			dataBlocks = append(dataBlocks, object)
-			continue
-		}
-		if kind != iplddecoders.KindTransaction {
-			continue
-		}
-		decoded, err := iplddecoders.DecodeTransaction(object.ObjectData)
-		if err != nil {
-			return nil, fmt.Errorf("error while decoding transaction from nodex %s: %w", object.Cid, err)
-		}
-		tws := &TransactionWithSlot{
-			Offset:    object.Offset,
-			Length:    object.SectionLength,
-			Slot:      uint64(decoded.Slot),
-			Blocktime: uint64(block.Meta.Blocktime),
-		}
-		if total, ok := decoded.Metadata.GetTotal(); !ok || total == 1 {
-			completeBuffer := decoded.Metadata.Bytes()
-			if ha, ok := decoded.Metadata.GetHash(); ok {
-				err := ipldbindcode.VerifyHash(completeBuffer, ha)
-				if err != nil {
-					return nil, fmt.Errorf("failed to verify metadata hash: %w", err)
-				}
-			}
-			if len(completeBuffer) > 0 {
-				uncompressedMeta, err := decompressZstd(completeBuffer)
-				if err != nil {
-					return nil, fmt.Errorf("failed to decompress metadata: %w", err)
-				}
-				status, err := solanatxmetaparsers.ParseTransactionStatusMeta(uncompressedMeta)
-				if err == nil {
-					tws.Metadata = status
-				}
-			}
-		} else {
-			metaBuffer, err := loadDataFromDataFrames(&decoded.Metadata, func(ctx context.Context, wantedCid cid.Cid) (*ipldbindcode.DataFrame, error) {
-				for _, dataBlock := range dataBlocks {
-					if dataBlock.Cid == wantedCid {
-						df, err := iplddecoders.DecodeDataFrame(dataBlock.ObjectData)
-						if err != nil {
-							return nil, err
-						}
-						return df, nil
-					}
-				}
-				return nil, fmt.Errorf("dataframe not found")
-			})
-			if err != nil {
-				return nil, fmt.Errorf("failed to load metadata: %w", err)
-			}
-			// reset dataBlocks:
-			dataBlocks = dataBlocks[:0]
-			if len(metaBuffer) > 0 {
-				uncompressedMeta, err := decompressZstd(metaBuffer)
-				if err != nil {
-					return nil, fmt.Errorf("failed to decompress metadata: %w", err)
-				}
-				status, err := solanatxmetaparsers.ParseTransactionStatusMeta(uncompressedMeta)
-				if err == nil {
-					tws.Metadata = status
-				}
-			}
-		}
-		tx, err := decoded.GetSolanaTransaction()
-		if err != nil {
-			return nil, fmt.Errorf("error while getting solana transaction from object %s: %w", object.Cid, err)
-		}
-		tws.Transaction = *tx
-		transactions = append(transactions, tws)
-	}
-	return transactions, nil
-}
-
 func formatIndexDirname_gsfa(epoch uint64, rootCid cid.Cid, network indexes.Network) string {
 	return fmt.Sprintf(
 		"epoch-%d-%s-%s-%s",
@@ -367,13 +283,4 @@ func formatIndexDirname_gsfa(epoch uint64, rootCid cid.Cid, network indexes.Netw
 		network,
 		"gsfa.indexdir",
 	)
-}
-
-type TransactionWithSlot struct {
-	Offset      uint64
-	Length      uint64
-	Slot        uint64
-	Blocktime   uint64
-	Transaction solana.Transaction
-	Metadata    *confirmed_block.TransactionStatusMeta
 }

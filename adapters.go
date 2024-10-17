@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 
 	"github.com/mr-tron/base58"
+	solanaerrors "github.com/rpcpool/yellowstone-faithful/solana-errors"
 )
 
 func ptrToUint64(v uint64) *uint64 {
@@ -34,7 +35,7 @@ func adaptTransactionMetaToExpectedOutput(m map[string]any) map[string]any {
 	}
 	{
 		if _, ok := meta["err"]; ok {
-			meta["err"], _ = parseTransactionError(meta["err"])
+			meta["err"], _ = solanaerrors.ParseTransactionError(meta["err"])
 		} else {
 			meta["err"] = nil
 		}

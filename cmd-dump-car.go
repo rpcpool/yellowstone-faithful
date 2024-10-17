@@ -10,8 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/klauspost/compress/zstd"
-
 	"github.com/davecgh/go-spew/spew"
 	bin "github.com/gagliardetto/binary"
 	"github.com/gagliardetto/solana-go"
@@ -21,6 +19,7 @@ import (
 	"github.com/rpcpool/yellowstone-faithful/readahead"
 	solanablockrewards "github.com/rpcpool/yellowstone-faithful/solana-block-rewards"
 	solanatxmetaparsers "github.com/rpcpool/yellowstone-faithful/solana-tx-meta-parsers"
+	"github.com/rpcpool/yellowstone-faithful/tooling"
 	"github.com/urfave/cli/v2"
 	"k8s.io/klog/v2"
 )
@@ -246,7 +245,7 @@ func newCmd_DumpCar() *cli.Command {
 								}
 							}
 							if len(completeBuffer) > 0 {
-								uncompressedMeta, err := decompressZstd(completeBuffer)
+								uncompressedMeta, err := tooling.DecompressZstd(completeBuffer)
 								if err != nil {
 									panic(err)
 								}
@@ -318,7 +317,7 @@ func newCmd_DumpCar() *cli.Command {
 								}
 							}
 							if len(completeBuffer) > 0 {
-								uncompressedRewards, err := decompressZstd(completeBuffer)
+								uncompressedRewards, err := tooling.DecompressZstd(completeBuffer)
 								if err != nil {
 									panic(err)
 								}
@@ -364,10 +363,4 @@ func (s intSlice) has(v int) bool {
 
 func (s intSlice) empty() bool {
 	return len(s) == 0
-}
-
-var decoder, _ = zstd.NewReader(nil)
-
-func decompressZstd(data []byte) ([]byte, error) {
-	return decoder.DecodeAll(data, nil)
 }

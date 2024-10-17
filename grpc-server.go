@@ -20,6 +20,7 @@ import (
 	"github.com/rpcpool/yellowstone-faithful/compactindexsized"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	old_faithful_grpc "github.com/rpcpool/yellowstone-faithful/old-faithful-proto/old-faithful-grpc"
+	"github.com/rpcpool/yellowstone-faithful/tooling"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -266,12 +267,12 @@ func (multi *MultiEpoch) GetBlock(ctx context.Context, params *old_faithful_grpc
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "Failed to get Rewards: %v", err)
 		}
-		rewardsBuf, err := loadDataFromDataFrames(&rewardsNode.Data, epochHandler.GetDataFrameByCid)
+		rewardsBuf, err := tooling.LoadDataFromDataFrames(&rewardsNode.Data, epochHandler.GetDataFrameByCid)
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "Failed to load Rewards dataFrames: %v", err)
 		}
 
-		uncompressedRawRewards, err := decompressZstd(rewardsBuf)
+		uncompressedRawRewards, err := tooling.DecompressZstd(rewardsBuf)
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "Failed to decompress Rewards: %v", err)
 		}

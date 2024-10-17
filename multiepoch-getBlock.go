@@ -19,6 +19,7 @@ import (
 	"github.com/rpcpool/yellowstone-faithful/compactindexsized"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	solanablockrewards "github.com/rpcpool/yellowstone-faithful/solana-block-rewards"
+	"github.com/rpcpool/yellowstone-faithful/tooling"
 	"github.com/sourcegraph/jsonrpc2"
 	"golang.org/x/sync/errgroup"
 	"k8s.io/klog/v2"
@@ -281,7 +282,7 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 				Message: "Internal error",
 			}, fmt.Errorf("failed to decode Rewards: %v", err)
 		}
-		rewardsBuf, err := loadDataFromDataFrames(&rewardsNode.Data, epochHandler.GetDataFrameByCid)
+		rewardsBuf, err := tooling.LoadDataFromDataFrames(&rewardsNode.Data, epochHandler.GetDataFrameByCid)
 		if err != nil {
 			return &jsonrpc2.Error{
 				Code:    jsonrpc2.CodeInternalError,
@@ -289,7 +290,7 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 			}, fmt.Errorf("failed to load Rewards dataFrames: %v", err)
 		}
 
-		uncompressedRewards, err := decompressZstd(rewardsBuf)
+		uncompressedRewards, err := tooling.DecompressZstd(rewardsBuf)
 		if err != nil {
 			return &jsonrpc2.Error{
 				Code:    jsonrpc2.CodeInternalError,
