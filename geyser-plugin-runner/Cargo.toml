@@ -20,6 +20,7 @@ solana-accounts-db = { workspace = true }
 solana-entry = { workspace = true }
 solana-geyser-plugin-manager = { workspace = true }
 solana-rpc = { workspace = true }
+solana-runtime = { workspace = true }
 solana-sdk = { workspace = true }
 solana-storage-proto = { workspace = true }
 solana-transaction-status = { workspace = true }

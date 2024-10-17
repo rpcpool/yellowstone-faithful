@@ -48,6 +48,7 @@ pub mod decode {
                 .map(versioned_transaction)
                 .collect::<Result<Vec<_>, _>>()?,
             rewards,
+            num_partitions: block.num_partitions,
             block_time: Some(block.block_time),
             block_height: Some(block.block_height),
         })
