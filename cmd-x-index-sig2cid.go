@@ -17,8 +17,8 @@ func newCmd_Index_sig2cid() *cli.Command {
 	var network indexes.Network
 	return &cli.Command{
 		Name:        "sig-to-cid",
-		Description: "Given a CAR file containing a Solana epoch, create an index of the file that maps transaction signatures to CIDs.",
-		ArgsUsage:   "<car-path> <index-dir>",
+		Description: "Given one or more CAR files containing a Solana epoch, create an index of the file that maps transaction signatures to CIDs. If multiple CAR files are provided, each of them is expected to correspond to a single Subset.",
+		ArgsUsage:   "<car-path>... <index-dir>",
 		Before: func(c *cli.Context) error {
 			if network == "" {
 				network = indexes.NetworkMainnet
@@ -56,8 +56,13 @@ func newCmd_Index_sig2cid() *cli.Command {
 		},
 		Subcommands: []*cli.Command{},
 		Action: func(c *cli.Context) error {
-			carPath := c.Args().Get(0)
-			indexDir := c.Args().Get(1)
+			args := c.Args()
+			if args.Len() < 2 {
+				return fmt.Errorf("at least one CAR file and an index directory are required")
+			}
+
+			carFiles := args.Slice()[:args.Len()-1]
+			indexDir := args.Get(args.Len() - 1)
 			tmpDir := c.String("tmp-dir")
 
 			if ok, err := isDirectory(indexDir); err != nil {
@@ -66,38 +71,49 @@ func newCmd_Index_sig2cid() *cli.Command {
 				return fmt.Errorf("index-dir is not a directory")
 			}
 
+			// Sort CAR files
+			sortedCarFiles, err := SortCarFiles(carFiles)
+			if err != nil {
+				return fmt.Errorf("failed to sort CAR files: %w", err)
+			}
+
 			{
 				startedAt := time.Now()
 				defer func() {
 					klog.Infof("Finished in %s", time.Since(startedAt))
 				}()
-				klog.Infof("Creating Sig-to-CID index for %s", carPath)
-				indexFilepath, err := CreateIndex_sig2cid(
-					context.TODO(),
-					epoch,
-					network,
-					tmpDir,
-					carPath,
-					indexDir,
-				)
-				if err != nil {
-					panic(err)
-				}
-				klog.Info("Index created")
-				if verify {
-					klog.Infof("Verifying index for %s located at %s", carPath, indexFilepath)
-					startedAt := time.Now()
-					defer func() {
-						klog.Infof("Finished in %s", time.Since(startedAt))
-					}()
-					err := VerifyIndex_sig2cid(context.TODO(), carPath, indexFilepath)
+
+				for _, carPath := range sortedCarFiles {
+					klog.Infof("Creating Sig-to-CID index for %s", carPath)
+					indexFilepath, err := CreateIndex_sig2cid(
+						context.TODO(),
+						epoch,
+						network,
+						tmpDir,
+						carPath,
+						indexDir,
+					)
 					if err != nil {
-						return cli.Exit(err, 1)
+						panic(err)
 					}
-					klog.Info("Index verified")
-					return nil
+					klog.Info("Index created for %s", carPath)
+
+					if verify {
+						klog.Infof("Verifying index for %s located at %s", carPath, indexFilepath)
+						startedAt := time.Now()
+						defer func() {
+							klog.Infof("Finished in %s", time.Since(startedAt))
+						}()
+						err := VerifyIndex_sig2cid(context.TODO(), carPath, indexFilepath)
+						if err != nil {
+							return cli.Exit(err, 1)
+						}
+						klog.Info("Index verified")
+						return nil
+					}
 				}
 			}
+			klog.Info("All indexes created and verified successfully")
 			return nil
 		},
 	}
