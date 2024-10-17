@@ -642,89 +642,20 @@ func SortCarURLs(carURLs []string) ([]string, error) {
 }
 
 func getFirstSlotFromURL(url string) (int64, error) {
-	// First, make a HEAD request to get the file size
-	headResp, err := http.Head(url)
+	fileSize, err := getFileSize(url)
 	if err != nil {
-		return 0, fmt.Errorf("failed to make HEAD request: %w", err)
+		return 0, fmt.Errorf("failed to get file size: %w", err)
 	}
-	defer headResp.Body.Close()
 
-	// parse the file size
-	fileSize, err := strconv.ParseInt(headResp.Header.Get("Content-Length"), 10, 64)
+	rootCID, err := getRootCid(url)
 	if err != nil {
-		return 0, fmt.Errorf("failed to parse Content-Length: %w", err)
+		return 0, fmt.Errorf("failed to get root CID: %w", err)
 	}
 
-	// Make a GET request for the beginning of the file
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return 0, fmt.Errorf("failed to create request: %w", err)
-	}
+	endOffset := getEndOffset(fileSize)
 
-	// Request only the first hdrSize bytes
-	req.Header.Set("Range", fmt.Sprintf("bytes=0-%d", hdrSize))
+	partialContent, err := fetchFromOffset(url, endOffset)
 
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return 0, fmt.Errorf("failed to fetch CAR file header: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusPartialContent {
-		return 0, fmt.Errorf("server does not support range requests")
-	}
-
-	// Read the header content
-	headerContent, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return 0, fmt.Errorf("failed to read header content: %w", err)
-	}
-
-	// Parse the CAR header
-	rc := io.NopCloser(bytes.NewReader(headerContent))
-	cr, err := carreader.New(rc)
-	if err != nil {
-		return 0, fmt.Errorf("failed to create CarReader: %w", err)
-	}
-
-	// get the offset for the last section of the file
-	endOffset := fileSize - int64(maxSectionSize)
-	if endOffset < 0 {
-		endOffset = 0
-	}
-
-	// Now make the GET request with the Range header
-	req, err = http.NewRequest("GET", url, nil)
-	if err != nil {
-		return 0, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	req.Header.Set("Range", fmt.Sprintf("bytes=%d-", endOffset))
-
-	resp, err = http.DefaultClient.Do(req)
-	if err != nil {
-		return 0, fmt.Errorf("failed to fetch CAR file: %w", err)
-	}
-	defer resp.Body.Close()
-
-	// Check if the server supports range requests
-	if resp.StatusCode != http.StatusPartialContent {
-		return 0, fmt.Errorf("server does not support range requests")
-	}
-
-	// Read the partial content
-	partialContent, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return 0, fmt.Errorf("failed to read partial content: %w", err)
-	}
-
-	roots := cr.Header.Roots
-	if len(roots) != 1 {
-		return 0, fmt.Errorf("expected 1 root CID, got %d", len(roots))
-	}
-	rootCID := roots[0]
-
-	// Find the root CID block in the last 2MiB of the file
 	cidBytes := rootCID.Bytes()
 	index := bytes.LastIndex(partialContent, cidBytes)
 	if index == -1 {
@@ -739,4 +670,88 @@ func getFirstSlotFromURL(url string) (int64, error) {
 	}
 
 	return int64(subset.First), nil
+}
+
+func getFileSize(url string) (int64, error) {
+	headResp, err := http.Head(url)
+	if err != nil {
+		return 0, fmt.Errorf("failed to make HEAD request: %w", err)
+	}
+	defer headResp.Body.Close()
+
+	// parse the file size
+	fileSize, err := strconv.ParseInt(headResp.Header.Get("Content-Length"), 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse Content-Length: %w", err)
+	}
+
+	return fileSize, nil
+}
+
+func getRootCid(url string) (cid.Cid, error) {
+	// Make a GET request for the beginning of the file
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return cid.Undef, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// Request only the first hdrSize bytes
+	req.Header.Set("Range", fmt.Sprintf("bytes=0-%d", hdrSize))
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return cid.Undef, fmt.Errorf("failed to fetch CAR file header: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusPartialContent {
+		return cid.Undef, fmt.Errorf("server does not support range requests")
+	}
+
+	// Read the header content
+	headerContent, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return cid.Undef, fmt.Errorf("failed to read header content: %w", err)
+	}
+
+	// Parse the CAR header
+	rc := io.NopCloser(bytes.NewReader(headerContent))
+	cr, err := carreader.New(rc)
+	if err != nil {
+		return cid.Undef, fmt.Errorf("failed to create CarReader: %w", err)
+	}
+
+	roots := cr.Header.Roots
+	if len(roots) != 1 {
+		return cid.Undef, fmt.Errorf("expected 1 root CID, got %d", len(roots))
+	}
+	rootCID := roots[0]
+
+	return rootCID, nil
+}
+
+func getEndOffset(fileSize int64) int64 {
+	eo := fileSize - int64(maxSectionSize)
+	return max(eo, 0)
+}
+
+func fetchFromOffset(url string, offset int64) ([]byte, error) {
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Range", fmt.Sprintf("bytes=%d-", offset))
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch CAR file: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusPartialContent {
+		return nil, fmt.Errorf("server does not support range requests")
+	}
+
+	return io.ReadAll(resp.Body)
 }
