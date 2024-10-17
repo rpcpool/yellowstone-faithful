@@ -2,6 +2,7 @@ package solanaerrors
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 
 	bin "github.com/gagliardetto/binary"
@@ -90,10 +91,45 @@ func FromJSONToProtobuf(j map[string]interface{}) ([]byte, error) {
 		}
 
 		return buf.Bytes(), nil
+	case InsufficientFundsForRent:
+		doer.Do("write transactionErrorType", func() error {
+			return wr.WriteUint32(uint32(TransactionErrorType_INSUFFICIENT_FUNDS_FOR_RENT), bin.LE)
+		})
+		// write the accountIndex
+		{
+			// "{\"InsufficientFundsForRent\":{\"account_index\":2}}"
+			// read accountIndex
+			object, ok := j[InsufficientFundsForRent].(map[string]any)
+			if !ok {
+				return nil, fmt.Errorf("expected an object")
+			}
+			accountIndexFloat, ok := object["account_index"].(float64)
+			if !ok {
+				return nil, fmt.Errorf("expected a float64")
+			}
+			accountIndex := uint8(accountIndexFloat)
+			doer.Do("write accountIndex", func() error {
+				return wr.WriteUint8(accountIndex)
+			})
+
+			if err := doer.Err(); err != nil {
+				return nil, err
+			}
+		}
+
+		return buf.Bytes(), nil
 
 	default:
-		return nil, fmt.Errorf("unhandled error type: %s", firstKey)
+		return nil, fmt.Errorf("unhandled error type: %s from %q", firstKey, toJsonString(j))
 	}
+}
+
+func toJsonString(v interface{}) string {
+	j, err := json.Marshal(v)
+	if err != nil {
+		return fmt.Sprintf("%v", v)
+	}
+	return string(j)
 }
 
 func getFirstKey(m map[string]interface{}) string {
@@ -103,7 +139,10 @@ func getFirstKey(m map[string]interface{}) string {
 	return ""
 }
 
-const InstructionError = "InstructionError"
+const (
+	InstructionError         = "InstructionError"
+	InsufficientFundsForRent = "InsufficientFundsForRent"
+)
 
 type ChainOps struct {
 	e error
