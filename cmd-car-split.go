@@ -642,7 +642,7 @@ func SortCarURLs(carURLs []string) ([]string, error) {
 }
 
 func getFirstSlotFromURL(url string) (int64, error) {
-	fileSize, err := getFileSize(url)
+	fileSize, err := getUrlFileSize(url)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get file size: %w", err)
 	}
@@ -672,7 +672,7 @@ func getFirstSlotFromURL(url string) (int64, error) {
 	return int64(subset.First), nil
 }
 
-func getFileSize(url string) (int64, error) {
+func getUrlFileSize(url string) (int64, error) {
 	headResp, err := http.Head(url)
 	if err != nil {
 		return 0, fmt.Errorf("failed to make HEAD request: %w", err)
