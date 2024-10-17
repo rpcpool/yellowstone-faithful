@@ -655,6 +655,38 @@ func getFirstSlotFromURL(url string) (int64, error) {
 		return 0, fmt.Errorf("failed to parse Content-Length: %w", err)
 	}
 
+	// Make a GET request for the beginning of the file
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return 0, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// Request only the first hdrSize bytes
+	req.Header.Set("Range", fmt.Sprintf("bytes=0-%d", hdrSize))
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return 0, fmt.Errorf("failed to fetch CAR file header: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusPartialContent {
+		return 0, fmt.Errorf("server does not support range requests")
+	}
+
+	// Read the header content
+	headerContent, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return 0, fmt.Errorf("failed to read header content: %w", err)
+	}
+
+	// Parse the CAR header
+	rc := io.NopCloser(bytes.NewReader(headerContent))
+	cr, err := carreader.New(rc)
+	if err != nil {
+		return 0, fmt.Errorf("failed to create CarReader: %w", err)
+	}
+
 	// get the offset for the last section of the file
 	endOffset := fileSize - int64(maxSectionSize)
 	if endOffset < 0 {
@@ -662,14 +694,14 @@ func getFirstSlotFromURL(url string) (int64, error) {
 	}
 
 	// Now make the GET request with the Range header
-	req, err := http.NewRequest("GET", url, nil)
+	req, err = http.NewRequest("GET", url, nil)
 	if err != nil {
 		return 0, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	req.Header.Set("Range", fmt.Sprintf("bytes=%d-", endOffset))
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err = http.DefaultClient.Do(req)
 	if err != nil {
 		return 0, fmt.Errorf("failed to fetch CAR file: %w", err)
 	}
@@ -684,13 +716,6 @@ func getFirstSlotFromURL(url string) (int64, error) {
 	partialContent, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return 0, fmt.Errorf("failed to read partial content: %w", err)
-	}
-
-	readCloser := io.NopCloser(bytes.NewReader(partialContent))
-
-	cr, err := carreader.New(readCloser)
-	if err != nil {
-		return 0, fmt.Errorf("failed to create CarReader: %w", err)
 	}
 
 	roots := cr.Header.Roots
