@@ -534,11 +534,13 @@ func readHeader(streamBuf *bufio.Reader) ([]byte, int64, error) {
 	return headerBuf.Bytes(), streamLen, nil
 }
 
-func SortCarFiles(carFiles []string) ([]string, error) {
-	type carFileInfo struct {
-		path      string
-		firstSlot int64
-	}
+type carFileInfo struct {
+	name      string
+	firstSlot int64
+	size      int64
+}
+
+func SortCarFiles(carFiles []string) ([]carFileInfo, error) {
 
 	var fileInfos []carFileInfo
 
@@ -586,9 +588,15 @@ func SortCarFiles(carFiles []string) ([]string, error) {
 			return nil, fmt.Errorf("failed to find root node in file %s", path)
 		}
 
+		fi, err := file.Stat()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get file info for %s: %w", path, err)
+		}
+
 		fileInfos = append(fileInfos, carFileInfo{
-			path:      path,
+			name:      path,
 			firstSlot: int64(subset.First),
+			size:      fi.Size(),
 		})
 	}
 
@@ -597,32 +605,22 @@ func SortCarFiles(carFiles []string) ([]string, error) {
 		return fileInfos[i].firstSlot < fileInfos[j].firstSlot
 	})
 
-	// Extract the sorted file paths
-	sortedFiles := make([]string, len(fileInfos))
-	for i, info := range fileInfos {
-		sortedFiles[i] = info.path
-	}
-
-	return sortedFiles, nil
+	return fileInfos, nil
 }
 
-func SortCarURLs(carURLs []string) ([]string, error) {
-	type carURLInfo struct {
-		url       string
-		firstSlot int64
-	}
-
-	var urlInfos []carURLInfo
+func SortCarURLs(carURLs []string) ([]carFileInfo, error) {
+	var urlInfos []carFileInfo
 
 	for _, url := range carURLs {
-		firstSlot, err := getFirstSlotFromURL(url)
+		firstSlot, size, err := getSlotAndSizeFromURL(url)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get first slot from URL %s: %w", url, err)
 		}
 
-		urlInfos = append(urlInfos, carURLInfo{
-			url:       url,
+		urlInfos = append(urlInfos, carFileInfo{
+			name:      url,
 			firstSlot: firstSlot,
+			size:      size,
 		})
 	}
 
@@ -631,25 +629,18 @@ func SortCarURLs(carURLs []string) ([]string, error) {
 		return urlInfos[i].firstSlot < urlInfos[j].firstSlot
 	})
 
-	// Extract the sorted URLs
-	sortedURLs := make([]string, len(urlInfos))
-	for i, info := range urlInfos {
-		sortedURLs[i] = info.url
-	}
-
-	return sortedURLs, nil
-
+	return urlInfos, nil
 }
 
-func getFirstSlotFromURL(url string) (int64, error) {
+func getSlotAndSizeFromURL(url string) (int64, int64, error) {
 	fileSize, err := getUrlFileSize(url)
 	if err != nil {
-		return 0, fmt.Errorf("failed to get file size: %w", err)
+		return 0, 0, fmt.Errorf("failed to get file size: %w", err)
 	}
 
 	rootCID, err := getRootCid(url)
 	if err != nil {
-		return 0, fmt.Errorf("failed to get root CID: %w", err)
+		return 0, 0, fmt.Errorf("failed to get root CID: %w", err)
 	}
 
 	endOffset := getEndOffset(fileSize)
@@ -659,17 +650,17 @@ func getFirstSlotFromURL(url string) (int64, error) {
 	cidBytes := rootCID.Bytes()
 	index := bytes.LastIndex(partialContent, cidBytes)
 	if index == -1 {
-		return 0, fmt.Errorf("CID block not found in the last 2MiB of the file")
+		return 0, 0, fmt.Errorf("CID block not found in the last 2MiB of the file")
 	}
 	blockData := partialContent[index:]
 
 	// Decode the Subset
 	subset, err := iplddecoders.DecodeSubset(blockData)
 	if err != nil {
-		return 0, fmt.Errorf("failed to decode Subset from block: %w", err)
+		return 0, 0, fmt.Errorf("failed to decode Subset from block: %w", err)
 	}
 
-	return int64(subset.First), nil
+	return int64(subset.First), fileSize, nil
 }
 
 func getUrlFileSize(url string) (int64, error) {
