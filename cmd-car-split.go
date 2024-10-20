@@ -652,10 +652,18 @@ func getSlotAndSizeFromURL(url string) (int64, int64, error) {
 	if index == -1 {
 		return 0, 0, fmt.Errorf("CID block not found in the last 2MiB of the file")
 	}
-	blockData := partialContent[index:]
+	blockData := partialContent[index-2:]
+	r := bufio.NewReader(bytes.NewBuffer(blockData))
+	cid, _, data, err := carreader.ReadNodeInfoWithData(r)
+	if err != nil {
+		return 0, 0, fmt.Errorf("failed to read node info: %w", err)
+	}
+	if cid != rootCID {
+		return 0, 0, fmt.Errorf("expected CID %s, got %s", rootCID, cid)
+	}
 
 	// Decode the Subset
-	subset, err := iplddecoders.DecodeSubset(blockData)
+	subset, err := iplddecoders.DecodeSubset(data)
 	if err != nil {
 		return 0, 0, fmt.Errorf("failed to decode Subset from block: %w", err)
 	}
