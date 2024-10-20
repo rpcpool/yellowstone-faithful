@@ -1,6 +1,11 @@
 package main
 
 import (
+	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"testing"
 )
@@ -47,4 +52,107 @@ func TestSortCarFiles(t *testing.T) {
 		}
 	}
 
+}
+
+func TestSortCarURLs(t *testing.T) {
+	// Create a test server
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Get the filename from the URL path
+		filename := filepath.Base(r.URL.Path)
+		fixturesDir := "fixtures"
+		filePath := filepath.Join(fixturesDir, filename)
+
+		// Open the local CAR file
+		file, err := os.Open(filePath)
+		if err != nil {
+			t.Fatalf("failed to open fixture file %s: %v", filePath, err)
+		}
+		defer file.Close()
+
+		// Get file info for Content-Length header
+		fileInfo, err := file.Stat()
+		if err != nil {
+			t.Fatalf("failed to get file info: %v", err)
+		}
+
+		// Handle HEAD requests
+		if r.Method == "HEAD" {
+			w.Header().Set("Content-Length", fmt.Sprintf("%d", fileInfo.Size()))
+			return
+		}
+
+		// Handle range requests
+		if rangeHeader := r.Header.Get("Range"); rangeHeader != "" {
+			// Parse the range header
+			start, end := int64(0), fileInfo.Size()
+			fmt.Sscanf(rangeHeader, "bytes=%d-", &start)
+			if start < 0 {
+				start = 0
+			}
+			if end > fileInfo.Size() {
+				end = fileInfo.Size()
+			}
+
+			// Seek to the start position
+			_, err = file.Seek(start, 0)
+			if err != nil {
+				t.Fatalf("failed to seek in file: %v", err)
+			}
+
+			// Set response headers
+			w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, end-1, fileInfo.Size()))
+			w.WriteHeader(http.StatusPartialContent)
+
+			// Copy the requested range to the response
+			_, err = io.Copy(w, file)
+			if err != nil {
+				t.Fatalf("failed to copy file content: %v", err)
+			}
+			return
+		}
+
+		// Handle regular GET requests
+		http.ServeFile(w, r, filePath)
+	}))
+	defer server.Close()
+
+	// Create URLs for our test files
+	carURLs := []string{
+		server.URL + "/epoch-0-1.car",
+		server.URL + "/epoch-0-2.car",
+		server.URL + "/epoch-0-3.car",
+	}
+
+	// Call SortCarURLs
+	result, err := SortCarURLs(carURLs)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Verify the results
+	if len(result) != 3 {
+		t.Fatalf("unexpected result length: got %d, want 3", len(result))
+	}
+
+	expectedResults := []struct {
+		name      string
+		firstSlot int64
+		size      int64
+	}{
+		{server.URL + "/epoch-0-1.car", 0, 96932},
+		{server.URL + "/epoch-0-2.car", 10, 100027},
+		{server.URL + "/epoch-0-3.car", 20, 99487},
+	}
+
+	for i, expected := range expectedResults {
+		if result[i].name != expected.name {
+			t.Errorf("unexpected name at index %d: got %s, want %s", i, result[i].name, expected.name)
+		}
+		if result[i].firstSlot != expected.firstSlot {
+			t.Errorf("unexpected firstSlot at index %d: got %d, want %d", i, result[i].firstSlot, expected.firstSlot)
+		}
+		if result[i].size != expected.size {
+			t.Errorf("unexpected size at index %d: got %d, want %d", i, result[i].size, expected.size)
+		}
+	}
 }
