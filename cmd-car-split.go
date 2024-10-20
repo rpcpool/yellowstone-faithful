@@ -633,7 +633,7 @@ func SortCarURLs(carURLs []string) ([]carFileInfo, error) {
 }
 
 func getSlotAndSizeFromURL(url string) (int64, int64, error) {
-	fileSize, err := getUrlFileSize(url)
+	fileSize, err := splitcarfetcher.GetContentSizeWithHeadOrZeroRange(url)
 	if err != nil {
 		return 0, 0, fmt.Errorf("failed to get file size: %w", err)
 	}
@@ -669,22 +669,6 @@ func getSlotAndSizeFromURL(url string) (int64, int64, error) {
 	}
 
 	return int64(subset.First), fileSize, nil
-}
-
-func getUrlFileSize(url string) (int64, error) {
-	headResp, err := http.Head(url)
-	if err != nil {
-		return 0, fmt.Errorf("failed to make HEAD request: %w", err)
-	}
-	defer headResp.Body.Close()
-
-	// parse the file size
-	fileSize, err := strconv.ParseInt(headResp.Header.Get("Content-Length"), 10, 64)
-	if err != nil {
-		return 0, fmt.Errorf("failed to parse Content-Length: %w", err)
-	}
-
-	return fileSize, nil
 }
 
 func getRootCid(url string) (cid.Cid, error) {
