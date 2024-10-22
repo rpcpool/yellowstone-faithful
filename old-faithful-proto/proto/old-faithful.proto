@@ -11,6 +11,8 @@ service OldFaithful {
   rpc GetTransaction(TransactionRequest) returns (TransactionResponse);
 
   rpc Get(stream GetRequest) returns (stream GetResponse);
+
+  rpc StreamBlocks(StreamBlocksRequest) returns (stream StreamBlocksResponse);
 }
 
 message VersionRequest {}
@@ -89,4 +91,35 @@ enum GetResponseErrorCode {
 message GetResponseError {
   GetResponseErrorCode code = 1;
   string message = 2;
+}
+
+
+message StreamBlocksRequest {
+  uint64 start_slot = 1;
+  optional uint64 end_slot = 2;  // If not specified, continues indefinitely
+  optional StreamBlocksFilter filter = 3;
+}
+
+message StreamBlocksFilter {
+  repeated string account_include = 1;  // Filter blocks/txns mentioning these accounts
+  optional bool include_transactions = 2;  // Include full transaction details
+  optional bool include_accounts = 3;  // Include account updates
+}
+
+message StreamBlocksResponse {
+  oneof response {
+    StreamBlocksError error = 1;
+    BlockResponse block = 2;
+  }
+}
+
+message StreamBlocksError {
+  StreamBlocksErrorCode code = 1;
+  string message = 2;
+}
+
+enum StreamBlocksErrorCode {
+  INTERNAL = 0;
+  INVALID_SLOT_RANGE = 1;
+  SLOT_NOT_FOUND = 2;
 }
