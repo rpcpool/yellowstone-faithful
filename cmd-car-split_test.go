@@ -16,9 +16,9 @@ func TestSortCarFiles(t *testing.T) {
 	fixturesDir := "fixtures"
 
 	carFiles := []string{
-		filepath.Join(fixturesDir, "epoch-0-1.car"),
-		filepath.Join(fixturesDir, "epoch-0-2.car"),
 		filepath.Join(fixturesDir, "epoch-0-3.car"),
+		filepath.Join(fixturesDir, "epoch-0-2.car"),
+		filepath.Join(fixturesDir, "epoch-0-1.car"),
 	}
 
 	result, err := SortCarFiles(carFiles)
@@ -119,9 +119,9 @@ func TestSortCarURLs(t *testing.T) {
 
 	// Create URLs for our test files
 	carURLs := []string{
-		server.URL + "/epoch-0-1.car",
-		server.URL + "/epoch-0-2.car",
 		server.URL + "/epoch-0-3.car",
+		server.URL + "/epoch-0-2.car",
+		server.URL + "/epoch-0-1.car",
 	}
 
 	// Call SortCarURLs
@@ -159,99 +159,99 @@ func TestSortCarURLs(t *testing.T) {
 }
 
 func TestSortCarFiles_EmptyInput(t *testing.T) {
-    result, err := SortCarFiles([]string{})
+	result, err := SortCarFiles([]string{})
 
-    if err != nil {
-        t.Fatalf("unexpected error for empty input: %s", err)
-    }
+	if err != nil {
+		t.Fatalf("unexpected error for empty input: %s", err)
+	}
 
-    if len(result) != 0 {
-        t.Fatalf("expected empty result for empty input, got %d items", len(result))
-    }
+	if len(result) != 0 {
+		t.Fatalf("expected empty result for empty input, got %d items", len(result))
+	}
 }
 
 func TestSortCarFiles_NonExistentFile(t *testing.T) {
-    nonExistentFile := filepath.Join("fixtures", "non-existent.car")
-    _, err := SortCarFiles([]string{nonExistentFile})
+	nonExistentFile := filepath.Join("fixtures", "non-existent.car")
+	_, err := SortCarFiles([]string{nonExistentFile})
 
-    if err == nil {
-        t.Fatal("expected error for non-existent file, got nil")
-    }
+	if err == nil {
+		t.Fatal("expected error for non-existent file, got nil")
+	}
 
-    if !strings.Contains(err.Error(), "no such file or directory") {
-        t.Fatalf("unexpected error message: %s", err)
-    }
+	if !strings.Contains(err.Error(), "no such file or directory") {
+		t.Fatalf("unexpected error message: %s", err)
+	}
 }
 
 func TestSortCarFiles_InvalidCAR(t *testing.T) {
-    invalidCarFile := filepath.Join("fixtures", "invalid.car")
+	invalidCarFile := filepath.Join("fixtures", "invalid.car")
 
-    // Create an invalid CAR file for testing
-    err := os.WriteFile(invalidCarFile, []byte("invalid car content"), 0644)
-    if err != nil {
-        t.Fatalf("failed to create invalid CAR file: %s", err)
-    }
-    defer os.Remove(invalidCarFile)
+	// Create an invalid CAR file for testing
+	err := os.WriteFile(invalidCarFile, []byte("invalid car content"), 0644)
+	if err != nil {
+		t.Fatalf("failed to create invalid CAR file: %s", err)
+	}
+	defer os.Remove(invalidCarFile)
 
-    _, err = SortCarFiles([]string{invalidCarFile})
+	_, err = SortCarFiles([]string{invalidCarFile})
 
-    if err == nil {
-        t.Fatal("expected error for invalid CAR file, got nil")
-    }
+	if err == nil {
+		t.Fatal("expected error for invalid CAR file, got nil")
+	}
 
-    if !strings.Contains(err.Error(), "failed to create CarReader") {
-        t.Fatalf("unexpected error message: %s", err)
-    }
+	if !strings.Contains(err.Error(), "failed to create CarReader") {
+		t.Fatalf("unexpected error message: %s", err)
+	}
 }
 
 func TestSortCarURLs_EmptyInput(t *testing.T) {
-    result, err := SortCarURLs([]string{})
+	result, err := SortCarURLs([]string{})
 
-    if err != nil {
-        t.Fatalf("unexpected error for empty input: %s", err)
-    }
+	if err != nil {
+		t.Fatalf("unexpected error for empty input: %s", err)
+	}
 
-    if len(result) != 0 {
-        t.Fatalf("expected empty result for empty input, got %d items", len(result))
-    }
+	if len(result) != 0 {
+		t.Fatalf("expected empty result for empty input, got %d items", len(result))
+	}
 }
 
 func TestSortCarURLs_InvalidURL(t *testing.T) {
-    invalidURL := "http://invalid.url/non-existent.car"
-    _, err := SortCarURLs([]string{invalidURL})
+	invalidURL := "http://invalid.url/non-existent.car"
+	_, err := SortCarURLs([]string{invalidURL})
 
-    if err == nil {
-        t.Fatal("expected error for invalid URL, got nil")
-    }
+	if err == nil {
+		t.Fatal("expected error for invalid URL, got nil")
+	}
 
-    if !strings.Contains(err.Error(), "failed to get first slot from URL") {
-        t.Fatalf("unexpected error message: %s", err)
-    }
+	if !strings.Contains(err.Error(), "failed to get first slot from URL") {
+		t.Fatalf("unexpected error message: %s", err)
+	}
 }
 
 func TestSortCarURLs_MixedValidAndInvalidURLs(t *testing.T) {
-    server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-        // Serve a valid CAR file for testing
-        fixturesDir := "fixtures"
-        filePath := filepath.Join(fixturesDir, "epoch-0-1.car")
-        http.ServeFile(w, r, filePath)
-    }))
-    defer server.Close()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Serve a valid CAR file for testing
+		fixturesDir := "fixtures"
+		filePath := filepath.Join(fixturesDir, "epoch-0-1.car")
+		http.ServeFile(w, r, filePath)
+	}))
+	defer server.Close()
 
-    validURL := server.URL + "/valid.car"
-    invalidURL := "http://invalid.url/non-existent.car"
+	validURL := server.URL + "/valid.car"
+	invalidURL := "http://invalid.url/non-existent.car"
 
-    result, err := SortCarURLs([]string{validURL, invalidURL})
+	result, err := SortCarURLs([]string{validURL, invalidURL})
 
-    if err == nil {
-        t.Fatal("expected error for mixed valid and invalid URLs, got nil")
-    }
+	if err == nil {
+		t.Fatal("expected error for mixed valid and invalid URLs, got nil")
+	}
 
-    if !strings.Contains(err.Error(), "failed to get first slot from URL") {
-        t.Fatalf("unexpected error message: %s", err)
-    }
+	if !strings.Contains(err.Error(), "failed to get first slot from URL") {
+		t.Fatalf("unexpected error message: %s", err)
+	}
 
-    if len(result) != 0 {
-        t.Fatalf("expected empty result for error case, got %d items", len(result))
-    }
+	if len(result) != 0 {
+		t.Fatalf("expected empty result for error case, got %d items", len(result))
+	}
 }

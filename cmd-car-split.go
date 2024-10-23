@@ -646,6 +646,9 @@ func getSlotAndSizeFromURL(url string) (int64, int64, error) {
 	endOffset := getEndOffset(fileSize)
 
 	partialContent, err := fetchFromOffset(url, endOffset)
+	if err != nil {
+		return 0, 0, fmt.Errorf("failed to fetch partial content: %w", err)
+	}
 
 	cidBytes := rootCID.Bytes()
 	index := bytes.LastIndex(partialContent, cidBytes)
