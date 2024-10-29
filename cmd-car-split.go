@@ -449,6 +449,10 @@ func closeFile(bufferedWriter *bufio.Writer, currentFile *os.File) error {
 		return fmt.Errorf("failed to flush buffer: %w", err)
 	}
 
+	if err := currentFile.Sync(); err != nil {
+		return fmt.Errorf("failed to sync file: %w", err)
+	}
+
 	err = currentFile.Close()
 	if err != nil {
 		return fmt.Errorf("failed to close file: %w", err)
