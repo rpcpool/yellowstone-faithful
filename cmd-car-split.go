@@ -213,7 +213,7 @@ func newCmd_SplitCar() *cli.Command {
 						return fmt.Errorf("failed to close file: %w", err)
 					}
 
-					err = carv2.ReplaceRootsInFile(cf.name, []cid.Cid{cf.payloadCid})
+					err = carv2.ReplaceRootsInFile(filepath.Join(outputDir, cf.name), []cid.Cid{cf.payloadCid})
 					if err != nil {
 						return fmt.Errorf("failed to replace root: %w", err)
 					}
