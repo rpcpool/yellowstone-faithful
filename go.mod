@@ -63,6 +63,8 @@ require (
 	github.com/allegro/bigcache/v3 v3.1.0
 	github.com/anjor/carlet v0.0.0-00010101000000-000000000000
 	github.com/filecoin-project/go-address v1.1.0
+	github.com/filecoin-project/go-fil-commcid v0.1.0
+	github.com/filecoin-project/go-fil-commp-hashhash v0.2.0
 	github.com/filecoin-project/go-leb128 v0.0.0-20190212224330-8d79a5489543
 	github.com/fsnotify/fsnotify v1.5.4
 	github.com/goware/urlx v0.3.2
@@ -109,8 +111,6 @@ require (
 	github.com/filecoin-project/go-amt-ipld/v4 v4.1.0 // indirect
 	github.com/filecoin-project/go-cbor-util v0.0.1 // indirect
 	github.com/filecoin-project/go-ds-versioning v0.1.2 // indirect
-	github.com/filecoin-project/go-fil-commcid v0.1.0 // indirect
-	github.com/filecoin-project/go-fil-commp-hashhash v0.2.0 // indirect
 	github.com/filecoin-project/go-hamt-ipld/v3 v3.2.0 // indirect
 	github.com/filecoin-project/go-retrieval-types v1.2.0 // indirect
 	github.com/filecoin-project/go-statemachine v1.0.3 // indirect

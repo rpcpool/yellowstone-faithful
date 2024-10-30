@@ -19,8 +19,8 @@ import (
 
 type CarReader struct {
 	headerSize *uint64
-	br         *bufio.Reader
 	Header     *carv1.CarHeader
+	br         *bufio.Reader
 }
 
 func alignValueToPageSize(value int) int {

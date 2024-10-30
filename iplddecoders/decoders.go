@@ -174,7 +174,10 @@ func DecodeAny(anyRaw []byte) (any, error) {
 
 func GetKind(anyRaw []byte) (Kind, error) {
 	if len(anyRaw) == 0 {
-		return Kind(0), fmt.Errorf("empty bytes")
+		return Kind(-1), fmt.Errorf("empty bytes")
+	}
+	if len(anyRaw) < 2 {
+		return Kind(-1), fmt.Errorf("not enough bytes")
 	}
 	kind := Kind(anyRaw[1])
 	return kind, nil

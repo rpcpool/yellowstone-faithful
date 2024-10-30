@@ -13,6 +13,7 @@ import (
 )
 
 type ObjectAccumulator struct {
+	skipNodes   uint64
 	flushOnKind iplddecoders.Kind
 	reader      *carreader.CarReader
 	ignoreKinds iplddecoders.KindSlice
@@ -42,6 +43,11 @@ func NewObjectAccumulator(
 	}
 }
 
+// SetSkip(n)
+func (oa *ObjectAccumulator) SetSkip(n uint64) {
+	oa.skipNodes = n
+}
+
 var flushBufferPool = sync.Pool{
 	New: func() interface{} {
 		return &flushBuffer{}
@@ -58,14 +64,14 @@ func putFlushBuffer(fb *flushBuffer) {
 }
 
 type flushBuffer struct {
-	head  *ObjectWithMetadata
-	other []ObjectWithMetadata
+	parent   *ObjectWithMetadata
+	children []ObjectWithMetadata
 }
 
 // Reset resets the flushBuffer.
 func (fb *flushBuffer) Reset() {
-	fb.head = nil
-	clear(fb.other)
+	fb.parent = nil
+	fb.children = fb.children[:0]
 }
 
 type ObjectWithMetadata struct {
@@ -84,7 +90,7 @@ func (oa *ObjectAccumulator) startFlusher(ctx context.Context) {
 			if fb == nil {
 				return
 			}
-			if err := oa.flush(fb.head, fb.other); err != nil {
+			if err := oa.flush(fb.parent, fb.children); err != nil {
 				if isStop(err) {
 					return
 				}
@@ -99,8 +105,8 @@ func (oa *ObjectAccumulator) startFlusher(ctx context.Context) {
 func (oa *ObjectAccumulator) sendToFlusher(head *ObjectWithMetadata, other []ObjectWithMetadata) {
 	oa.flushWg.Add(1)
 	fb := getFlushBuffer()
-	fb.head = head
-	fb.other = clone(other)
+	fb.parent = head
+	fb.children = other
 	oa.flushQueue <- fb
 }
 
@@ -118,19 +124,20 @@ func (oa *ObjectAccumulator) Run(ctx context.Context) error {
 			totalOffset += size
 		}
 	}
+	numSkipped := uint64(0)
 	objectCap := 5000
 buffersLoop:
 	for {
-		objects := make([]ObjectWithMetadata, 0, objectCap)
+		children := make([]ObjectWithMetadata, 0, objectCap)
 	currentBufferLoop:
 		for {
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
-			c, sectionLength, data, err := oa.reader.NextNodeBytes()
+			cid_, sectionLength, data, err := oa.reader.NextNodeBytes()
 			if err != nil {
 				if errors.Is(err, io.EOF) {
-					oa.sendToFlusher(nil, objects)
+					oa.sendToFlusher(nil, children)
 					break buffersLoop
 				}
 				return err
@@ -138,13 +145,18 @@ buffersLoop:
 			currentOffset := totalOffset
 			totalOffset += sectionLength
 
+			if numSkipped < oa.skipNodes {
+				numSkipped++
+				continue
+			}
+
 			if data == nil {
-				oa.sendToFlusher(nil, objects)
+				oa.sendToFlusher(nil, children)
 				break buffersLoop
 			}
 
-			objm := ObjectWithMetadata{
-				Cid:           c,
+			element := ObjectWithMetadata{
+				Cid:           cid_,
 				Offset:        currentOffset,
 				SectionLength: sectionLength,
 				ObjectData:    data,
@@ -152,13 +164,14 @@ buffersLoop:
 
 			kind := iplddecoders.Kind(data[1])
 			if kind == oa.flushOnKind {
-				oa.sendToFlusher(&objm, (objects))
+				// element is parent
+				oa.sendToFlusher(&element, children)
 				break currentBufferLoop
 			} else {
 				if len(oa.ignoreKinds) > 0 && oa.ignoreKinds.Has(kind) {
 					continue
 				}
-				objects = append(objects, objm)
+				children = append(children, element)
 			}
 		}
 	}
