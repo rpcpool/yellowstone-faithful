@@ -12,7 +12,7 @@ service OldFaithful {
 
   rpc Get(stream GetRequest) returns (stream GetResponse);
 
-  rpc StreamBlocks(StreamBlocksRequest) returns (stream StreamBlocksResponse);
+  rpc StreamBlocks(StreamBlocksRequest) returns (stream BlockResponse);
 }
 
 message VersionRequest {}
@@ -102,22 +102,4 @@ message StreamBlocksRequest {
 
 message StreamBlocksFilter {
   repeated string account_include = 1;  // Filter blocks/txns mentioning these accounts
-}
-
-message StreamBlocksResponse {
-  oneof response {
-    StreamBlocksError error = 1;
-    BlockResponse block = 2;
-  }
-}
-
-message StreamBlocksError {
-  StreamBlocksErrorCode code = 1;
-  string message = 2;
-}
-
-enum StreamBlocksErrorCode {
-  STREAM_BLOCKS_INTERNAL = 0;
-  STREAM_BLOCKS_INVALID_SLOT_RANGE = 1;
-  STREAM_BLOCKS_SLOT_NOT_FOUND = 2;
 }

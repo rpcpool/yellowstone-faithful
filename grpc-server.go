@@ -621,3 +621,7 @@ func (multi *MultiEpoch) GetBlockTime(ctx context.Context, params *old_faithful_
 		BlockTime: int64(blocktime),
 	}, nil
 }
+
+func (multi *MultiEpoch) StreamBlocks(*old_faithful_grpc.StreamBlocksRequest, grpc.ServerStreamingServer[*old_faithful_grpc.StreamBlocksResponse]) error {
+	return nil
+}
