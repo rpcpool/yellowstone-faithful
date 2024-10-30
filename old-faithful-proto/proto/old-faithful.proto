@@ -84,8 +84,8 @@ message GetResponse {
 }
 
 enum GetResponseErrorCode {
-  INTERNAL = 0;
-  NOT_FOUND = 1;
+  GET_RESPONSE_INTERNAL = 0;
+  GET_RESPONSE_NOT_FOUND = 1;
 }
 
 message GetResponseError {
@@ -102,8 +102,6 @@ message StreamBlocksRequest {
 
 message StreamBlocksFilter {
   repeated string account_include = 1;  // Filter blocks/txns mentioning these accounts
-  optional bool include_transactions = 2;  // Include full transaction details
-  optional bool include_accounts = 3;  // Include account updates
 }
 
 message StreamBlocksResponse {
@@ -119,7 +117,7 @@ message StreamBlocksError {
 }
 
 enum StreamBlocksErrorCode {
-  INTERNAL = 0;
-  INVALID_SLOT_RANGE = 1;
-  SLOT_NOT_FOUND = 2;
+  STREAM_BLOCKS_INTERNAL = 0;
+  STREAM_BLOCKS_INVALID_SLOT_RANGE = 1;
+  STREAM_BLOCKS_SLOT_NOT_FOUND = 2;
 }
