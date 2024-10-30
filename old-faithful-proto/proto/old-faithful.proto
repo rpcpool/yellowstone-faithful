@@ -84,8 +84,8 @@ message GetResponse {
 }
 
 enum GetResponseErrorCode {
-  GET_RESPONSE_INTERNAL = 0;
-  GET_RESPONSE_NOT_FOUND = 1;
+  INTERNAL = 0;
+  NOT_FOUND = 1;
 }
 
 message GetResponseError {
