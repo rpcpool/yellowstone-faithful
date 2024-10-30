@@ -36,7 +36,7 @@ type OldFaithfulClient interface {
 	GetBlockTime(ctx context.Context, in *BlockTimeRequest, opts ...grpc.CallOption) (*BlockTimeResponse, error)
 	GetTransaction(ctx context.Context, in *TransactionRequest, opts ...grpc.CallOption) (*TransactionResponse, error)
 	Get(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[GetRequest, GetResponse], error)
-	StreamBlocks(ctx context.Context, in *StreamBlocksRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[StreamBlocksResponse], error)
+	StreamBlocks(ctx context.Context, in *StreamBlocksRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[BlockResponse], error)
 }
 
 type oldFaithfulClient struct {
@@ -100,13 +100,13 @@ func (c *oldFaithfulClient) Get(ctx context.Context, opts ...grpc.CallOption) (g
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type OldFaithful_GetClient = grpc.BidiStreamingClient[GetRequest, GetResponse]
 
-func (c *oldFaithfulClient) StreamBlocks(ctx context.Context, in *StreamBlocksRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[StreamBlocksResponse], error) {
+func (c *oldFaithfulClient) StreamBlocks(ctx context.Context, in *StreamBlocksRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[BlockResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	stream, err := c.cc.NewStream(ctx, &OldFaithful_ServiceDesc.Streams[1], OldFaithful_StreamBlocks_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
-	x := &grpc.GenericClientStream[StreamBlocksRequest, StreamBlocksResponse]{ClientStream: stream}
+	x := &grpc.GenericClientStream[StreamBlocksRequest, BlockResponse]{ClientStream: stream}
 	if err := x.ClientStream.SendMsg(in); err != nil {
 		return nil, err
 	}
@@ -117,7 +117,7 @@ func (c *oldFaithfulClient) StreamBlocks(ctx context.Context, in *StreamBlocksRe
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type OldFaithful_StreamBlocksClient = grpc.ServerStreamingClient[StreamBlocksResponse]
+type OldFaithful_StreamBlocksClient = grpc.ServerStreamingClient[BlockResponse]
 
 // OldFaithfulServer is the server API for OldFaithful service.
 // All implementations must embed UnimplementedOldFaithfulServer
@@ -128,7 +128,7 @@ type OldFaithfulServer interface {
 	GetBlockTime(context.Context, *BlockTimeRequest) (*BlockTimeResponse, error)
 	GetTransaction(context.Context, *TransactionRequest) (*TransactionResponse, error)
 	Get(grpc.BidiStreamingServer[GetRequest, GetResponse]) error
-	StreamBlocks(*StreamBlocksRequest, grpc.ServerStreamingServer[StreamBlocksResponse]) error
+	StreamBlocks(*StreamBlocksRequest, grpc.ServerStreamingServer[BlockResponse]) error
 	mustEmbedUnimplementedOldFaithfulServer()
 }
 
@@ -154,7 +154,7 @@ func (UnimplementedOldFaithfulServer) GetTransaction(context.Context, *Transacti
 func (UnimplementedOldFaithfulServer) Get(grpc.BidiStreamingServer[GetRequest, GetResponse]) error {
 	return status.Errorf(codes.Unimplemented, "method Get not implemented")
 }
-func (UnimplementedOldFaithfulServer) StreamBlocks(*StreamBlocksRequest, grpc.ServerStreamingServer[StreamBlocksResponse]) error {
+func (UnimplementedOldFaithfulServer) StreamBlocks(*StreamBlocksRequest, grpc.ServerStreamingServer[BlockResponse]) error {
 	return status.Errorf(codes.Unimplemented, "method StreamBlocks not implemented")
 }
 func (UnimplementedOldFaithfulServer) mustEmbedUnimplementedOldFaithfulServer() {}
@@ -262,11 +262,11 @@ func _OldFaithful_StreamBlocks_Handler(srv interface{}, stream grpc.ServerStream
 	if err := stream.RecvMsg(m); err != nil {
 		return err
 	}
-	return srv.(OldFaithfulServer).StreamBlocks(m, &grpc.GenericServerStream[StreamBlocksRequest, StreamBlocksResponse]{ServerStream: stream})
+	return srv.(OldFaithfulServer).StreamBlocks(m, &grpc.GenericServerStream[StreamBlocksRequest, BlockResponse]{ServerStream: stream})
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type OldFaithful_StreamBlocksServer = grpc.ServerStreamingServer[StreamBlocksResponse]
+type OldFaithful_StreamBlocksServer = grpc.ServerStreamingServer[BlockResponse]
 
 // OldFaithful_ServiceDesc is the grpc.ServiceDesc for OldFaithful service.
 // It's only intended for direct use with grpc.RegisterService,
