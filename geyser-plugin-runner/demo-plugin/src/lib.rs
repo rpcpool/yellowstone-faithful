@@ -1,9 +1,9 @@
 use {
-    colored::Colorize,
-    solana_geyser_plugin_interface::geyser_plugin_interface::{
+    agave_geyser_plugin_interface::geyser_plugin_interface::{
         GeyserPlugin, ReplicaAccountInfoVersions, ReplicaBlockInfoVersions,
         ReplicaEntryInfoVersions, ReplicaTransactionInfoVersions, Result, SlotStatus,
     },
+    colored::Colorize,
     tracing::info,
 };
 
@@ -161,11 +161,13 @@ impl GeyserPlugin for GeyserPluginDemo {
                 ReplicaBlockInfoVersions::V0_0_1(block_info) => block_info.slot,
                 ReplicaBlockInfoVersions::V0_0_2(block_info) => block_info.slot,
                 ReplicaBlockInfoVersions::V0_0_3(block_info) => block_info.slot,
+                ReplicaBlockInfoVersions::V0_0_4(block_info) => block_info.slot,
             },
             match _block_info {
                 ReplicaBlockInfoVersions::V0_0_1(block_info) => block_info.block_time,
                 ReplicaBlockInfoVersions::V0_0_2(block_info) => block_info.block_time,
                 ReplicaBlockInfoVersions::V0_0_3(block_info) => block_info.block_time,
+                ReplicaBlockInfoVersions::V0_0_4(block_info) => block_info.block_time,
             },
         );
         Ok(())

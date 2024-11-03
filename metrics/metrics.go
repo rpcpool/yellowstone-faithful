@@ -86,7 +86,7 @@ var CarLookupHistogram = promauto.NewHistogramVec(
 		Help:    "Car lookup latency",
 		Buckets: latencyBuckets,
 	},
-	[]string{"car", "is_remote"},
+	[]string{"car", "is_remote", "is_split_car"},
 )
 
 var latencyBuckets = []float64{

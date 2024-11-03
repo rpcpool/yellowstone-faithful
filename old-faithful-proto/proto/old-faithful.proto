@@ -32,6 +32,7 @@ message BlockResponse {
   uint64 block_height = 6;
   repeated Transaction transactions = 7;
   bytes rewards = 8; // protobuf or bincode (or empty)
+  optional uint64 num_partitions = 9;
 }
 
 message BlockTimeRequest {

@@ -1,15 +1,15 @@
 use {
     crossbeam_channel::unbounded,
     demo_rust_ipld_car::{node, utils},
-    solana_accounts_db::stake_rewards::RewardInfo,
     solana_rpc::optimistically_confirmed_bank_tracker::SlotNotification,
-    solana_sdk::reward_type::RewardType,
+    solana_runtime::bank::KeyedRewardsAndNumPartitions,
+    solana_sdk::{reward_info::RewardInfo, reward_type::RewardType},
     std::{
+        collections::HashSet,
         convert::{TryFrom, TryInto},
         env::args,
         error::Error,
         str::FromStr,
-        sync::RwLock,
     },
 };
 
@@ -98,11 +98,13 @@ fn main() -> Result<(), Box<dyn Error>> {
                                             message_hash,
                                             false,
                                             dummy_address_loader,
+                                            &HashSet::default(),
                                         )
                                     },
                                     solana_sdk::transaction::TransactionVersion::Legacy(_legacy)=> {
                                         solana_sdk::transaction::SanitizedTransaction::try_from_legacy_transaction(
-                                            parsed.into_legacy_transaction().unwrap() ,
+                                            parsed.into_legacy_transaction().unwrap(),
+                                            &HashSet::default(),
                                         )
                                     },
                                 };
@@ -160,7 +162,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                             if block_meta_notifier_maybe.is_none() {
                                 return Ok(());
                             }
-                            let  rewards = RwLock::new(vec![]);
+                            let mut keyed_rewards = Vec::with_capacity(this_block_rewards.rewards.len());
                             {
                                 // convert this_block_rewards to rewards
                                 for this_block_reward in this_block_rewards.rewards.iter() {
@@ -180,20 +182,23 @@ fn main() -> Result<(), Box<dyn Error>> {
                                             Err(_err) => None,
                                         },
                                     };
-                                    rewards.write().unwrap().push((solana_sdk::pubkey::Pubkey::from_str(&this_block_reward.pubkey)?, reward));
+                                    keyed_rewards.push((solana_sdk::pubkey::Pubkey::from_str(&this_block_reward.pubkey)?, reward));
                                 }
                             }
-                            // if rewards.read().unwrap().len() > 0 {
-                            //  panic!("___ Rewards: {:?}", rewards.read().unwrap());
+                            // if keyed_rewards.read().unwrap().len() > 0 {
+                            //   panic!("___ Rewards: {:?}", keyed_rewards.read().unwrap());
                             // }
                             let block_meta_notifier = block_meta_notifier_maybe.as_ref().unwrap();
                             block_meta_notifier
                                 .notify_block_metadata(
-                                     block.meta.parent_slot,
-                                     todo_previous_blockhash.to_string().as_str(),
+                                    block.meta.parent_slot,
+                                    todo_previous_blockhash.to_string().as_str(),
                                     block.slot,
                                     todo_latest_entry_blockhash.to_string().as_str(),
-                                    &rewards,
+                                    &KeyedRewardsAndNumPartitions {
+                                        keyed_rewards,
+                                        num_partitions: None
+                                    },
                                     Some(block.meta.blocktime as i64) ,
                                     block.meta.block_height,
                                     this_block_executed_transaction_count,

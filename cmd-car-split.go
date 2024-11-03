@@ -10,8 +10,10 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 
 	"github.com/anjor/carlet"
@@ -43,7 +45,8 @@ var (
 		Roots:   []cid.Cid{CBOR_SHA256_DUMMY_CID}, // placeholder
 		Version: 1,
 	}
-	hdrSize, _ = car.HeaderSize(hdr)
+	hdrSize, _     = car.HeaderSize(hdr)
+	maxSectionSize = 2 << 20 // 2 MiB
 )
 
 const maxLinks = 432000 / 18 // 18 subsets
@@ -168,7 +171,6 @@ func newCmd_SplitCar() *cli.Command {
 			cp := new(commp.Calc)
 
 			createNewFile := func() error {
-
 				if currentFile != nil {
 					sl, err := writeSubsetNode(currentSubsetInfo, writer)
 					if err != nil {
@@ -210,7 +212,7 @@ func newCmd_SplitCar() *cli.Command {
 						return fmt.Errorf("failed to close file: %w", err)
 					}
 
-					err = carv2.ReplaceRootsInFile(cf.name, []cid.Cid{cf.payloadCid})
+					err = carv2.ReplaceRootsInFile(filepath.Join(outputDir, cf.name), []cid.Cid{cf.payloadCid})
 					if err != nil {
 						return fmt.Errorf("failed to replace root: %w", err)
 					}
@@ -266,16 +268,16 @@ func newCmd_SplitCar() *cli.Command {
 			accum := accum.NewObjectAccumulator(
 				rd,
 				iplddecoders.KindBlock,
-				func(owm1 *accum.ObjectWithMetadata, owm2 []accum.ObjectWithMetadata) error {
-					if owm1 == nil {
+				func(parent *accum.ObjectWithMetadata, children []accum.ObjectWithMetadata) error {
+					if parent == nil {
 						return nil
 					}
 
-					owms := append(owm2, *owm1)
+					family := append(children, *parent)
 					dagSize := 0
 
-					for _, owm := range owms {
-						dagSize += owm.RawSectionSize()
+					for _, member := range family {
+						dagSize += member.RawSectionSize()
 					}
 
 					if currentFile == nil || currentFileSize+uint64(dagSize) > maxFileSize || len(currentSubsetInfo.blockLinks) > maxLinks {
@@ -287,7 +289,7 @@ func newCmd_SplitCar() *cli.Command {
 					}
 
 					// owm1 is necessarily a Block
-					block, err := iplddecoders.DecodeBlock(owm1.ObjectData)
+					block, err := iplddecoders.DecodeBlock(parent.ObjectData)
 					if err != nil {
 						return fmt.Errorf("failed to decode block: %w", err)
 					}
@@ -299,9 +301,9 @@ func newCmd_SplitCar() *cli.Command {
 						currentSubsetInfo.lastSlot = block.Slot
 					}
 
-					currentSubsetInfo.blockLinks = append(currentSubsetInfo.blockLinks, cidlink.Link{Cid: owm1.Cid})
+					currentSubsetInfo.blockLinks = append(currentSubsetInfo.blockLinks, cidlink.Link{Cid: parent.Cid})
 
-					err = writeBlockDag(owms)
+					err = writeBlockDag(family)
 					if err != nil {
 						return fmt.Errorf("failed to write block dag to file: %w", err)
 					}
@@ -375,7 +377,7 @@ func newCmd_SplitCar() *cli.Command {
 				return fmt.Errorf("failed to close file: %w", err)
 			}
 
-			err = carv2.ReplaceRootsInFile(cf.name, []cid.Cid{cf.payloadCid})
+			err = carv2.ReplaceRootsInFile(filepath.Join(outputDir, cf.name), []cid.Cid{cf.payloadCid})
 			if err != nil {
 				return fmt.Errorf("failed to replace root: %w", err)
 			}
@@ -411,7 +413,6 @@ func newCmd_SplitCar() *cli.Command {
 			}
 
 			return nil
-
 		},
 	}
 }
@@ -478,7 +479,6 @@ func writeNode(node datamodel.Node, w io.Writer) (cid.Cid, error) {
 			if _, err := w.Write(data); err != nil {
 				return cid.Cid{}, err
 			}
-
 		}
 	}
 	return cd, nil
@@ -488,7 +488,7 @@ func writeMetadata(metadata *splitcarfetcher.Metadata, epoch int) error {
 	metadataFileName := fmt.Sprintf("epoch-%d-metadata.yaml", epoch)
 
 	// Open file in append mode
-	metadataFile, err := os.OpenFile(metadataFileName, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	metadataFile, err := os.OpenFile(metadataFileName, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
 		return fmt.Errorf("failed to open metadata file: %w", err)
 	}
@@ -529,4 +529,212 @@ func readHeader(streamBuf *bufio.Reader) ([]byte, int64, error) {
 	streamLen += actualHdrLen
 
 	return headerBuf.Bytes(), streamLen, nil
+}
+
+type carFileInfo struct {
+	name      string
+	firstSlot int64
+	size      int64
+}
+
+func SortCarFiles(carFiles []string) ([]carFileInfo, error) {
+
+	var fileInfos []carFileInfo
+
+	for _, path := range carFiles {
+		file, err := os.Open(path)
+		if err != nil {
+			return nil, fmt.Errorf("failed to open CAR file %s: %w", path, err)
+		}
+		defer file.Close()
+
+		// Create a new CarReader
+		cr, err := carreader.New(file)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create CarReader for %s: %w", path, err)
+		}
+
+		// Get the root CID
+		if len(cr.Header.Roots) != 1 {
+			return nil, fmt.Errorf("expected 1 root CID, got %d in file %s", len(cr.Header.Roots), path)
+		}
+		rootCid := cr.Header.Roots[0]
+
+		// Read nodes until we find the one matching the root CID
+		var subset *ipldbindcode.Subset
+		for {
+			c, _, blockData, err := cr.NextNodeBytes()
+			if err != nil {
+				if err == io.EOF {
+					return nil, fmt.Errorf("reached end of file without finding root node in %s", path)
+				}
+				return nil, fmt.Errorf("failed to read node in file %s: %w", path, err)
+			}
+
+			if c == rootCid {
+				// Parse the block as a Subset object
+				subset, err = iplddecoders.DecodeSubset(blockData)
+				if err != nil {
+					return nil, fmt.Errorf("failed to decode Subset from block in file %s: %w", path, err)
+				}
+				break
+			}
+		}
+
+		if subset == nil {
+			return nil, fmt.Errorf("failed to find root node in file %s", path)
+		}
+
+		fi, err := file.Stat()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get file info for %s: %w", path, err)
+		}
+
+		fileInfos = append(fileInfos, carFileInfo{
+			name:      path,
+			firstSlot: int64(subset.First),
+			size:      fi.Size(),
+		})
+	}
+
+	// Sort the file infos based on the firstSlot
+	sort.Slice(fileInfos, func(i, j int) bool {
+		return fileInfos[i].firstSlot < fileInfos[j].firstSlot
+	})
+
+	return fileInfos, nil
+}
+
+func SortCarURLs(carURLs []string) ([]carFileInfo, error) {
+	var urlInfos []carFileInfo
+
+	for _, url := range carURLs {
+		firstSlot, size, err := getSlotAndSizeFromURL(url)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get first slot from URL %s: %w", url, err)
+		}
+
+		urlInfos = append(urlInfos, carFileInfo{
+			name:      url,
+			firstSlot: firstSlot,
+			size:      size,
+		})
+	}
+
+	// Sort the URL infos based on the firstSlot
+	sort.Slice(urlInfos, func(i, j int) bool {
+		return urlInfos[i].firstSlot < urlInfos[j].firstSlot
+	})
+
+	return urlInfos, nil
+}
+
+func getSlotAndSizeFromURL(url string) (int64, int64, error) {
+	fileSize, err := splitcarfetcher.GetContentSizeWithHeadOrZeroRange(url)
+	if err != nil {
+		return 0, 0, fmt.Errorf("failed to get file size: %w", err)
+	}
+
+	rootCID, err := getRootCid(url)
+	if err != nil {
+		return 0, 0, fmt.Errorf("failed to get root CID: %w", err)
+	}
+
+	endOffset := getEndOffset(fileSize)
+
+	partialContent, err := fetchFromOffset(url, endOffset)
+	if err != nil {
+		return 0, 0, fmt.Errorf("failed to fetch partial content: %w", err)
+	}
+
+	cidBytes := rootCID.Bytes()
+	index := bytes.LastIndex(partialContent, cidBytes)
+	if index == -1 {
+		return 0, 0, fmt.Errorf("CID block not found in the last 2MiB of the file")
+	}
+	blockData := partialContent[index-2:]
+	r := bufio.NewReader(bytes.NewBuffer(blockData))
+	cid, _, data, err := carreader.ReadNodeInfoWithData(r)
+	if err != nil {
+		return 0, 0, fmt.Errorf("failed to read node info: %w", err)
+	}
+	if cid != rootCID {
+		return 0, 0, fmt.Errorf("expected CID %s, got %s", rootCID, cid)
+	}
+
+	// Decode the Subset
+	subset, err := iplddecoders.DecodeSubset(data)
+	if err != nil {
+		return 0, 0, fmt.Errorf("failed to decode Subset from block: %w", err)
+	}
+
+	return int64(subset.First), fileSize, nil
+}
+
+func getRootCid(url string) (cid.Cid, error) {
+	// Make a GET request for the beginning of the file
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return cid.Undef, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// Request only the first hdrSize bytes
+	req.Header.Set("Range", fmt.Sprintf("bytes=0-%d", hdrSize))
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return cid.Undef, fmt.Errorf("failed to fetch CAR file header: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusPartialContent {
+		return cid.Undef, fmt.Errorf("server does not support range requests")
+	}
+
+	// Read the header content
+	headerContent, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return cid.Undef, fmt.Errorf("failed to read header content: %w", err)
+	}
+
+	// Parse the CAR header
+	rc := io.NopCloser(bytes.NewReader(headerContent))
+	cr, err := carreader.New(rc)
+	if err != nil {
+		return cid.Undef, fmt.Errorf("failed to create CarReader: %w", err)
+	}
+
+	roots := cr.Header.Roots
+	if len(roots) != 1 {
+		return cid.Undef, fmt.Errorf("expected 1 root CID, got %d", len(roots))
+	}
+	rootCID := roots[0]
+
+	return rootCID, nil
+}
+
+func getEndOffset(fileSize int64) int64 {
+	eo := fileSize - int64(maxSectionSize)
+	return max(eo, 0)
+}
+
+func fetchFromOffset(url string, offset int64) ([]byte, error) {
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Range", fmt.Sprintf("bytes=%d-", offset))
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch CAR file: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusPartialContent {
+		return nil, fmt.Errorf("server does not support range requests")
+	}
+
+	return io.ReadAll(resp.Body)
 }
