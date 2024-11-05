@@ -668,19 +668,5 @@ func (multi *MultiEpoch) StreamBlocks(params *old_faithful_grpc.StreamBlocksRequ
 }
 
 func blockContainsAccounts(block *old_faithful_grpc.BlockResponse, accounts []string) bool {
-	accountSet := make(map[string]struct{}, len(accounts))
-	for _, acc := range accounts {
-		accountSet[acc] = struct{}{}
-	}
-
-	for _, tx := range block.Transactions {
-		for _, acc := range tx.Transation.Message.AccountKeys {
-			if _, exists := accountSet[string(acc)]; exists {
-				return true
-			}
-		}
-
-	}
-
-	return false
+	return true // to do
 }
