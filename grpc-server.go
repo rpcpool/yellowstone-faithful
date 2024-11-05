@@ -19,6 +19,7 @@ import (
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/rpcpool/yellowstone-faithful/compactindexsized"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
+	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
 	old_faithful_grpc "github.com/rpcpool/yellowstone-faithful/old-faithful-proto/old-faithful-grpc"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
@@ -668,5 +669,45 @@ func (multi *MultiEpoch) StreamBlocks(params *old_faithful_grpc.StreamBlocksRequ
 }
 
 func blockContainsAccounts(block *old_faithful_grpc.BlockResponse, accounts []string) bool {
-	return true // to do
+	accountSet := make(map[string]struct{}, len(accounts))
+	for _, acc := range accounts {
+		accountSet[acc] = struct{}{}
+	}
+
+	for _, tx := range block.Transactions {
+		decoded, err := iplddecoders.DecodeTransaction(tx.Transaction)
+		if err != nil {
+			klog.Warningf("Failed to decode transaction: %w", err)
+			continue // skip if there's error decoding
+		}
+		solTx, err := decoded.GetSolanaTransaction()
+		if err != nil {
+			klog.Warningf("Failed to get sol transaction: %w", err)
+			continue
+		}
+
+		for _, acc := range solTx.Message.AccountKeys {
+			if _, exists := accountSet[acc.String()]; exists {
+				return true
+			}
+		}
+
+		for _, inst := range solTx.Message.Instructions {
+			programId := solTx.Message.AccountKeys[inst.ProgramIDIndex]
+			if _, exists := accountSet[programId.String()]; exists {
+				return true
+			}
+
+			for _, accIdx := range inst.Accounts {
+				if _, exists := accountSet[string(solTx.Message.AccountKeys[accIdx].String())]; exists {
+					return true
+				}
+
+			}
+		}
+
+	}
+
+	return false
+
 }
