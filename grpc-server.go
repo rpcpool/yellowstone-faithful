@@ -636,7 +636,7 @@ func (multi *MultiEpoch) StreamBlocks(params *old_faithful_grpc.StreamBlocksRequ
 
 	filterFunc := func(block *old_faithful_grpc.BlockResponse) bool {
 		if params.Filter == nil || len(params.Filter.AccountInclude) == 0 {
-			retrun true
+			return true
 		}
 
 		return blockContainsAccounts(block, params.Filter.AccountInclude)
@@ -644,16 +644,9 @@ func (multi *MultiEpoch) StreamBlocks(params *old_faithful_grpc.StreamBlocksRequ
 
 	for slot := startSlot; slot <= endSlot; slot++ {
 		select {
-			case <- ctx.Done():
-				return ctx.Err()
-			default:
-		}
-
-		epochNumber := CalcEpochForSlot(slot)
-		epochHandler, err := multi.GetEpoch(epochNumber)
-		if err != nil {
-			klog.Warningf("Epoch %d not available, skipping slot %d", epochNumber, slot)
-			continue
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
 		}
 
 		block, err := multi.GetBlock(ctx, &old_faithful_grpc.BlockRequest{Slot: slot})
