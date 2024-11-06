@@ -692,20 +692,6 @@ func blockContainsAccounts(block *old_faithful_grpc.BlockResponse, accounts []st
 			}
 		}
 
-		for _, inst := range solTx.Message.Instructions {
-			programId := solTx.Message.AccountKeys[inst.ProgramIDIndex]
-			if _, exists := accountSet[programId.String()]; exists {
-				return true
-			}
-
-			for _, accIdx := range inst.Accounts {
-				if _, exists := accountSet[string(solTx.Message.AccountKeys[accIdx].String())]; exists {
-					return true
-				}
-
-			}
-		}
-
 	}
 
 	return false
