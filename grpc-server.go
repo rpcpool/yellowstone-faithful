@@ -19,6 +19,7 @@ import (
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/rpcpool/yellowstone-faithful/compactindexsized"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
+	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
 	old_faithful_grpc "github.com/rpcpool/yellowstone-faithful/old-faithful-proto/old-faithful-grpc"
 	"github.com/rpcpool/yellowstone-faithful/tooling"
 	"golang.org/x/sync/errgroup"
@@ -28,6 +29,8 @@ import (
 	"google.golang.org/grpc/status"
 	"k8s.io/klog/v2"
 )
+
+const maxSlotsToStream uint64 = 100
 
 // ListeAndServe starts listening on the configured address and serves the RPC API.
 func (me *MultiEpoch) ListenAndServeGRPC(ctx context.Context, listenOn string) error {
@@ -621,4 +624,77 @@ func (multi *MultiEpoch) GetBlockTime(ctx context.Context, params *old_faithful_
 	return &old_faithful_grpc.BlockTimeResponse{
 		BlockTime: int64(blocktime),
 	}, nil
+}
+
+func (multi *MultiEpoch) StreamBlocks(params *old_faithful_grpc.StreamBlocksRequest, ser old_faithful_grpc.OldFaithful_StreamBlocksServer) error {
+	ctx := ser.Context()
+
+	startSlot := params.StartSlot
+	endSlot := startSlot + maxSlotsToStream
+
+	if params.EndSlot != nil {
+		endSlot = *params.EndSlot
+	}
+
+	filterFunc := func(block *old_faithful_grpc.BlockResponse) bool {
+		if params.Filter == nil || len(params.Filter.AccountInclude) == 0 {
+			return true
+		}
+
+		return blockContainsAccounts(block, params.Filter.AccountInclude)
+	}
+
+	for slot := startSlot; slot <= endSlot; slot++ {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		block, err := multi.GetBlock(ctx, &old_faithful_grpc.BlockRequest{Slot: slot})
+		if err != nil {
+			if status.Code(err) == codes.NotFound {
+				continue // is this the right thing to do?
+			}
+			return err
+		}
+
+		if filterFunc(block) {
+			if err := ser.Send(block); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+func blockContainsAccounts(block *old_faithful_grpc.BlockResponse, accounts []string) bool {
+	accountSet := make(map[string]struct{}, len(accounts))
+	for _, acc := range accounts {
+		accountSet[acc] = struct{}{}
+	}
+
+	for _, tx := range block.Transactions {
+		decoded, err := iplddecoders.DecodeTransaction(tx.Transaction)
+		if err != nil {
+			klog.Warningf("Failed to decode transaction: %w", err)
+			continue // skip if there's error decoding
+		}
+		solTx, err := decoded.GetSolanaTransaction()
+		if err != nil {
+			klog.Warningf("Failed to get sol transaction: %w", err)
+			continue
+		}
+
+		for _, acc := range solTx.Message.AccountKeys {
+			if _, exists := accountSet[acc.String()]; exists {
+				return true
+			}
+		}
+
+	}
+
+	return false
+
 }

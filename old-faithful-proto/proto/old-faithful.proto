@@ -11,6 +11,8 @@ service OldFaithful {
   rpc GetTransaction(TransactionRequest) returns (TransactionResponse);
 
   rpc Get(stream GetRequest) returns (stream GetResponse);
+
+  rpc StreamBlocks(StreamBlocksRequest) returns (stream BlockResponse);
 }
 
 message VersionRequest {}
@@ -89,4 +91,15 @@ enum GetResponseErrorCode {
 message GetResponseError {
   GetResponseErrorCode code = 1;
   string message = 2;
+}
+
+
+message StreamBlocksRequest {
+  uint64 start_slot = 1;
+  optional uint64 end_slot = 2;  // If not specified, continues indefinitely
+  optional StreamBlocksFilter filter = 3;
+}
+
+message StreamBlocksFilter {
+  repeated string account_include = 1;  // Filter blocks/txns mentioning these accounts
 }

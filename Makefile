@@ -86,3 +86,13 @@ gen-old-faithful-proto: install-protoc
 		--go-grpc_out=paths=source_relative:$$(pwd)/old-faithful-proto/old-faithful-grpc \
 		-I=$$(pwd)/old-faithful-proto/proto/ \
 		$$(pwd)/old-faithful-proto/proto/old-faithful.proto
+gen-old-faithful-proto-system:
+	@mkdir -p $$(pwd)/old-faithful-proto/old-faithful-grpc
+	@echo "Generating golang protobuf for old-faithful..."
+	# the proto file is in old-faithful-proto/proto ; generate go code in old-faithful-proto/faithful-grpc
+	protoc \
+		--experimental_allow_proto3_optional \
+		--go_out=paths=source_relative:$$(pwd)/old-faithful-proto/old-faithful-grpc \
+		--go-grpc_out=paths=source_relative:$$(pwd)/old-faithful-proto/old-faithful-grpc \
+		-I=$$(pwd)/old-faithful-proto/proto/ \
+		$$(pwd)/old-faithful-proto/proto/old-faithful.proto
