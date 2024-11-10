@@ -49,9 +49,8 @@ func (ser *MultiEpoch) getGsfaReadersInEpochDescendingOrderForSlotRange(ctx cont
 
 	startEpoch := CalcEpochForSlot(startSlot)
 	endEpoch := CalcEpochForSlot(endSlot)
-	numEpochs := endEpoch - startEpoch + 1
 
-	epochs := make([]*Epoch, 0, numEpochs)
+	epochs := make([]*Epoch, 0, endEpoch-startEpoch+1)
 	for _, epoch := range ser.epochs {
 
 		if epoch.Epoch() >= startEpoch && epoch.Epoch() <= endEpoch {
