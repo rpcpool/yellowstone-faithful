@@ -204,8 +204,8 @@ def create_deals(metadata_obj):
         ), f"metadata.csv should have 5 columns, instead found f{len(line)}, {line}"
 
         commp_piece_cid = line[1]
-        padded_size = line[2]
-        payload_cid = line[3]
+        payload_cid = line[2]
+        padded_size = line[3]
 
         check_obj = client.check_exists(epoch + "/" + file_name)
         if not check_obj[0]:
