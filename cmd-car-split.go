@@ -366,7 +366,7 @@ func newCmd_SplitCar() *cli.Command {
 			}
 			defer w.Flush()
 			for idx, c := range carFiles {
-				commP, paddedPieceSize, err := calcCommP(c.name)
+				commP, paddedPieceSize, err := calcCommP(filepath.Join(outputDir, c.name))
 				if err != nil {
 					return fmt.Errorf("failed to calculate commP: %w", err)
 				}
