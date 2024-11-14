@@ -111,7 +111,7 @@ func (s *LinkedLog) write(b []byte) (uint64, uint32, error) {
 const mib = 1024 * 1024
 
 // Read reads the block stored at the given offset.
-func (s *LinkedLog) Read(offset uint64) ([]OffsetAndSizeAndBlocktime, indexes.OffsetAndSize, error) {
+func (s *LinkedLog) Read(offset uint64) ([]OffsetAndSizeAndBlocktimeSlot, indexes.OffsetAndSize, error) {
 	lenBuf := make([]byte, binary.MaxVarintLen64)
 	_, err := s.file.ReadAt(lenBuf, int64(offset))
 	if err != nil {
@@ -130,7 +130,7 @@ func sizeOfUvarint(n uint64) int {
 	return binary.PutUvarint(make([]byte, binary.MaxVarintLen64), n)
 }
 
-func (s *LinkedLog) ReadWithSize(offset uint64, size uint64) ([]OffsetAndSizeAndBlocktime, indexes.OffsetAndSize, error) {
+func (s *LinkedLog) ReadWithSize(offset uint64, size uint64) ([]OffsetAndSizeAndBlocktimeSlot, indexes.OffsetAndSize, error) {
 	if size > 256*mib {
 		return nil, indexes.OffsetAndSize{}, fmt.Errorf("compacted indexes length too large: %d", size)
 	}
@@ -158,7 +158,7 @@ func (s *LinkedLog) ReadWithSize(offset uint64, size uint64) ([]OffsetAndSizeAnd
 	return sigIndexes, nextOffset, nil
 }
 
-func decompressIndexes(data []byte) ([]OffsetAndSizeAndBlocktime, error) {
+func decompressIndexes(data []byte) ([]OffsetAndSizeAndBlocktimeSlot, error) {
 	decompressed, err := tooling.DecompressZstd(data)
 	if err != nil {
 		return nil, fmt.Errorf("error while decompressing data: %w", err)
@@ -178,7 +178,7 @@ func (s KeyToOffsetAndSizeAndBlocktimeSlice) Has(key solana.PublicKey) bool {
 	return false
 }
 
-type KeyToOffsetAndSizeAndBlocktime struct {
+type KeyToOffsetAndSizeAndBlocktimeSlot struct {
 	Key    solana.PublicKey
 	Values []*OffsetAndSizeAndBlocktime
 }
@@ -186,7 +186,7 @@ type KeyToOffsetAndSizeAndBlocktime struct {
 func (s *LinkedLog) Put(
 	callbackBefore func(pk solana.PublicKey) (indexes.OffsetAndSize, error),
 	callbackAfter func(pk solana.PublicKey, offset uint64, ln uint32) error,
-	values ...KeyToOffsetAndSizeAndBlocktime,
+	values ...KeyToOffsetAndSizeAndBlocktimeSlot,
 ) (uint64, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -205,7 +205,7 @@ func (s *LinkedLog) Put(
 		if len(val.Values) == 0 {
 			continue
 		}
-		slices.Reverse[[]*OffsetAndSizeAndBlocktime](val.Values) // reverse the slice so that the most recent indexes are first
+		slices.Reverse[[]*OffsetAndSizeAndBlocktimeSlot](val.Values) // reverse the slice so that the most recent indexes are first
 		err := func() error {
 			encodedIndexes, err := createIndexesPayload(val.Values)
 			if err != nil {
@@ -245,7 +245,7 @@ func (s *LinkedLog) Put(
 	return uint64(previousSize), nil
 }
 
-func createIndexesPayload(indexes []*OffsetAndSizeAndBlocktime) ([]byte, error) {
+func createIndexesPayload(indexes []*OffsetAndSizeAndBlocktimeSlot) ([]byte, error) {
 	buf := make([]byte, 0, 9*len(indexes))
 	for _, index := range indexes {
 		buf = append(buf, index.Bytes()...)

@@ -27,8 +27,8 @@ type GsfaWriter struct {
 	offsets              *hashmap.Map[solana.PublicKey, [2]uint64]
 	ll                   *linkedlog.LinkedLog
 	man                  *manifest.Manifest
-	fullBufferWriterChan chan linkedlog.KeyToOffsetAndSizeAndBlocktime
-	accum                *hashmap.Map[solana.PublicKey, []*linkedlog.OffsetAndSizeAndBlocktime]
+	fullBufferWriterChan chan linkedlog.KeyToOffsetAndSizeAndBlocktimeSlot
+	accum                *hashmap.Map[solana.PublicKey, []*linkedlog.OffsetAndSizeAndBlocktimeSlot]
 	offsetsWriter        *indexes.PubkeyToOffsetAndSize_Writer
 	ctx                  context.Context
 	cancel               context.CancelFunc
@@ -61,10 +61,10 @@ func NewGsfaWriter(
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	index := &GsfaWriter{
-		fullBufferWriterChan: make(chan linkedlog.KeyToOffsetAndSizeAndBlocktime, 50), // TODO: make this configurable
+		fullBufferWriterChan: make(chan linkedlog.KeyToOffsetAndSizeAndBlocktimeSlot, 50), // TODO: make this configurable
 		popRank:              newRollingRankOfTopPerformers(10_000),
 		offsets:              hashmap.New[solana.PublicKey, [2]uint64](int(1_000_000)),
-		accum:                hashmap.New[solana.PublicKey, []*linkedlog.OffsetAndSizeAndBlocktime](int(1_000_000)),
+		accum:                hashmap.New[solana.PublicKey, []*linkedlog.OffsetAndSizeAndBlocktimeSlot](int(1_000_000)),
 		ctx:                  ctx,
 		cancel:               cancel,
 		fullBufferWriterDone: make(chan struct{}),
@@ -104,7 +104,7 @@ func NewGsfaWriter(
 func (a *GsfaWriter) fullBufferWriter() {
 	numReadFromChan := uint64(0)
 	howManyBuffersToFlushConcurrently := 256
-	tmpBuf := make(linkedlog.KeyToOffsetAndSizeAndBlocktimeSlice, howManyBuffersToFlushConcurrently)
+	tmpBuf := make(linkedlog.KeyToOffsetAndSizeAndBlocktimeSlotSlice, howManyBuffersToFlushConcurrently)
 
 	for {
 		// fmt.Println("numReadFromChan", numReadFromChan, "len(a.fullBufferWriterChan)", len(a.fullBufferWriterChan), "a.exiting.Load()", a.exiting.Load())
@@ -131,7 +131,7 @@ func (a *GsfaWriter) fullBufferWriter() {
 							klog.Errorf("Error while flushing transactions for key %s: %v", buf.Key, err)
 						}
 					}
-					tmpBuf = make(linkedlog.KeyToOffsetAndSizeAndBlocktimeSlice, howManyBuffersToFlushConcurrently)
+					tmpBuf = make(linkedlog.KeyToOffsetAndSizeAndBlocktimeSlotSlice, howManyBuffersToFlushConcurrently)
 				}
 				tmpBuf = append(tmpBuf, buffer)
 			}
@@ -151,10 +151,11 @@ func (a *GsfaWriter) Push(
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	oas := &linkedlog.OffsetAndSizeAndBlocktime{
+	oas := &linkedlog.OffsetAndSizeAndBlocktimeSlot{
 		Offset:    offset,
 		Size:      length,
 		Blocktime: blocktime,
+		Slot: slot,
 	}
 	publicKeys = publicKeys.Dedupe()
 	publicKeys.Sort()
@@ -177,7 +178,7 @@ func (a *GsfaWriter) Push(
 			// if this key has less than 100 values and is not in the top list of keys by flush count, then
 			// it's very likely that this key isn't going to get a lot of values soon
 			if len(values) < 100 && len(values) > 0 && !a.popRank.has(key) {
-				if err := a.flushKVs(linkedlog.KeyToOffsetAndSizeAndBlocktime{
+				if err := a.flushKVs(linkedlog.KeyToOffsetAndSizeAndBlocktimeSlot{
 					Key:    key,
 					Values: values,
 				}); err != nil {
@@ -190,14 +191,14 @@ func (a *GsfaWriter) Push(
 	for _, publicKey := range publicKeys {
 		current, ok := a.accum.Get(publicKey)
 		if !ok {
-			current = make([]*linkedlog.OffsetAndSizeAndBlocktime, 0, itemsPerBatch)
+			current = make([]*linkedlog.OffsetAndSizeAndBlocktimeSlot, 0, itemsPerBatch)
 			current = append(current, oas)
 			a.accum.Set(publicKey, current)
 		} else {
 			current = append(current, oas)
 			if len(current) >= itemsPerBatch {
 				a.popRank.Incr(publicKey, 1)
-				a.fullBufferWriterChan <- linkedlog.KeyToOffsetAndSizeAndBlocktime{
+				a.fullBufferWriterChan <- linkedlog.KeyToOffsetAndSizeAndBlocktimeSlot{
 					Key:    publicKey,
 					Values: clone(current),
 				}
@@ -259,13 +260,13 @@ func (a *GsfaWriter) Close() error {
 	)
 }
 
-func (a *GsfaWriter) flushAccum(m *hashmap.Map[solana.PublicKey, []*linkedlog.OffsetAndSizeAndBlocktime]) error {
+func (a *GsfaWriter) flushAccum(m *hashmap.Map[solana.PublicKey, []*linkedlog.OffsetAndSizeAndBlocktimeSlot]) error {
 	keys := solana.PublicKeySlice(m.Keys())
 	keys.Sort()
 	for ii := range keys {
 		key := keys[ii]
 		vals, _ := m.Get(key)
-		if err := a.flushKVs(linkedlog.KeyToOffsetAndSizeAndBlocktime{
+		if err := a.flushKVs(linkedlog.KeyToOffsetAndSizeAndBlocktimeSlot{
 			Key:    key,
 			Values: vals,
 		}); err != nil {
@@ -276,7 +277,7 @@ func (a *GsfaWriter) flushAccum(m *hashmap.Map[solana.PublicKey, []*linkedlog.Of
 	return nil
 }
 
-func (a *GsfaWriter) flushKVs(kvs ...linkedlog.KeyToOffsetAndSizeAndBlocktime) error {
+func (a *GsfaWriter) flushKVs(kvs ...linkedlog.KeyToOffsetAndSizeAndBlocktimeSlot) error {
 	if len(kvs) == 0 {
 		return nil
 	}
