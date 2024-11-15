@@ -42,6 +42,39 @@ func (ser *MultiEpoch) getGsfaReadersInEpochDescendingOrder() ([]*gsfa.GsfaReade
 	return gsfaReaders, epochNums
 }
 
+// getGsfaReadersInEpochDescendingOrder returns a list of gsfa readers in epoch order (from most recent to oldest).
+func (ser *MultiEpoch) getGsfaReadersInEpochDescendingOrderForSlotRange(ctx context.Context, startSlot, endSlot uint64) ([]*gsfa.GsfaReader, []uint64) {
+	ser.mu.RLock()
+	defer ser.mu.RUnlock()
+
+	startEpoch := CalcEpochForSlot(startSlot)
+	endEpoch := CalcEpochForSlot(endSlot)
+
+	epochs := make([]*Epoch, 0, endEpoch-startEpoch+1)
+	for _, epoch := range ser.epochs {
+
+		if epoch.Epoch() >= startEpoch && epoch.Epoch() <= endEpoch {
+			epochs = append(epochs, epoch)
+		}
+	}
+
+	// sort epochs by epoch number (from biggest to smallest):
+	sort.Slice(epochs, func(i, j int) bool {
+		return epochs[i].epoch > epochs[j].epoch
+	})
+
+	gsfaReaders := make([]*gsfa.GsfaReader, 0, len(epochs))
+	epochNums := make([]uint64, 0, len(epochs))
+	for _, epoch := range epochs {
+		if epoch.gsfaReader != nil {
+			epoch.gsfaReader.SetEpoch(epoch.Epoch())
+			gsfaReaders = append(gsfaReaders, epoch.gsfaReader)
+			epochNums = append(epochNums, epoch.Epoch())
+		}
+	}
+	return gsfaReaders, epochNums
+}
+
 func countTransactions(v gsfa.EpochToTransactionObjects) int {
 	var count int
 	for _, txs := range v {
