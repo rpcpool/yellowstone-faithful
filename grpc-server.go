@@ -708,14 +708,6 @@ func (multi *MultiEpoch) StreamTransactions(params *old_faithful_grpc.StreamTran
 		endSlot = *params.EndSlot
 	}
 
-	filterFunc := func(tx *old_faithful_grpc.Transaction) bool {
-		if params.Filter == nil || len(params.Filter.AccountInclude) == 0 {
-			return true
-		}
-
-		return txContainsAccounts(tx, params.Filter.AccountInclude)
-	}
-
 	for slot := startSlot; slot <= endSlot; slot++ {
 		select {
 		case <-ctx.Done():
@@ -723,17 +715,17 @@ func (multi *MultiEpoch) StreamTransactions(params *old_faithful_grpc.StreamTran
 		default:
 		}
 
-		block, err := multi.GetBlock(ctx, &old_faithful_grpc.BlockRequest{Slot: slot})
-		if err != nil {
-			if status.Code(err) == codes.NotFound {
-				continue // is this the right thing to do?
+		if params.Filter == nil || len(params.Filter.AccountInclude) == 0 {
+			block, err := multi.GetBlock(ctx, &old_faithful_grpc.BlockRequest{Slot: slot})
+			if err != nil {
+				if status.Code(err) == codes.NotFound {
+					continue // is this the right thing to do?
+				}
+				return err
 			}
-			return err
-		}
 
-		for _, tx := range block.Transactions {
-			if filterFunc(tx) {
-				if err := ser.Send(constructTransactionResponse(tx)); err != nil {
+			for _, tx := range block.Transactions {
+				if err := ser.Send(constructTransactionResponse(tx, block)); err != nil {
 					return err
 				}
 			}
@@ -743,13 +735,11 @@ func (multi *MultiEpoch) StreamTransactions(params *old_faithful_grpc.StreamTran
 	return nil
 }
 
-func txContainsAccounts(tx *old_faithful_grpc.Transaction, accounts []string) bool {
-	return true
-}
-
-func constructTransactionResponse(tx *old_faithful_grpc.Transaction) *old_faithful_grpc.TransactionResponse {
-	// to do
+func constructTransactionResponse(tx *old_faithful_grpc.Transaction, block *old_faithful_grpc.BlockResponse) *old_faithful_grpc.TransactionResponse {
 	return &old_faithful_grpc.TransactionResponse{
 		Transaction: tx,
+		BlockTime:   block.BlockTime,
+		Slot:        block.Slot,
+		// What to do for index?
 	}
 }
