@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/gagliardetto/solana-go"
+	"github.com/ipfs/go-cid"
 	"github.com/rpcpool/yellowstone-faithful/compactindexsized"
 	"github.com/rpcpool/yellowstone-faithful/gsfa/linkedlog"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
@@ -86,9 +87,19 @@ epochLoop:
 }
 
 type EpochToTransactionObjects map[uint64][]*ipldbindcode.Transaction
+type EpochToTransactionCids map[uint64][]cid.Cid
 
 // Count returns the number of signatures in the EpochToSignatures.
 func (e EpochToTransactionObjects) Count() int {
+	var count int
+	for _, sigs := range e {
+		count += len(sigs)
+	}
+	return count
+}
+
+// Count returns the number of signatures in the EpochToSignatures.
+func (e EpochToTransactionCids) Count() int {
 	var count int
 	for _, sigs := range e {
 		count += len(sigs)
@@ -195,6 +206,107 @@ epochLoop:
 				if until != nil && sig == *until {
 					break epochLoop
 				}
+			}
+		}
+	}
+	return transactions, nil
+}
+
+func (multi *GsfaReaderMultiepoch) GetCids(
+	ctx context.Context,
+	pk solana.PublicKey,
+	limit int,
+	fetcher func(uint64, linkedlog.OffsetAndSizeAndBlocktime) (cid.Cid, error),
+) (EpochToTransactionCids, error) {
+	if limit <= 0 {
+		return make(EpochToTransactionCids), nil
+	}
+	return multi.iterBeforeUntilCids(ctx, pk, limit, fetcher)
+}
+
+// GetBeforeUntil gets the signatures for the given public key,
+// before the given slot.
+func (multi *GsfaReaderMultiepoch) iterBeforeUntilCids(
+	ctx context.Context,
+	pk solana.PublicKey,
+	limit int,
+	fetcher func(uint64, linkedlog.OffsetAndSizeAndBlocktime) (cid.Cid, error),
+) (EpochToTransactionCids, error) {
+	if limit <= 0 {
+		return make(EpochToTransactionCids), nil
+	}
+
+	transactions := make(EpochToTransactionCids)
+	// reachedBefore := false
+	// if before == nil {
+	// 	reachedBefore = true
+	// }
+
+epochLoop:
+	for readerIndex, index := range multi.epochs {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		epochNum, ok := index.GetEpoch()
+		if !ok {
+			return nil, fmt.Errorf("epoch is not set for the #%d provided gsfa reader", readerIndex)
+		}
+
+		locsStartedAt := time.Now()
+		locs, err := index.offsets.Get(pk)
+		if err != nil {
+			if compactindexsized.IsNotFound(err) {
+				continue epochLoop
+			}
+			return nil, fmt.Errorf("error while getting initial offset: %w", err)
+		}
+		klog.V(5).Infof("locs.OffsetToFirst took %s", time.Since(locsStartedAt))
+		debugln("locs.OffsetToFirst:", locs)
+
+		next := locs // Start from the latest, and go back in time.
+
+		for {
+			if next == nil || next.IsZero() { // no previous.
+				continue epochLoop
+			}
+			if limit > 0 && transactions.Count() >= limit {
+				break epochLoop
+			}
+			startedReadAt := time.Now()
+			locations, newNext, err := index.ll.ReadWithSize(next.Offset, next.Size)
+			if err != nil {
+				return nil, fmt.Errorf("error while reading linked log with next=%v: %w", next, err)
+			}
+			klog.V(5).Infof("ReadWithSize took %s to get %d locs", time.Since(startedReadAt), len(locations))
+			if len(locations) == 0 {
+				continue epochLoop
+			}
+			debugln("sigIndexes:", locations, "newNext:", newNext)
+			next = &newNext
+			for _, txLoc := range locations {
+				tx, err := fetcher(epochNum, txLoc)
+				if err != nil {
+					return nil, fmt.Errorf("error while getting signature at index=%v: %w", txLoc, err)
+				}
+				// sig, err := tx.Signature()
+				// if err != nil {
+				// 	return nil, fmt.Errorf("error while getting signature: %w", err)
+				// }
+				// klog.V(5).Infoln(locIndex, "sig:", sig, "epoch:", epochNum)
+				// if !reachedBefore && sig == *before {
+				// 	reachedBefore = true
+				// 	continue
+				// }
+				// if !reachedBefore {
+				// 	continue
+				// }
+				if limit > 0 && transactions.Count() >= limit {
+					break epochLoop
+				}
+				transactions[epochNum] = append(transactions[epochNum], tx)
+				// if until != nil && sig == *until {
+				// 	break epochLoop
+				// }
 			}
 		}
 	}
