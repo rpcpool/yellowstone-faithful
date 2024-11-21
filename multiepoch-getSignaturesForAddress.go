@@ -43,7 +43,7 @@ func (ser *MultiEpoch) getGsfaReadersInEpochDescendingOrder() ([]*gsfa.GsfaReade
 }
 
 // getGsfaReadersInEpochDescendingOrder returns a list of gsfa readers in epoch order (from most recent to oldest).
-func (ser *MultiEpoch) getGsfaReadersInEpochDescendingOrderForSlotRange(ctx context.Context, startSlot, endSlot uint64) ([]*gsfa.GsfaReader, []uint64) {
+func (ser *MultiEpoch) getGsfaReadersInEpochDescendingOrderForSlotRange(ctx context.Context, startSlot, endSlot uint64) (*gsfa.GsfaReaderMultiepoch, []uint64) {
 	ser.mu.RLock()
 	defer ser.mu.RUnlock()
 
@@ -72,7 +72,15 @@ func (ser *MultiEpoch) getGsfaReadersInEpochDescendingOrderForSlotRange(ctx cont
 			epochNums = append(epochNums, epoch.Epoch())
 		}
 	}
-	return gsfaReaders, epochNums
+
+	gsfaReaderMultiEpoch, err := gsfa.NewGsfaReaderMultiepoch(gsfaReaders)
+	if err != nil {
+		klog.Errorf("failed to construct gsfaReaderMultiEpoch: %w", err)
+		return nil, nil
+	}
+
+	return gsfaReaderMultiEpoch, epochNums
+
 }
 
 func countTransactions(v gsfa.EpochToTransactionObjects) int {
