@@ -13,7 +13,6 @@ if [[ "${1}" != "gsfa" ]]; then
     # Generate the indexes
     /usr/local/bin/faithful-cli index "${1}" \
         --network=mainnet \
-        --flush-every=1000000 \
         --epoch=${EPOCH} \
         --tmp-dir "${4}/tmp" \
         "${3}" \

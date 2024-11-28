@@ -29,8 +29,8 @@ b2 sync \
     --includeRegex 'index.csv' \
     --includeRegex 'metadata.csv' \
     --includeRegex 'sp-*.car' \
-    --includeRegex 'epoch-.*\.car' \
-    --includeRegex 'epoch-.*\.cid' \
+    --includeRegex "epoch-${1}\.car" \
+    --includeRegex "epoch-.${1}\.cid" \
     --includeRegex '.*\.slots\.txt' \
     --includeRegex '.*\.recap\.txt' \
     --includeRegex '.*\.recap\.yaml' \
