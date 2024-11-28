@@ -27,6 +27,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
+          token: ${{ github.token }}
+          generate_release_notes: true
           files: |
             bin/darwin/amd64/faithful-cli_darwin_amd64
             bin/darwin/arm64/faithful-cli_darwin_arm64
