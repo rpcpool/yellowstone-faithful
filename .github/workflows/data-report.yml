@@ -30,7 +30,7 @@ jobs:
       # Commit all changed files back to the repository
       - uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: Automated Change
-          branch: 'main'
+          commit_message: Old Faithful CAR data report update
+          branch: 'gha-report'
           file_pattern: 'docs/*.md'
 
