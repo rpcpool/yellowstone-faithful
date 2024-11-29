@@ -1,0 +1,29 @@
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+name: Data Report Generator
+on:
+  schedule:
+    - cron: '0 0 * * *'  # Run once a day at midnight UTC
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  generate-report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        
+      - name: Generate Report
+        run: |
+          bash .github/faithful-data-report.sh > docs/CAR-REPORT.MD
+          
+      - name: Commit Report
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git fetch origin car-report || git checkout -b car-report
+          git checkout report
+          git add docs/CAR-REPORT.MD
+          git commit -m "Faithful CAR data report" || exit 0
+          git push origin car-report
