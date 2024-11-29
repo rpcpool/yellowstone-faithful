@@ -36,7 +36,7 @@ jobs:
           add: 'docs/*.md'
           author_name: github-actions[bot]
           author_email: 41898282+github-actions[bot]@users.noreply.github.com
-          fetch: true
+          fetch: origin gha-report
           push: origin gha-report --force
           pull: ' '
 
