@@ -165,7 +165,7 @@ EPOCH_LIST=$(seq $CURRENT_EPOCH -1 0)
 # EPOCH_LIST=$(seq 687 -1 0)
 
 # very fast test
-# EPOCH_LIST=$(seq 687 -1 670)
+EPOCH_LIST=$(seq 687 -1 670)
 
 # base hostname
 host="https://files.old-faithful.net"
