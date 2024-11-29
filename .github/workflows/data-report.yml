@@ -37,5 +37,6 @@ jobs:
           author_name: github-actions[bot]
           author_email: 41898282+github-actions[bot]@users.noreply.github.com
           fetch: true
+          push: origin gha-report --set-upstream --force
           pull: '--rebase --autostash ...'
 
