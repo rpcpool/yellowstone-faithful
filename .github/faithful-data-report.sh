@@ -171,7 +171,7 @@ EPOCH_LIST=$(seq $CURRENT_EPOCH -1 0)
 host="https://files.old-faithful.net"
 deals_host="https://filecoin-car-storage-cdn.b-cdn.net/"
 
-echo "| Epoch #  | CAR  | CAR SHA256  | CAR filesize | tx meta check | poh check | Indexes | Filecoin Deals |"
+echo "| Epoch #  | CAR  | CAR SHA256  | CAR filesize | tx meta check | poh check | Indices | Filecoin Deals |"
 echo "|---|---|---|---|---|---|---|---|"
 
 for EPOCH in $EPOCH_LIST; do

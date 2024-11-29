@@ -28,10 +28,13 @@ jobs:
           
 
       # Commit all changed files back to the repository
-      - uses: stefanzweifel/git-auto-commit-action@v5
+      - uses: EndBug/add-and-commit@v9
         with:
-          commit_message: Old Faithful CAR data report update
-          branch: 'gha-report'
+          message: Old Faithful CAR data report update
+          new_branch: 'gha-report'
           create_branch: true
-          file_pattern: 'docs/*.md'
+          add: 'docs/*.md'
+          author_name: github-actions[bot]
+          author_email: 41898282+github-actions[bot]@users.noreply.github.com
+          fetch: true
 
