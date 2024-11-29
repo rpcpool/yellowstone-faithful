@@ -4,6 +4,7 @@ concurrency:
 
 name: Data Report Generator
 on:
+  push:
   schedule:
     - cron: '0 0 * * *'  # Run once a day at midnight UTC
   workflow_dispatch:  # Allow manual trigger
@@ -11,20 +12,25 @@ on:
 jobs:
   generate-report:
     runs-on: ubuntu-latest
+    
+    permissions:
+      # Give the default GITHUB_TOKEN write permission to commit and push the
+      # added or changed files to the repository.
+      contents: write
+
     steps:
       - uses: actions/checkout@v4
         
       - name: Generate Report
         run: |
           mkdir -p docs
-          bash .github/faithful-data-report.sh > docs/CAR-REPORT.MD
+          bash .github/faithful-data-report.sh > docs/CAR-REPORT.md
           
-      - name: Commit Report
-        run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-          git fetch origin car-report || git checkout -b car-report
-          git checkout report
-          git add docs/CAR-REPORT.MD
-          git commit -m "Faithful CAR data report" || exit 0
-          git push origin car-report
+
+      # Commit all changed files back to the repository
+      - uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: Automated Change
+          branch: 'main'
+          file_pattern: 'docs/*.md'
+
