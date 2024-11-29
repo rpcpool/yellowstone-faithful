@@ -31,7 +31,7 @@ jobs:
       - uses: EndBug/add-and-commit@v9
         with:
           message: Old Faithful CAR data report update
-          new_branch: 'gha-report'
+          # new_branch: 'gha-report'
           create_branch: true
           add: 'docs/*.md'
           author_name: github-actions[bot]
