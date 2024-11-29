@@ -38,5 +38,5 @@ jobs:
           author_email: 41898282+github-actions[bot]@users.noreply.github.com
           fetch: true
           push: origin gha-report --force
-          pull: 'origin gha-report'
+          pull: ' '
 
