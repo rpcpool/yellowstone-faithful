@@ -32,5 +32,6 @@ jobs:
         with:
           commit_message: Old Faithful CAR data report update
           branch: 'gha-report'
+          create_branch: true
           file_pattern: 'docs/*.md'
 

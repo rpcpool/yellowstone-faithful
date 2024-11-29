@@ -160,9 +160,11 @@ CURRENT_EPOCH=$(curl -s https://api.mainnet-beta.solana.com -s -X POST -H "Conte
 
 # descending order
 EPOCH_LIST=$(seq $CURRENT_EPOCH -1 0)
-# test
-EPOCH_LIST=$(seq 687 -1 0)
-# fast test
+
+# test 
+# EPOCH_LIST=$(seq 687 -1 0)
+
+# very fast test
 EPOCH_LIST=$(seq 687 -1 670)
 
 # base hostname
