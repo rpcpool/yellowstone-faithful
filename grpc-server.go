@@ -807,4 +807,5 @@ func (multi *MultiEpoch) streamAllTxns(ctx context.Context, ser old_faithful_grp
 			return err
 		}
 	}
+	return nil
 }
