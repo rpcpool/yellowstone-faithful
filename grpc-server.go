@@ -18,6 +18,8 @@ import (
 	"github.com/ipld/go-car/util"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/rpcpool/yellowstone-faithful/compactindexsized"
+	"github.com/rpcpool/yellowstone-faithful/gsfa/linkedlog"
+	"github.com/rpcpool/yellowstone-faithful/indexes"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
 	old_faithful_grpc "github.com/rpcpool/yellowstone-faithful/old-faithful-proto/old-faithful-grpc"
@@ -722,9 +724,63 @@ func (multi *MultiEpoch) StreamTransactions(params *old_faithful_grpc.StreamTran
 			}
 		} else if params.Filter != nil && len(params.Filter.AccountInclude) > 0 {
 			for _, account := range params.Filter.AccountInclude {
-				gsfaReader.Get()
-			}
+				pKey := solana.MustPublicKeyFromBase58(account)
+				epochToTxns, err := gsfaReader.Get(
+					ctx,
+					pKey,
+					1000,
+					func(epochNum uint64, oas linkedlog.OffsetAndSizeAndBlocktime) (*ipldbindcode.Transaction, error) {
+						epoch, err := multi.GetEpoch(epochNum)
+						if err != nil {
+							return nil, fmt.Errorf("failed to get epoch %d: %w", epochNum, err)
+						}
+						raw, err := epoch.GetNodeByOffsetAndSize(ctx, nil, &indexes.OffsetAndSize{
+							Offset: oas.Offset,
+							Size:   oas.Size,
+						})
+						if err != nil {
+							return nil, fmt.Errorf("failed to get signature: %w", err)
+						}
+						decoded, err := iplddecoders.DecodeTransaction(raw)
+						if err != nil {
+							return nil, fmt.Errorf("error while decoding transaction from nodex at offset %d: %w", oas.Offset, err)
+						}
+						return decoded, nil
+					},
+				)
 
+				if err != nil {
+					return err
+				}
+
+				for epochNumber, txns := range epochToTxns {
+					epochHandler, err := multi.GetEpoch(epochNumber)
+					if err != nil {
+						return status.Errorf(codes.NotFound, "Epoch %d is not available", epochNumber)
+					}
+					for _, txn := range txns {
+						txResp := new(old_faithful_grpc.TransactionResponse)
+						txResp.Transaction = new(old_faithful_grpc.Transaction)
+						{
+							pos, ok := txn.GetPositionIndex()
+							if ok {
+								txResp.Index = ptrToUint64(uint64(pos))
+								txResp.Transaction.Index = ptrToUint64(uint64(pos))
+							}
+							txResp.Transaction.Transaction, txResp.Transaction.Meta, err = getTransactionAndMetaFromNode(txn, epochHandler.GetDataFrameByCid)
+							if err != nil {
+								return status.Errorf(codes.Internal, "Failed to get transaction: %v", err)
+							}
+							txResp.Slot = uint64(txn.Slot)
+							// What to do for blocktime?
+						}
+
+						if err := ser.Send(txResp); err != nil {
+							return err
+						}
+					}
+				}
+			}
 		}
 	}
 
@@ -734,9 +790,9 @@ func (multi *MultiEpoch) StreamTransactions(params *old_faithful_grpc.StreamTran
 func constructTransactionResponse(tx *old_faithful_grpc.Transaction, block *old_faithful_grpc.BlockResponse) *old_faithful_grpc.TransactionResponse {
 	return &old_faithful_grpc.TransactionResponse{
 		Transaction: tx,
-		BlockTime:   block.BlockTime,
-		Slot:        block.Slot,
-		// What to do for index?
+		BlockTime:   block.GetBlockTime(),
+		Slot:        block.GetSlot(),
+		Index:       tx.Index,
 	}
 }
 
