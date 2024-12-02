@@ -720,13 +720,11 @@ func (multi *MultiEpoch) StreamTransactions(params *old_faithful_grpc.StreamTran
 		}
 
 		if err := multi.processSlotTransactions(ctx, ser, slot, params.filter, gsfareader); err != nil {
-            return err
-        }
+			return err
+		}
 	}
 	return nil
 }
-
-
 
 func constructTransactionResponse(tx *old_faithful_grpc.Transaction, block *old_faithful_grpc.BlockResponse) *old_faithful_grpc.TransactionResponse {
 	return &old_faithful_grpc.TransactionResponse{
@@ -751,17 +749,16 @@ func (multi *MultiEpoch) streamAllTxns(ctx context.Context, ser old_faithful_grp
 	return nil
 }
 
-
 func (multi *MultiEpoch) processSlotTransactions(ctx context.Context, ser old_faithful_grpc.OldFaithful_StreamTransactionsServer, slot uint64, filter *old_faithful_grpc.StreamTransactionsFilter, gsfaReader *gsfa.GsfaReaderMultiepoch) error {
 	if filter == nil {
 		return multi.streamAllTxns(ctx, ser, slot)
 	}
 
-	if  len(filter.AccountInclude) == 0 {
+	if len(filter.AccountInclude) == 0 {
 		// Get all transactions
 		// Apply filters
 		// Send
-	} else  {
+	} else {
 		for _, account := range params.Filter.AccountInclude {
 			pKey := solana.MustPublicKeyFromBase58(account)
 			epochToTxns, err := gsfaReader.Get(
@@ -823,7 +820,5 @@ func (multi *MultiEpoch) processSlotTransactions(ctx context.Context, ser old_fa
 			}
 		}
 	}
-}
-
-return nil
+	return nil
 }
