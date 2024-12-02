@@ -758,10 +758,10 @@ func (multi *MultiEpoch) processSlotTransactions(ctx context.Context, ser old_fa
 	}
 
 	if  len(filter.AccountInclude) == 0 {
-		if err := multi.streamAllTxns(ctx, ser, slot); err != nil {
-			return err
-		}
-	} else if params.Filter != nil && len(params.Filter.AccountInclude) > 0 {
+		// Get all transactions
+		// Apply filters
+		// Send
+	} else  {
 		for _, account := range params.Filter.AccountInclude {
 			pKey := solana.MustPublicKeyFromBase58(account)
 			epochToTxns, err := gsfaReader.Get(
@@ -813,6 +813,8 @@ func (multi *MultiEpoch) processSlotTransactions(ctx context.Context, ser old_fa
 						txResp.Slot = uint64(txn.Slot)
 						// What to do for blocktime?
 					}
+
+					// apply more filters
 
 					if err := ser.Send(txResp); err != nil {
 						return err
