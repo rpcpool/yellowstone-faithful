@@ -719,47 +719,34 @@ func (multi *MultiEpoch) StreamTransactions(params *old_faithful_grpc.StreamTran
 		default:
 		}
 
-		if err := multi.processSlotTransactions(ctx, ser, slot, params.filter, gsfareader); err != nil {
+		if err := multi.processSlotTransactions(ctx, ser, slot, params.Filter, gsfaReader); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func constructTransactionResponse(tx *old_faithful_grpc.Transaction, block *old_faithful_grpc.BlockResponse) *old_faithful_grpc.TransactionResponse {
-	return &old_faithful_grpc.TransactionResponse{
-		Transaction: tx,
-		BlockTime:   block.GetBlockTime(),
-		Slot:        block.GetSlot(),
-		Index:       tx.Index,
-	}
-}
+func (multi *MultiEpoch) processSlotTransactions(
+	ctx context.Context,
+	ser old_faithful_grpc.OldFaithful_StreamTransactionsServer,
+	slot uint64, filter *old_faithful_grpc.StreamTransactionsFilter,
+	gsfaReader *gsfa.GsfaReaderMultiepoch,
+) error {
 
-func (multi *MultiEpoch) streamAllTxns(ctx context.Context, ser old_faithful_grpc.OldFaithful_StreamTransactionsServer, slot uint64) error {
-	block, err := multi.GetBlock(ctx, &old_faithful_grpc.BlockRequest{Slot: slot})
-	if err != nil && status.Code(err) != codes.NotFound {
-		return err
+	filterFunc := func(txn *ipldbindcode.Transaction) bool {
+		// fill this out
+
+		return true
 	}
 
-	for _, tx := range block.Transactions {
-		if err := ser.Send(constructTransactionResponse(tx, block)); err != nil {
-			return err
-		}
-	}
-	return nil
-}
+	if filter == nil || len(filter.AccountInclude) == 0 {
 
-func (multi *MultiEpoch) processSlotTransactions(ctx context.Context, ser old_faithful_grpc.OldFaithful_StreamTransactionsServer, slot uint64, filter *old_faithful_grpc.StreamTransactionsFilter, gsfaReader *gsfa.GsfaReaderMultiepoch) error {
-	if filter == nil {
-		return multi.streamAllTxns(ctx, ser, slot)
-	}
-
-	if len(filter.AccountInclude) == 0 {
-		// Get all transactions
+		// get block -> not sure which one to use
+		// block -> transactions
 		// Apply filters
 		// Send
 	} else {
-		for _, account := range params.Filter.AccountInclude {
+		for _, account := range filter.AccountInclude {
 			pKey := solana.MustPublicKeyFromBase58(account)
 			epochToTxns, err := gsfaReader.Get(
 				ctx,
@@ -811,7 +798,7 @@ func (multi *MultiEpoch) processSlotTransactions(ctx context.Context, ser old_fa
 						// What to do for blocktime?
 					}
 
-					// apply more filters
+					// not sure how to apply more filters
 
 					if err := ser.Send(txResp); err != nil {
 						return err
