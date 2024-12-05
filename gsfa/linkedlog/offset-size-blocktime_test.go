@@ -6,9 +6,9 @@ import (
 	"testing"
 )
 
-func TestOffsetAndSizeAndBlocktime(t *testing.T) {
+func TestOffsetAndSizeAndBlocktimeSlott *testing.T) {
 	{
-		ca := OffsetAndSizeAndBlocktime{
+		ca := OffsetAndSizeAndBlocktimeSlot
 			Offset:    1,
 			Size:      2,
 			Blocktime: 3,
@@ -16,7 +16,7 @@ func TestOffsetAndSizeAndBlocktime(t *testing.T) {
 		buf := ca.Bytes()
 
 		{
-			ca2 := OffsetAndSizeAndBlocktime{}
+			ca2 := OffsetAndSizeAndBlocktimeSlot}
 			err := ca2.FromBytes(buf)
 			if err != nil {
 				panic(err)
@@ -28,7 +28,7 @@ func TestOffsetAndSizeAndBlocktime(t *testing.T) {
 	}
 	{
 		// now with very high values
-		ca := OffsetAndSizeAndBlocktime{
+		ca := OffsetAndSizeAndBlocktimeSlot
 			Offset:    281474976710655,
 			Size:      16777215,
 			Blocktime: 1099511627775,
@@ -36,7 +36,7 @@ func TestOffsetAndSizeAndBlocktime(t *testing.T) {
 		buf := ca.Bytes()
 
 		{
-			ca2 := OffsetAndSizeAndBlocktime{}
+			ca2 := OffsetAndSizeAndBlocktimeSlot}
 			err := ca2.FromBytes(buf)
 			if err != nil {
 				panic(err)
@@ -47,7 +47,7 @@ func TestOffsetAndSizeAndBlocktime(t *testing.T) {
 		}
 	}
 	{
-		many := []OffsetAndSizeAndBlocktime{
+		many := []OffsetAndSizeAndBlocktimeSlot
 			{
 				Offset:    1,
 				Size:      2,
