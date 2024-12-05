@@ -298,3 +298,17 @@ func (n *DataFrame) UnmarshalJSON(data []byte) error {
 	}
 	return nil
 }
+
+// SlotMeta.HasBlockHeight returns whether the 'Block_height' field is present.
+func (n SlotMeta) HasBlockHeight() bool {
+	return n.Block_height != nil && *n.Block_height != nil
+}
+
+// GetBlockHeight returns the value of the 'Block_height' field and
+// a flag indicating whether the field has a value.
+func (n SlotMeta) GetBlockHeight() (uint64, bool) {
+	if n.Block_height == nil || *n.Block_height == nil {
+		return 0, false
+	}
+	return uint64(**n.Block_height), true
+}

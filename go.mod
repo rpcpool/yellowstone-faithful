@@ -67,6 +67,7 @@ require (
 	github.com/filecoin-project/go-fil-commp-hashhash v0.2.0
 	github.com/filecoin-project/go-leb128 v0.0.0-20190212224330-8d79a5489543
 	github.com/fsnotify/fsnotify v1.5.4
+	github.com/fxamacker/cbor/v2 v2.7.0
 	github.com/goware/urlx v0.3.2
 	github.com/ipld/go-car v0.5.0
 	github.com/ipld/go-trustless-utils v0.4.1
@@ -204,6 +205,7 @@ require (
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/whyrusleeping/cbor v0.0.0-20171005072247-63513f603b11 // indirect
 	github.com/whyrusleeping/cbor-gen v0.0.0-20230818171029-f91ae536ca25 // indirect
+	github.com/x448/float16 v0.8.4 // indirect
 	github.com/xrash/smetrics v0.0.0-20201216005158-039620a65673 // indirect
 	github.com/zeebo/xxh3 v1.0.2 // indirect
 	go.mongodb.org/mongo-driver v1.11.2 // indirect
