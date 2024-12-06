@@ -19,12 +19,13 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	OldFaithful_GetVersion_FullMethodName     = "/OldFaithful.OldFaithful/GetVersion"
-	OldFaithful_GetBlock_FullMethodName       = "/OldFaithful.OldFaithful/GetBlock"
-	OldFaithful_GetBlockTime_FullMethodName   = "/OldFaithful.OldFaithful/GetBlockTime"
-	OldFaithful_GetTransaction_FullMethodName = "/OldFaithful.OldFaithful/GetTransaction"
-	OldFaithful_Get_FullMethodName            = "/OldFaithful.OldFaithful/Get"
-	OldFaithful_StreamBlocks_FullMethodName   = "/OldFaithful.OldFaithful/StreamBlocks"
+	OldFaithful_GetVersion_FullMethodName         = "/OldFaithful.OldFaithful/GetVersion"
+	OldFaithful_GetBlock_FullMethodName           = "/OldFaithful.OldFaithful/GetBlock"
+	OldFaithful_GetBlockTime_FullMethodName       = "/OldFaithful.OldFaithful/GetBlockTime"
+	OldFaithful_GetTransaction_FullMethodName     = "/OldFaithful.OldFaithful/GetTransaction"
+	OldFaithful_Get_FullMethodName                = "/OldFaithful.OldFaithful/Get"
+	OldFaithful_StreamBlocks_FullMethodName       = "/OldFaithful.OldFaithful/StreamBlocks"
+	OldFaithful_StreamTransactions_FullMethodName = "/OldFaithful.OldFaithful/StreamTransactions"
 )
 
 // OldFaithfulClient is the client API for OldFaithful service.
@@ -37,6 +38,7 @@ type OldFaithfulClient interface {
 	GetTransaction(ctx context.Context, in *TransactionRequest, opts ...grpc.CallOption) (*TransactionResponse, error)
 	Get(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[GetRequest, GetResponse], error)
 	StreamBlocks(ctx context.Context, in *StreamBlocksRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[BlockResponse], error)
+	StreamTransactions(ctx context.Context, in *StreamTransactionsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[TransactionResponse], error)
 }
 
 type oldFaithfulClient struct {
@@ -119,6 +121,25 @@ func (c *oldFaithfulClient) StreamBlocks(ctx context.Context, in *StreamBlocksRe
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type OldFaithful_StreamBlocksClient = grpc.ServerStreamingClient[BlockResponse]
 
+func (c *oldFaithfulClient) StreamTransactions(ctx context.Context, in *StreamTransactionsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[TransactionResponse], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &OldFaithful_ServiceDesc.Streams[2], OldFaithful_StreamTransactions_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[StreamTransactionsRequest, TransactionResponse]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type OldFaithful_StreamTransactionsClient = grpc.ServerStreamingClient[TransactionResponse]
+
 // OldFaithfulServer is the server API for OldFaithful service.
 // All implementations must embed UnimplementedOldFaithfulServer
 // for forward compatibility.
@@ -129,6 +150,7 @@ type OldFaithfulServer interface {
 	GetTransaction(context.Context, *TransactionRequest) (*TransactionResponse, error)
 	Get(grpc.BidiStreamingServer[GetRequest, GetResponse]) error
 	StreamBlocks(*StreamBlocksRequest, grpc.ServerStreamingServer[BlockResponse]) error
+	StreamTransactions(*StreamTransactionsRequest, grpc.ServerStreamingServer[TransactionResponse]) error
 	mustEmbedUnimplementedOldFaithfulServer()
 }
 
@@ -156,6 +178,9 @@ func (UnimplementedOldFaithfulServer) Get(grpc.BidiStreamingServer[GetRequest, G
 }
 func (UnimplementedOldFaithfulServer) StreamBlocks(*StreamBlocksRequest, grpc.ServerStreamingServer[BlockResponse]) error {
 	return status.Errorf(codes.Unimplemented, "method StreamBlocks not implemented")
+}
+func (UnimplementedOldFaithfulServer) StreamTransactions(*StreamTransactionsRequest, grpc.ServerStreamingServer[TransactionResponse]) error {
+	return status.Errorf(codes.Unimplemented, "method StreamTransactions not implemented")
 }
 func (UnimplementedOldFaithfulServer) mustEmbedUnimplementedOldFaithfulServer() {}
 func (UnimplementedOldFaithfulServer) testEmbeddedByValue()                     {}
@@ -268,6 +293,17 @@ func _OldFaithful_StreamBlocks_Handler(srv interface{}, stream grpc.ServerStream
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type OldFaithful_StreamBlocksServer = grpc.ServerStreamingServer[BlockResponse]
 
+func _OldFaithful_StreamTransactions_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(StreamTransactionsRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(OldFaithfulServer).StreamTransactions(m, &grpc.GenericServerStream[StreamTransactionsRequest, TransactionResponse]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type OldFaithful_StreamTransactionsServer = grpc.ServerStreamingServer[TransactionResponse]
+
 // OldFaithful_ServiceDesc is the grpc.ServiceDesc for OldFaithful service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -302,6 +338,11 @@ var OldFaithful_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "StreamBlocks",
 			Handler:       _OldFaithful_StreamBlocks_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "StreamTransactions",
+			Handler:       _OldFaithful_StreamTransactions_Handler,
 			ServerStreams: true,
 		},
 	},
