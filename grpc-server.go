@@ -733,8 +733,45 @@ func (multi *MultiEpoch) processSlotTransactions(
 	gsfaReader *gsfa.GsfaReaderMultiepoch,
 ) error {
 
-	filterFunc := func(txn *ipldbindcode.Transaction) bool {
-		// fill this out
+	filterOutTxn := func(tx solana.Transaction, meta any) bool {
+		if filter == nil {
+			return true
+		}
+
+		// add Vote
+
+		if !(*filter.Failed) { // If failed is false, we should filter out failed transactions
+			err := getErr(meta)
+			if err != nil {
+				return false
+			}
+		}
+
+		// AccountInclude is handled in the main function
+
+		for _, acc := range filter.AccountExclude {
+			pkey := solana.MustPublicKeyFromBase58(acc)
+			ok, err := tx.HasAccount(pkey)
+			if err != nil {
+				klog.Errorf("Failed to check if transaction %v has account %s", tx, acc)
+				return false
+			}
+			if ok { // If any excluded account is present, filter out the transaction
+				return false
+			}
+		}
+
+		for _, acc := range filter.AccountRequired {
+			pkey := solana.MustPublicKeyFromBase58(acc)
+			ok, err := tx.HasAccount(pkey)
+			if err != nil {
+				klog.Errorf("Failed to check if transaction %v has account %s", tx, acc)
+				return false
+			}
+			if !ok { // If any required account is missing, filter out the transaction
+				return false
+			}
+		}
 
 		return true
 	}
@@ -771,7 +808,6 @@ func (multi *MultiEpoch) processSlotTransactions(
 					return decoded, nil
 				},
 			)
-
 			if err != nil {
 				return err
 			}
@@ -782,26 +818,32 @@ func (multi *MultiEpoch) processSlotTransactions(
 					return status.Errorf(codes.NotFound, "Epoch %d is not available", epochNumber)
 				}
 				for _, txn := range txns {
-					txResp := new(old_faithful_grpc.TransactionResponse)
-					txResp.Transaction = new(old_faithful_grpc.Transaction)
-					{
-						pos, ok := txn.GetPositionIndex()
-						if ok {
-							txResp.Index = ptrToUint64(uint64(pos))
-							txResp.Transaction.Index = ptrToUint64(uint64(pos))
-						}
-						txResp.Transaction.Transaction, txResp.Transaction.Meta, err = getTransactionAndMetaFromNode(txn, epochHandler.GetDataFrameByCid)
-						if err != nil {
-							return status.Errorf(codes.Internal, "Failed to get transaction: %v", err)
-						}
-						txResp.Slot = uint64(txn.Slot)
-						// What to do for blocktime?
+					tx, meta, err := parseTransactionAndMetaFromNode(txn, epochHandler.GetDataFrameByCid)
+					if err != nil {
+						return status.Errorf(codes.Internal, "Failed to parse transaction from node: %v", err)
 					}
 
-					// not sure how to apply more filters
+					if !filterOutTxn(tx, meta) {
 
-					if err := ser.Send(txResp); err != nil {
-						return err
+						txResp := new(old_faithful_grpc.TransactionResponse)
+						txResp.Transaction = new(old_faithful_grpc.Transaction)
+						{
+							pos, ok := txn.GetPositionIndex()
+							if ok {
+								txResp.Index = ptrToUint64(uint64(pos))
+								txResp.Transaction.Index = ptrToUint64(uint64(pos))
+							}
+							txResp.Transaction.Transaction, txResp.Transaction.Meta, err = getTransactionAndMetaFromNode(txn, epochHandler.GetDataFrameByCid)
+							if err != nil {
+								return status.Errorf(codes.Internal, "Failed to get transaction: %v", err)
+							}
+							txResp.Slot = uint64(txn.Slot)
+							// What to do for blocktime?
+						}
+
+						if err := ser.Send(txResp); err != nil {
+							return err
+						}
 					}
 				}
 			}
