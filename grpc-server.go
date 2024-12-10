@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	bin "github.com/gagliardetto/binary"
 	"github.com/gagliardetto/solana-go"
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-car/util"
@@ -24,6 +25,7 @@ import (
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
 	old_faithful_grpc "github.com/rpcpool/yellowstone-faithful/old-faithful-proto/old-faithful-grpc"
+	solanatxmetaparsers "github.com/rpcpool/yellowstone-faithful/solana-tx-meta-parsers"
 	"github.com/rpcpool/yellowstone-faithful/tooling"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
@@ -778,10 +780,44 @@ func (multi *MultiEpoch) processSlotTransactions(
 
 	if filter == nil || len(filter.AccountInclude) == 0 {
 
-		// get block -> not sure which one to use
-		// block -> transactions
-		// Apply filters
-		// Send
+		block, err := multi.GetBlock(ctx, &old_faithful_grpc.BlockRequest{Slot: slot})
+		if err != nil {
+			if status.Code(err) == codes.NotFound {
+				return nil
+			}
+			return err
+		}
+
+		for _, tx := range block.Transactions {
+			decoder := bin.NewBinDecoder(tx.Transaction)
+			txn, err := solana.TransactionFromDecoder(decoder)
+			if err != nil {
+				return status.Errorf(codes.Internal, "Failed to decode transaction: %v", err)
+			}
+
+			meta, err := solanatxmetaparsers.ParseAnyTransactionStatusMeta(tx.Meta)
+			if err != nil {
+				return status.Errorf(codes.Internal, "Failed to parse transaction meta: %v", err)
+			}
+
+			if !filterOutTxn(*txn, meta) {
+
+				txResp := new(old_faithful_grpc.TransactionResponse)
+				txResp.Transaction = new(old_faithful_grpc.Transaction)
+
+				{
+					txResp.Transaction.Transaction = tx.Transaction
+					txResp.Transaction.Meta = tx.Meta
+
+					// how to get index
+					// how to get blocktime
+				}
+
+				if err := ser.Send(txResp); err != nil {
+					return err
+				}
+			}
+		}
 	} else {
 		for _, account := range filter.AccountInclude {
 			pKey := solana.MustPublicKeyFromBase58(account)
