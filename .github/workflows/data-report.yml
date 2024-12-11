@@ -24,10 +24,10 @@ jobs:
       - name: Generate Report
         run: |
           mkdir -p docs
-          bash .github/faithful-data-report.sh > docs/CAR-REPORT.md
+          python3 -m pip install aiohttp
+          python3 .github/faithful-data-report.sh > docs/CAR-REPORT.md
           
-
-      # Commit all changed files back to the repository
+      # Commit changed files back to the repository
       - uses: EndBug/add-and-commit@v9
         with:
           message: Old Faithful CAR data report update
