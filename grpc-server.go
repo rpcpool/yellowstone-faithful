@@ -811,7 +811,8 @@ func (multi *MultiEpoch) processSlotTransactions(
 					txResp.Transaction.Transaction = tx.Transaction
 					txResp.Transaction.Meta = tx.Meta
 					txResp.Transaction.Index = tx.Index
-					// how to get blocktime
+
+					// To do: add blocketime after index work is done
 				}
 
 				if err := ser.Send(txResp); err != nil {
@@ -855,6 +856,9 @@ func (multi *MultiEpoch) processSlotTransactions(
 					return status.Errorf(codes.NotFound, "Epoch %d is not available", epochNumber)
 				}
 				for _, txn := range txns {
+					if slot != uint64(txn.Slot) { // If the transaction is not in the requested slot, skip
+						continue
+					}
 					tx, meta, err := parseTransactionAndMetaFromNode(txn, epochHandler.GetDataFrameByCid)
 					if err != nil {
 						return status.Errorf(codes.Internal, "Failed to parse transaction from node: %v", err)
@@ -875,7 +879,8 @@ func (multi *MultiEpoch) processSlotTransactions(
 								return status.Errorf(codes.Internal, "Failed to get transaction: %v", err)
 							}
 							txResp.Slot = uint64(txn.Slot)
-							// What to do for blocktime?
+
+							// To do: add blocketime after index work is done
 						}
 
 						if err := ser.Send(txResp); err != nil {
