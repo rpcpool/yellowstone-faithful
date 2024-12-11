@@ -66,6 +66,7 @@ func (i *Index) Get(slot uint64) (int64, error) {
 
 func (i *Index) marshalBinary() ([]byte, error) {
 	writer := bytes.NewBuffer(nil)
+	writer.Grow(DefaultIndexByteSize)
 	_, err := writer.Write(magic)
 	if err != nil {
 		return nil, fmt.Errorf("failed to write magic: %w", err)
