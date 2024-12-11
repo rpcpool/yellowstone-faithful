@@ -50,7 +50,7 @@ func (gsfa *GsfaReaderMultiepoch) Get(
 	ctx context.Context,
 	pk solana.PublicKey,
 	limit int,
-	fetcher func(uint64, linkedlog.OffsetAndSizeAndBlocktime) (*ipldbindcode.Transaction, error),
+	fetcher func(uint64, linkedlog.OffsetAndSizeAndSlot) (*ipldbindcode.Transaction, error),
 ) (EpochToTransactionObjects, error) {
 	if limit <= 0 {
 		return nil, nil
@@ -102,7 +102,7 @@ func (multi *GsfaReaderMultiepoch) GetBeforeUntil(
 	limit int,
 	before *solana.Signature, // Before this signature, exclusive (i.e. get signatures older than this signature, excluding it).
 	until *solana.Signature, // Until this signature, inclusive (i.e. stop at this signature, including it).
-	fetcher func(uint64, linkedlog.OffsetAndSizeAndBlocktime) (*ipldbindcode.Transaction, error),
+	fetcher func(uint64, linkedlog.OffsetAndSizeAndSlot) (*ipldbindcode.Transaction, error),
 ) (EpochToTransactionObjects, error) {
 	if limit <= 0 {
 		return make(EpochToTransactionObjects), nil
@@ -118,7 +118,7 @@ func (multi *GsfaReaderMultiepoch) iterBeforeUntil(
 	limit int,
 	before *solana.Signature, // Before this signature, exclusive (i.e. get signatures older than this signature, excluding it).
 	until *solana.Signature, // Until this signature, inclusive (i.e. stop at this signature, including it).
-	fetcher func(uint64, linkedlog.OffsetAndSizeAndBlocktime) (*ipldbindcode.Transaction, error),
+	fetcher func(uint64, linkedlog.OffsetAndSizeAndSlot) (*ipldbindcode.Transaction, error),
 ) (EpochToTransactionObjects, error) {
 	if limit <= 0 {
 		return make(EpochToTransactionObjects), nil

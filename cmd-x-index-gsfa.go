@@ -234,7 +234,6 @@ func newCmd_Index_gsfa() *cli.Command {
 							txWithInfo.Offset,
 							txWithInfo.Length,
 							txWithInfo.Slot,
-							txWithInfo.Blocktime,
 							accountKeys,
 						)
 						if err != nil {

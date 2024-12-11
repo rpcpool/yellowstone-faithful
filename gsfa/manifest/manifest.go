@@ -19,8 +19,12 @@ type Manifest struct {
 }
 
 var (
-	_MAGIC   = [...]byte{'g', 's', 'f', 'a', 'm', 'n', 'f', 's'}
-	_Version = uint64(3)
+	_MAGIC = [...]byte{'g', 's', 'f', 'a', 'm', 'n', 'f', 's'}
+	// NOTES:
+	// - v3: stores offset, size, and blocktime
+	// - v4: stores offset, size, and slot
+	// Version is the version of the gsfa index.
+	_Version = uint64(4)
 )
 
 var headerLenWithoutMeta = len(_MAGIC) + 8 // 8 bytes for the version

@@ -93,9 +93,9 @@ func (index *GsfaReader) Get(
 	ctx context.Context,
 	pk solana.PublicKey,
 	limit int,
-) ([]linkedlog.OffsetAndSizeAndBlocktime, error) {
+) ([]linkedlog.OffsetAndSizeAndSlot, error) {
 	if limit <= 0 {
-		return []linkedlog.OffsetAndSizeAndBlocktime{}, nil
+		return []linkedlog.OffsetAndSizeAndSlot{}, nil
 	}
 	lastOffset, err := index.offsets.Get(pk)
 	if err != nil {
@@ -106,7 +106,7 @@ func (index *GsfaReader) Get(
 	}
 	debugln("locs.OffsetToFirst:", lastOffset)
 
-	var allTransactionLocations []linkedlog.OffsetAndSizeAndBlocktime
+	var allTransactionLocations []linkedlog.OffsetAndSizeAndSlot
 	next := lastOffset // Start from the latest, and go back in time.
 
 	for {
@@ -138,10 +138,10 @@ func (index *GsfaReader) GetBeforeUntil(
 	limit int,
 	before *solana.Signature, // Before this signature, exclusive (i.e. get signatures older than this signature, excluding it).
 	until *solana.Signature, // Until this signature, inclusive (i.e. stop at this signature, including it).
-	fetcher func(sigIndex linkedlog.OffsetAndSizeAndBlocktime) (solana.Signature, error),
-) ([]linkedlog.OffsetAndSizeAndBlocktime, error) {
+	fetcher func(sigIndex linkedlog.OffsetAndSizeAndSlot) (solana.Signature, error),
+) ([]linkedlog.OffsetAndSizeAndSlot, error) {
 	if limit <= 0 {
-		return []linkedlog.OffsetAndSizeAndBlocktime{}, nil
+		return []linkedlog.OffsetAndSizeAndSlot{}, nil
 	}
 	locs, err := index.offsets.Get(pk)
 	if err != nil {
@@ -152,7 +152,7 @@ func (index *GsfaReader) GetBeforeUntil(
 	}
 	debugln("locs.OffsetToFirst:", locs)
 
-	var allTransactionLocations []linkedlog.OffsetAndSizeAndBlocktime
+	var allTransactionLocations []linkedlog.OffsetAndSizeAndSlot
 	next := locs // Start from the latest, and go back in time.
 
 	reachedBefore := false

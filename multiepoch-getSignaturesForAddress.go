@@ -154,7 +154,7 @@ func (multi *MultiEpoch) handleGetSignaturesForAddress(ctx context.Context, conn
 		limit,
 		params.Before,
 		params.Until,
-		func(epochNum uint64, oas linkedlog.OffsetAndSizeAndBlocktime) (*ipldbindcode.Transaction, error) {
+		func(epochNum uint64, oas linkedlog.OffsetAndSizeAndSlot) (*ipldbindcode.Transaction, error) {
 			epoch, err := multi.GetEpoch(epochNum)
 			if err != nil {
 				return nil, fmt.Errorf("failed to get epoch %d: %w", epochNum, err)
@@ -170,7 +170,6 @@ func (multi *MultiEpoch) handleGetSignaturesForAddress(ctx context.Context, conn
 			if err != nil {
 				return nil, fmt.Errorf("error while decoding transaction from nodex at offset %d: %w", oas.Offset, err)
 			}
-			blockTimeCache.m[uint64(decoded.Slot)] = int64(oas.Blocktime)
 			return decoded, nil
 		},
 	)

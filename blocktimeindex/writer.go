@@ -13,6 +13,8 @@ import (
 	"github.com/rpcpool/yellowstone-faithful/slottools"
 )
 
+// Using an int32 for blocktime is enough seconds until the year 2106.
+
 var magic = []byte("blocktimeindex")
 
 type Index struct {
