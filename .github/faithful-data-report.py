@@ -17,6 +17,7 @@ class EpochData:
     txmeta_url: str = "n/a"
     deals: str = "n/a"
     indices: str = "n/a"
+    indices_size: str = "n/a"
 
 class FaithfulDataReport:
     def __init__(self):
@@ -74,6 +75,36 @@ class FaithfulDataReport:
 
         return f"{self.host}/{epoch}/epoch-{epoch}-indices" if all(checks) else "n/a"
 
+    async def get_indices_size(self, session: aiohttp.ClientSession, epoch: int) -> str:
+        cid_url = f"{self.host}/{epoch}/epoch-{epoch}.cid"
+        
+        # Get the CID first
+        bafy = await self.fetch_text(session, cid_url)
+        if not bafy:
+            return "n/a"
+
+        # Check all required index files
+        index_files = [
+            f"epoch-{epoch}-{bafy}-mainnet-cid-to-offset-and-size.index",
+            f"epoch-{epoch}-{bafy}-mainnet-sig-to-cid.index",
+            f"epoch-{epoch}-{bafy}-mainnet-sig-exists.index",
+            f"epoch-{epoch}-{bafy}-mainnet-slot-to-cid.index",
+            f"epoch-{epoch}-gsfa.index.tar.zstd"
+        ]
+
+        sizes = await asyncio.gather(*[
+            self.get_size(session, f"{self.host}/{epoch}/{file}")
+            for file in index_files
+        ])
+
+        # Convert sizes to integers, treating "n/a" as 0
+        size_ints = [int(size) if size != "n/a" else 0 for size in sizes]
+        
+        # Sum up all sizes
+        total_size = sum(size_ints)
+        
+        return str(total_size) if total_size > 0 else "n/a"
+
     async def get_deals(self, session: aiohttp.ClientSession, epoch: int) -> str:
         deals_url = f"{self.deals_host}/{epoch}/deals.csv"
         deals_content = await self.fetch_text(session, deals_url)
@@ -94,12 +125,13 @@ class FaithfulDataReport:
             return EpochData(epoch=epoch)
 
         # Gather all data concurrently
-        sha, size, poh, txmeta, indices, deals = await asyncio.gather(
+        sha, size, poh, txmeta, indices, indices_size, deals = await asyncio.gather(
             self.fetch_text(session, sha_url),
             self.get_size(session, car_url),
             self.fetch_text(session, poh_url),
             self.fetch_text(session, txmeta_url),
             self.get_indices(session, epoch),
+            self.get_indices_size(session, epoch),
             self.get_deals(session, epoch)
         )
 
@@ -114,7 +146,8 @@ class FaithfulDataReport:
             txmeta=txmeta if txmeta else "n/a",
             txmeta_url=txmeta_url,
             deals=deals,
-            indices=indices
+            indices=indices,
+            indices_size=indices_size
         )
 
     def format_row(self, data: EpochData) -> str:
@@ -124,9 +157,10 @@ class FaithfulDataReport:
         txmeta_cell = f"[✓]({data.txmeta_url})" if validate_txmeta_output(data.txmeta) else "✗"
         poh_cell = f"[✓]({data.poh_url})" if validate_poh_output(data.poh) else "✗"
         indices_cell = "✓" if data.indices != "n/a" else "✗"
+        indices_size_cell = f"{data.indices_size} GB" if data.indices_size != "n/a" else "✗"
         deals_cell = f"[✓]({data.deals})" if data.deals != "n/a" else "✗"
 
-        return f"| {data.epoch} | {car_cell} | {sha_cell} | {size_cell} | {txmeta_cell} | {poh_cell} | {indices_cell} | {deals_cell} |"
+        return f"| {data.epoch} | {car_cell} | {sha_cell} | {size_cell} | {txmeta_cell} | {poh_cell} | {indices_cell} | {indices_size_cell} | {deals_cell} |"
 
     async def get_current_epoch(self) -> int:
         async with aiohttp.ClientSession() as session:
@@ -141,8 +175,8 @@ class FaithfulDataReport:
         current_epoch = await self.get_current_epoch()
         epochs = range(current_epoch, -1, -1)  # descending order
         
-        print("| Epoch #  | CAR  | CAR SHA256  | CAR filesize | tx meta check | poh check | Indices | Filecoin Deals |")
-        print("|---|---|---|---|---|---|---|---|")
+        print("| Epoch #  | CAR  | CAR SHA256  | CAR filesize | tx meta check | poh check | Indices | Indices Size | Filecoin Deals |")
+        print("|---|---|---|---|---|---|---|---|---|")
 
         # concurrency levels
         chunk_size = 20  
