@@ -740,7 +740,9 @@ func (multi *MultiEpoch) processSlotTransactions(
 			return true
 		}
 
-		// add Vote
+		if !(*filter.Vote) && IsSimpleVoteTransaction(&tx) { // If vote is false, we should filter out vote transactions
+			return false
+		}
 
 		if !(*filter.Failed) { // If failed is false, we should filter out failed transactions
 			err := getErr(meta)
