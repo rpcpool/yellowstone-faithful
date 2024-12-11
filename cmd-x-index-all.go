@@ -13,6 +13,7 @@ import (
 
 	"github.com/dustin/go-humanize"
 	"github.com/ipfs/go-cid"
+	"github.com/rpcpool/yellowstone-faithful/blocktimeindex"
 	"github.com/rpcpool/yellowstone-faithful/bucketteer"
 	"github.com/rpcpool/yellowstone-faithful/carreader"
 	"github.com/rpcpool/yellowstone-faithful/indexes"
@@ -220,6 +221,8 @@ func createAllIndexes(
 	}
 	defer sig_exists.Close()
 
+	slot_to_blocktime := blocktimeindex.NewForEpoch(epoch)
+
 	totalOffset := uint64(0)
 	{
 		if size, err := rd.HeaderSize(); err != nil {
@@ -265,6 +268,11 @@ func createAllIndexes(
 				err = slot_to_cid.Put(uint64(block.Slot), _cid)
 				if err != nil {
 					return nil, 0, fmt.Errorf("failed to index slot to cid: %w", err)
+				}
+
+				err = slot_to_blocktime.Set(uint64(block.Slot), int64(block.Meta.Blocktime))
+				if err != nil {
+					return nil, 0, fmt.Errorf("failed to index slot to blocktime: %w", err)
 				}
 				numIndexedBlocks++
 			}
@@ -388,6 +396,22 @@ func createAllIndexes(
 				return fmt.Errorf("failed to seal sig_exists index: %w", err)
 			}
 			klog.Infof("Successfully sealed sig_exists index: %s", paths.SignatureExists)
+			return nil
+		})
+
+		wg.Go(func() error {
+			klog.Infof("Sealing slot_to_blocktime index...")
+
+			file, err := os.Create(filepath.Join(indexDir, blocktimeindex.FormatFilename(epoch, rootCID, network)))
+			if err != nil {
+				return fmt.Errorf("failed to create slot_to_blocktime index file: %w", err)
+			}
+			defer file.Close()
+
+			if _, err := slot_to_blocktime.WriteTo(file); err != nil {
+				return fmt.Errorf("failed to write slot_to_blocktime index: %w", err)
+			}
+			klog.Infof("Successfully sealed slot_to_blocktime index")
 			return nil
 		})
 

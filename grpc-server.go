@@ -21,6 +21,7 @@ import (
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
 	old_faithful_grpc "github.com/rpcpool/yellowstone-faithful/old-faithful-proto/old-faithful-grpc"
+	"github.com/rpcpool/yellowstone-faithful/slottools"
 	"github.com/rpcpool/yellowstone-faithful/tooling"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
@@ -66,7 +67,7 @@ func (me *MultiEpoch) GetVersion(context.Context, *old_faithful_grpc.VersionRequ
 func (multi *MultiEpoch) GetBlock(ctx context.Context, params *old_faithful_grpc.BlockRequest) (*old_faithful_grpc.BlockResponse, error) {
 	// find the epoch that contains the requested slot
 	slot := params.Slot
-	epochNumber := CalcEpochForSlot(slot)
+	epochNumber := slottools.CalcEpochForSlot(slot)
 	epochHandler, err := multi.GetEpoch(epochNumber)
 	if err != nil {
 		return nil, status.Errorf(codes.NotFound, "Epoch %d is not available", epochNumber)
@@ -85,7 +86,7 @@ func (multi *MultiEpoch) GetBlock(ctx context.Context, params *old_faithful_grpc
 	tim.time("GetBlock")
 	{
 		prefetcherFromCar := func() error {
-			parentIsInPreviousEpoch := CalcEpochForSlot(uint64(block.Meta.Parent_slot)) != CalcEpochForSlot(slot)
+			parentIsInPreviousEpoch := slottools.CalcEpochForSlot(uint64(block.Meta.Parent_slot)) != slottools.CalcEpochForSlot(slot)
 			if slot == 0 {
 				parentIsInPreviousEpoch = true
 			}
@@ -345,7 +346,7 @@ func (multi *MultiEpoch) GetBlock(ctx context.Context, params *old_faithful_grpc
 	{
 		// get parent slot
 		parentSlot := uint64(block.Meta.Parent_slot)
-		if (parentSlot != 0 || slot == 1) && CalcEpochForSlot(parentSlot) == epochNumber {
+		if (parentSlot != 0 || slot == 1) && slottools.CalcEpochForSlot(parentSlot) == epochNumber {
 			// NOTE: if the parent is in the same epoch, we can get it from the same epoch handler as the block;
 			// otherwise, we need to get it from the previous epoch (TODO: implement this)
 			parentBlock, _, err := epochHandler.GetBlock(WithSubrapghPrefetch(ctx, false), parentSlot)
@@ -410,13 +411,15 @@ func (multi *MultiEpoch) GetTransaction(ctx context.Context, params *old_faithfu
 	}
 	response.Slot = uint64(transactionNode.Slot)
 	{
-		block, _, err := epochHandler.GetBlock(ctx, uint64(transactionNode.Slot))
-		if err != nil {
-			return nil, status.Errorf(codes.Internal, "Failed to get block: %v", err)
-		}
-		blocktime := uint64(block.Meta.Blocktime)
-		if blocktime != 0 {
+		blocktimeIndex := epochHandler.GetBlocktimeIndex()
+		if blocktimeIndex != nil {
+			blocktime, err := blocktimeIndex.Get(uint64(transactionNode.Slot))
+			if err != nil {
+				return nil, status.Errorf(codes.Internal, "Failed to get blocktime: %v", err)
+			}
 			response.BlockTime = int64(blocktime)
+		} else {
+			return nil, status.Errorf(codes.Internal, "Failed to get blocktime: blocktime index is nil")
 		}
 	}
 
@@ -601,29 +604,24 @@ func (multi *MultiEpoch) Get(ser old_faithful_grpc.OldFaithful_GetServer) error 
 
 func (multi *MultiEpoch) GetBlockTime(ctx context.Context, params *old_faithful_grpc.BlockTimeRequest) (*old_faithful_grpc.BlockTimeResponse, error) {
 	slot := params.Slot
-	epochNumber := CalcEpochForSlot(slot)
+	epochNumber := slottools.CalcEpochForSlot(slot)
 	epochHandler, err := multi.GetEpoch(epochNumber)
 	if err != nil {
 		return nil, status.Errorf(codes.NotFound, "Epoch %d is not available", epochNumber)
 	}
 
-	block, _, err := epochHandler.GetBlock(WithSubrapghPrefetch(ctx, false), slot)
-	if err != nil {
-		if errors.Is(err, compactindexsized.ErrNotFound) {
-			return nil, status.Errorf(codes.NotFound, "Slot %d was skipped, or missing in long-term storage", slot)
-		} else {
+	blocktimeIndex := epochHandler.GetBlocktimeIndex()
+	if blocktimeIndex != nil {
+		blocktime, err := blocktimeIndex.Get(slot)
+		if err != nil {
 			return nil, status.Errorf(codes.Internal, "Failed to get block: %v", err)
 		}
+		return &old_faithful_grpc.BlockTimeResponse{
+			BlockTime: blocktime,
+		}, nil
+	} else {
+		return nil, status.Errorf(codes.Internal, "Failed to get block: blocktime index is not available")
 	}
-
-	blocktime := uint64(block.Meta.Blocktime)
-	if blocktime == 0 {
-		return nil, status.Errorf(codes.NotFound, "Blocktime for slot %d is not available", slot)
-	}
-
-	return &old_faithful_grpc.BlockTimeResponse{
-		BlockTime: int64(blocktime),
-	}, nil
 }
 
 func (multi *MultiEpoch) StreamBlocks(params *old_faithful_grpc.StreamBlocksRequest, ser old_faithful_grpc.OldFaithful_StreamBlocksServer) error {
@@ -696,5 +694,4 @@ func blockContainsAccounts(block *old_faithful_grpc.BlockResponse, accounts []st
 	}
 
 	return false
-
 }

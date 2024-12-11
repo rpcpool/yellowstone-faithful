@@ -20,6 +20,7 @@ import (
 	"github.com/rpcpool/yellowstone-faithful/indexmeta"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
+	"github.com/rpcpool/yellowstone-faithful/slottools"
 	"github.com/urfave/cli/v2"
 	"k8s.io/klog/v2"
 )
@@ -167,7 +168,7 @@ func newCmd_Index_gsfa() *cli.Command {
 			verifyHash := c.Bool("verify-hash")
 			ipldbindcode.DisableHashVerification = !verifyHash
 
-			epochStart, epochEnd := CalcEpochLimits(epoch)
+			epochStart, epochEnd := slottools.CalcEpochLimits(epoch)
 
 			numSlots := uint64(0)
 			numMaxObjects := uint64(0)

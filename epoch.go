@@ -22,6 +22,7 @@ import (
 	carv2 "github.com/ipld/go-car/v2"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/rpcpool/yellowstone-faithful/blocktimeindex"
 	"github.com/rpcpool/yellowstone-faithful/bucketteer"
 	"github.com/rpcpool/yellowstone-faithful/carreader"
 	deprecatedbucketter "github.com/rpcpool/yellowstone-faithful/deprecated/bucketteer"
@@ -55,12 +56,25 @@ type Epoch struct {
 	sigToCidIndex               *indexes.SigToCid_Reader
 	sigExists                   SigExistsIndex
 	gsfaReader                  *gsfa.GsfaReader
+	blocktimeindex              *blocktimeindex.Index
 	onClose                     []func() error
 	allCache                    *hugecache.Cache
 }
 
 func (r *Epoch) GetCache() *hugecache.Cache {
 	return r.allCache
+}
+
+func (r *Epoch) GetBlocktime(slot uint64) (int64, error) {
+	if r.blocktimeindex == nil {
+		return 0, fmt.Errorf("blocktime index is not available")
+	}
+	return r.blocktimeindex.Get(slot)
+}
+
+// GetBlocktimeIndex returns the blocktime index for the epoch.
+func (r *Epoch) GetBlocktimeIndex() *blocktimeindex.Index {
+	return r.blocktimeindex
 }
 
 func (e *Epoch) Epoch() uint64 {
@@ -479,10 +493,48 @@ func NewEpochFromConfig(
 			}
 		}
 	}
+	{
+		slotToBlocktimeFile, err := openIndexStorage(
+			c.Context,
+			string(config.Indexes.SlotToBlocktime.URI),
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to open slot-to-blocktime index file: %w", err)
+		}
+		buf, err := ReadAllFromReaderAt(slotToBlocktimeFile, uint64(blocktimeindex.DefaultIndexByteSize))
+		if err != nil {
+			return nil, fmt.Errorf("failed to read slot-to-blocktime index: %w", err)
+		}
+		blocktimeIndex, err := blocktimeindex.FromBytes(buf)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decode slot-to-blocktime index: %w", err)
+		}
+		// can close the file now:
+		err = slotToBlocktimeFile.Close()
+		if err != nil {
+			return nil, fmt.Errorf("failed to close slot-to-blocktime index file: %w", err)
+		}
+		if blocktimeIndex.Epoch() != ep.Epoch() {
+			return nil, fmt.Errorf("epoch mismatch in slot-to-blocktime index: expected %d, got %d", ep.Epoch(), blocktimeIndex.Epoch())
+		}
+		ep.blocktimeindex = blocktimeIndex
+	}
 
 	ep.rootCid = lastRootCid
 
 	return ep, nil
+}
+
+func ReadAllFromReaderAt(reader io.ReaderAt, size uint64) ([]byte, error) {
+	buf := make([]byte, size)
+	n, err := reader.ReadAt(buf, 0)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read: %w", err)
+	}
+	if uint64(n) != size {
+		return nil, fmt.Errorf("failed to read all bytes: expected %d, got %d", size, n)
+	}
+	return buf, nil
 }
 
 func ParseFilecoinProviders(vs ...string) ([]peer.AddrInfo, error) {

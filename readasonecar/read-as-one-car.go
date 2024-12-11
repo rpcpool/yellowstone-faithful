@@ -1,6 +1,7 @@
 package readasonecar
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -31,24 +32,24 @@ func NewMultiReader(files ...string) (*MultiReader, error) {
 		return nil, fmt.Errorf("no files provided")
 	}
 	// check that each file exists
-	for _, file := range files {
-		if _, err := os.Stat(file); err != nil {
-			return nil, err
+	for _, fn := range files {
+		if _, err := os.Stat(fn); err != nil {
+			return nil, fmt.Errorf("file %q does not exist: %w", fn, err)
 		}
 	}
 	readers := make([]*carreader.CarReader, len(files))
 	onClose := make([]func() error, len(files))
-	for i, file := range files {
-		f, err := os.Open(file)
+	for i, fn := range files {
+		file, err := os.Open(fn)
 		if err != nil {
-			return nil, fmt.Errorf("failed to open car file %s: %w", file, err)
+			return nil, fmt.Errorf("failed to open car file %q: %w", fn, err)
 		}
-		onClose[i] = f.Close
-		r, err := carreader.New(f)
+		onClose[i] = file.Close
+		reader, err := carreader.New(file)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create car reader for file %s: %w", file, err)
+			return nil, fmt.Errorf("failed to create car reader for file %q: %w", fn, err)
 		}
-		readers[i] = r
+		readers[i] = reader
 	}
 	return &MultiReader{files: files}, nil
 }
@@ -93,13 +94,16 @@ func (mr *MultiReader) NextNodeBytes() (cid.Cid, uint64, []byte, error) {
 }
 
 func (mr *MultiReader) Close() error {
-	var err error
+	var errs []error
 	for _, f := range mr.onClose {
 		if e := f(); e != nil {
-			err = e
+			errs = append(errs, e)
 		}
 	}
-	return err
+	if len(errs) == 0 {
+		return nil
+	}
+	return errors.Join(errs...)
 }
 
 func (mr *MultiReader) Files() []string {
