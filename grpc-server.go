@@ -810,8 +810,7 @@ func (multi *MultiEpoch) processSlotTransactions(
 				{
 					txResp.Transaction.Transaction = tx.Transaction
 					txResp.Transaction.Meta = tx.Meta
-
-					// how to get index
+					txResp.Transaction.Index = tx.Index
 					// how to get blocktime
 				}
 
