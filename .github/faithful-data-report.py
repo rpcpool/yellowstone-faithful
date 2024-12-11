@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 import asyncio
 import aiohttp
-import json
 from typing import Dict, Optional
 from dataclasses import dataclass
 
@@ -168,7 +167,6 @@ def validate_txmeta_output(txmeta_text: str) -> bool:
         return False
         
     try:
-        print(txmeta_text)
         return 'Transactions with missing metadata: 0' in txmeta_text and \
             'Transactions with metadata parsing error: 0' in txmeta_text
         
