@@ -407,7 +407,8 @@ func createAllIndexes(
 		wg.Go(func() error {
 			klog.Infof("Sealing slot_to_blocktime index...")
 
-			file, err := os.Create(filepath.Join(indexDir, blocktimeindex.FormatFilename(epoch, rootCID, network)))
+			path := filepath.Join(indexDir, blocktimeindex.FormatFilename(epoch, rootCID, network))
+			file, err := os.Create(path)
 			if err != nil {
 				return fmt.Errorf("failed to create slot_to_blocktime index file: %w", err)
 			}
@@ -416,7 +417,8 @@ func createAllIndexes(
 			if _, err := slot_to_blocktime.WriteTo(file); err != nil {
 				return fmt.Errorf("failed to write slot_to_blocktime index: %w", err)
 			}
-			klog.Infof("Successfully sealed slot_to_blocktime index")
+			paths.SlotToBlocktime = path
+			klog.Infof("Successfully sealed slot_to_blocktime index: %s", paths.SlotToBlocktime)
 			return nil
 		})
 
@@ -441,6 +443,7 @@ type IndexPaths struct {
 	SlotToCid          string
 	SignatureToCid     string
 	SignatureExists    string
+	SlotToBlocktime    string
 }
 
 // IndexPaths.String
@@ -457,6 +460,9 @@ func (p *IndexPaths) String() string {
 	builder.WriteString("\n")
 	builder.WriteString("  sig_exists:\n    uri: ")
 	builder.WriteString(quoteSingle(p.SignatureExists))
+	builder.WriteString("\n")
+	builder.WriteString("  slot_to_blocktime:\n    uri: ")
+	builder.WriteString(quoteSingle(p.SlotToBlocktime))
 	builder.WriteString("\n")
 	return builder.String()
 }
