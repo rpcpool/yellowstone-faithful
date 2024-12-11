@@ -129,7 +129,7 @@ func NewManifest(filename string, meta indexmeta.Meta) (*Manifest, error) {
 			return nil, err
 		}
 		if header.Version() != _Version {
-			return nil, fmt.Errorf("unsupported manifest version: %d", header.Version())
+			return nil, fmt.Errorf("unsupported manifest version: %d; expected %d", header.Version(), _Version)
 		}
 		man.header = header
 	}
