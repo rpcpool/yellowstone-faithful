@@ -9,6 +9,7 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
+	"sort"
 	"time"
 
 	"github.com/dustin/go-humanize"
@@ -167,6 +168,10 @@ func createAllIndexes(
 	for kind := range numItems {
 		kinds = append(kinds, kind)
 	}
+	// sort from byte value:
+	sort.Slice(kinds, func(i, j int) bool {
+		return kinds[i] < kinds[j]
+	})
 	for _, kind := range kinds {
 		klog.Infof("  %s: %s items", iplddecoders.Kind(kind), humanize.Comma(int64(numItems[kind])))
 		numTotalItems += numItems[kind]
