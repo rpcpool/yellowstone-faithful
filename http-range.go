@@ -63,6 +63,7 @@ func (r *readCloserWrapper) ReadAt(p []byte, off int64) (n int, err error) {
 			metrics.IndexLookupHistogram.WithLabelValues(
 				indexName,
 				boolToString(r.isRemote),
+				boolToString(r.isSplitCar),
 			).Observe(float64(took.Seconds()))
 		}
 
