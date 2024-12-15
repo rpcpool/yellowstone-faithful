@@ -1,194 +1,340 @@
 #!/usr/bin/env python3
 
-import math
-import sys
-import logging
-import os
-import json
-import datetime
-import socket
-import requests
-from os import environ
-
-from random import shuffle
-
-from io import StringIO
-from subprocess import check_output, CalledProcessError
-
 import csv
+import datetime
+import json
+import logging
+import math
+import os
+import socket
+import sys
+from dataclasses import dataclass
+from io import StringIO
+from subprocess import CalledProcessError, check_output
+from typing import Any, Dict, List, Optional
 
-"""
-import triton upload clients. see rpcpool/rpcpool for detail about this script.
-"""
+import requests
+
+# add triton upload clients
 sys.path.append(os.path.abspath("/usr/local/lib/triton-py"))
 from triton_upload_clients import BunnyCDNClient, S3Client
 
-VERSION = "0.0.1"
+VERSION = "0.0.2"
+DEFAULT_REPLICATION_FACTOR = 3
+START_EPOCH_HEAD_OFFSET = int(604800 / 30)
+DEAL_DURATION = 1468800  # 6 months
 
-start_epoch_head_offset = int(604800 / 30)
-default_replication_factor = 3
+# Setup logging
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
-# This script creates deals for an epoch stored in s3.
-#
-# It expects the following environment variables to be set:
-#   STORAGE_ENDPOINT: the endpoint of Bunny storage
-#   STORAGE_KEY: the application key for storage
-#   STORAGE_KEY_ID : application key id for storage provider
-#   STORAGE_NAME: the bucket name to use for the deals
-#   PROVIDERS: a comma separated list of providers to use for the deals
-#   REPLICATION_FACTOR: the number of times to replicate each piece
-#   WALLET: the wallet to use for the deals
-#   DRY_RUN: if set to true, the script will not actually create deals
-#   DEALTYPE: if set to online, the script will create online deals, otherwise offline deals
-#   DEALS_FOLDER: the folder to store the deals csv output file in
-#   FILECOIN_RPC_ENDPOINT: the filecoin rpc endpoint
-#   CID_GRAVITY_KEY: api key for cid gravity
-#   USE_CID_GRAVITY: if set to true, the script will use cid gravity to find providers
-#
-# It expects the following arguments:
-#   epoch: the epoch to create deals for
-#   deal_type: optional, it will make a deal for car + index if not defined, otherwise you can specify "index"
-#
-# It expects the following files to be present in the bucket:
-#   epoch/payload.cid: the cid of the payload
-#   epoch/metadata.csv: the metadata csv produced by split-and-commp
-#
-# It will create or update the following csv files in the bucket:
-#   epoch/deals.csv: the deals csv file
-#
-# To run this manually
-# (set -a  && source '/etc/default/boost_create_deals' && python3 /usr/local/bin/boost_create_deals.py 27 index)
+@dataclass
+class StorageConfig:
+    """Configuration for storage client"""
+    endpoint: str
+    key_id: str
+    application_key: str
+    storage_name: str
+    url_format: str
+    upload_client: str
 
-dry_run = environ.get("DRY_RUN") == "true"
 
-if dry_run:
-    BOOST_VERSION = 1
-else:
+@dataclass
+class DealConfig:
+    """Configuration for deal creation"""
+    replication_factor: int
+    wallet: str
+    dry_run: bool
+    deal_type: str
+    deals_folder: str
+    filecoin_rpc_endpoint: str
+    cid_gravity_key: Optional[str]
+    use_cid_gravity: bool
+    boost_version: str
+    online: bool
+
+class DealCreationError(Exception):
+    """Custom exception for deal creation errors."""
+    pass
+
+def load_storage_config() -> StorageConfig:
+    """Load and validate storage configuration from environment variables."""
     try:
-        BOOST_VERSION = check_output(["boost", "--version"], text=True).strip()
-    except CalledProcessError as e:
-        print("FATAL: could not get binary version(s)", e, file=sys.stderr)
-        sys.exit(1)
+        endpoint = os.environ["STORAGE_ENDPOINT"]
+        key_id = os.environ["STORAGE_KEY_ID"]
+        application_key = os.environ["STORAGE_KEY"]
+        storage_name = os.environ["STORAGE_NAME"]
+        url_format = os.environ["PUBLIC_URL_FORMAT"]
+        upload_client = os.environ["UPLOAD_CLIENT"]
 
-logging.basicConfig(level=logging.INFO)
+        if not all([endpoint, key_id, application_key, storage_name, url_format, upload_client]):
+            raise DealCreationError("Missing required storage environment variables")
 
-endpoint = environ.get("STORAGE_ENDPOINT")
-key_id = environ.get("STORAGE_KEY_ID")
-application_key = environ.get("STORAGE_KEY")
-storage_name = environ.get("STORAGE_NAME")
-url_format = environ.get("PUBLIC_URL_FORMAT")
-upload_client = environ.get("UPLOAD_CLIENT")
-rpc_endpoint = environ.get("FILECOIN_RPC_ENDPOINT", "https://api.node.glif.io")
-
-if upload_client == "S3":
-    client = S3Client(endpoint, storage_name, url_format, key_id, application_key)
-else:
-    client = BunnyCDNClient(endpoint, storage_name, url_format, "", application_key)
-
-online = environ.get("DEALTYPE") == "online"
+        return StorageConfig(endpoint, key_id, application_key, storage_name, url_format, upload_client)
+    except KeyError as e:
+        raise DealCreationError(f"Missing required environment variable: {e}") from e
 
 
-def get_chain_head():
-    response = requests.post(
-        url=rpc_endpoint,
-        json={"jsonrpc": "2.0", "id": 1, "method": "Filecoin.ChainHead", "params": []},
-    )
-    assert response.status_code == 200, f"failed to get chain head: {response.text}"
+def load_deal_config() -> DealConfig:
+    """Load and validate deal creation configuration from environment variables."""
+    try:
+        replication_factor = int(os.environ.get("REPLICATION_FACTOR", DEFAULT_REPLICATION_FACTOR))
+        wallet = os.environ["WALLET"]
+        dry_run = os.environ.get("DRY_RUN", "false").lower() == "true"
+        deal_type = os.environ.get("DEALTYPE", "offline")
+        deals_folder = os.environ["DEALS_FOLDER"]
+        filecoin_rpc_endpoint = os.environ.get("FILECOIN_RPC_ENDPOINT", "https://api.node.glif.io")
+        cid_gravity_key = os.environ.get("CID_GRAVITY_KEY")
+        use_cid_gravity = os.environ.get("USE_CID_GRAVITY", "false").lower() == "true"
+        online = os.environ.get("DEALTYPE") == "online"
 
-    resp = response.json()
-    assert "result" in resp, f"result key not found in ChainHead response: {resp}"
-    assert (
-        "Height" in resp["result"]
-    ), f"Height key not found in ChainHead response: {resp}"
+        if not all([wallet, deals_folder]):
+            raise DealCreationError("Missing required deal environment variables")
 
-    return resp["result"]["Height"]
+        if dry_run:
+          boost_version = "dry-run-mode"
+        else:
+          try:
+              boost_version = check_output(["boost", "--version"], text=True).strip()
+          except CalledProcessError as e:
+              raise DealCreationError(f"Could not get boost version: {e}") from e
+
+        return DealConfig(
+            replication_factor=replication_factor,
+            wallet=wallet,
+            dry_run=dry_run,
+            deal_type=deal_type,
+            deals_folder=deals_folder,
+            filecoin_rpc_endpoint=filecoin_rpc_endpoint,
+            cid_gravity_key=cid_gravity_key,
+            use_cid_gravity=use_cid_gravity,
+            boost_version=boost_version,
+            online=online
+          )
+    except (KeyError, ValueError) as e:
+        raise DealCreationError(f"Invalid deal config: {e}") from e
+
+def get_storage_client(storage_config: StorageConfig) -> Any:
+    """Initialize the storage client based on configuration."""
+    if storage_config.upload_client == "S3":
+        return S3Client(
+            storage_config.endpoint,
+            storage_config.storage_name,
+            storage_config.url_format,
+            storage_config.key_id,
+            storage_config.application_key,
+        )
+    else:
+        return BunnyCDNClient(
+            storage_config.endpoint,
+            storage_config.storage_name,
+            storage_config.url_format,
+            "",
+            storage_config.application_key,
+        )
 
 
-def get_collateral(padded_size, verified=True):
-    response = requests.post(
-        url=rpc_endpoint,
-        json={
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "Filecoin.StateDealProviderCollateralBounds",
-            "params": [int(padded_size), verified, []],
-        },
-    )
-    assert response.status_code == 200, f"failed to get chain head: {response.text}"
-
-    resp = response.json()
-    assert (
-        "result" in resp
-    ), f"result key not found in StateDealProviderCollateralBounds response: {resp}"
-    assert (
-        "Min" in resp["result"]
-    ), f"Min key not found in StateDealProviderCollateralBounds response result: {resp}"
-
-    return math.ceil(
-        int(resp["result"]["Min"]) * 1.2
-    )  # add 20% to the min and round up to nearest integer
+def get_chain_head(rpc_endpoint: str) -> int:
+    """Fetch the current chain head height from the Filecoin RPC."""
+    try:
+        response = requests.post(
+            url=rpc_endpoint,
+            json={"jsonrpc": "2.0", "id": 1, "method": "Filecoin.ChainHead", "params": []},
+        )
+        response.raise_for_status()  # Raise HTTPError for bad responses (4xx or 5xx)
+        resp = response.json()
+        if "result" not in resp or "Height" not in resp["result"]:
+            raise DealCreationError(f"Invalid chain head response: {resp}")
+        return resp["result"]["Height"]
+    except requests.exceptions.RequestException as e:
+        raise DealCreationError(f"Failed to get chain head: {e}") from e
 
 
-def get_providers(
-    piece_cid,
-    size,
-    padded_size,
-):
+def get_collateral(rpc_endpoint: str, padded_size: int, verified: bool = True) -> int:
+    """Get the required collateral for a deal."""
+    try:
+      response = requests.post(
+          url=rpc_endpoint,
+          json={
+              "jsonrpc": "2.0",
+              "id": 1,
+              "method": "Filecoin.StateDealProviderCollateralBounds",
+              "params": [int(padded_size), verified, []],
+          },
+      )
+      response.raise_for_status()
+      resp = response.json()
 
-    if not environ.get("USE_CID_GRAVITY"):
-        providers = environ.get("PROVIDERS")
-        assert providers, "PROVIDERS environment variable must be set if not using CID gravity"
-        providers = providers.split(",")
+      if "result" not in resp or "Min" not in resp["result"]:
+        raise DealCreationError(f"Invalid collateral response: {resp}")
+
+      return math.ceil(int(resp["result"]["Min"]) * 1.2)
+    except requests.exceptions.RequestException as e:
+        raise DealCreationError(f"Failed to get collateral: {e}") from e
+
+def get_providers_from_cid_gravity(
+        piece_cid: str, size: int, padded_size: int, deal_config: DealConfig
+) -> List[str]:
+    """Get a list of providers from CID gravity."""
+    try:
+        head = get_chain_head(deal_config.filecoin_rpc_endpoint)
+        start_epoch = head + START_EPOCH_HEAD_OFFSET
+        provider_collateral = get_collateral(
+            rpc_endpoint=deal_config.filecoin_rpc_endpoint, padded_size=padded_size, verified=True
+        )
+        headers = {"X-API-KEY": deal_config.cid_gravity_key}
+        response = requests.post(
+            url="https://service.cidgravity.com/private/v1/get-best-available-providers",
+            headers=headers,
+            json={
+                "pieceCid": piece_cid,
+                "startEpoch": start_epoch,
+                "duration": DEAL_DURATION,
+                "storagePricePerEpoch": 0,
+                "providerCollateral": provider_collateral,
+                "verifiedDeal": True,
+                "transferSize": size,
+                "transferType": "http",
+                "removeUnsealedCopy": False,
+            },
+        )
+        response.raise_for_status()
+        resp = response.json()
+
+        if "result" not in resp or "providers" not in resp["result"]:
+            raise DealCreationError(f"Invalid CID gravity response: {resp}")
+
+        providers = resp["result"]["providers"]
+        if not providers:
+            raise DealCreationError(f"Empty list of providers returned from CID gravity: {resp}")
         return providers
+    except requests.exceptions.RequestException as e:
+        raise DealCreationError(f"Failed to get provider from CID gravity: {e}") from e
 
-    head = get_chain_head()
-    start_epoch = head + start_epoch_head_offset
+def get_providers(piece_cid: str, size: int, padded_size: int, deal_config: DealConfig) -> List[str]:
+    """Get a list of providers from environment variables or CID gravity."""
+    if not deal_config.use_cid_gravity:
+        providers = os.environ.get("PROVIDERS")
+        if not providers:
+            raise DealCreationError("PROVIDERS environment variable must be set if not using CID gravity")
+        return providers.split(",")
 
-    provider_collateral = get_collateral(padded_size=padded_size, verified=True)
+    if not deal_config.cid_gravity_key:
+         raise DealCreationError("CID_GRAVITY_KEY environment variable must be set if using CID gravity")
 
-    api_key = environ.get("CID_GRAVITY_KEY")
-    headers = {"X-API-KEY": api_key}
+    return get_providers_from_cid_gravity(piece_cid, size, padded_size, deal_config)
 
-    response = requests.post(
-        url="https://service.cidgravity.com/private/v1/get-best-available-providers",
-        headers=headers,
-        json={
-            "pieceCid": piece_cid,
-            "startEpoch": start_epoch,
-            "duration": 1468800,
-            "storagePricePerEpoch": 0,
-            "providerCollateral": provider_collateral,
-            "verifiedDeal": True,
-            "transferSize": size,
-            "transferType": "http",
-            "removeUnsealedCopy": False,
-        },
-    )
+def validate_file_metadata(client: Any, epoch: str, file_name: str, padded_size: int) -> str:
+    """Validate that the file exists and is the correct size."""
+    check_obj = client.check_exists(f"{epoch}/{file_name}")
+    if not check_obj[0]:
+        raise DealCreationError(f"{file_name} not found")
+    if check_obj[1] <= 1:
+        raise DealCreationError(f"{file_name} size too small")
+    if check_obj[1] != int(padded_size):
+        raise DealCreationError(
+            f"{file_name} size mismatch: {check_obj[1]} != {padded_size}"
+        )
 
-    assert (
-        response.status_code == 200
-    ), f"failed to get provider from CID gravity: {response.text}"
+    public_url = client.get_public_url(f"{epoch}/{file_name}")
+    check_url = client.check_public_url(public_url)
+    if not check_url[0]:
+        raise DealCreationError(f"{public_url} not accessible")
+    if int(check_url[1]) != int(check_obj[1]):
+        raise DealCreationError(
+            f"{public_url} size mismatch {check_url[1]} != {check_obj[1]}"
+        )
+    return public_url
 
-    resp = response.json()
-    assert (
-        "result" in resp
-    ), f"result key not found in response from CID gravity: {resp}"
-    assert (
-        "providers" in resp["result"]
-    ), f"providers key not found in response from CID gravity: {resp}"
+def process_metadata_line(client: Any, epoch: str, line: List[str]) -> Dict[str, Any]:
+    """Process a single line from the metadata CSV."""
+    if len(line) != 5:
+       raise DealCreationError(f"metadata.csv should have 5 columns, instead found {len(line)}, {line}")
 
-    providers = resp["result"]["providers"]
+    file_name = os.path.basename(line[0])
+    commp_piece_cid = line[1]
+    payload_cid = line[2]
+    padded_size = int(line[3])
+    public_url = validate_file_metadata(client, epoch, file_name, padded_size)
 
-    assert len(providers) > 0, f"empty list of providers returned: {resp}"
+    return {
+        "file_name": file_name,
+        "url": public_url,
+        "commp_piece_cid": commp_piece_cid,
+        "file_size": padded_size,
+        "padded_size": padded_size,
+        "payload_cid": payload_cid,
+    }
 
-    return resp["result"]["providers"]
+def get_existing_deals(client: Any, deals_url: str, fields: List[str]) -> Dict[str, List[str]]:
+    """Read existing deals from the remote storage."""
+    replications = {}
+    deals_file = "deals.csv"  # use a tmp file
+    check_existing_deals = client.check_exists(deals_url)
+    if check_existing_deals[0]:
+        client.download_file(deals_url, deals_file)
+        with open(deals_file, "r") as csv_file:
+            reader = csv.DictReader(csv_file, fieldnames=fields)
+            next(reader, None)  # skip the headers
+            for row in reader:
+                if row["commp_piece_cid"] not in replications:
+                    replications[row["commp_piece_cid"]] = []
+                replications[row["commp_piece_cid"]].append(row["provider"])
+            csv_file.close()
+        os.remove(deals_file)
+    return replications
 
+def create_boost_deal(
+    deal_config: DealConfig,
+    file_item: Dict[str, Any],
+    provider: str
+) -> Dict[str, Any]:
+    """Create a deal using the boost CLI."""
+    params = {
+        "provider": provider,
+        "commp": file_item["commp_piece_cid"],
+        "piece-size": file_item["padded_size"],
+        "car-size": file_item["file_size"],
+        "payload-cid": file_item["payload_cid"],
+        "storage-price": "0",
+        "start-epoch-head-offset": START_EPOCH_HEAD_OFFSET,
+        "verified": "true",
+        "duration": DEAL_DURATION,
+        "wallet": deal_config.wallet,
+    }
+    deal_arg = "deal"
+    if deal_config.online:
+        params["http-url"] = file_item["url"]
+    else:
+        deal_arg = "offline-deal"
 
-def create_deals(metadata_obj):
+    cmd = ["boost", "--vv", "--json=1", deal_arg] + [
+        f"--{k}={v}" for k, v in params.items()
+    ]
+    logging.info(f"Executing boost command: {' '.join(cmd)}")
+
+    if deal_config.dry_run:
+        out = '{ "dealUuid": "dry-run-uuid", "dealState": "dry-run-state"}'
+    else:
+        try:
+          out = check_output(cmd, text=True).strip()
+        except CalledProcessError as e:
+            logging.warning(f"WARNING: boost deal failed for {provider}: {e}")
+            raise DealCreationError(f"boost deal failed for {provider}: {e}") from e
+
+    try:
+        res = json.loads(out)
+        if not res.get("dealUuid"):
+             raise DealCreationError(f"Invalid boost output no deal uuid: {out}")
+        return {
+            "provider": provider,
+            "deal_uuid": res.get("dealUuid"),
+        }
+    except json.JSONDecodeError as e:
+        raise DealCreationError(f"Failed to decode JSON output from boost: {e}, {out}") from e
+
+def create_deals(client: Any, epoch: str, deal_config: DealConfig, metadata_obj: str, deal_type: str):
     """
     Create deals for the files in the metadata object provided as an argument.
-
-    Will attempt to lock and update `deal.csv` in the remote storage container.
     """
     metadata_reader = StringIO(metadata_obj)
     metadata_split_lines = csv.reader(metadata_reader, delimiter=",")
@@ -197,53 +343,14 @@ def create_deals(metadata_obj):
 
     deal_data = []
     for line in metadata_split_lines:
-        file_name = os.path.basename(line[0])
-        # Only allow the new metadata
-        assert (
-            len(line) == 5
-        ), f"metadata.csv should have 5 columns, instead found f{len(line)}, {line}"
-
-        commp_piece_cid = line[1]
-        payload_cid = line[2]
-        padded_size = line[3]
-
-        check_obj = client.check_exists(epoch + "/" + file_name)
-        if not check_obj[0]:
-            logging.info("%s not found" % file_name)
-            sys.exit(1)
-        elif check_obj[1] <= 1:
-            logging.info("%s size too small" % file_name)
-            sys.exit(1)
-        elif check_obj[1] != int(padded_size):
-            logging.debug(
-                "%s size mismatch %s != %s" % (file_name, check_obj[1], padded_size)
-            )
-
-        public_url = client.get_public_url(epoch + "/" + file_name)
-        check_url = client.check_public_url(public_url)
-        if not check_url[0]:
-            logging.info("%s not accessible" % public_url)
-            continue
-        elif int(check_url[1]) != int(check_obj[1]):
-            logging.info(
-                "%s size mismatch %s != %s" % (public_url, check_url[1], check_obj[1])
-            )
+        try:
+            deal_data_item = process_metadata_line(client, epoch, line)
+            deal_data.append(deal_data_item)
+        except DealCreationError as e:
+            logging.warning(f"Skipping line due to error: {e}")
             continue
 
-        deal_data_item = {
-            "file_name": file_name,
-            "url": public_url,
-            "commp_piece_cid": commp_piece_cid,
-            "file_size": check_obj[1],
-            "padded_size": padded_size,
-            "payload_cid": payload_cid,
-        }
-
-        deal_data.append(deal_data_item)
-
-    replication_factor = int(environ.get("REPLICATION_FACTOR", default_replication_factor))
-    deals_providers = {}
-
+    deals_providers: Dict[str, List[Dict[str,Any]]] = {}
     fields = [
         "provider",
         "deal_uuid",
@@ -270,134 +377,82 @@ def create_deals(metadata_obj):
         client.upload_obj(StringIO(socket.gethostname() + "_" + filetime), lockfile)
     else:
         lock_data = client.read_object(lockfile)
-        logging.error("lock file exists, exiting: " + lock_data)
-        return 1
+        raise DealCreationError(f"Lock file exists, exiting: {lock_data}")
 
-    deals_folder = environ.get("DEALS_FOLDER")
-    deals_file = f"{deals_folder}/{epoch}_deals_{filetime}.csv"
+    deals_file = f"{deal_config.deals_folder}/{epoch}_deals_{filetime}.csv"
 
-    replications = {}
-    check_existing_deals = client.check_exists(deals_url)
-    if check_existing_deals[0]:
-        client.download_file(deals_url, deals_file)
-        with open(deals_file, "r") as csv_file:
-            reader = csv.DictReader(csv_file, fieldnames=fields)
-            next(reader, None)  # skip the headers
-            for row in reader:
-                if row["commp_piece_cid"] not in replications:
-                    replications[row["commp_piece_cid"]] = []
-                replications[row["commp_piece_cid"]].append(row["provider"])
-            csv_file.close()
+    replications = get_existing_deals(client, deals_url, fields)
+
 
     with open(deals_file, "a+") as log_file:
         csv_writer = csv.DictWriter(log_file, fieldnames=fields)
 
-        if not check_existing_deals[0]:
+        if not client.check_exists(deals_url)[0]:
             csv_writer.writeheader()
 
         for file_item in deal_data:
-            logging.info("creating deal for ")
-            logging.info(file_item)
+            logging.info(f"Creating deals for {file_item}")
 
             if file_item["commp_piece_cid"] not in replications:
                 replications[file_item["commp_piece_cid"]] = []
 
-            while len(replications[file_item["commp_piece_cid"]]) < replication_factor:
-
-                providers = get_providers(
-                    piece_cid=file_item["commp_piece_cid"],
-                    size=file_item["file_size"],
-                    padded_size=file_item["padded_size"],
-                )
-                logging.info(f"found providers: {providers}")
-
+            while len(replications[file_item["commp_piece_cid"]]) < deal_config.replication_factor:
+                try:
+                  providers = get_providers(
+                      piece_cid=file_item["commp_piece_cid"],
+                      size=file_item["file_size"],
+                      padded_size=file_item["padded_size"],
+                      deal_config=deal_config
+                  )
+                  logging.info(f"found providers: {providers}")
+                except DealCreationError as e:
+                    logging.warning(f"Skipping deal creation for {file_item['file_name']}: {e}")
+                    break  # Skip the deal if no provider can be found
 
                 for provider in providers:
                     if file_item["commp_piece_cid"] in replications:
                         if provider in replications[file_item["commp_piece_cid"]]:
                             logging.info(
-                                "skipping %s, already have deal with %s"
-                                % (file_item["commp_piece_cid"], provider)
+                                f"skipping {file_item['commp_piece_cid']}, already have deal with {provider}"
                             )
                             continue
 
                     if (len(replications[file_item["commp_piece_cid"]])
-                        >= replication_factor
+                        >= deal_config.replication_factor
                     ):
                         logging.info(
-                            "skipping %s, already replicated %s times"
-                            % (
-                                file_item["commp_piece_cid"],
-                                replications[file_item["commp_piece_cid"]],
-                            )
+                            f"skipping {file_item['commp_piece_cid']}, already replicated {len(replications[file_item['commp_piece_cid']])} times"
                         )
                         continue
 
-                    params = {
-                        "provider": provider,
-                        "commp": file_item["commp_piece_cid"],
-                        "piece-size": file_item["padded_size"],
-                        "car-size": file_item["file_size"],
-                        "payload-cid": file_item["payload_cid"],
-                        "storage-price": "0",
-                        "start-epoch-head-offset": start_epoch_head_offset,
-                        "verified": "true",
-                        "duration": 1468800,
-                        "wallet": environ.get("WALLET"),
-                    }
-                    deal_arg = "deal"
-                    if online:
-                        params["http-url"] = file_item["url"]
-                    else:
-                        deal_arg = "offline-deal"
+                    try:
+                        deal_output = create_boost_deal(deal_config, file_item, provider)
+                        deal_output.update(file_item)
+                        csv_writer.writerow(deal_output)
+                        replications[file_item["commp_piece_cid"]].append(provider)
+                        if provider not in deals_providers:
+                            deals_providers[provider] = []
+                        deals_providers[provider].append(deal_output)
 
-                    logging.info(params)
-                    cmd = ["boost", "--vv", "--json=1", deal_arg] + [
-                        f"--{k}={v}" for k, v in params.items()
-                    ]
-
-                    logging.info(cmd)
-
-                    if dry_run:
-                        out = '{ "dealUuid": "dry-run-uuid", "dealState": "dry-run-state"}'
-                    else:
-                        try:
-                            out = check_output(cmd, text=True).strip()
-                        except CalledProcessError as e:
-                            logging.warning(f"WARNING: boost deal failed for {provider}:")
-                            logging.warning(e)
-                            continue
-
-                    logging.info(out)
-                    res = json.loads(out)
-
-                    deal_output = {
-                        "provider": provider,
-                        "deal_uuid": res.get("dealUuid"),
-                    }
-
-                    replications[file_item["commp_piece_cid"]].append(provider)
-
-                    deal_output.update(file_item)
-                    csv_writer.writerow(deal_output)
-                    if provider not in deals_providers:
-                        deals_providers[provider] = []
-                    deals_providers[provider].append(deal_output)
+                    except DealCreationError as e:
+                        logging.warning(f"skipping provider {provider} due to error: {e}")
+                        continue
             log_file.close()
 
-    if dry_run:
-        logging.info("completed processing dry run mode")
+    if deal_config.dry_run:
+      logging.info("completed processing dry run mode")
     else:
         logging.info(f"uploading deals file {deals_file} to {deals_url}")
         if client.upload_file(deals_file, deals_url):
             logging.info("upload successful")
         else:
-            logging.info("upload failed")
+            logging.error("upload failed")
 
     # Print the number of replications
-    logging.info("total providers: " + str(len(deals_providers)))
+    logging.info(f"total providers: {len(deals_providers)}")
     for key, value in deals_providers.items():
         logging.info(f"{key} provider got {len(value)}/{len(deal_data)} deals")
+
     logging.info("replication summary")
     for key, value in replications.items():
         logging.info(f"{key} replicated {len(value)} times")
@@ -408,50 +463,54 @@ def create_deals(metadata_obj):
 
     return 0
 
-
-# Code below should be agnostic to storage backend
-if __name__ == "__main__":
+def main():
+    """Main function to execute the script."""
     if len(sys.argv) < 2:
-        raise ValueError(
-            "Not enough arguments. usage: ", sys.argv[0], " <epoch> [<deal_type>]"
-        )
-
-    logging.info(
-        "boost create deals version %s " "(boost version: %s).", VERSION, BOOST_VERSION
-    )
+        print("Not enough arguments. usage: ", sys.argv[0], " <epoch> [<deal_type>]", file=sys.stderr)
+        sys.exit(1)
 
     epoch = sys.argv[1]
+    deal_type = sys.argv[2] if len(sys.argv) == 3 else ""
+    logging.info(f"boost create deals version {VERSION} (boost version: {deal_config.boost_version}).")
 
-    deal_type = ""
-    if len(sys.argv) == 3:
-        deal_type = sys.argv[2]
+    try:
+        storage_config = load_storage_config()
+        deal_config = load_deal_config()
+        client = get_storage_client(storage_config)
+        client.connect()
 
-    client.connect()
+        epoch_cid = client.read_object(f"{epoch}/epoch-{epoch}.cid").strip()
+        logging.info(f"creating deals for epoch {epoch} with payload {epoch_cid}")
+    except DealCreationError as e:
+      logging.error(f"Failed to initialize: {e}")
+      sys.exit(1)
 
-    # Load the payload CI
-    epoch_cid = client.read_object("%s/epoch-%s.cid" % (epoch, epoch)).strip()
-
-    logging.info("creating deals for epoch %s with payload %s", epoch, epoch_cid)
-
-    # Load metadata csv produced by split-and-commp
     ret = 0
-    if len(deal_type) == 0:
-        logging.info(
-            "deal type not specified, creating for both epoch objects and index files"
-        )
 
-        metadata_obj = client.read_object(epoch + "/metadata.csv")
-        ret += create_deals(metadata_obj)
+    try:
+        if not deal_type:
+            logging.info("deal type not specified, creating for both epoch objects and index files")
+            metadata_obj = client.read_object(f"{epoch}/metadata.csv")
+            ret += create_deals(client, epoch, deal_config, metadata_obj, "")
+            logging.info(f"created deals for epoch files with return code {ret}")
 
-        logging.info("created deals for epoch files %d", ret)
+            index_obj = client.read_object(f"{epoch}/index.csv")
+            ret += create_deals(client, epoch, deal_config, index_obj, "index")
+            logging.info(f"created deals for index files with return code {ret}")
 
-        index_obj = client.read_object(epoch + "/index.csv")
-        ret += create_deals(index_obj)
+        else:
+            metadata_obj = client.read_object(f"{epoch}/{deal_type}.csv")
+            ret += create_deals(client, epoch, deal_config, metadata_obj, deal_type)
+            logging.info(f"created deals for {deal_type} files with return code {ret}")
+    except DealCreationError as e:
+        logging.error(f"Failed to create deals: {e}")
+        ret = 1
+    except Exception as e:
+        logging.error(f"An unexpected error occurred: {e}")
+        ret = 1
+    finally:
+         sys.exit(ret)
 
-        logging.info("created deals for index files %d", ret)
-    else:
-        metadata_obj = client.read_object(epoch + "/" + deal_type + ".csv")
-        ret += create_deals(metadata_obj)
-        logging.info("created deals for %s files %d", deal_type, ret)
 
-    sys.exit(ret)
+if __name__ == "__main__":
+    main()
