@@ -219,7 +219,7 @@ func newCmd_SplitCar() *cli.Command {
 				}
 
 				// Set the currentFileSize to the size of the header
-				currentFileSize = uint64(len(nulRootCarHeader))
+				currentFileSize = hdrSize
 				currentSubsetInfo = subsetInfo{fileName: filename, firstSlot: -1, lastSlot: -1}
 				return nil
 			}
