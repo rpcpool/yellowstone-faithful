@@ -825,7 +825,7 @@ func (multi *MultiEpoch) processSlotTransactions(
 				ctx,
 				pKey,
 				1000,
-				func(epochNum uint64, oas linkedlog.OffsetAndSizeAndBlocktime) (*ipldbindcode.Transaction, error) {
+				func(epochNum uint64, oas linkedlog.OffsetAndSize) (*ipldbindcode.Transaction, error) {
 					epoch, err := multi.GetEpoch(epochNum)
 					if err != nil {
 						return nil, fmt.Errorf("failed to get epoch %d: %w", epochNum, err)
@@ -878,7 +878,7 @@ func (multi *MultiEpoch) processSlotTransactions(
 							}
 							txResp.Slot = uint64(txn.Slot)
 
-							// To do: add blocketime after index work is done
+							// To do: add blocktime after index work is done
 						}
 
 						if err := ser.Send(txResp); err != nil {
