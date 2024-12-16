@@ -6,7 +6,7 @@ name: Data Report Generator
 on:
   push:
   schedule:
-    - cron: '0 * * * *'  # Run once an hour
+    - cron: '3 */4 * * *'  # Run once an hour
   workflow_dispatch:  # Allow manual trigger
 
 jobs:
