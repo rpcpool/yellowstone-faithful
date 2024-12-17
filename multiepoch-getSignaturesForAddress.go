@@ -11,6 +11,7 @@ import (
 	"github.com/rpcpool/yellowstone-faithful/indexes"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
+	"github.com/rpcpool/yellowstone-faithful/slottools"
 	"github.com/sourcegraph/jsonrpc2"
 	"k8s.io/klog/v2"
 )
@@ -47,12 +48,11 @@ func (ser *MultiEpoch) getGsfaReadersInEpochDescendingOrderForSlotRange(ctx cont
 	ser.mu.RLock()
 	defer ser.mu.RUnlock()
 
-	startEpoch := CalcEpochForSlot(startSlot)
-	endEpoch := CalcEpochForSlot(endSlot)
+	startEpoch := slottools.CalcEpochForSlot(startSlot)
+	endEpoch := slottools.CalcEpochForSlot(endSlot)
 
 	epochs := make([]*Epoch, 0, endEpoch-startEpoch+1)
 	for _, epoch := range ser.epochs {
-
 		if epoch.Epoch() >= startEpoch && epoch.Epoch() <= endEpoch {
 			epochs = append(epochs, epoch)
 		}
@@ -80,7 +80,6 @@ func (ser *MultiEpoch) getGsfaReadersInEpochDescendingOrderForSlotRange(ctx cont
 	}
 
 	return gsfaReaderMultiEpoch, epochNums
-
 }
 
 func countTransactions(v gsfa.EpochToTransactionObjects) int {
@@ -125,26 +124,27 @@ func (multi *MultiEpoch) handleGetSignaturesForAddress(ctx context.Context, conn
 	}
 
 	var blockTimeCache struct {
-		m  map[uint64]uint64
+		m  map[uint64]int64
 		mu sync.Mutex
 	}
-	blockTimeCache.m = make(map[uint64]uint64)
-	getBlockTime := func(slot uint64, ser *Epoch) uint64 {
-		// NOTE: this means that you have to potentially fetch 1k blocks to get the blocktime for each transaction.
-		// TODO: include blocktime into the transaction data, or in the gsfaindex.
-		// return 0
+	blockTimeCache.m = make(map[uint64]int64)
+	getBlockTime := func(slot uint64, ser *Epoch) int64 {
 		blockTimeCache.mu.Lock()
 		defer blockTimeCache.mu.Unlock()
 		if blockTime, ok := blockTimeCache.m[slot]; ok {
 			return blockTime
 		}
-		block, _, err := ser.GetBlock(ctx, slot)
-		if err != nil {
-			klog.Errorf("failed to get block time for slot %d: %v", slot, err)
-			return 0
+		blocktimeIndex := ser.GetBlocktimeIndex()
+		if blocktimeIndex != nil {
+			blocktime, err := blocktimeIndex.Get(slot)
+			if err != nil {
+				klog.Errorf("failed to get block time for slot %d: %v", slot, err)
+				return 0
+			}
+			blockTimeCache.m[slot] = blocktime
+			return blocktime
 		}
-		blockTimeCache.m[slot] = uint64(block.Meta.Blocktime)
-		return uint64(block.Meta.Blocktime)
+		return 0
 	}
 
 	// Get the transactions:
@@ -154,7 +154,7 @@ func (multi *MultiEpoch) handleGetSignaturesForAddress(ctx context.Context, conn
 		limit,
 		params.Before,
 		params.Until,
-		func(epochNum uint64, oas linkedlog.OffsetAndSizeAndBlocktime) (*ipldbindcode.Transaction, error) {
+		func(epochNum uint64, oas linkedlog.OffsetAndSizeAndSlot) (*ipldbindcode.Transaction, error) {
 			epoch, err := multi.GetEpoch(epochNum)
 			if err != nil {
 				return nil, fmt.Errorf("failed to get epoch %d: %w", epochNum, err)
@@ -170,7 +170,6 @@ func (multi *MultiEpoch) handleGetSignaturesForAddress(ctx context.Context, conn
 			if err != nil {
 				return nil, fmt.Errorf("error while decoding transaction from nodex at offset %d: %w", oas.Offset, err)
 			}
-			blockTimeCache.m[uint64(decoded.Slot)] = uint64(oas.Blocktime)
 			return decoded, nil
 		},
 	)

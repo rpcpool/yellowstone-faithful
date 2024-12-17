@@ -1,4 +1,6 @@
-package main
+package slottools
+
+import "encoding/binary"
 
 // CalcEpochForSlot returns the epoch for the given slot.
 func CalcEpochForSlot(slot uint64) uint64 {
@@ -21,4 +23,24 @@ func Uint64RangesHavePartialOverlapIncludingEdges(r1 [2]uint64, r2 [2]uint64) bo
 	} else {
 		return r2[1] >= r1[0]
 	}
+}
+
+// EpochForSlot returns the epoch for the given slot.
+func EpochForSlot(slot uint64) uint64 {
+	return CalcEpochForSlot(slot)
+}
+
+// EpochLimits returns the start and stop slots for the given epoch (inclusive).
+func EpochLimits(epoch uint64) (uint64, uint64) {
+	return CalcEpochLimits(epoch)
+}
+
+func Uint64ToLEBytes(v uint64) []byte {
+	buf := make([]byte, 8)
+	binary.LittleEndian.PutUint64(buf, v)
+	return buf
+}
+
+func Uint64FromLEBytes(buf []byte) uint64 {
+	return binary.LittleEndian.Uint64(buf)
 }

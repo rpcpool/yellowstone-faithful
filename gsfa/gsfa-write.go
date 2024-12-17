@@ -28,7 +28,7 @@ type GsfaWriter struct {
 	ll                   *linkedlog.LinkedLog
 	man                  *manifest.Manifest
 	fullBufferWriterChan chan linkedlog.KeyToOffsetAndSizeAndBlocktime
-	accum                *hashmap.Map[solana.PublicKey, []*linkedlog.OffsetAndSizeAndBlocktime]
+	accum                *hashmap.Map[solana.PublicKey, []*linkedlog.OffsetAndSizeAndSlot]
 	offsetsWriter        *indexes.PubkeyToOffsetAndSize_Writer
 	ctx                  context.Context
 	cancel               context.CancelFunc
@@ -64,7 +64,7 @@ func NewGsfaWriter(
 		fullBufferWriterChan: make(chan linkedlog.KeyToOffsetAndSizeAndBlocktime, 50), // TODO: make this configurable
 		popRank:              newRollingRankOfTopPerformers(10_000),
 		offsets:              hashmap.New[solana.PublicKey, [2]uint64](int(1_000_000)),
-		accum:                hashmap.New[solana.PublicKey, []*linkedlog.OffsetAndSizeAndBlocktime](int(1_000_000)),
+		accum:                hashmap.New[solana.PublicKey, []*linkedlog.OffsetAndSizeAndSlot](int(1_000_000)),
 		ctx:                  ctx,
 		cancel:               cancel,
 		fullBufferWriterDone: make(chan struct{}),
@@ -145,16 +145,15 @@ func (a *GsfaWriter) Push(
 	offset uint64,
 	length uint64,
 	slot uint64,
-	blocktime uint64,
 	publicKeys solana.PublicKeySlice,
 ) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	oas := &linkedlog.OffsetAndSizeAndBlocktime{
-		Offset:    offset,
-		Size:      length,
-		Blocktime: blocktime,
+	oas := &linkedlog.OffsetAndSizeAndSlot{
+		Offset: offset,
+		Size:   length,
+		Slot:   slot,
 	}
 	publicKeys = publicKeys.Dedupe()
 	publicKeys.Sort()
@@ -190,7 +189,7 @@ func (a *GsfaWriter) Push(
 	for _, publicKey := range publicKeys {
 		current, ok := a.accum.Get(publicKey)
 		if !ok {
-			current = make([]*linkedlog.OffsetAndSizeAndBlocktime, 0, itemsPerBatch)
+			current = make([]*linkedlog.OffsetAndSizeAndSlot, 0, itemsPerBatch)
 			current = append(current, oas)
 			a.accum.Set(publicKey, current)
 		} else {
@@ -259,7 +258,7 @@ func (a *GsfaWriter) Close() error {
 	)
 }
 
-func (a *GsfaWriter) flushAccum(m *hashmap.Map[solana.PublicKey, []*linkedlog.OffsetAndSizeAndBlocktime]) error {
+func (a *GsfaWriter) flushAccum(m *hashmap.Map[solana.PublicKey, []*linkedlog.OffsetAndSizeAndSlot]) error {
 	keys := solana.PublicKeySlice(m.Keys())
 	keys.Sort()
 	for ii := range keys {

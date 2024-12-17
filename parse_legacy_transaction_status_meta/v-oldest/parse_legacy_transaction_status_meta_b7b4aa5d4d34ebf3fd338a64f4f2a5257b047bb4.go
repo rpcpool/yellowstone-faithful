@@ -1943,7 +1943,7 @@ func BincodeDeserializeTransactionStatusMeta(input []byte) (TransactionStatusMet
 	if err == nil && deserializer.GetBufferOffset() < uint64(len(input)) {
 		// return obj, fmt.Errorf("Some input bytes were not read")
 		// TODO: fix this
-		klog.Warningf(
+		klog.V(5).Infof(
 			"Parsed %d bytes, but input was %d bytes (%d bytes not read)",
 			deserializer.GetBufferOffset(),
 			len(input),

@@ -16,6 +16,7 @@ import (
 	"github.com/rpcpool/yellowstone-faithful/carreader"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
+	"github.com/rpcpool/yellowstone-faithful/slottools"
 	"github.com/rpcpool/yellowstone-faithful/tooling"
 	"github.com/urfave/cli/v2"
 	"k8s.io/klog/v2"
@@ -188,8 +189,8 @@ func newCmd_find_missing_tx_metadata() *cli.Command {
 						slot := uint64(block.Slot)
 						firstSlot = &slot
 						// determine epoch:
-						epoch := CalcEpochForSlot(slot)
-						epochStart, epochEnd = CalcEpochLimits(epoch)
+						epoch := slottools.CalcEpochForSlot(slot)
+						epochStart, epochEnd = slottools.CalcEpochLimits(epoch)
 					}
 					if tookToDo1kSlots > 0 {
 						remainingSlots := epochEnd - uint64(block.Slot)

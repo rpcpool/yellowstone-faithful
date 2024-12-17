@@ -10,6 +10,8 @@ import (
 	"github.com/gagliardetto/solana-go"
 	"github.com/rpcpool/yellowstone-faithful/compactindexsized"
 	"github.com/sourcegraph/jsonrpc2"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"k8s.io/klog/v2"
 )
 
@@ -172,16 +174,18 @@ func (multi *MultiEpoch) handleGetTransaction(ctx context.Context, conn *request
 
 	response.Slot = ptrToUint64(uint64(transactionNode.Slot))
 	{
-		block, _, err := epochHandler.GetBlock(ctx, uint64(transactionNode.Slot))
-		if err != nil {
+		blocktimeIndex := epochHandler.GetBlocktimeIndex()
+		if blocktimeIndex != nil {
+			blocktime, err := blocktimeIndex.Get(uint64(transactionNode.Slot))
+			if err != nil {
+				return nil, status.Errorf(codes.Internal, "Failed to get block: %v", err)
+			}
+			response.Blocktime = &blocktime
+		} else {
 			return &jsonrpc2.Error{
 				Code:    jsonrpc2.CodeInternalError,
 				Message: "Internal error",
-			}, fmt.Errorf("failed to get block: %w", err)
-		}
-		blocktime := uint64(block.Meta.Blocktime)
-		if blocktime != 0 {
-			response.Blocktime = &blocktime
+			}, fmt.Errorf("failed to get blocktime: blocktime index is not available")
 		}
 	}
 
