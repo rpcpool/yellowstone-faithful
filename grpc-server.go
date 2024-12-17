@@ -703,9 +703,10 @@ func blockContainsAccounts(block *old_faithful_grpc.BlockResponse, accounts []st
 		}
 
 		for _, acc := range accMetaList {
-			if _, exists := accountSet[acc.String()]; exists {
+			if _, exists := accountSet[acc.PublicKey.String()]; exists {
 				return true
 			}
+		}
 	}
 
 	return false
