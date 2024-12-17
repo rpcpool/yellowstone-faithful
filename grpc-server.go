@@ -825,7 +825,7 @@ func (multi *MultiEpoch) processSlotTransactions(
 				ctx,
 				pKey,
 				1000,
-				func(epochNum uint64, oas linkedlog.OffsetAndSize) (*ipldbindcode.Transaction, error) {
+				func(epochNum uint64, oas linkedlog.OffsetAndSizeAndSlot) (*ipldbindcode.Transaction, error) {
 					epoch, err := multi.GetEpoch(epochNum)
 					if err != nil {
 						return nil, fmt.Errorf("failed to get epoch %d: %w", epochNum, err)
