@@ -113,7 +113,7 @@ type GetBlockResponse struct {
 
 type GetTransactionResponse struct {
 	// TODO: use same format as solana
-	Blocktime   *uint64            `json:"blockTime,omitempty"`
+	Blocktime   *int64             `json:"blockTime,omitempty"`
 	Meta        any                `json:"meta"`
 	Slot        *uint64            `json:"slot,omitempty"`
 	Transaction any                `json:"transaction"`

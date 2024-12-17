@@ -351,6 +351,7 @@ def create_deals(client: Any, epoch: str, deal_config: DealConfig, metadata_obj:
             continue
 
     deals_providers: Dict[str, List[Dict[str,Any]]] = {}
+     
     fields = [
         "provider",
         "deal_uuid",

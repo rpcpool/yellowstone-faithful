@@ -2,10 +2,9 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
-	"github.com/rpcpool/yellowstone-faithful/compactindexsized"
+	"github.com/rpcpool/yellowstone-faithful/slottools"
 	"github.com/sourcegraph/jsonrpc2"
 )
 
@@ -19,7 +18,7 @@ func (multi *MultiEpoch) handleGetBlockTime(ctx context.Context, conn *requestCo
 	}
 
 	// find the epoch that contains the requested slot
-	epochNumber := CalcEpochForSlot(blockNum)
+	epochNumber := slottools.CalcEpochForSlot(blockNum)
 	epochHandler, err := multi.GetEpoch(epochNumber)
 	if err != nil {
 		return &jsonrpc2.Error{
@@ -27,34 +26,35 @@ func (multi *MultiEpoch) handleGetBlockTime(ctx context.Context, conn *requestCo
 			Message: fmt.Sprintf("Epoch %d is not available", epochNumber),
 		}, fmt.Errorf("failed to get epoch %d: %w", epochNumber, err)
 	}
-
-	block, _, err := epochHandler.GetBlock(WithSubrapghPrefetch(ctx, false), blockNum)
-	if err != nil {
-		if errors.Is(err, compactindexsized.ErrNotFound) {
-			return &jsonrpc2.Error{
-				Code:    CodeNotFound,
-				Message: fmt.Sprintf("Slot %d was skipped, or missing in long-term storage", blockNum),
-			}, err
+	{
+		blocktimeIndex := epochHandler.GetBlocktimeIndex()
+		if blocktimeIndex != nil {
+			blockTime, err := blocktimeIndex.Get(blockNum)
+			if err != nil {
+				return &jsonrpc2.Error{
+					Code:    CodeNotFound,
+					Message: fmt.Sprintf("Slot %d was skipped, or missing in long-term storage", blockNum),
+				}, fmt.Errorf("failed to get blocktime: %w", err)
+			}
+			err = conn.ReplyRaw(
+				ctx,
+				req.ID,
+				func() any {
+					if blockTime != 0 {
+						return blockTime
+					}
+					return nil
+				}(),
+			)
+			if err != nil {
+				return nil, fmt.Errorf("failed to reply: %w", err)
+			}
+			return nil, nil
 		} else {
 			return &jsonrpc2.Error{
 				Code:    jsonrpc2.CodeInternalError,
 				Message: "Failed to get block",
-			}, fmt.Errorf("failed to get block: %w", err)
+			}, fmt.Errorf("failed to get blocktime: blocktime index is nil")
 		}
 	}
-	blockTime := uint64(block.Meta.Blocktime)
-	err = conn.ReplyRaw(
-		ctx,
-		req.ID,
-		func() any {
-			if blockTime != 0 {
-				return blockTime
-			}
-			return nil
-		}(),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to reply: %w", err)
-	}
-	return nil, nil
 }
