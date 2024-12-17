@@ -471,11 +471,11 @@ def main():
 
     epoch = sys.argv[1]
     deal_type = sys.argv[2] if len(sys.argv) == 3 else ""
-    logging.info(f"boost create deals version {VERSION} (boost version: {deal_config.boost_version}).")
 
     try:
         storage_config = load_storage_config()
         deal_config = load_deal_config()
+        logging.info(f"boost create deals version {VERSION} (boost version: {deal_config.boost_version}).")
         client = get_storage_client(storage_config)
         client.connect()
 
