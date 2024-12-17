@@ -696,6 +696,16 @@ func blockContainsAccounts(block *old_faithful_grpc.BlockResponse, accounts []st
 			}
 		}
 
+		accMetaList, err := solTx.AccountMetaList()
+		if err != nil {
+			klog.Warningf("Failed to get account meta list: %w", err)
+			continue
+		}
+
+		for _, acc := range accMetaList {
+			if _, exists := accountSet[acc.String()]; exists {
+				return true
+			}
 	}
 
 	return false
