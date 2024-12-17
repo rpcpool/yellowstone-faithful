@@ -206,6 +206,7 @@ def create_deals(metadata_obj):
         commp_piece_cid = line[1]
         payload_cid = line[2]
         padded_size = line[3]
+        file_size = line[4]
 
         check_obj = client.check_exists(epoch + "/" + file_name)
         if not check_obj[0]:
@@ -234,7 +235,7 @@ def create_deals(metadata_obj):
             "file_name": file_name,
             "url": public_url,
             "commp_piece_cid": commp_piece_cid,
-            "file_size": check_obj[1],
+            "file_size": file_size,
             "padded_size": padded_size,
             "payload_cid": payload_cid,
         }
