@@ -810,7 +810,21 @@ func (multi *MultiEpoch) processSlotTransactions(
 					txResp.Transaction.Meta = tx.Meta
 					txResp.Transaction.Index = tx.Index
 
-					// To do: add blocketime after index work is done
+					epochNumber := slottools.CalcEpochForSlot(slot)
+					epochHandler, err := multi.GetEpoch(epochNumber)
+					if err != nil {
+						return status.Errorf(codes.NotFound, "Epoch %d is not available", epochNumber)
+					}
+					blocktimeIndex := epochHandler.GetBlocktimeIndex()
+					if blocktimeIndex != nil {
+						blocktime, err := blocktimeIndex.Get(uint64(slot))
+						if err != nil {
+							return status.Errorf(codes.Internal, "Failed to get blocktime: %v", err)
+						}
+						txResp.BlockTime = int64(blocktime)
+					} else {
+						return status.Errorf(codes.Internal, "Failed to get blocktime: blocktime index is nil")
+					}
 				}
 
 				if err := ser.Send(txResp); err != nil {
@@ -878,7 +892,16 @@ func (multi *MultiEpoch) processSlotTransactions(
 							}
 							txResp.Slot = uint64(txn.Slot)
 
-							// To do: add blocktime after index work is done
+							blocktimeIndex := epochHandler.GetBlocktimeIndex()
+							if blocktimeIndex != nil {
+								blocktime, err := blocktimeIndex.Get(uint64(txn.Slot))
+								if err != nil {
+									return status.Errorf(codes.Internal, "Failed to get blocktime: %v", err)
+								}
+								txResp.BlockTime = int64(blocktime)
+							} else {
+								return status.Errorf(codes.Internal, "Failed to get blocktime: blocktime index is nil")
+							}
 						}
 
 						if err := ser.Send(txResp); err != nil {
