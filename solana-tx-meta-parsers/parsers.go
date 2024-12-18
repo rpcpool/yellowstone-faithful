@@ -55,6 +55,13 @@ func (c *TransactionStatusMetaContainer) GetSerdeOldest() *metaoldest.Transactio
 	return c.vSerdeOldest
 }
 
+func (c *TransactionStatusMetaContainer) GetLoadedAccounts() [][]byte {
+	if c.vProtobuf != nil {
+		return append(c.vProtobuf.LoadedReadonlyAddresses, c.vProtobuf.LoadedWritableAddresses...)
+	}
+	return nil
+}
+
 func ParseTransactionStatusMeta(buf []byte) (*confirmed_block.TransactionStatusMeta, error) {
 	var status confirmed_block.TransactionStatusMeta
 	err := proto.Unmarshal(buf, &status)

@@ -679,14 +679,10 @@ func blockContainsAccounts(block *old_faithful_grpc.BlockResponse, accounts []st
 	}
 
 	for _, tx := range block.Transactions {
-		decoded, err := iplddecoders.DecodeTransaction(tx.Transaction)
+		decoder := bin.NewBinDecoder(tx.GetTransaction())
+		solTx, err := solana.TransactionFromDecoder(decoder)
 		if err != nil {
-			klog.Warningf("Failed to decode transaction: %w", err)
-			continue // skip if there's error decoding
-		}
-		solTx, err := decoded.GetSolanaTransaction()
-		if err != nil {
-			klog.Warningf("Failed to get sol transaction: %w", err)
+			klog.Errorf("Failed to decode transaction: %v", err)
 			continue
 		}
 
@@ -696,6 +692,18 @@ func blockContainsAccounts(block *old_faithful_grpc.BlockResponse, accounts []st
 			}
 		}
 
+		meta, err := solanatxmetaparsers.ParseTransactionStatusMetaContainer(tx.Meta)
+		if err != nil {
+			klog.Errorf("Failed to parse transaction meta: %v", err)
+		}
+
+		loadedAccounts := meta.GetLoadedAccounts()
+		keys := byteSlicesToKeySlice(loadedAccounts)
+		for _, key := range keys {
+			if _, exists := accountSet[key.String()]; exists {
+				return true
+			}
+		}
 	}
 
 	return false
@@ -789,7 +797,7 @@ func (multi *MultiEpoch) processSlotTransactions(
 		}
 
 		for _, tx := range block.Transactions {
-			decoder := bin.NewBinDecoder(tx.Transaction)
+			decoder := bin.NewBinDecoder(tx.GetTransaction())
 			txn, err := solana.TransactionFromDecoder(decoder)
 			if err != nil {
 				return status.Errorf(codes.Internal, "Failed to decode transaction: %v", err)
