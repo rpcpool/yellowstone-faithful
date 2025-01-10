@@ -462,8 +462,8 @@ impl RawNode {
     }
 }
 
-pub struct NodeReader<T: Read> {
-    reader: BufReader<T>,
+pub struct NodeReader<R: Read> {
+    reader: BufReader<R>,
     header: Vec<u8>,
     item_index: u64,
 }
