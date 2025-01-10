@@ -282,6 +282,9 @@ epochLoop:
 				if err != nil {
 					return nil, fmt.Errorf("error while getting signature at index=%v: %w", txLoc, err)
 				}
+				if tx.Slot < int(until) {
+					break epochLoop
+				}
 				sig, err := tx.Signature()
 				if err != nil {
 					return nil, fmt.Errorf("error while getting signature: %w", err)
@@ -291,9 +294,6 @@ epochLoop:
 					break epochLoop
 				}
 				transactions[epochNum] = append(transactions[epochNum], tx)
-				if tx.Slot < int(until) {
-					break epochLoop
-				}
 			}
 		}
 	}
