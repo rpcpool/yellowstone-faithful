@@ -7,7 +7,7 @@ use {
     std::{
         error::Error,
         fmt,
-        io::{self, BufReader, Read},
+        io::{self, Read},
         vec::Vec,
     },
 };
@@ -463,17 +463,13 @@ impl RawNode {
 }
 
 pub struct NodeReader<R: Read> {
-    reader: BufReader<R>,
+    reader: R,
     header: Vec<u8>,
     item_index: u64,
 }
 
-impl<T: Read> NodeReader<T> {
-    pub fn new(io: T) -> Result<NodeReader<T>, Box<dyn Error>> {
-        // create a buffered reader over the stream
-        let capacity = 8 * 1024 * 1024;
-        let reader = BufReader::with_capacity(capacity, io);
-
+impl<R: Read> NodeReader<R> {
+    pub fn new(reader: R) -> Result<NodeReader<R>, Box<dyn Error>> {
         let node_reader = NodeReader {
             reader,
             header: vec![],
