@@ -7,8 +7,7 @@ use {
     std::{
         error::Error,
         fmt,
-        fs::File,
-        io::{self, BufReader, Read},
+        io::{self, Read},
         vec::Vec,
     },
 };
@@ -463,19 +462,14 @@ impl RawNode {
     }
 }
 
-pub struct NodeReader {
-    reader: BufReader<File>,
+pub struct NodeReader<R: Read> {
+    reader: R,
     header: Vec<u8>,
     item_index: u64,
 }
 
-impl NodeReader {
-    pub fn new(file_path: String) -> Result<NodeReader, Box<dyn Error>> {
-        let file = File::open(file_path)?;
-        // create a buffered reader over the file
-        let capacity = 8 * 1024 * 1024;
-        let reader = BufReader::with_capacity(capacity, file);
-
+impl<R: Read> NodeReader<R> {
+    pub fn new(reader: R) -> Result<NodeReader<R>, Box<dyn Error>> {
         let node_reader = NodeReader {
             reader,
             header: vec![],
