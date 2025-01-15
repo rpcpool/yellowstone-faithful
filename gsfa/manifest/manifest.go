@@ -24,7 +24,7 @@ var (
 	// - v3: stores offset, size, and blocktime
 	// - v4: stores offset, size, and slot
 	// Version is the version of the gsfa index.
-	_Version = uint64(4)
+	_Version = uint64(5)
 )
 
 var headerLenWithoutMeta = len(_MAGIC) + 8 // 8 bytes for the version

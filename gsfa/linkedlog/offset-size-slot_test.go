@@ -12,6 +12,7 @@ func TestOffsetAndSizeAndSlot(t *testing.T) {
 			Offset: 1,
 			Size:   2,
 			Slot:   3,
+			Flags:  NewBitmap(),
 		}
 		buf := ca.Bytes()
 
@@ -32,7 +33,10 @@ func TestOffsetAndSizeAndSlot(t *testing.T) {
 			Offset: 281474976710655,
 			Size:   16777215,
 			Slot:   1099511627775,
+			Flags:  NewBitmap(),
 		}
+		ca.Flags.Set(0, true)
+		ca.Flags.Set(1, true)
 		buf := ca.Bytes()
 
 		{
@@ -52,16 +56,19 @@ func TestOffsetAndSizeAndSlot(t *testing.T) {
 				Offset: 1,
 				Size:   2,
 				Slot:   3,
+				Flags:  NewBitmapFromValues(true, false, true),
 			},
 			{
 				Offset: 4,
 				Size:   5,
 				Slot:   6,
+				Flags:  NewBitmapFromValues(false, true, false, true),
 			},
 			{
 				Offset: 281474976710655,
 				Size:   16777215,
 				Slot:   1099511627775,
+				Flags:  NewBitmapFromValues(true, true, false, true),
 			},
 		}
 		buf := make([]byte, 0, binary.MaxVarintLen64*3*len(many))
