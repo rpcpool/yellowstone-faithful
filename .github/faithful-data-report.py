@@ -154,7 +154,8 @@ class FaithfulDataReport:
         car_cell = f"[epoch-{data.epoch}.car]({data.car})" if data.car != "n/a" else "✗"
         sha_cell = f"[{data.sha[:7]}]({data.sha_url})" if data.sha != "n/a" else "✗"
         size_cell = f"{data.size} GB" if data.size != "n/a" else "✗"
-        txmeta_cell = f"[✓]({data.txmeta_url})" if validate_txmeta_output(data.txmeta) else "✗"
+        txmeta_cell = f"[✗]({data.txmeta_url})" if data.txmeta != "n/a" and not validate_txmeta_output(data.txmeta) else \
+                      f"[✓]({data.txmeta_url})" if data.txmeta != "n/a" else "✗"
         poh_cell = f"[✓]({data.poh_url})" if validate_poh_output(data.poh) else "✗"
         indices_cell = "✓" if data.indices != "n/a" else "✗"
         indices_size_cell = f"{data.indices_size} GB" if data.indices_size != "n/a" else "✗"
