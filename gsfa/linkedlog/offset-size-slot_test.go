@@ -6,17 +6,17 @@ import (
 	"testing"
 )
 
-func TestOffsetAndSizeAndBlocktime(t *testing.T) {
+func TestOffsetAndSizeAndSlot(t *testing.T) {
 	{
-		ca := OffsetAndSizeAndBlocktime{
-			Offset:    1,
-			Size:      2,
-			Blocktime: 3,
+		ca := OffsetAndSizeAndSlot{
+			Offset: 1,
+			Size:   2,
+			Slot:   3,
 		}
 		buf := ca.Bytes()
 
 		{
-			ca2 := OffsetAndSizeAndBlocktime{}
+			ca2 := OffsetAndSizeAndSlot{}
 			err := ca2.FromBytes(buf)
 			if err != nil {
 				panic(err)
@@ -28,15 +28,15 @@ func TestOffsetAndSizeAndBlocktime(t *testing.T) {
 	}
 	{
 		// now with very high values
-		ca := OffsetAndSizeAndBlocktime{
-			Offset:    281474976710655,
-			Size:      16777215,
-			Blocktime: 1099511627775,
+		ca := OffsetAndSizeAndSlot{
+			Offset: 281474976710655,
+			Size:   16777215,
+			Slot:   1099511627775,
 		}
 		buf := ca.Bytes()
 
 		{
-			ca2 := OffsetAndSizeAndBlocktime{}
+			ca2 := OffsetAndSizeAndSlot{}
 			err := ca2.FromBytes(buf)
 			if err != nil {
 				panic(err)
@@ -47,21 +47,21 @@ func TestOffsetAndSizeAndBlocktime(t *testing.T) {
 		}
 	}
 	{
-		many := []OffsetAndSizeAndBlocktime{
+		many := []OffsetAndSizeAndSlot{
 			{
-				Offset:    1,
-				Size:      2,
-				Blocktime: 3,
+				Offset: 1,
+				Size:   2,
+				Slot:   3,
 			},
 			{
-				Offset:    4,
-				Size:      5,
-				Blocktime: 6,
+				Offset: 4,
+				Size:   5,
+				Slot:   6,
 			},
 			{
-				Offset:    281474976710655,
-				Size:      16777215,
-				Blocktime: 1099511627775,
+				Offset: 281474976710655,
+				Size:   16777215,
+				Slot:   1099511627775,
 			},
 		}
 		buf := make([]byte, 0, binary.MaxVarintLen64*3*len(many))
@@ -70,7 +70,7 @@ func TestOffsetAndSizeAndBlocktime(t *testing.T) {
 		}
 
 		{
-			many2, err := OffsetAndSizeAndBlocktimeSliceFromBytes(buf)
+			many2, err := OffsetAndSizeAndSlotSliceFromBytes(buf)
 			if err != nil {
 				panic(err)
 			}

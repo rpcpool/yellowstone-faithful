@@ -20,6 +20,7 @@ func newCmd_Index() *cli.Command {
 			newCmd_Index_all(), // NOTE: not actually all.
 			newCmd_Index_gsfa(),
 			newCmd_Index_sigExists(),
+			newCmd_Index_slot2blocktime(),
 		},
 	}
 }

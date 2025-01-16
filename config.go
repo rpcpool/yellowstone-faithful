@@ -148,6 +148,9 @@ type Config struct {
 		SigExists struct {
 			URI URI `json:"uri" yaml:"uri"`
 		} `json:"sig_exists" yaml:"sig_exists"`
+		SlotToBlocktime struct {
+			URI URI `json:"uri" yaml:"uri"`
+		} `json:"slot_to_blocktime" yaml:"slot_to_blocktime"`
 	} `json:"indexes" yaml:"indexes"`
 	Genesis struct {
 		URI URI `json:"uri" yaml:"uri"`
@@ -365,6 +368,14 @@ func (c *Config) Validate() error {
 				return err
 			}
 		}
+		{
+			if c.Indexes.SlotToBlocktime.URI.IsZero() {
+				return fmt.Errorf("indexes.slot_to_blocktime.uri must be set")
+			}
+			if err := isSupportedURI(c.Indexes.SlotToBlocktime.URI, "indexes.slot_to_blocktime.uri"); err != nil {
+				return err
+			}
+		}
 	}
 	{
 		// check that the URIs are valid
@@ -405,6 +416,9 @@ func (c *Config) Validate() error {
 			if !c.Indexes.Gsfa.URI.IsZero() && !c.Indexes.Gsfa.URI.IsLocal() {
 				return fmt.Errorf("indexes.gsfa.uri must be a local directory")
 			}
+		}
+		if !c.Indexes.SlotToBlocktime.URI.IsValid() {
+			return fmt.Errorf("indexes.slot_to_blocktime.uri is invalid")
 		}
 	}
 	{

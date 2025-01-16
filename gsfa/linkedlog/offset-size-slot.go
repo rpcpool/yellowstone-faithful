@@ -8,32 +8,32 @@ import (
 	"slices"
 )
 
-func NewOffsetAndSizeAndBlocktime(offset uint64, size uint64, blocktime uint64) *OffsetAndSizeAndBlocktime {
-	return &OffsetAndSizeAndBlocktime{
-		Offset:    offset,
-		Size:      size,
-		Blocktime: blocktime,
+func NewOffsetAndSizeAndSlot(offset uint64, size uint64, slot uint64) *OffsetAndSizeAndSlot {
+	return &OffsetAndSizeAndSlot{
+		Offset: offset,
+		Size:   size,
+		Slot:   slot,
 	}
 }
 
-type OffsetAndSizeAndBlocktime struct {
-	Offset    uint64 // uint48, 6 bytes, max 281.5 TB (terabytes)
-	Size      uint64 // uint24, 3 bytes, max 16.7 MB (megabytes)
-	Blocktime uint64 // uint40, 5 bytes, max 1099511627775 (seconds since epoch)
+type OffsetAndSizeAndSlot struct {
+	Offset uint64 // encoded as uvarint
+	Size   uint64 // encoded as uvarint
+	Slot   uint64 // encoded as uvarint
 }
 
 // Bytes returns the offset and size as a byte slice.
-func (oas OffsetAndSizeAndBlocktime) Bytes() []byte {
+func (oas OffsetAndSizeAndSlot) Bytes() []byte {
 	buf := make([]byte, 0, binary.MaxVarintLen64*3)
 	buf = binary.AppendUvarint(buf, oas.Offset)
 	buf = binary.AppendUvarint(buf, oas.Size)
-	buf = binary.AppendUvarint(buf, oas.Blocktime)
+	buf = binary.AppendUvarint(buf, oas.Slot)
 	buf = slices.Clip(buf)
 	return buf
 }
 
 // FromBytes parses the offset and size from a byte slice.
-func (oas *OffsetAndSizeAndBlocktime) FromBytes(buf []byte) error {
+func (oas *OffsetAndSizeAndSlot) FromBytes(buf []byte) error {
 	if len(buf) > binary.MaxVarintLen64*3 {
 		return errors.New("invalid byte slice length")
 	}
@@ -48,14 +48,14 @@ func (oas *OffsetAndSizeAndBlocktime) FromBytes(buf []byte) error {
 		return errors.New("failed to parse size")
 	}
 	buf = buf[n:]
-	oas.Blocktime, n = binary.Uvarint(buf)
+	oas.Slot, n = binary.Uvarint(buf)
 	if n <= 0 {
-		return errors.New("failed to parse blocktime")
+		return errors.New("failed to parse slot")
 	}
 	return nil
 }
 
-func (oas *OffsetAndSizeAndBlocktime) FromReader(r UvarintReader) error {
+func (oas *OffsetAndSizeAndSlot) FromReader(r UvarintReader) error {
 	var err error
 	oas.Offset, err = r.ReadUvarint()
 	if err != nil {
@@ -65,9 +65,9 @@ func (oas *OffsetAndSizeAndBlocktime) FromReader(r UvarintReader) error {
 	if err != nil {
 		return fmt.Errorf("failed to read size: %w", err)
 	}
-	oas.Blocktime, err = r.ReadUvarint()
+	oas.Slot, err = r.ReadUvarint()
 	if err != nil {
-		return fmt.Errorf("failed to read blocktime: %w", err)
+		return fmt.Errorf("failed to read slot: %w", err)
 	}
 	return nil
 }
@@ -92,11 +92,11 @@ func (r *uvarintReader) ReadUvarint() (uint64, error) {
 	return v, nil
 }
 
-func OffsetAndSizeAndBlocktimeSliceFromBytes(buf []byte) ([]OffsetAndSizeAndBlocktime, error) {
+func OffsetAndSizeAndSlotSliceFromBytes(buf []byte) ([]OffsetAndSizeAndSlot, error) {
 	r := &uvarintReader{buf: buf}
-	oass := make([]OffsetAndSizeAndBlocktime, 0)
+	oass := make([]OffsetAndSizeAndSlot, 0)
 	for {
-		oas := OffsetAndSizeAndBlocktime{}
+		oas := OffsetAndSizeAndSlot{}
 		err := oas.FromReader(r)
 		if err != nil {
 			if errors.Is(err, io.EOF) {

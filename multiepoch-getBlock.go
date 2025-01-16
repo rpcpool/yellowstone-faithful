@@ -18,6 +18,7 @@ import (
 	jsoniter "github.com/json-iterator/go"
 	"github.com/rpcpool/yellowstone-faithful/compactindexsized"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
+	"github.com/rpcpool/yellowstone-faithful/slottools"
 	solanablockrewards "github.com/rpcpool/yellowstone-faithful/solana-block-rewards"
 	"github.com/rpcpool/yellowstone-faithful/tooling"
 	"github.com/sourcegraph/jsonrpc2"
@@ -62,7 +63,7 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 	slot := params.Slot
 
 	// find the epoch that contains the requested slot
-	epochNumber := CalcEpochForSlot(slot)
+	epochNumber := slottools.CalcEpochForSlot(slot)
 	epochHandler, err := multi.GetEpoch(epochNumber)
 	if err != nil {
 		return &jsonrpc2.Error{
@@ -93,7 +94,7 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 	tim.time("GetBlock")
 	{
 		prefetcherFromCar := func() error {
-			parentIsInPreviousEpoch := CalcEpochForSlot(uint64(block.Meta.Parent_slot)) != CalcEpochForSlot(slot)
+			parentIsInPreviousEpoch := slottools.CalcEpochForSlot(uint64(block.Meta.Parent_slot)) != slottools.CalcEpochForSlot(slot)
 			if slot == 0 {
 				parentIsInPreviousEpoch = true
 			}
@@ -451,7 +452,7 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 	{
 		// get parent slot
 		parentSlot := uint64(block.Meta.Parent_slot)
-		if (parentSlot != 0 || slot == 1) && CalcEpochForSlot(parentSlot) == epochNumber {
+		if (parentSlot != 0 || slot == 1) && slottools.CalcEpochForSlot(parentSlot) == epochNumber {
 			// NOTE: if the parent is in the same epoch, we can get it from the same epoch handler as the block;
 			// otherwise, we need to get it from the previous epoch (TODO: implement this)
 			parentBlock, _, err := epochHandler.GetBlock(WithSubrapghPrefetch(ctx, false), parentSlot)

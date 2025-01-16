@@ -13,14 +13,20 @@ import (
 	"sync"
 	"time"
 
+	bin "github.com/gagliardetto/binary"
 	"github.com/gagliardetto/solana-go"
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-car/util"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/rpcpool/yellowstone-faithful/compactindexsized"
+	"github.com/rpcpool/yellowstone-faithful/gsfa"
+	"github.com/rpcpool/yellowstone-faithful/gsfa/linkedlog"
+	"github.com/rpcpool/yellowstone-faithful/indexes"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
 	old_faithful_grpc "github.com/rpcpool/yellowstone-faithful/old-faithful-proto/old-faithful-grpc"
+	"github.com/rpcpool/yellowstone-faithful/slottools"
+	solanatxmetaparsers "github.com/rpcpool/yellowstone-faithful/solana-tx-meta-parsers"
 	"github.com/rpcpool/yellowstone-faithful/tooling"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
@@ -66,7 +72,7 @@ func (me *MultiEpoch) GetVersion(context.Context, *old_faithful_grpc.VersionRequ
 func (multi *MultiEpoch) GetBlock(ctx context.Context, params *old_faithful_grpc.BlockRequest) (*old_faithful_grpc.BlockResponse, error) {
 	// find the epoch that contains the requested slot
 	slot := params.Slot
-	epochNumber := CalcEpochForSlot(slot)
+	epochNumber := slottools.CalcEpochForSlot(slot)
 	epochHandler, err := multi.GetEpoch(epochNumber)
 	if err != nil {
 		return nil, status.Errorf(codes.NotFound, "Epoch %d is not available", epochNumber)
@@ -85,7 +91,7 @@ func (multi *MultiEpoch) GetBlock(ctx context.Context, params *old_faithful_grpc
 	tim.time("GetBlock")
 	{
 		prefetcherFromCar := func() error {
-			parentIsInPreviousEpoch := CalcEpochForSlot(uint64(block.Meta.Parent_slot)) != CalcEpochForSlot(slot)
+			parentIsInPreviousEpoch := slottools.CalcEpochForSlot(uint64(block.Meta.Parent_slot)) != slottools.CalcEpochForSlot(slot)
 			if slot == 0 {
 				parentIsInPreviousEpoch = true
 			}
@@ -345,7 +351,7 @@ func (multi *MultiEpoch) GetBlock(ctx context.Context, params *old_faithful_grpc
 	{
 		// get parent slot
 		parentSlot := uint64(block.Meta.Parent_slot)
-		if (parentSlot != 0 || slot == 1) && CalcEpochForSlot(parentSlot) == epochNumber {
+		if (parentSlot != 0 || slot == 1) && slottools.CalcEpochForSlot(parentSlot) == epochNumber {
 			// NOTE: if the parent is in the same epoch, we can get it from the same epoch handler as the block;
 			// otherwise, we need to get it from the previous epoch (TODO: implement this)
 			parentBlock, _, err := epochHandler.GetBlock(WithSubrapghPrefetch(ctx, false), parentSlot)
@@ -410,13 +416,15 @@ func (multi *MultiEpoch) GetTransaction(ctx context.Context, params *old_faithfu
 	}
 	response.Slot = uint64(transactionNode.Slot)
 	{
-		block, _, err := epochHandler.GetBlock(ctx, uint64(transactionNode.Slot))
-		if err != nil {
-			return nil, status.Errorf(codes.Internal, "Failed to get block: %v", err)
-		}
-		blocktime := uint64(block.Meta.Blocktime)
-		if blocktime != 0 {
+		blocktimeIndex := epochHandler.GetBlocktimeIndex()
+		if blocktimeIndex != nil {
+			blocktime, err := blocktimeIndex.Get(uint64(transactionNode.Slot))
+			if err != nil {
+				return nil, status.Errorf(codes.Internal, "Failed to get blocktime: %v", err)
+			}
 			response.BlockTime = int64(blocktime)
+		} else {
+			return nil, status.Errorf(codes.Internal, "Failed to get blocktime: blocktime index is nil")
 		}
 	}
 
@@ -601,29 +609,24 @@ func (multi *MultiEpoch) Get(ser old_faithful_grpc.OldFaithful_GetServer) error 
 
 func (multi *MultiEpoch) GetBlockTime(ctx context.Context, params *old_faithful_grpc.BlockTimeRequest) (*old_faithful_grpc.BlockTimeResponse, error) {
 	slot := params.Slot
-	epochNumber := CalcEpochForSlot(slot)
+	epochNumber := slottools.CalcEpochForSlot(slot)
 	epochHandler, err := multi.GetEpoch(epochNumber)
 	if err != nil {
 		return nil, status.Errorf(codes.NotFound, "Epoch %d is not available", epochNumber)
 	}
 
-	block, _, err := epochHandler.GetBlock(WithSubrapghPrefetch(ctx, false), slot)
-	if err != nil {
-		if errors.Is(err, compactindexsized.ErrNotFound) {
-			return nil, status.Errorf(codes.NotFound, "Slot %d was skipped, or missing in long-term storage", slot)
-		} else {
+	blocktimeIndex := epochHandler.GetBlocktimeIndex()
+	if blocktimeIndex != nil {
+		blocktime, err := blocktimeIndex.Get(slot)
+		if err != nil {
 			return nil, status.Errorf(codes.Internal, "Failed to get block: %v", err)
 		}
+		return &old_faithful_grpc.BlockTimeResponse{
+			BlockTime: blocktime,
+		}, nil
+	} else {
+		return nil, status.Errorf(codes.Internal, "Failed to get block: blocktime index is not available")
 	}
-
-	blocktime := uint64(block.Meta.Blocktime)
-	if blocktime == 0 {
-		return nil, status.Errorf(codes.NotFound, "Blocktime for slot %d is not available", slot)
-	}
-
-	return &old_faithful_grpc.BlockTimeResponse{
-		BlockTime: int64(blocktime),
-	}, nil
 }
 
 func (multi *MultiEpoch) StreamBlocks(params *old_faithful_grpc.StreamBlocksRequest, ser old_faithful_grpc.OldFaithful_StreamBlocksServer) error {
@@ -676,14 +679,10 @@ func blockContainsAccounts(block *old_faithful_grpc.BlockResponse, accounts []st
 	}
 
 	for _, tx := range block.Transactions {
-		decoded, err := iplddecoders.DecodeTransaction(tx.Transaction)
+		decoder := bin.NewBinDecoder(tx.GetTransaction())
+		solTx, err := solana.TransactionFromDecoder(decoder)
 		if err != nil {
-			klog.Warningf("Failed to decode transaction: %w", err)
-			continue // skip if there's error decoding
-		}
-		solTx, err := decoded.GetSolanaTransaction()
-		if err != nil {
-			klog.Warningf("Failed to get sol transaction: %w", err)
+			klog.Errorf("Failed to decode transaction: %v", err)
 			continue
 		}
 
@@ -693,8 +692,233 @@ func blockContainsAccounts(block *old_faithful_grpc.BlockResponse, accounts []st
 			}
 		}
 
+		meta, err := solanatxmetaparsers.ParseTransactionStatusMetaContainer(tx.Meta)
+		if err != nil {
+			klog.Errorf("Failed to parse transaction meta: %v", err)
+		}
+
+		loadedAccounts := meta.GetLoadedAccounts()
+		keys := byteSlicesToKeySlice(loadedAccounts)
+		for _, key := range keys {
+			if _, exists := accountSet[key.String()]; exists {
+				return true
+			}
+		}
 	}
 
 	return false
+}
 
+func (multi *MultiEpoch) StreamTransactions(params *old_faithful_grpc.StreamTransactionsRequest, ser old_faithful_grpc.OldFaithful_StreamTransactionsServer) error {
+	ctx := ser.Context()
+
+	startSlot := params.StartSlot
+	endSlot := startSlot + maxSlotsToStream
+
+	if params.EndSlot != nil {
+		endSlot = *params.EndSlot
+	}
+	gsfaReader, _ := multi.getGsfaReadersInEpochDescendingOrderForSlotRange(ctx, startSlot, endSlot)
+
+	for slot := startSlot; slot <= endSlot; slot++ {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		if err := multi.processSlotTransactions(ctx, ser, slot, params.Filter, gsfaReader); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (multi *MultiEpoch) processSlotTransactions(
+	ctx context.Context,
+	ser old_faithful_grpc.OldFaithful_StreamTransactionsServer,
+	slot uint64, filter *old_faithful_grpc.StreamTransactionsFilter,
+	gsfaReader *gsfa.GsfaReaderMultiepoch,
+) error {
+
+	filterOutTxn := func(tx solana.Transaction, meta any) bool {
+		if filter == nil {
+			return true
+		}
+
+		if !(*filter.Vote) && IsSimpleVoteTransaction(&tx) { // If vote is false, we should filter out vote transactions
+			return false
+		}
+
+		if !(*filter.Failed) { // If failed is false, we should filter out failed transactions
+			err := getErr(meta)
+			if err != nil {
+				return false
+			}
+		}
+
+		// AccountInclude is handled in the main function
+
+		for _, acc := range filter.AccountExclude {
+			pkey := solana.MustPublicKeyFromBase58(acc)
+			ok, err := tx.HasAccount(pkey)
+			if err != nil {
+				klog.Errorf("Failed to check if transaction %v has account %s", tx, acc)
+				return false
+			}
+			if ok { // If any excluded account is present, filter out the transaction
+				return false
+			}
+		}
+
+		for _, acc := range filter.AccountRequired {
+			pkey := solana.MustPublicKeyFromBase58(acc)
+			ok, err := tx.HasAccount(pkey)
+			if err != nil {
+				klog.Errorf("Failed to check if transaction %v has account %s", tx, acc)
+				return false
+			}
+			if !ok { // If any required account is missing, filter out the transaction
+				return false
+			}
+		}
+
+		return true
+	}
+
+	if filter == nil || len(filter.AccountInclude) == 0 {
+
+		block, err := multi.GetBlock(ctx, &old_faithful_grpc.BlockRequest{Slot: slot})
+		if err != nil {
+			if status.Code(err) == codes.NotFound {
+				return nil
+			}
+			return err
+		}
+
+		for _, tx := range block.Transactions {
+			decoder := bin.NewBinDecoder(tx.GetTransaction())
+			txn, err := solana.TransactionFromDecoder(decoder)
+			if err != nil {
+				return status.Errorf(codes.Internal, "Failed to decode transaction: %v", err)
+			}
+
+			meta, err := solanatxmetaparsers.ParseAnyTransactionStatusMeta(tx.Meta)
+			if err != nil {
+				return status.Errorf(codes.Internal, "Failed to parse transaction meta: %v", err)
+			}
+
+			if !filterOutTxn(*txn, meta) {
+
+				txResp := new(old_faithful_grpc.TransactionResponse)
+				txResp.Transaction = new(old_faithful_grpc.Transaction)
+
+				{
+					txResp.Transaction.Transaction = tx.Transaction
+					txResp.Transaction.Meta = tx.Meta
+					txResp.Transaction.Index = tx.Index
+
+					epochNumber := slottools.CalcEpochForSlot(slot)
+					epochHandler, err := multi.GetEpoch(epochNumber)
+					if err != nil {
+						return status.Errorf(codes.NotFound, "Epoch %d is not available", epochNumber)
+					}
+					blocktimeIndex := epochHandler.GetBlocktimeIndex()
+					if blocktimeIndex != nil {
+						blocktime, err := blocktimeIndex.Get(uint64(slot))
+						if err != nil {
+							return status.Errorf(codes.Internal, "Failed to get blocktime: %v", err)
+						}
+						txResp.BlockTime = int64(blocktime)
+					} else {
+						return status.Errorf(codes.Internal, "Failed to get blocktime: blocktime index is nil")
+					}
+				}
+
+				if err := ser.Send(txResp); err != nil {
+					return err
+				}
+			}
+		}
+	} else {
+		for _, account := range filter.AccountInclude {
+			pKey := solana.MustPublicKeyFromBase58(account)
+			epochToTxns, err := gsfaReader.Get(
+				ctx,
+				pKey,
+				1000,
+				func(epochNum uint64, oas linkedlog.OffsetAndSizeAndSlot) (*ipldbindcode.Transaction, error) {
+					epoch, err := multi.GetEpoch(epochNum)
+					if err != nil {
+						return nil, fmt.Errorf("failed to get epoch %d: %w", epochNum, err)
+					}
+					raw, err := epoch.GetNodeByOffsetAndSize(ctx, nil, &indexes.OffsetAndSize{
+						Offset: oas.Offset,
+						Size:   oas.Size,
+					})
+					if err != nil {
+						return nil, fmt.Errorf("failed to get signature: %w", err)
+					}
+					decoded, err := iplddecoders.DecodeTransaction(raw)
+					if err != nil {
+						return nil, fmt.Errorf("error while decoding transaction from nodex at offset %d: %w", oas.Offset, err)
+					}
+					return decoded, nil
+				},
+			)
+			if err != nil {
+				return err
+			}
+
+			for epochNumber, txns := range epochToTxns {
+				epochHandler, err := multi.GetEpoch(epochNumber)
+				if err != nil {
+					return status.Errorf(codes.NotFound, "Epoch %d is not available", epochNumber)
+				}
+				for _, txn := range txns {
+					if slot != uint64(txn.Slot) { // If the transaction is not in the requested slot, skip
+						continue
+					}
+					tx, meta, err := parseTransactionAndMetaFromNode(txn, epochHandler.GetDataFrameByCid)
+					if err != nil {
+						return status.Errorf(codes.Internal, "Failed to parse transaction from node: %v", err)
+					}
+
+					if !filterOutTxn(tx, meta) {
+
+						txResp := new(old_faithful_grpc.TransactionResponse)
+						txResp.Transaction = new(old_faithful_grpc.Transaction)
+						{
+							pos, ok := txn.GetPositionIndex()
+							if ok {
+								txResp.Index = ptrToUint64(uint64(pos))
+								txResp.Transaction.Index = ptrToUint64(uint64(pos))
+							}
+							txResp.Transaction.Transaction, txResp.Transaction.Meta, err = getTransactionAndMetaFromNode(txn, epochHandler.GetDataFrameByCid)
+							if err != nil {
+								return status.Errorf(codes.Internal, "Failed to get transaction: %v", err)
+							}
+							txResp.Slot = uint64(txn.Slot)
+
+							blocktimeIndex := epochHandler.GetBlocktimeIndex()
+							if blocktimeIndex != nil {
+								blocktime, err := blocktimeIndex.Get(uint64(txn.Slot))
+								if err != nil {
+									return status.Errorf(codes.Internal, "Failed to get blocktime: %v", err)
+								}
+								txResp.BlockTime = int64(blocktime)
+							} else {
+								return status.Errorf(codes.Internal, "Failed to get blocktime: blocktime index is nil")
+							}
+						}
+
+						if err := ser.Send(txResp); err != nil {
+							return err
+						}
+					}
+				}
+			}
+		}
+	}
+	return nil
 }

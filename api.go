@@ -8,6 +8,7 @@ import (
 
 	"github.com/gagliardetto/solana-go"
 	"github.com/rpcpool/yellowstone-faithful/compactindexsized"
+	"github.com/rpcpool/yellowstone-faithful/slottools"
 	"github.com/valyala/fasthttp"
 )
 
@@ -35,7 +36,7 @@ func (multi *MultiEpoch) apiHandler(reqCtx *fasthttp.RequestCtx) {
 			return
 		}
 		// find the epoch that contains the requested slot
-		epochNumber := CalcEpochForSlot(slot)
+		epochNumber := slottools.CalcEpochForSlot(slot)
 		epochHandler, err := multi.GetEpoch(epochNumber)
 		if err != nil {
 			reqCtx.SetStatusCode(fasthttp.StatusNotFound) // TODO: this means epoch is not available, and probably should be another dedicated status code

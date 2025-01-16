@@ -7,11 +7,11 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/dustin/go-humanize"
 	"github.com/ipfs/go-cid"
 	carv2 "github.com/ipld/go-car/v2"
 	"github.com/rpcpool/yellowstone-faithful/indexes"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
+	"github.com/rpcpool/yellowstone-faithful/slottools"
 	"k8s.io/klog/v2"
 )
 
@@ -49,18 +49,12 @@ func CreateIndex_slot2cid(
 	}
 	rootCid := roots[0]
 
-	// TODO: use another way to precisely count the number of solana Blocks in the CAR file.
-	klog.Infof("Counting items in car file...")
-	numItems, err := carCountItems(carPath)
-	if err != nil {
-		return "", fmt.Errorf("failed to count items in car file: %w", err)
-	}
-	klog.Infof("Found %s items in car file", humanize.Comma(int64(numItems)))
-
 	tmpDir = filepath.Join(tmpDir, "index-slot-to-cid-"+time.Now().Format("20060102-150405.000000000"))
 	if err = os.MkdirAll(tmpDir, 0o755); err != nil {
 		return "", fmt.Errorf("failed to create tmp dir: %w", err)
 	}
+
+	numItems := uint64(slottools.EpochLen)
 
 	klog.Infof("Creating builder with %d items", numItems)
 	sl2c, err := indexes.NewWriter_SlotToCid(
