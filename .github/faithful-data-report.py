@@ -89,6 +89,7 @@ class FaithfulDataReport:
             f"epoch-{epoch}-{bafy}-mainnet-sig-to-cid.index",
             f"epoch-{epoch}-{bafy}-mainnet-sig-exists.index",
             f"epoch-{epoch}-{bafy}-mainnet-slot-to-cid.index",
+            f"epoch-{epoch}-{bafy}-mainnet-slot-to-blocktime.index",
             f"epoch-{epoch}-gsfa.index.tar.zstd"
         ]
 
