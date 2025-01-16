@@ -146,6 +146,10 @@ func (a *GsfaWriter) Push(
 	length uint64,
 	slot uint64,
 	publicKeys solana.PublicKeySlice,
+	// flags:
+	hasMeta bool,
+	isSuccess bool,
+	isVote bool,
 ) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -155,6 +159,10 @@ func (a *GsfaWriter) Push(
 		Size:   length,
 		Slot:   slot,
 	}
+	oas.SetHasMeta(hasMeta)
+	oas.SetIsSuccess(isSuccess)
+	oas.SetIsVote(isVote)
+
 	publicKeys = publicKeys.Dedupe()
 	publicKeys.Sort()
 	if slot%500 == 0 && a.accum.Len() > 100_000 {

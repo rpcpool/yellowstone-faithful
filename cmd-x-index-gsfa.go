@@ -12,6 +12,7 @@ import (
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/dustin/go-humanize"
+	"github.com/gagliardetto/solana-go"
 	"github.com/ipfs/go-cid"
 	"github.com/rpcpool/yellowstone-faithful/accum"
 	"github.com/rpcpool/yellowstone-faithful/carreader"
@@ -20,6 +21,8 @@ import (
 	"github.com/rpcpool/yellowstone-faithful/indexmeta"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
+	metalatest "github.com/rpcpool/yellowstone-faithful/parse_legacy_transaction_status_meta/v-latest"
+	metaoldest "github.com/rpcpool/yellowstone-faithful/parse_legacy_transaction_status_meta/v-oldest"
 	"github.com/rpcpool/yellowstone-faithful/slottools"
 	"github.com/urfave/cli/v2"
 	"k8s.io/klog/v2"
@@ -230,11 +233,46 @@ func newCmd_Index_gsfa() *cli.Command {
 							accountKeys = append(accountKeys, byteSlicesToKeySlice(meta.LoadedReadonlyAddresses)...)
 							accountKeys = append(accountKeys, byteSlicesToKeySlice(meta.LoadedWritableAddresses)...)
 						}
+						hasMeta := txWithInfo.Metadata != nil // We include this to know whether isSuccess is valid.
+						isSuccess := func() bool {
+							// check if the transaction is a success:
+							if txWithInfo.Metadata == nil {
+								// NOTE: if there is no metadata, we have NO WAY of knowing if the transaction was successful.
+								return false
+							}
+							if txWithInfo.Metadata.IsProtobuf() {
+								meta := txWithInfo.Metadata.GetProtobuf()
+								if meta.Err == nil {
+									return true
+								}
+							}
+							if txWithInfo.Metadata.IsSerdeLatest() {
+								meta := txWithInfo.Metadata.GetSerdeLatest()
+								_, ok := meta.Status.(*metalatest.Result__Ok)
+								if ok {
+									return true
+								}
+							}
+							if txWithInfo.Metadata.IsSerdeOldest() {
+								meta := txWithInfo.Metadata.GetSerdeOldest()
+								_, ok := meta.Status.(*metaoldest.Result__Ok)
+								if ok {
+									return true
+								}
+							}
+							return false
+						}()
+
+						isVote := IsVote(&txWithInfo.Transaction)
+
 						err = indexW.Push(
 							txWithInfo.Offset,
 							txWithInfo.Length,
 							txWithInfo.Slot,
 							accountKeys,
+							hasMeta,
+							isSuccess,
+							isVote,
 						)
 						if err != nil {
 							klog.Exitf("Error while pushing to gsfa index: %s", err)
@@ -283,4 +321,17 @@ func formatIndexDirname_gsfa(epoch uint64, rootCid cid.Cid, network indexes.Netw
 		network,
 		"gsfa.indexdir",
 	)
+}
+
+func IsVote(tx *solana.Transaction) bool {
+	// is vote if any of the instructions are of the vote program
+	for _, inst := range tx.Message.Instructions {
+		progKey, err := tx.ResolveProgramIDIndex(inst.ProgramIDIndex)
+		if err == nil {
+			if progKey.Equals(solana.VoteProgramID) {
+				return true
+			}
+		}
+	}
+	return false
 }
