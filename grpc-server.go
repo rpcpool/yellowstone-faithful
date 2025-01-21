@@ -720,24 +720,15 @@ func (multi *MultiEpoch) StreamTransactions(params *old_faithful_grpc.StreamTran
 	}
 	gsfaReader, _ := multi.getGsfaReadersInEpochDescendingOrderForSlotRange(ctx, startSlot, endSlot)
 
-	for slot := startSlot; slot <= endSlot; slot++ {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
-
-		if err := multi.processSlotTransactions(ctx, ser, slot, params.Filter, gsfaReader); err != nil {
-			return err
-		}
-	}
-	return nil
+	return multi.processSlotTransactions(ctx, ser, startSlot, endSlot, params.Filter, gsfaReader)
 }
 
 func (multi *MultiEpoch) processSlotTransactions(
 	ctx context.Context,
 	ser old_faithful_grpc.OldFaithful_StreamTransactionsServer,
-	slot uint64, filter *old_faithful_grpc.StreamTransactionsFilter,
+	startSlot uint64,
+	endSlot uint64,
+	filter *old_faithful_grpc.StreamTransactionsFilter,
 	gsfaReader *gsfa.GsfaReaderMultiepoch,
 ) error {
 
@@ -788,58 +779,67 @@ func (multi *MultiEpoch) processSlotTransactions(
 
 	if filter == nil || len(filter.AccountInclude) == 0 {
 
-		block, err := multi.GetBlock(ctx, &old_faithful_grpc.BlockRequest{Slot: slot})
-		if err != nil {
-			if status.Code(err) == codes.NotFound {
-				return nil
+		for slot := startSlot; slot <= endSlot; slot++ {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			default:
 			}
-			return err
-		}
 
-		for _, tx := range block.Transactions {
-			decoder := bin.NewBinDecoder(tx.GetTransaction())
-			txn, err := solana.TransactionFromDecoder(decoder)
+			block, err := multi.GetBlock(ctx, &old_faithful_grpc.BlockRequest{Slot: slot})
 			if err != nil {
-				return status.Errorf(codes.Internal, "Failed to decode transaction: %v", err)
+				if status.Code(err) == codes.NotFound {
+					return nil
+				}
+				return err
 			}
 
-			meta, err := solanatxmetaparsers.ParseAnyTransactionStatusMeta(tx.Meta)
-			if err != nil {
-				return status.Errorf(codes.Internal, "Failed to parse transaction meta: %v", err)
-			}
+			for _, tx := range block.Transactions {
+				decoder := bin.NewBinDecoder(tx.GetTransaction())
+				txn, err := solana.TransactionFromDecoder(decoder)
+				if err != nil {
+					return status.Errorf(codes.Internal, "Failed to decode transaction: %v", err)
+				}
 
-			if !filterOutTxn(*txn, meta) {
+				meta, err := solanatxmetaparsers.ParseAnyTransactionStatusMeta(tx.Meta)
+				if err != nil {
+					return status.Errorf(codes.Internal, "Failed to parse transaction meta: %v", err)
+				}
 
-				txResp := new(old_faithful_grpc.TransactionResponse)
-				txResp.Transaction = new(old_faithful_grpc.Transaction)
+				if !filterOutTxn(*txn, meta) {
 
-				{
-					txResp.Transaction.Transaction = tx.Transaction
-					txResp.Transaction.Meta = tx.Meta
-					txResp.Transaction.Index = tx.Index
+					txResp := new(old_faithful_grpc.TransactionResponse)
+					txResp.Transaction = new(old_faithful_grpc.Transaction)
 
-					epochNumber := slottools.CalcEpochForSlot(slot)
-					epochHandler, err := multi.GetEpoch(epochNumber)
-					if err != nil {
-						return status.Errorf(codes.NotFound, "Epoch %d is not available", epochNumber)
-					}
-					blocktimeIndex := epochHandler.GetBlocktimeIndex()
-					if blocktimeIndex != nil {
-						blocktime, err := blocktimeIndex.Get(uint64(slot))
+					{
+						txResp.Transaction.Transaction = tx.Transaction
+						txResp.Transaction.Meta = tx.Meta
+						txResp.Transaction.Index = tx.Index
+
+						epochNumber := slottools.CalcEpochForSlot(slot)
+						epochHandler, err := multi.GetEpoch(epochNumber)
 						if err != nil {
-							return status.Errorf(codes.Internal, "Failed to get blocktime: %v", err)
+							return status.Errorf(codes.NotFound, "Epoch %d is not available", epochNumber)
 						}
-						txResp.BlockTime = int64(blocktime)
-					} else {
-						return status.Errorf(codes.Internal, "Failed to get blocktime: blocktime index is nil")
+						blocktimeIndex := epochHandler.GetBlocktimeIndex()
+						if blocktimeIndex != nil {
+							blocktime, err := blocktimeIndex.Get(uint64(slot))
+							if err != nil {
+								return status.Errorf(codes.Internal, "Failed to get blocktime: %v", err)
+							}
+							txResp.BlockTime = int64(blocktime)
+						} else {
+							return status.Errorf(codes.Internal, "Failed to get blocktime: blocktime index is nil")
+						}
 					}
-				}
 
-				if err := ser.Send(txResp); err != nil {
-					return err
+					if err := ser.Send(txResp); err != nil {
+						return err
+					}
 				}
 			}
 		}
+		return nil
 	} else {
 		for _, account := range filter.AccountInclude {
 			pKey := solana.MustPublicKeyFromBase58(account)
