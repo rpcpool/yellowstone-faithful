@@ -841,12 +841,43 @@ func (multi *MultiEpoch) processSlotTransactions(
 		}
 		return nil
 	} else {
+
+		const batchSize = 1000
+		txChan := make(chan *old_faithful_grpc.TransactionResponse, batchSize)
+		errChan := make(chan error, len(filter.AccountInclude))
+
+		var wg sync.WaitGroup
+
+		// Start sender goroutine
+		go func() {
+			seen := make(map[string]bool)
+			for txResp := range txChan {
+				key := fmt.Sprintf("%d-%d", txResp.Slot, txResp.Transaction.Index)
+				if seen[key] {
+					continue
+				}
+				seen[key] = true
+
+				if err := ser.Send(txResp); err != nil {
+					errChan <- err
+					return
+				}
+			}
+		}()
+
 		for _, account := range filter.AccountInclude {
-			pKey := solana.MustPublicKeyFromBase58(account)
-			epochToTxns, err := gsfaReader.Get(
+			wg.Add(1)
+
+			go func(acc string) {
+				defer wg.Done()
+
+				pKey := solana.MustPublicKeyFromBase58(acc)
+			epochToTxns, err := gsfaReader.GetBeforeUntilSlot(
 				ctx,
 				pKey,
-				1000,
+				batchSize,
+				endSlot + 1, //  Before (exclusive)
+				startSlot,  // Until (inclusive)
 				func(epochNum uint64, oas linkedlog.OffsetAndSizeAndSlot) (*ipldbindcode.Transaction, error) {
 					epoch, err := multi.GetEpoch(epochNum)
 					if err != nil {
@@ -867,21 +898,27 @@ func (multi *MultiEpoch) processSlotTransactions(
 				},
 			)
 			if err != nil {
-				return err
+				errChan <- err
+				return
 			}
 
 			for epochNumber, txns := range epochToTxns {
 				epochHandler, err := multi.GetEpoch(epochNumber)
 				if err != nil {
-					return status.Errorf(codes.NotFound, "Epoch %d is not available", epochNumber)
+					errChan <- status.Errorf(codes.NotFound, "Epoch %d is not available", epochNumber)
+					return
 				}
 				for _, txn := range txns {
-					if slot != uint64(txn.Slot) { // If the transaction is not in the requested slot, skip
-						continue
-					}
+
+					// Only process transactions within our slot range
+                    if txn.Slot < int(startSlot) || txn.Slot > int(endSlot) {
+                        continue
+                    }
+
 					tx, meta, err := parseTransactionAndMetaFromNode(txn, epochHandler.GetDataFrameByCid)
 					if err != nil {
-						return status.Errorf(codes.Internal, "Failed to parse transaction from node: %v", err)
+						errChan <- status.Errorf(codes.Internal, "Failed to parse transaction from node: %v", err)
+						return
 					}
 
 					if !filterOutTxn(tx, meta) {
@@ -912,13 +949,34 @@ func (multi *MultiEpoch) processSlotTransactions(
 							}
 						}
 
-						if err := ser.Send(txResp); err != nil {
-							return err
-						}
+						select {
+                        case txChan <- txResp:
+                        case <-ctx.Done():
+                            errChan <- ctx.Err()
+                            return
+                        }
 					}
 				}
 			}
-		}
+		}(account)
 	}
+
+	// Wait for all account processing to complete
+    go func() {
+        wg.Wait()
+        close(txChan)
+    }()
+
+    // Handle any errors
+    select {
+    case err := <-errChan:
+        return err
+    case <-ctx.Done():
+        return ctx.Err()
+    case <-time.After(time.Second): // Optional timeout
+        if ctx.Err() != nil {
+            return ctx.Err()
+        }
+    }
 	return nil
 }
