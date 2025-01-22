@@ -89,6 +89,7 @@ class FaithfulDataReport:
             f"epoch-{epoch}-{bafy}-mainnet-sig-to-cid.index",
             f"epoch-{epoch}-{bafy}-mainnet-sig-exists.index",
             f"epoch-{epoch}-{bafy}-mainnet-slot-to-cid.index",
+            f"epoch-{epoch}-{bafy}-mainnet-slot-to-blocktime.index",
             f"epoch-{epoch}-gsfa.index.tar.zstd"
         ]
 
@@ -154,8 +155,10 @@ class FaithfulDataReport:
         car_cell = f"[epoch-{data.epoch}.car]({data.car})" if data.car != "n/a" else "✗"
         sha_cell = f"[{data.sha[:7]}]({data.sha_url})" if data.sha != "n/a" else "✗"
         size_cell = f"{data.size} GB" if data.size != "n/a" else "✗"
-        txmeta_cell = f"[✓]({data.txmeta_url})" if validate_txmeta_output(data.txmeta) else "✗"
-        poh_cell = f"[✓]({data.poh_url})" if validate_poh_output(data.poh) else "✗"
+        txmeta_cell = f"[✗]({data.txmeta_url})" if data.txmeta != "n/a" and not validate_txmeta_output(data.txmeta) else \
+                      f"[✓]({data.txmeta_url})" if data.txmeta != "n/a" else "✗"
+        poh_cell = f"[✗]({data.poh_url})" if data.poh != "n/a" and not validate_poh_output(data.poh) else \
+                   f"[✓]({data.poh_url})" if data.poh != "n/a" else "✗"
         indices_cell = "✓" if data.indices != "n/a" else "✗"
         indices_size_cell = f"{data.indices_size} GB" if data.indices_size != "n/a" else "✗"
         deals_cell = f"[✓]({data.deals})" if data.deals != "n/a" else "✗"
