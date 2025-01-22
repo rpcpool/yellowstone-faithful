@@ -872,111 +872,112 @@ func (multi *MultiEpoch) processSlotTransactions(
 				defer wg.Done()
 
 				pKey := solana.MustPublicKeyFromBase58(acc)
-			epochToTxns, err := gsfaReader.GetBeforeUntilSlot(
-				ctx,
-				pKey,
-				batchSize,
-				endSlot + 1, //  Before (exclusive)
-				startSlot,  // Until (inclusive)
-				func(epochNum uint64, oas linkedlog.OffsetAndSizeAndSlot) (*ipldbindcode.Transaction, error) {
-					epoch, err := multi.GetEpoch(epochNum)
-					if err != nil {
-						return nil, fmt.Errorf("failed to get epoch %d: %w", epochNum, err)
-					}
-					raw, err := epoch.GetNodeByOffsetAndSize(ctx, nil, &indexes.OffsetAndSize{
-						Offset: oas.Offset,
-						Size:   oas.Size,
-					})
-					if err != nil {
-						return nil, fmt.Errorf("failed to get signature: %w", err)
-					}
-					decoded, err := iplddecoders.DecodeTransaction(raw)
-					if err != nil {
-						return nil, fmt.Errorf("error while decoding transaction from nodex at offset %d: %w", oas.Offset, err)
-					}
-					return decoded, nil
-				},
-			)
-			if err != nil {
-				errChan <- err
-				return
-			}
-
-			for epochNumber, txns := range epochToTxns {
-				epochHandler, err := multi.GetEpoch(epochNumber)
+				epochToTxns, err := gsfaReader.GetBeforeUntilSlot(
+					ctx,
+					pKey,
+					batchSize,
+					endSlot+1, //  Before (exclusive)
+					startSlot, // Until (inclusive)
+					func(epochNum uint64, oas linkedlog.OffsetAndSizeAndSlot) (*ipldbindcode.Transaction, error) {
+						epoch, err := multi.GetEpoch(epochNum)
+						if err != nil {
+							return nil, fmt.Errorf("failed to get epoch %d: %w", epochNum, err)
+						}
+						raw, err := epoch.GetNodeByOffsetAndSize(ctx, nil, &indexes.OffsetAndSize{
+							Offset: oas.Offset,
+							Size:   oas.Size,
+						})
+						if err != nil {
+							return nil, fmt.Errorf("failed to get signature: %w", err)
+						}
+						decoded, err := iplddecoders.DecodeTransaction(raw)
+						if err != nil {
+							return nil, fmt.Errorf("error while decoding transaction from nodex at offset %d: %w", oas.Offset, err)
+						}
+						return decoded, nil
+					},
+				)
 				if err != nil {
-					errChan <- status.Errorf(codes.NotFound, "Epoch %d is not available", epochNumber)
+					errChan <- err
 					return
 				}
-				for _, txn := range txns {
 
-					// Only process transactions within our slot range
-                    if txn.Slot < int(startSlot) || txn.Slot > int(endSlot) {
-                        continue
-                    }
-
-					tx, meta, err := parseTransactionAndMetaFromNode(txn, epochHandler.GetDataFrameByCid)
+				for epochNumber, txns := range epochToTxns {
+					epochHandler, err := multi.GetEpoch(epochNumber)
 					if err != nil {
-						errChan <- status.Errorf(codes.Internal, "Failed to parse transaction from node: %v", err)
+						errChan <- status.Errorf(codes.NotFound, "Epoch %d is not available", epochNumber)
 						return
 					}
+					for _, txn := range txns {
 
-					if !filterOutTxn(tx, meta) {
-
-						txResp := new(old_faithful_grpc.TransactionResponse)
-						txResp.Transaction = new(old_faithful_grpc.Transaction)
-						{
-							pos, ok := txn.GetPositionIndex()
-							if ok {
-								txResp.Index = ptrToUint64(uint64(pos))
-								txResp.Transaction.Index = ptrToUint64(uint64(pos))
-							}
-							txResp.Transaction.Transaction, txResp.Transaction.Meta, err = getTransactionAndMetaFromNode(txn, epochHandler.GetDataFrameByCid)
-							if err != nil {
-								return status.Errorf(codes.Internal, "Failed to get transaction: %v", err)
-							}
-							txResp.Slot = uint64(txn.Slot)
-
-							blocktimeIndex := epochHandler.GetBlocktimeIndex()
-							if blocktimeIndex != nil {
-								blocktime, err := blocktimeIndex.Get(uint64(txn.Slot))
-								if err != nil {
-									return status.Errorf(codes.Internal, "Failed to get blocktime: %v", err)
-								}
-								txResp.BlockTime = int64(blocktime)
-							} else {
-								return status.Errorf(codes.Internal, "Failed to get blocktime: blocktime index is nil")
-							}
+						// Only process transactions within our slot range
+						if txn.Slot < int(startSlot) || txn.Slot > int(endSlot) {
+							continue
 						}
 
-						select {
-                        case txChan <- txResp:
-                        case <-ctx.Done():
-                            errChan <- ctx.Err()
-                            return
-                        }
+						tx, meta, err := parseTransactionAndMetaFromNode(txn, epochHandler.GetDataFrameByCid)
+						if err != nil {
+							errChan <- status.Errorf(codes.Internal, "Failed to parse transaction from node: %v", err)
+							return
+						}
+
+						if !filterOutTxn(tx, meta) {
+
+							txResp := new(old_faithful_grpc.TransactionResponse)
+							txResp.Transaction = new(old_faithful_grpc.Transaction)
+							{
+								pos, ok := txn.GetPositionIndex()
+								if ok {
+									txResp.Index = ptrToUint64(uint64(pos))
+									txResp.Transaction.Index = ptrToUint64(uint64(pos))
+								}
+								txResp.Transaction.Transaction, txResp.Transaction.Meta, err = getTransactionAndMetaFromNode(txn, epochHandler.GetDataFrameByCid)
+								if err != nil {
+									return status.Errorf(codes.Internal, "Failed to get transaction: %v", err)
+								}
+								txResp.Slot = uint64(txn.Slot)
+
+								blocktimeIndex := epochHandler.GetBlocktimeIndex()
+								if blocktimeIndex != nil {
+									blocktime, err := blocktimeIndex.Get(uint64(txn.Slot))
+									if err != nil {
+										return status.Errorf(codes.Internal, "Failed to get blocktime: %v", err)
+									}
+									txResp.BlockTime = int64(blocktime)
+								} else {
+									return status.Errorf(codes.Internal, "Failed to get blocktime: blocktime index is nil")
+								}
+							}
+
+							select {
+							case txChan <- txResp:
+							case <-ctx.Done():
+								errChan <- ctx.Err()
+								return
+							}
+						}
 					}
 				}
+			}(account)
+		}
+
+		// Wait for all account processing to complete
+		go func() {
+			wg.Wait()
+			close(txChan)
+		}()
+
+		// Handle any errors
+		select {
+		case err := <-errChan:
+			return err
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(time.Second): // Optional timeout
+			if ctx.Err() != nil {
+				return ctx.Err()
 			}
-		}(account)
+		}
+		return nil
 	}
-
-	// Wait for all account processing to complete
-    go func() {
-        wg.Wait()
-        close(txChan)
-    }()
-
-    // Handle any errors
-    select {
-    case err := <-errChan:
-        return err
-    case <-ctx.Done():
-        return ctx.Err()
-    case <-time.After(time.Second): // Optional timeout
-        if ctx.Err() != nil {
-            return ctx.Err()
-        }
-    }
-	return nil
 }
