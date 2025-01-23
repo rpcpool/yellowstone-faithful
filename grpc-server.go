@@ -951,14 +951,12 @@ func (multi *MultiEpoch) processSlotTransactions(
 		}
 
 		// Wait for all processing to complete
-		go func() {
-			wg.Wait()
-			// Final flush after all processing is done
-			if err := buffer.flush(ser); err != nil {
-				errChan <- err
-			}
-			close(errChan)
-		}()
+		wg.Wait()
+
+		// Flush after all processing is done
+		if err := buffer.flush(ser); err != nil {
+			return err
+		}
 
 		// Handle any errors
 		select {
