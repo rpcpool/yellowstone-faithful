@@ -843,27 +843,10 @@ func (multi *MultiEpoch) processSlotTransactions(
 	} else {
 
 		const batchSize = 1000
-		txChan := make(chan *old_faithful_grpc.TransactionResponse, batchSize)
+		buffer := newTxBuffer(uint64(startSlot), uint64(endSlot))
 		errChan := make(chan error, len(filter.AccountInclude))
 
 		var wg sync.WaitGroup
-
-		// Start sender goroutine
-		go func() {
-			seen := make(map[string]bool)
-			for txResp := range txChan {
-				key := fmt.Sprintf("%d-%d", txResp.Slot, txResp.Transaction.Index)
-				if seen[key] {
-					continue
-				}
-				seen[key] = true
-
-				if err := ser.Send(txResp); err != nil {
-					errChan <- err
-					return
-				}
-			}
-		}()
 
 		for _, account := range filter.AccountInclude {
 			wg.Add(1)
@@ -908,76 +891,157 @@ func (multi *MultiEpoch) processSlotTransactions(
 						errChan <- status.Errorf(codes.NotFound, "Epoch %d is not available", epochNumber)
 						return
 					}
-					for _, txn := range txns {
 
-						// Only process transactions within our slot range
+					// Group transactions by slot for this account
+					slotTxns := make(map[uint64][]*ipldbindcode.Transaction)
+					for _, txn := range txns {
 						if txn.Slot < int(startSlot) || txn.Slot > int(endSlot) {
 							continue
 						}
+						slot := uint64(txn.Slot)
+						slotTxns[slot] = append(slotTxns[slot], txn)
+					}
 
-						tx, meta, err := parseTransactionAndMetaFromNode(txn, epochHandler.GetDataFrameByCid)
-						if err != nil {
-							errChan <- status.Errorf(codes.Internal, "Failed to parse transaction from node: %v", err)
-							return
-						}
-
-						if !filterOutTxn(tx, meta) {
-
-							txResp := new(old_faithful_grpc.TransactionResponse)
-							txResp.Transaction = new(old_faithful_grpc.Transaction)
-							{
-								pos, ok := txn.GetPositionIndex()
-								if ok {
-									txResp.Index = ptrToUint64(uint64(pos))
-									txResp.Transaction.Index = ptrToUint64(uint64(pos))
-								}
-								txResp.Transaction.Transaction, txResp.Transaction.Meta, err = getTransactionAndMetaFromNode(txn, epochHandler.GetDataFrameByCid)
-								if err != nil {
-									return status.Errorf(codes.Internal, "Failed to get transaction: %v", err)
-								}
-								txResp.Slot = uint64(txn.Slot)
-
-								blocktimeIndex := epochHandler.GetBlocktimeIndex()
-								if blocktimeIndex != nil {
-									blocktime, err := blocktimeIndex.Get(uint64(txn.Slot))
-									if err != nil {
-										return status.Errorf(codes.Internal, "Failed to get blocktime: %v", err)
-									}
-									txResp.BlockTime = int64(blocktime)
-								} else {
-									return status.Errorf(codes.Internal, "Failed to get blocktime: blocktime index is nil")
-								}
-							}
-
-							select {
-							case txChan <- txResp:
-							case <-ctx.Done():
-								errChan <- ctx.Err()
+					// Process transactions slot by slot
+					for slot, txnsInSlot := range slotTxns {
+						for _, txn := range txnsInSlot {
+							tx, meta, err := parseTransactionAndMetaFromNode(txn, epochHandler.GetDataFrameByCid)
+							if err != nil {
+								errChan <- status.Errorf(codes.Internal, "Failed to parse transaction from node: %v", err)
 								return
 							}
+
+							if !filterOutTxn(tx, meta) {
+								txResp := new(old_faithful_grpc.TransactionResponse)
+								txResp.Transaction = new(old_faithful_grpc.Transaction)
+								{
+									pos, ok := txn.GetPositionIndex()
+									if ok {
+										txResp.Index = ptrToUint64(uint64(pos))
+										txResp.Transaction.Index = ptrToUint64(uint64(pos))
+									}
+									txResp.Transaction.Transaction, txResp.Transaction.Meta, err = getTransactionAndMetaFromNode(txn, epochHandler.GetDataFrameByCid)
+									if err != nil {
+										errChan <- status.Errorf(codes.Internal, "Failed to get transaction: %v", err)
+										return
+									}
+									txResp.Slot = uint64(txn.Slot)
+
+									blocktimeIndex := epochHandler.GetBlocktimeIndex()
+									if blocktimeIndex != nil {
+										blocktime, err := blocktimeIndex.Get(uint64(txn.Slot))
+										if err != nil {
+											errChan <- status.Errorf(codes.Internal, "Failed to get blocktime: %v", err)
+											return
+										}
+										txResp.BlockTime = int64(blocktime)
+									} else {
+										errChan <- status.Errorf(codes.Internal, "Failed to get blocktime: blocktime index is nil")
+										return
+									}
+								}
+
+								buffer.add(txResp.Slot, *txResp.Index, txResp)
+							}
 						}
+						buffer.markSlotComplete(slot)
 					}
 				}
 			}(account)
 		}
 
-		// Wait for all account processing to complete
+		// Wait for all processing to complete
 		go func() {
 			wg.Wait()
-			close(txChan)
+			// Final flush after all processing is done
+			if err := buffer.flush(ser); err != nil {
+				errChan <- err
+			}
+			close(errChan)
 		}()
 
 		// Handle any errors
 		select {
 		case err := <-errChan:
-			return err
+			if err != nil {
+				return err
+			}
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-time.After(time.Second): // Optional timeout
-			if ctx.Err() != nil {
-				return ctx.Err()
-			}
 		}
+
 		return nil
 	}
+}
+
+type txBuffer struct {
+	items       map[uint64]map[uint64]*old_faithful_grpc.TransactionResponse // slot -> index -> tx
+	mu          sync.Mutex
+	startSlot   uint64
+	endSlot     uint64
+	currentSlot uint64
+	completed   map[uint64]bool // track which slots are complete
+}
+
+func newTxBuffer(startSlot, endSlot uint64) *txBuffer {
+	return &txBuffer{
+		items:       make(map[uint64]map[uint64]*old_faithful_grpc.TransactionResponse),
+		completed:   make(map[uint64]bool),
+		startSlot:   startSlot,
+		endSlot:     endSlot,
+		currentSlot: startSlot,
+	}
+}
+
+func (b *txBuffer) add(slot, idx uint64, tx *old_faithful_grpc.TransactionResponse) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	if _, exists := b.items[slot]; !exists {
+		b.items[slot] = make(map[uint64]*old_faithful_grpc.TransactionResponse)
+	}
+	b.items[slot][idx] = tx
+}
+
+func (b *txBuffer) markSlotComplete(slot uint64) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.completed[slot] = true
+}
+
+func (b *txBuffer) flush(ser old_faithful_grpc.OldFaithful_StreamTransactionsServer) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	for b.currentSlot <= b.endSlot {
+		// Check if current slot is complete
+		if !b.completed[b.currentSlot] {
+			break // Wait for slot to be complete
+		}
+
+		// Send all transactions for this slot in index order
+		if txMap, exists := b.items[b.currentSlot]; exists {
+			// Get all indices and sort them
+			indices := make([]uint64, 0, len(txMap))
+			for idx := range txMap {
+				indices = append(indices, idx)
+			}
+			sort.Slice(indices, func(i, j int) bool {
+				return indices[i] < indices[j]
+			})
+
+			// Send transactions in order
+			for _, idx := range indices {
+				if err := ser.Send(txMap[idx]); err != nil {
+					return err
+				}
+			}
+		}
+
+		// Clean up processed slot
+		delete(b.items, b.currentSlot)
+		delete(b.completed, b.currentSlot)
+		b.currentSlot++
+	}
+	return nil
 }
