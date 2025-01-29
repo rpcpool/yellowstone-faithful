@@ -916,57 +916,44 @@ func (multi *MultiEpoch) processSlotTransactions(
 						return
 					}
 
-					// Group transactions by slot for this account
-					slotTxns := make(map[uint64][]*ipldbindcode.Transaction)
 					for _, txn := range txns {
-						if txn.Slot < int(startSlot) || txn.Slot > int(endSlot) {
-							continue
+						tx, meta, err := parseTransactionAndMetaFromNode(txn, epochHandler.GetDataFrameByCid)
+						if err != nil {
+							errChan <- status.Errorf(codes.Internal, "Failed to parse transaction from node: %v", err)
+							return
 						}
-						slot := uint64(txn.Slot)
-						slotTxns[slot] = append(slotTxns[slot], txn)
-					}
 
-					// Process transactions slot by slot
-					for slot, txnsInSlot := range slotTxns {
-						for _, txn := range txnsInSlot {
-							tx, meta, err := parseTransactionAndMetaFromNode(txn, epochHandler.GetDataFrameByCid)
-							if err != nil {
-								errChan <- status.Errorf(codes.Internal, "Failed to parse transaction from node: %v", err)
-								return
-							}
-
-							if !filterOutTxn(tx, meta) {
-								txResp := new(old_faithful_grpc.TransactionResponse)
-								txResp.Transaction = new(old_faithful_grpc.Transaction)
-								{
-									pos, ok := txn.GetPositionIndex()
-									if ok {
-										txResp.Index = ptrToUint64(uint64(pos))
-										txResp.Transaction.Index = ptrToUint64(uint64(pos))
-									}
-									txResp.Transaction.Transaction, txResp.Transaction.Meta, err = getTransactionAndMetaFromNode(txn, epochHandler.GetDataFrameByCid)
-									if err != nil {
-										errChan <- status.Errorf(codes.Internal, "Failed to get transaction: %v", err)
-										return
-									}
-									txResp.Slot = uint64(txn.Slot)
-
-									blocktimeIndex := epochHandler.GetBlocktimeIndex()
-									if blocktimeIndex != nil {
-										blocktime, err := blocktimeIndex.Get(uint64(txn.Slot))
-										if err != nil {
-											errChan <- status.Errorf(codes.Internal, "Failed to get blocktime: %v", err)
-											return
-										}
-										txResp.BlockTime = int64(blocktime)
-									} else {
-										errChan <- status.Errorf(codes.Internal, "Failed to get blocktime: blocktime index is nil")
-										return
-									}
+						if !filterOutTxn(tx, meta) {
+							txResp := new(old_faithful_grpc.TransactionResponse)
+							txResp.Transaction = new(old_faithful_grpc.Transaction)
+							{
+								pos, ok := txn.GetPositionIndex()
+								if ok {
+									txResp.Index = ptrToUint64(uint64(pos))
+									txResp.Transaction.Index = ptrToUint64(uint64(pos))
 								}
+								txResp.Transaction.Transaction, txResp.Transaction.Meta, err = getTransactionAndMetaFromNode(txn, epochHandler.GetDataFrameByCid)
+								if err != nil {
+									errChan <- status.Errorf(codes.Internal, "Failed to get transaction: %v", err)
+									return
+								}
+								txResp.Slot = uint64(txn.Slot)
 
-								buffer.add(txResp.Slot, *txResp.Index, txResp)
+								blocktimeIndex := epochHandler.GetBlocktimeIndex()
+								if blocktimeIndex != nil {
+									blocktime, err := blocktimeIndex.Get(uint64(txn.Slot))
+									if err != nil {
+										errChan <- status.Errorf(codes.Internal, "Failed to get blocktime: %v", err)
+										return
+									}
+									txResp.BlockTime = int64(blocktime)
+								} else {
+									errChan <- status.Errorf(codes.Internal, "Failed to get blocktime: blocktime index is nil")
+									return
+								}
 							}
+
+							buffer.add(txResp.Slot, *txResp.Index, txResp)
 						}
 					}
 				}
