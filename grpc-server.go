@@ -719,7 +719,12 @@ func (multi *MultiEpoch) StreamTransactions(params *old_faithful_grpc.StreamTran
 		endSlot = *params.EndSlot
 	}
 	gsfaReader, epochNums := multi.getGsfaReadersInEpochDescendingOrderForSlotRange(ctx, startSlot, endSlot)
-	gsfaReadersLoaded := len(epochNums) > 0
+
+	gsfaReadersLoaded := true
+	if len(epochNums) == 0 {
+		klog.Warning("No gsfa readers were loaded")
+		gsfaReadersLoaded := false
+	}
 
 	return multi.processSlotTransactions(ctx, ser, startSlot, endSlot, params.Filter, gsfaReader, gsfaReadersLoaded)
 }
