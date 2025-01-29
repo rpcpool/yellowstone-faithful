@@ -718,9 +718,10 @@ func (multi *MultiEpoch) StreamTransactions(params *old_faithful_grpc.StreamTran
 	if params.EndSlot != nil {
 		endSlot = *params.EndSlot
 	}
-	gsfaReader, _ := multi.getGsfaReadersInEpochDescendingOrderForSlotRange(ctx, startSlot, endSlot)
+	gsfaReader, epochNums := multi.getGsfaReadersInEpochDescendingOrderForSlotRange(ctx, startSlot, endSlot)
+	gsfaReadersLoaded := len(epochNums) > 0
 
-	return multi.processSlotTransactions(ctx, ser, startSlot, endSlot, params.Filter, gsfaReader)
+	return multi.processSlotTransactions(ctx, ser, startSlot, endSlot, params.Filter, gsfaReader, gsfaReadersLoaded)
 }
 
 func (multi *MultiEpoch) processSlotTransactions(
@@ -730,6 +731,7 @@ func (multi *MultiEpoch) processSlotTransactions(
 	endSlot uint64,
 	filter *old_faithful_grpc.StreamTransactionsFilter,
 	gsfaReader *gsfa.GsfaReaderMultiepoch,
+	gsfaReadersLoaded bool,
 ) error {
 
 	filterOutTxn := func(tx solana.Transaction, meta any) bool {
@@ -748,7 +750,24 @@ func (multi *MultiEpoch) processSlotTransactions(
 			}
 		}
 
-		// AccountInclude is handled in the main function
+		if len(filter.AccountInclude) > 0 {
+			hasOne := false
+			for _, acc := range filter.AccountInclude {
+				pkey := solana.MustPublicKeyFromBase58(acc)
+				ok, err := tx.HasAccount(pkey)
+				if err != nil {
+					klog.Errorf("Failed to check if transaction %v has account %s", tx, acc)
+					return false
+				}
+				if ok {
+					hasOne = true
+					break // Found at least one included account, no need to check others
+				}
+			}
+			if !hasOne { // If none of the included accounts are present, filter out the transaction
+				return false
+			}
+		}
 
 		for _, acc := range filter.AccountExclude {
 			pkey := solana.MustPublicKeyFromBase58(acc)
@@ -777,7 +796,7 @@ func (multi *MultiEpoch) processSlotTransactions(
 		return true
 	}
 
-	if filter == nil || len(filter.AccountInclude) == 0 {
+	if filter == nil || len(filter.AccountInclude) == 0 || !gsfaReadersLoaded {
 
 		for slot := startSlot; slot <= endSlot; slot++ {
 			select {
