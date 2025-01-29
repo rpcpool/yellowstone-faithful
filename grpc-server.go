@@ -944,7 +944,6 @@ func (multi *MultiEpoch) processSlotTransactions(
 								buffer.add(txResp.Slot, *txResp.Index, txResp)
 							}
 						}
-						buffer.markSlotComplete(slot)
 					}
 				}
 			}(account)
@@ -978,13 +977,11 @@ type txBuffer struct {
 	startSlot   uint64
 	endSlot     uint64
 	currentSlot uint64
-	completed   map[uint64]bool // track which slots are complete
 }
 
 func newTxBuffer(startSlot, endSlot uint64) *txBuffer {
 	return &txBuffer{
 		items:       make(map[uint64]map[uint64]*old_faithful_grpc.TransactionResponse),
-		completed:   make(map[uint64]bool),
 		startSlot:   startSlot,
 		endSlot:     endSlot,
 		currentSlot: startSlot,
@@ -1001,22 +998,11 @@ func (b *txBuffer) add(slot, idx uint64, tx *old_faithful_grpc.TransactionRespon
 	b.items[slot][idx] = tx
 }
 
-func (b *txBuffer) markSlotComplete(slot uint64) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	b.completed[slot] = true
-}
-
 func (b *txBuffer) flush(ser old_faithful_grpc.OldFaithful_StreamTransactionsServer) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
 	for b.currentSlot <= b.endSlot {
-		// Check if current slot is complete
-		if !b.completed[b.currentSlot] {
-			break // Wait for slot to be complete
-		}
-
 		// Send all transactions for this slot in index order
 		if txMap, exists := b.items[b.currentSlot]; exists {
 			// Get all indices and sort them
@@ -1038,7 +1024,6 @@ func (b *txBuffer) flush(ser old_faithful_grpc.OldFaithful_StreamTransactionsSer
 
 		// Clean up processed slot
 		delete(b.items, b.currentSlot)
-		delete(b.completed, b.currentSlot)
 		b.currentSlot++
 	}
 	return nil
