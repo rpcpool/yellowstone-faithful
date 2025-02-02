@@ -755,7 +755,7 @@ func (multi *MultiEpoch) processSlotTransactions(
 			}
 		}
 
-		if len(filter.AccountInclude) > 0 {
+		if !gsfaReadersLoaded { // Only needed if gsfaReaders not loaded, otherwise handled in the main branch
 			hasOne := false
 			for _, acc := range filter.AccountInclude {
 				pkey := solana.MustPublicKeyFromBase58(acc)
