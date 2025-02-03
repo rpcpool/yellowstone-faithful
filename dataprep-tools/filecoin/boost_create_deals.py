@@ -370,10 +370,11 @@ def create_deals_for_metadata(metadata_obj, epoch_str, deal_type_suffix=""):
                         "duration": 1468800,
                         "wallet": WALLET,
                     }
-                    deal_arg = "offline-deal"
                     if online:
                         params["http-url"] = file_item["url"]
                         deal_arg = "deal"
+                    else:
+                        deal_arg = "offline-deal"
 
 
                     boost_output = execute_boost_deal(deal_arg, params)
