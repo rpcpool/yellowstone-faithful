@@ -372,7 +372,7 @@ def create_deals_for_metadata(metadata_obj, epoch_str, deal_type_suffix=""):
                     }
                     if online:
                         params["http-url"] = file_item["url"]
-                        params["car-size"]
+                        params["car-size"] = file_item["file_size"]
                         deal_arg = "deal"
                     else:
                         deal_arg = "offline-deal"
