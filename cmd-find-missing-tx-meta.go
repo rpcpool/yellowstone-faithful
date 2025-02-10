@@ -13,9 +13,9 @@ import (
 	"github.com/dustin/go-humanize"
 	"github.com/gagliardetto/solana-go"
 	"github.com/rpcpool/yellowstone-faithful/accum"
-	"github.com/rpcpool/yellowstone-faithful/carreader"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
+	"github.com/rpcpool/yellowstone-faithful/readasonecar"
 	"github.com/rpcpool/yellowstone-faithful/slottools"
 	"github.com/rpcpool/yellowstone-faithful/tooling"
 	"github.com/urfave/cli/v2"
@@ -26,7 +26,7 @@ func newCmd_find_missing_tx_metadata() *cli.Command {
 	return &cli.Command{
 		Name:        "find-missing-tx-metadata",
 		Description: "Find missing transaction metadata in a CAR file.",
-		ArgsUsage:   "<car-path>",
+		ArgsUsage:   "<car-paths>",
 		Before: func(c *cli.Context) error {
 			return nil
 		},
@@ -66,13 +66,16 @@ func newCmd_find_missing_tx_metadata() *cli.Command {
 			},
 		},
 		Action: func(c *cli.Context) error {
-			carPath := c.Args().First()
+			carPaths := c.Args().Slice()
 			var file fs.File
 			var err error
-			if carPath == "-" {
+			if len(carPaths) == 0 {
+				klog.Exit("Please provide a CAR file")
+			}
+			if carPaths[0] == "-" {
 				file = os.Stdin
 			} else {
-				file, err = os.Open(carPath)
+				file, err = os.Open(carPaths[0])
 				if err != nil {
 					klog.Exit(err.Error())
 				}
@@ -95,14 +98,15 @@ func newCmd_find_missing_tx_metadata() *cli.Command {
 				klog.Infoln("Will not save metadata parsing errors")
 			}
 
-			rd, err := carreader.New(file)
+			rd, err := readasonecar.NewMultiReader(carPaths...)
 			if err != nil {
 				klog.Exitf("Failed to open CAR: %s", err)
 			}
+			defer rd.Close()
 
 			outputDir := c.String("output-dir")
 			if outputDir == "" {
-				outputDir = filepath.Dir(carPath)
+				outputDir = filepath.Dir(carPaths[0])
 			} else {
 				if err := os.MkdirAll(outputDir, os.ModePerm); err != nil {
 					klog.Exitf("Failed to create output directory: %s", err)
@@ -110,14 +114,14 @@ func newCmd_find_missing_tx_metadata() *cli.Command {
 			}
 
 			// In the same directory as the CAR file, create a file where we will write the signatures of the transactions that are missing metadata.
-			missingTxPath := filepath.Join(outputDir, filepath.Base(carPath)+".missing-tx-metadata.txt")
+			missingTxPath := filepath.Join(outputDir, filepath.Base(carPaths[0])+".missing-tx-metadata.txt")
 			fileMissingMetadata, err := tooling.NewBufferedWritableFile(missingTxPath)
 			if err != nil {
 				klog.Exitf("Failed to create file for missing metadata: %s", err)
 			}
 
 			// In the same directory as the CAR file, create a file where we will write the errors that occurred while parsing the metadata.
-			txMetaParseErrorPath := filepath.Join(outputDir, filepath.Base(carPath)+".tx-meta-parsing-error.txt")
+			txMetaParseErrorPath := filepath.Join(outputDir, filepath.Base(carPaths[0])+".tx-meta-parsing-error.txt")
 			fileTxMetaParsingError, err := tooling.NewBufferedWritableFile(txMetaParseErrorPath)
 			if err != nil {
 				klog.Exitf("Failed to create file for tx meta parsing error: %s", err)

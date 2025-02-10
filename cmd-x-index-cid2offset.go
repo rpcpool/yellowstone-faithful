@@ -18,7 +18,7 @@ func newCmd_Index_cid2offset() *cli.Command {
 	return &cli.Command{
 		Name:        "cid-to-offset",
 		Description: "Given a CAR file containing a Solana epoch, create an index of the file that maps CIDs to offsets in the CAR file.",
-		ArgsUsage:   "<car-path> <index-dir>",
+		ArgsUsage:   "--index-dir=<index-dir> --car=<car-path>",
 		Before: func(c *cli.Context) error {
 			if network == "" {
 				network = indexes.NetworkMainnet
@@ -53,11 +53,19 @@ func newCmd_Index_cid2offset() *cli.Command {
 					return nil
 				},
 			},
+			&cli.StringSliceFlag{
+				Name:  "car",
+				Usage: "Path to a CAR file containing a single Solana epoch, or multiple split CAR files (in order) containing a single Solana epoch",
+			},
+			&cli.StringFlag{
+				Name:  "index-dir",
+				Usage: "Destination directory for the output files",
+			},
 		},
 		Subcommands: []*cli.Command{},
 		Action: func(c *cli.Context) error {
-			carPath := c.Args().Get(0)
-			indexDir := c.Args().Get(1)
+			carPaths := c.StringSlice("car")
+			indexDir := c.String("index-dir")
 			tmpDir := c.String("tmp-dir")
 
 			if ok, err := isDirectory(indexDir); err != nil {
@@ -71,13 +79,13 @@ func newCmd_Index_cid2offset() *cli.Command {
 				defer func() {
 					klog.Infof("Finished in %s", time.Since(startedAt))
 				}()
-				klog.Infof("Creating CID-to-offset index for %s", carPath)
+				klog.Infof("Creating CID-to-offset index for %v", carPaths)
 				indexFilepath, err := CreateIndex_cid2offset(
 					context.TODO(),
 					epoch,
 					network,
 					tmpDir,
-					carPath,
+					carPaths,
 					indexDir,
 				)
 				if err != nil {
@@ -85,12 +93,12 @@ func newCmd_Index_cid2offset() *cli.Command {
 				}
 				klog.Info("Index created")
 				if verify {
-					klog.Infof("Verifying index for %s located at %s", carPath, indexFilepath)
+					klog.Infof("Verifying index for %s located at %v", carPaths, indexFilepath)
 					startedAt := time.Now()
 					defer func() {
 						klog.Infof("Finished in %s", time.Since(startedAt))
 					}()
-					err := VerifyIndex_cid2offset(context.TODO(), carPath, indexFilepath)
+					err := VerifyIndex_cid2offset(context.TODO(), carPaths, indexFilepath)
 					if err != nil {
 						return cli.Exit(err, 1)
 					}
