@@ -13,7 +13,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"sort"
 	"syscall"
 
@@ -63,17 +62,17 @@ func NewBuilderSized(
 	buckets := make([]tempBucket, numBuckets)
 	closers := make([]io.Closer, 0, numBuckets)
 	for i := range buckets {
-		name := filepath.Join(tmpDir, fmt.Sprintf("keys-%d", i))
-		f, err := os.OpenFile(name, os.O_CREATE|os.O_RDWR, 0o666)
-		if err != nil {
-			for _, c := range closers {
-				c.Close()
-			}
-			return nil, err
-		}
-		closers = append(closers, f)
-		buckets[i].file = f
-		buckets[i].writer = bufio.NewWriter(f)
+		// name := filepath.Join(tmpDir, fmt.Sprintf("keys-%d", i))
+		// f, err := os.OpenFile(name, os.O_CREATE|os.O_RDWR, 0o666)
+		// if err != nil {
+		// 	for _, c := range closers {
+		// 		c.Close()
+		// 	}
+		// 	return nil, err
+		// }
+		// closers = append(closers, f)
+		buckets[i].file = NewSeekableBuffer(make([]byte, 0, 1<<20))
+		// buckets[i].writer = bufio.NewWriter(buckets[i].file)
 		buckets[i].valueSize = uint(valueSizeBytes)
 	}
 
@@ -239,8 +238,7 @@ func (b *Builder) Close() error {
 type tempBucket struct {
 	records   uint
 	valueSize uint
-	file      *os.File
-	writer    *bufio.Writer
+	file      *SeekableBuffer
 }
 
 // writeTuple performs a buffered write of a KV-tuple.
@@ -249,19 +247,19 @@ func (b *tempBucket) writeTuple(key []byte, value []byte) (err error) {
 	static := make([]byte, 2+b.valueSize)
 	binary.LittleEndian.PutUint16(static[0:2], uint16(len(key)))
 	copy(static[2:], value[:])
-	if _, err = b.writer.Write(static[:]); err != nil {
+	if _, err = b.file.Write(static[:]); err != nil {
 		return err
 	}
-	_, err = b.writer.Write(key)
+	_, err = b.file.Write(key)
 	return
 }
 
 // flush empties the in-memory write buffer to the file.
 func (b *tempBucket) flush() error {
-	if err := b.writer.Flush(); err != nil {
-		return fmt.Errorf("failed to flush writer: %w", err)
-	}
-	b.writer = nil
+	// if err := b.writer.Flush(); err != nil {
+	// 	return fmt.Errorf("failed to flush writer: %w", err)
+	// }
+	// b.writer = nil
 	return nil
 }
 
