@@ -118,6 +118,7 @@ require (
 	github.com/filecoin-project/go-statestore v0.2.0 // indirect
 	github.com/flynn/noise v1.0.0 // indirect
 	github.com/francoispqt/gojay v1.2.13 // indirect
+	github.com/fxamacker/cbor v1.5.1 // indirect
 	github.com/gagliardetto/treeout v0.1.4 // indirect
 	github.com/go-logr/logr v1.2.4 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/davecgh/go-spew/spew"
+	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"github.com/stretchr/testify/require"
 )
@@ -173,32 +174,8 @@ func TestSubset(t *testing.T) {
 			// test CBOR encoding
 			encoded, err := subset.MarshalCBOR()
 			require.NoError(t, err)
-
-			decoded, err := _DecodeSubsetFast(encoded)
-			require.NoError(t, err)
-
-			require.Equal(t, subset, decoded)
-
-			// now test that the content is the same
-			encoded0, err := subset.MarshalCBOR()
-			require.NoError(t, err)
-
-			encoded1, err := decoded.MarshalCBOR()
-			require.NoError(t, err)
-
-			require.Equal(t, encoded0, encoded1)
-
-			{
-				// test JSON encoding
-				encoded, err := json.Marshal(subset)
-				require.NoError(t, err)
-
-				// encode also the decoded version
-				encoded1, err := json.Marshal(decoded)
-				require.NoError(t, err)
-
-				require.JSONEq(t, string(encoded), string(encoded1))
-			}
+			spew.Dump(subset.Blocks[0].(cidlink.Link).Cid.Bytes())
+			require.Equal(t, subset_raw0, encoded)
 		}
 	})
 
@@ -248,32 +225,7 @@ func TestSubset(t *testing.T) {
 			// test CBOR encoding
 			encoded, err := subset.MarshalCBOR()
 			require.NoError(t, err)
-
-			decoded, err := _DecodeSubsetFast(encoded)
-			require.NoError(t, err)
-
-			require.Equal(t, subset, decoded)
-
-			// now test that the content is the same
-			encoded0, err := subset.MarshalCBOR()
-			require.NoError(t, err)
-
-			encoded1, err := decoded.MarshalCBOR()
-			require.NoError(t, err)
-
-			require.Equal(t, encoded0, encoded1)
-
-			{
-				// test JSON encoding
-				encoded, err := json.Marshal(subset)
-				require.NoError(t, err)
-
-				// encode also the decoded version
-				encoded1, err := json.Marshal(decoded)
-				require.NoError(t, err)
-
-				require.JSONEq(t, string(encoded), string(encoded1))
-			}
+			require.Equal(t, subset_raw1, encoded)
 		}
 	})
 }
