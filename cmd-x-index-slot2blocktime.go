@@ -8,10 +8,10 @@ import (
 	"time"
 
 	"github.com/ipfs/go-cid"
-	carv2 "github.com/ipld/go-car/v2"
 	"github.com/rpcpool/yellowstone-faithful/blocktimeindex"
 	"github.com/rpcpool/yellowstone-faithful/indexes"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
+	"github.com/rpcpool/yellowstone-faithful/readasonecar"
 	"github.com/urfave/cli/v2"
 	"k8s.io/klog/v2"
 )
@@ -22,7 +22,7 @@ func newCmd_Index_slot2blocktime() *cli.Command {
 	return &cli.Command{
 		Name:        "slot-to-blocktime",
 		Description: "Given a CAR file containing a Solana epoch, create an index of the file that maps slots to blocktimes.",
-		ArgsUsage:   "<car-path> <index-dir>",
+		ArgsUsage:   "--index-dir=<index-dir> --car=<car-path>",
 		Before: func(c *cli.Context) error {
 			if network == "" {
 				network = indexes.NetworkMainnet
@@ -47,23 +47,31 @@ func newCmd_Index_slot2blocktime() *cli.Command {
 					return nil
 				},
 			},
+			&cli.StringSliceFlag{
+				Name:  "car",
+				Usage: "Path to a CAR file containing a single Solana epoch, or multiple split CAR files (in order) containing a single Solana epoch",
+			},
+			&cli.StringFlag{
+				Name:  "index-dir",
+				Usage: "Destination directory for the output files",
+			},
 		},
 		Subcommands: []*cli.Command{},
 		Action: func(c *cli.Context) error {
-			carPath := c.Args().Get(0)
-			indexDir := c.Args().Get(1)
+			carPaths := c.StringSlice("car")
+			indexDir := c.String("index-dir")
 
 			{
 				startedAt := time.Now()
 				defer func() {
 					klog.Infof("Finished in %s", time.Since(startedAt))
 				}()
-				klog.Infof("Creating slot-to-blocktime index for %s", carPath)
+				klog.Infof("Creating slot-to-blocktime index for %v", carPaths)
 				indexFilepath, err := CreateIndex_slot2blocktime(
 					context.TODO(),
 					epoch,
 					network,
-					carPath,
+					carPaths,
 					indexDir,
 				)
 				if err != nil {
@@ -81,49 +89,36 @@ func CreateIndex_slot2blocktime(
 	ctx context.Context,
 	epoch uint64,
 	network indexes.Network,
-	carPath string,
+	carPaths []string,
 	indexDir string,
 ) (string, error) {
-	// Check if the CAR file exists:
-	exists, err := fileExists(carPath)
+	err := allFilesExist(carPaths...)
 	if err != nil {
 		return "", fmt.Errorf("failed to check if CAR file exists: %w", err)
 	}
-	if !exists {
-		return "", fmt.Errorf("CAR file %q does not exist", carPath)
-	}
 
-	cr, err := carv2.OpenReader(carPath)
+	rd, err := readasonecar.NewMultiReader(carPaths...)
 	if err != nil {
-		return "", fmt.Errorf("failed to open CAR file: %w", err)
+		return "", fmt.Errorf("failed to create car reader: %w", err)
 	}
+	defer rd.Close()
 
-	// check it has 1 root
-	roots, err := cr.Roots()
+	rootCID, err := rd.FindRoot()
 	if err != nil {
-		return "", fmt.Errorf("failed to get roots: %w", err)
+		return "", fmt.Errorf("failed to find root CID: %w", err)
 	}
-	// There should be only one root CID in the CAR file.
-	if len(roots) != 1 {
-		return "", fmt.Errorf("CAR file has %d roots, expected 1", len(roots))
-	}
-	rootCid := roots[0]
+	klog.Infof("Root CID: %s", rootCID)
 
 	slot_to_blocktime := blocktimeindex.NewForEpoch(epoch)
 
 	numBlocksIndexed := uint64(0)
 	klog.Infof("Indexing...")
 
-	dr, err := cr.DataReader()
-	if err != nil {
-		return "", fmt.Errorf("failed to get data reader: %w", err)
-	}
-
 	// Iterate over all blocks in the CAR file and put them into the index,
 	// using the slot number as the key and the blocktime as the value.
-	err = FindBlocks(
+	err = FindBlocksFromReader(
 		ctx,
-		dr,
+		rd,
 		func(c cid.Cid, block *ipldbindcode.Block) error {
 			slotNum := uint64(block.Slot)
 
@@ -146,7 +141,7 @@ func CreateIndex_slot2blocktime(
 
 	klog.Infof("Sealing index...")
 
-	indexFilePath := filepath.Join(indexDir, blocktimeindex.FormatFilename(epoch, rootCid, network))
+	indexFilePath := filepath.Join(indexDir, blocktimeindex.FormatFilename(epoch, rootCID, network))
 
 	file, err := os.Create(indexFilePath)
 	if err != nil {

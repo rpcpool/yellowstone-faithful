@@ -18,7 +18,7 @@ func newCmd_Index_slot2cid() *cli.Command {
 	return &cli.Command{
 		Name:        "slot-to-cid",
 		Description: "Given a CAR file containing a Solana epoch, create an index of the file that maps slot numbers to CIDs.",
-		ArgsUsage:   "<car-path> <index-dir>",
+		ArgsUsage:   "--index-dir=<index-dir> --car=<car-path>",
 		Before: func(c *cli.Context) error {
 			if network == "" {
 				network = indexes.NetworkMainnet
@@ -53,11 +53,19 @@ func newCmd_Index_slot2cid() *cli.Command {
 					return nil
 				},
 			},
+			&cli.StringSliceFlag{
+				Name:  "car",
+				Usage: "Path to a CAR file containing a single Solana epoch, or multiple split CAR files (in order) containing a single Solana epoch",
+			},
+			&cli.StringFlag{
+				Name:  "index-dir",
+				Usage: "Destination directory for the output files",
+			},
 		},
 		Subcommands: []*cli.Command{},
 		Action: func(c *cli.Context) error {
-			carPath := c.Args().Get(0)
-			indexDir := c.Args().Get(1)
+			carPaths := c.StringSlice("car")
+			indexDir := c.String("index-dir")
 			tmpDir := c.String("tmp-dir")
 
 			if ok, err := isDirectory(indexDir); err != nil {
@@ -71,13 +79,13 @@ func newCmd_Index_slot2cid() *cli.Command {
 				defer func() {
 					klog.Infof("Finished in %s", time.Since(startedAt))
 				}()
-				klog.Infof("Creating Slot-to-CID index for %s", carPath)
+				klog.Infof("Creating Slot-to-CID index for %v", carPaths)
 				indexFilepath, err := CreateIndex_slot2cid(
 					context.TODO(),
 					epoch,
 					network,
 					tmpDir,
-					carPath,
+					carPaths,
 					indexDir,
 				)
 				if err != nil {
@@ -85,12 +93,12 @@ func newCmd_Index_slot2cid() *cli.Command {
 				}
 				klog.Info("Index created")
 				if verify {
-					klog.Infof("Verifying index for %s located at %s", carPath, indexFilepath)
+					klog.Infof("Verifying index for %s located at %v", carPaths, indexFilepath)
 					startedAt := time.Now()
 					defer func() {
 						klog.Infof("Finished in %s", time.Since(startedAt))
 					}()
-					err := VerifyIndex_slot2cid(context.TODO(), carPath, indexFilepath)
+					err := VerifyIndex_slot2cid(context.TODO(), carPaths, indexFilepath)
 					if err != nil {
 						return cli.Exit(err, 1)
 					}
