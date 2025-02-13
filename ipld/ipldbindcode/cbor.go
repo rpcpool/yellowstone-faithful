@@ -284,7 +284,7 @@ func (x *Rewards) UnmarshalCBOR(data []byte) error {
 		}
 		if hash, ok := dataArr.Get(1); ok {
 			if hash != nil {
-				_hash := int(hash.(uint64))
+				_hash := int(hash.(int64))
 				_hash_ptr := &_hash
 				d.Hash = &_hash_ptr
 			}
