@@ -6,6 +6,7 @@ import (
 	"fmt"
 )
 
+// OrderedJSONObject represents a JSON object that maintains field insertion order
 type OrderedJSONObject struct {
 	fields []field
 }
@@ -15,135 +16,17 @@ type field struct {
 	value any
 }
 
+// ArrayBuilder represents a JSON array builder that maintains element order
 type ArrayBuilder struct {
 	elements []any
 }
 
-// ArrayBuilder.MarshalJSON()
-func (a *ArrayBuilder) MarshalJSON() ([]byte, error) {
-	if len(a.elements) == 0 {
-		return []byte("[]"), nil
-	}
-	return json.Marshal(a.elements)
-}
-
-// Object methods
+// NewObject creates a new empty OrderedJSONObject
 func NewObject() *OrderedJSONObject {
 	return &OrderedJSONObject{}
 }
 
-func (o *OrderedJSONObject) String(key, value string) *OrderedJSONObject {
-	o.fields = append(o.fields, field{key, value})
-	return o
-}
-
-func (o *OrderedJSONObject) Int(key string, value int64) *OrderedJSONObject {
-	o.fields = append(o.fields, field{key, value})
-	return o
-}
-
-func (o *OrderedJSONObject) Float(key string, value float64) *OrderedJSONObject {
-	o.fields = append(o.fields, field{key, value})
-	return o
-}
-
-func (o *OrderedJSONObject) Bool(key string, value bool) *OrderedJSONObject {
-	o.fields = append(o.fields, field{key, value})
-	return o
-}
-
-func (o *OrderedJSONObject) Object(key string, obj *OrderedJSONObject) *OrderedJSONObject {
-	o.fields = append(o.fields, field{key, obj})
-	return o
-}
-
-func (o *OrderedJSONObject) Array(key string, arr *ArrayBuilder) *OrderedJSONObject {
-	o.fields = append(o.fields, field{key, arr.elements})
-	return o
-}
-
-func (o *OrderedJSONObject) Null(key string) *OrderedJSONObject {
-	o.fields = append(o.fields, field{key, nil})
-	return o
-}
-
-// Functional composition methods for objects
-func (o *OrderedJSONObject) Func(fn func(*OrderedJSONObject)) *OrderedJSONObject {
-	fn(o)
-	return o
-}
-
-func (o *OrderedJSONObject) Apply(key string, fn func() any) *OrderedJSONObject {
-	o.fields = append(o.fields, field{key, fn()})
-	return o
-}
-
-func (o *OrderedJSONObject) ApplyIf(condition bool, fn func(*OrderedJSONObject)) *OrderedJSONObject {
-	if condition {
-		fn(o)
-	}
-	return o
-}
-
-// Array methods
-func NewArray() *ArrayBuilder {
-	return &ArrayBuilder{}
-}
-
-func (a *ArrayBuilder) AddString(value string) *ArrayBuilder {
-	a.elements = append(a.elements, value)
-	return a
-}
-
-func (a *ArrayBuilder) AddInt(value int64) *ArrayBuilder {
-	a.elements = append(a.elements, value)
-	return a
-}
-
-func (a *ArrayBuilder) AddFloat(value float64) *ArrayBuilder {
-	a.elements = append(a.elements, value)
-	return a
-}
-
-func (a *ArrayBuilder) AddBool(value bool) *ArrayBuilder {
-	a.elements = append(a.elements, value)
-	return a
-}
-
-func (a *ArrayBuilder) AddObject(obj *OrderedJSONObject) *ArrayBuilder {
-	a.elements = append(a.elements, obj)
-	return a
-}
-
-func (a *ArrayBuilder) AddArray(arr *ArrayBuilder) *ArrayBuilder {
-	a.elements = append(a.elements, arr.elements)
-	return a
-}
-
-func (a *ArrayBuilder) AddNull() *ArrayBuilder {
-	a.elements = append(a.elements, nil)
-	return a
-}
-
-// Functional composition methods for arrays
-func (a *ArrayBuilder) Func(fn func(*ArrayBuilder)) *ArrayBuilder {
-	fn(a)
-	return a
-}
-
-func (a *ArrayBuilder) Apply(fn func() any) *ArrayBuilder {
-	a.elements = append(a.elements, fn())
-	return a
-}
-
-func (a *ArrayBuilder) ApplyIf(condition bool, fn func(*ArrayBuilder)) *ArrayBuilder {
-	if condition {
-		fn(a)
-	}
-	return a
-}
-
-// Marshaling implementation
+// MarshalJSON implements custom JSON marshaling with order preservation
 func (o *OrderedJSONObject) MarshalJSON() ([]byte, error) {
 	var buf bytes.Buffer
 	buf.WriteByte('{')
@@ -152,15 +35,166 @@ func (o *OrderedJSONObject) MarshalJSON() ([]byte, error) {
 		if i > 0 {
 			buf.WriteByte(',')
 		}
-		key, _ := json.Marshal(f.key)
+
+		key, err := json.Marshal(f.key)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal key %q: %w", f.key, err)
+		}
 		buf.Write(key)
 		buf.WriteByte(':')
-		val, _ := json.Marshal(f.value)
+
+		val, err := json.Marshal(f.value)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal value for key %q: %w", f.key, err)
+		}
 		buf.Write(val)
 	}
 
 	buf.WriteByte('}')
 	return buf.Bytes(), nil
+}
+
+// MarshalJSON implements JSON marshaling for arrays
+func (a *ArrayBuilder) MarshalJSON() ([]byte, error) {
+	return json.Marshal(a.elements)
+}
+
+// Value adds a generic JSON value to the object
+func (o *OrderedJSONObject) Value(key string, value any) *OrderedJSONObject {
+	o.fields = append(o.fields, field{key, value})
+	return o
+}
+
+// String adds a string field to the object
+func (o *OrderedJSONObject) String(key, value string) *OrderedJSONObject {
+	return o.Value(key, value)
+}
+
+// Int adds an integer field to the object
+func (o *OrderedJSONObject) Int(key string, value int64) *OrderedJSONObject {
+	return o.Value(key, value)
+}
+
+// Float adds a float field to the object
+func (o *OrderedJSONObject) Float(key string, value float64) *OrderedJSONObject {
+	return o.Value(key, value)
+}
+
+// Bool adds a boolean field to the object
+func (o *OrderedJSONObject) Bool(key string, value bool) *OrderedJSONObject {
+	return o.Value(key, value)
+}
+
+// Object adds a nested JSON object
+func (o *OrderedJSONObject) Object(key string, obj *OrderedJSONObject) *OrderedJSONObject {
+	return o.Value(key, obj)
+}
+
+// Array adds a JSON array field
+func (o *OrderedJSONObject) Array(key string, arr *ArrayBuilder) *OrderedJSONObject {
+	return o.Value(key, arr)
+}
+
+// Null adds a null field to the object
+func (o *OrderedJSONObject) Null(key string) *OrderedJSONObject {
+	return o.Value(key, nil)
+}
+
+// Func applies a function to modify the object
+func (o *OrderedJSONObject) Func(fn func(*OrderedJSONObject)) *OrderedJSONObject {
+	if fn != nil {
+		fn(o)
+	}
+	return o
+}
+
+// Apply conditionally adds a field using a value-generating function;
+// the field is only added if the function returns a non-nil value.
+func (o *OrderedJSONObject) Apply(key string, fn func() any) *OrderedJSONObject {
+	if fn != nil {
+		return o.Value(key, fn())
+	}
+	return o
+}
+
+// ApplyIf conditionally applies a builder function
+func (o *OrderedJSONObject) ApplyIf(condition bool, fn func(*OrderedJSONObject)) *OrderedJSONObject {
+	if condition && fn != nil {
+		fn(o)
+	}
+	return o
+}
+
+// NewArray creates a new ArrayBuilder
+func NewArray() *ArrayBuilder {
+	return &ArrayBuilder{
+		elements: make([]any, 0),
+	}
+}
+
+// AddValue appends a generic value to the array
+func (a *ArrayBuilder) AddValue(value any) *ArrayBuilder {
+	a.elements = append(a.elements, value)
+	return a
+}
+
+// AddString appends a string value to the array
+func (a *ArrayBuilder) AddString(value string) *ArrayBuilder {
+	return a.AddValue(value)
+}
+
+// AddInt appends an integer value to the array
+func (a *ArrayBuilder) AddInt(value int64) *ArrayBuilder {
+	return a.AddValue(value)
+}
+
+// AddFloat appends a float value to the array
+func (a *ArrayBuilder) AddFloat(value float64) *ArrayBuilder {
+	return a.AddValue(value)
+}
+
+// AddBool appends a boolean value to the array
+func (a *ArrayBuilder) AddBool(value bool) *ArrayBuilder {
+	return a.AddValue(value)
+}
+
+// AddObject appends a JSON object to the array
+func (a *ArrayBuilder) AddObject(obj *OrderedJSONObject) *ArrayBuilder {
+	return a.AddValue(obj)
+}
+
+// AddArray appends another array to the array
+func (a *ArrayBuilder) AddArray(arr *ArrayBuilder) *ArrayBuilder {
+	return a.AddValue(arr)
+}
+
+// AddNull appends a null value to the array
+func (a *ArrayBuilder) AddNull() *ArrayBuilder {
+	return a.AddValue(nil)
+}
+
+// Func applies a function to modify the array
+func (a *ArrayBuilder) Func(fn func(*ArrayBuilder)) *ArrayBuilder {
+	if fn != nil {
+		fn(a)
+	}
+	return a
+}
+
+// Apply appends a value generated by a function
+func (a *ArrayBuilder) Apply(fn func() any) *ArrayBuilder {
+	if fn != nil {
+		a.AddValue(fn())
+	}
+	return a
+}
+
+// ApplyIf conditionally applies a builder function
+func (a *ArrayBuilder) ApplyIf(condition bool, fn func(*ArrayBuilder)) *ArrayBuilder {
+	if condition && fn != nil {
+		fn(a)
+	}
+	return a
 }
 
 func Example_build() {
