@@ -16,10 +16,10 @@ import (
 	"github.com/ipfs/go-cid"
 	"github.com/rpcpool/yellowstone-faithful/blocktimeindex"
 	"github.com/rpcpool/yellowstone-faithful/bucketteer"
-	"github.com/rpcpool/yellowstone-faithful/carreader"
 	"github.com/rpcpool/yellowstone-faithful/indexes"
 	"github.com/rpcpool/yellowstone-faithful/indexmeta"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
+	"github.com/rpcpool/yellowstone-faithful/readasonecar"
 	"github.com/urfave/cli/v2"
 	"golang.org/x/sync/errgroup"
 	"k8s.io/klog/v2"
@@ -32,7 +32,7 @@ func newCmd_Index_all() *cli.Command {
 		Name:        "all",
 		Usage:       "Create all the necessary indexes for a Solana epoch.",
 		Description: "Given a CAR file containing a Solana epoch, create all the necessary indexes and save them in the specified index dir.",
-		ArgsUsage:   "<car-path> <index-dir>",
+		ArgsUsage:   "<index-dir>",
 		Before: func(c *cli.Context) error {
 			if network == "" {
 				network = indexes.NetworkMainnet
@@ -61,15 +61,19 @@ func newCmd_Index_all() *cli.Command {
 					return nil
 				},
 			},
+			&cli.StringSliceFlag{
+				Name:  "car",
+				Usage: "Path to a CAR file containing a single Solana epoch, or multiple split CAR files (in order) containing a single Solana epoch",
+			},
 		},
 		Subcommands: []*cli.Command{},
 		Action: func(c *cli.Context) error {
-			carPath := c.Args().Get(0)
-			indexDir := c.Args().Get(1)
+			indexDir := c.Args().Get(0)
 			tmpDir := c.String("tmp-dir")
 
-			if carPath == "" {
-				return fmt.Errorf("missing car-path argument")
+			carPaths := c.StringSlice("car")
+			if len(carPaths) == 0 {
+				return fmt.Errorf("missing --car flag")
 			}
 			if indexDir == "" {
 				return fmt.Errorf("missing index-dir argument")
@@ -85,14 +89,14 @@ func newCmd_Index_all() *cli.Command {
 				defer func() {
 					klog.Infof("Took %s", time.Since(startedAt))
 				}()
-				klog.Infof("Creating all indexes for %s", carPath)
+				klog.Infof("Creating all indexes for %v", carPaths)
 				klog.Infof("Indexes will be saved in %s", indexDir)
 
 				indexPaths, numTotalItems, err := createAllIndexes(
 					c.Context,
 					network,
 					tmpDir,
-					carPath,
+					carPaths,
 					indexDir,
 				)
 				if err != nil {
@@ -103,7 +107,7 @@ func newCmd_Index_all() *cli.Command {
 				if verify {
 					return verifyAllIndexes(
 						context.Background(),
-						carPath,
+						carPaths,
 						indexPaths,
 						numTotalItems,
 					)
@@ -119,42 +123,28 @@ func createAllIndexes(
 	ctx context.Context,
 	network indexes.Network,
 	tmpDir string,
-	carPath string,
+	carPaths []string,
 	indexDir string,
 ) (*IndexPaths, uint64, error) {
-	// Check if the CAR file exists:
-	exists, err := fileExists(carPath)
+	err := allFilesExist(carPaths...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to check if CAR file exists: %w", err)
 	}
-	if !exists {
-		return nil, 0, fmt.Errorf("CAR file %q does not exist", carPath)
-	}
 
-	carFile, err := os.Open(carPath)
-	if err != nil {
-		return nil, 0, fmt.Errorf("failed to open car file: %w", err)
-	}
-	defer carFile.Close()
-
-	rd, err := carreader.New(carFile)
+	rd, err := readasonecar.NewMultiReader(carPaths...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to create car reader: %w", err)
 	}
-	// check it has 1 root
-	if len(rd.Header.Roots) != 1 {
-		return nil, 0, fmt.Errorf("car file must have exactly 1 root, but has %d", len(rd.Header.Roots))
-	}
-	// print roots:
-	for _, root := range rd.Header.Roots {
-		klog.Infof("- Root: %s", root)
-	}
-	rootCID := rd.Header.Roots[0]
+	defer rd.Close()
 
-	klog.Infof("Getting car file size")
+	rootCID, err := rd.FindRoot()
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to find root CID: %w", err)
+	}
+	klog.Infof("Root CID: %s", rootCID)
 
 	klog.Infof("Counting items in car file...")
-	numItems, epochObject, err := carCountItemsByFirstByte(carPath)
+	numItems, epochObject, err := carCountItemsByFirstByte(carPaths...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to count items in car file: %w", err)
 	}
@@ -228,15 +218,6 @@ func createAllIndexes(
 
 	slot_to_blocktime := blocktimeindex.NewForEpoch(epoch)
 
-	totalOffset := uint64(0)
-	{
-		if size, err := rd.HeaderSize(); err != nil {
-			return nil, 0, err
-		} else {
-			totalOffset += size
-		}
-	}
-
 	numIndexedOffsets := uint64(0)
 	numIndexedBlocks := uint64(0)
 	numIndexedTransactions := uint64(0)
@@ -245,6 +226,11 @@ func createAllIndexes(
 	var eta time.Duration
 	startedAt := time.Now()
 	for {
+		totalOffset, ok := rd.GetGlobalOffsetForNextRead()
+		if !ok {
+			break
+		}
+
 		_cid, sectionLength, block, err := rd.NextNode()
 		if err != nil {
 			if errors.Is(err, io.EOF) {
@@ -303,8 +289,6 @@ func createAllIndexes(
 				numIndexedTransactions++
 			}
 		}
-
-		totalOffset += sectionLength
 
 		if numIndexedOffsets%1_000_000 == 0 && numIndexedOffsets > 0 {
 			timeForChunk := time.Since(lastCheckpoint)
@@ -545,33 +529,21 @@ func NewBuilder_SlotToCid(
 
 func verifyAllIndexes(
 	ctx context.Context,
-	carPath string,
+	carPaths []string,
 	indexes *IndexPaths,
 	numTotalItems uint64,
 ) error {
 	// Check if the CAR file exists:
-	exists, err := fileExists(carPath)
+	err := allFilesExist(carPaths...)
 	if err != nil {
 		return fmt.Errorf("failed to check if CAR file exists: %w", err)
 	}
-	if !exists {
-		return fmt.Errorf("CAR file %q does not exist", carPath)
-	}
 
-	carFile, err := os.Open(carPath)
-	if err != nil {
-		return fmt.Errorf("failed to open car file: %w", err)
-	}
-	defer carFile.Close()
-
-	rd, err := carreader.New(carFile)
+	rd, err := readasonecar.NewMultiReader(carPaths...)
 	if err != nil {
 		return fmt.Errorf("failed to create car reader: %w", err)
 	}
-	// check it has 1 root
-	if len(rd.Header.Roots) != 1 {
-		return fmt.Errorf("car file must have exactly 1 root, but has %d", len(rd.Header.Roots))
-	}
+	defer rd.Close()
 
 	cid_to_offset_and_size, err := OpenIndex_CidToOffset(
 		indexes.CidToOffsetAndSize,
@@ -608,15 +580,6 @@ func verifyAllIndexes(
 		defer sig_exists.Close()
 	}
 
-	totalOffset := uint64(0)
-	{
-		if size, err := rd.HeaderSize(); err != nil {
-			return err
-		} else {
-			totalOffset += size
-		}
-	}
-
 	numIndexedOffsets := uint64(0)
 	numIndexedBlocks := uint64(0)
 	numIndexedTransactions := uint64(0)
@@ -625,6 +588,10 @@ func verifyAllIndexes(
 	var eta time.Duration
 	startedAt := time.Now()
 	for {
+		totalOffset, ok := rd.GetGlobalOffsetForNextRead()
+		if !ok {
+			break
+		}
 		_cid, sectionLength, block, err := rd.NextNode()
 		if err != nil {
 			if errors.Is(err, io.EOF) {
@@ -696,8 +663,6 @@ func verifyAllIndexes(
 				numIndexedTransactions++
 			}
 		}
-
-		totalOffset += sectionLength
 
 		if numIndexedOffsets%1_000_000 == 0 && numIndexedOffsets > 0 && numTotalItems > 0 {
 			timeForChunk := time.Since(lastCheckpoint)

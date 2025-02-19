@@ -12,27 +12,47 @@ func newCmd_VerifyIndex_all() *cli.Command {
 	return &cli.Command{
 		Name:        "all",
 		Description: "Verify all indexes.",
-		ArgsUsage:   "<car-path> <index-cid-to-offset> <index-slot-to-cid> <index-sig-to-cid> <index-sig-exists>",
 		Before: func(c *cli.Context) error {
 			return nil
 		},
-		Flags: []cli.Flag{},
+		Flags: []cli.Flag{
+			&cli.StringSliceFlag{
+				Name:  "car",
+				Usage: "Path to a CAR file containing a single Solana epoch, or multiple split CAR files (in order) containing a single Solana epoch",
+			},
+			&cli.StringFlag{
+				Name:  "index-cid-to-offset",
+				Usage: "Path to the CID-to-offset index file",
+			},
+			&cli.StringFlag{
+				Name:  "index-slot-to-cid",
+				Usage: "Path to the slot-to-CID index file",
+			},
+			&cli.StringFlag{
+				Name:  "index-sig-to-cid",
+				Usage: "Path to the signature-to-CID index file",
+			},
+			&cli.StringFlag{
+				Name:  "index-sig-exists",
+				Usage: "Path to the signature-exists index file",
+			},
+		},
 		Action: func(c *cli.Context) error {
-			carPath := c.Args().Get(0)
-			indexFilePathCid2Offset := c.Args().Get(1)
-			indexFilePathSlot2Cid := c.Args().Get(2)
-			indexFilePathSig2Cid := c.Args().Get(3)
-			indexFilePathSigExists := c.Args().Get(4)
+			carPaths := c.StringSlice("car")
+			indexFilePathCid2Offset := c.String("index-cid-to-offset")
+			indexFilePathSlot2Cid := c.String("index-slot-to-cid")
+			indexFilePathSig2Cid := c.String("index-sig-to-cid")
+			indexFilePathSigExists := c.String("index-sig-exists")
 
 			{
 				startedAt := time.Now()
 				defer func() {
 					klog.Infof("Finished in %s", time.Since(startedAt))
 				}()
-				klog.Infof("Verifying Slot-to-CID index for %s", carPath)
+				klog.Infof("Verifying indexes for %v", carPaths)
 				err := verifyAllIndexes(
 					context.TODO(),
-					carPath,
+					carPaths,
 					&IndexPaths{
 						CidToOffsetAndSize: indexFilePathCid2Offset,
 						SlotToCid:          indexFilePathSlot2Cid,

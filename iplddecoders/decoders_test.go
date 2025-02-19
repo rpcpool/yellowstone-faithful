@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/davecgh/go-spew/spew"
+	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"github.com/stretchr/testify/require"
 )
@@ -64,6 +66,13 @@ func TestEpoch(t *testing.T) {
 		require.Equal(t, "bafyreibxeir3ywclsofoo3ar6i2z3kqxljupk3dhwu2gzicdcp27jrewvi", epoch.Subsets[15].String())
 		require.Equal(t, "bafyreih6jdnpx6qspzph2ztdnygv44asgq7ec2u3qbczefkom72icb5qxu", epoch.Subsets[16].String())
 		require.Equal(t, "bafyreibm4uwn3bsfja6q7fmyhzptj756iuwc5pdeeq62lmzwvsbzld4pzm", epoch.Subsets[17].String())
+
+		{
+			// test CBOR encoding
+			encoded, err := epoch.MarshalCBOR()
+			require.NoError(t, err)
+			require.Equal(t, epoch_raw0, encoded)
+		}
 	})
 
 	t.Run("classic/1", func(t *testing.T) {
@@ -89,6 +98,13 @@ func TestEpoch(t *testing.T) {
 
 		require.Equal(t, "bafyreiczoyhs7u7usregcft534drngud55fei4yzko2wppg5jk4kwmpyv4", epoch.Subsets[0].String())
 		require.Equal(t, "bafyreidp6mjjdck4bl6hch57ulwgtgwtwgh3jlj5wsnjwphu3wb5lgseiy", epoch.Subsets[1].String())
+
+		{
+			// test CBOR encoding
+			encoded, err := epoch.MarshalCBOR()
+			require.NoError(t, err)
+			require.Equal(t, epoch_raw1, encoded)
+		}
 	})
 }
 
@@ -153,6 +169,14 @@ func TestSubset(t *testing.T) {
 		require.Equal(t, "bafyreifya6babw7u5mzt5rpdrluaznoh6i7g66lxw4skh7ghpojlklpu6y", subset.Blocks[7].String())
 		require.Equal(t, "bafyreigasvrkts2agnvalobin54lyzzvgof7kjca7jmr4xuxhbhf2yt7ke", subset.Blocks[8].String())
 		require.Equal(t, "bafyreiddffhmh3o4jjku2gqljukjyc54g5vqmxfsth5hwlmiosc76rdxeq", subset.Blocks[9].String())
+
+		{
+			// test CBOR encoding
+			encoded, err := subset.MarshalCBOR()
+			require.NoError(t, err)
+			spew.Dump(subset.Blocks[0].(cidlink.Link).Cid.Bytes())
+			require.Equal(t, subset_raw0, encoded)
+		}
 	})
 
 	t.Run("classic/1", func(t *testing.T) {
@@ -196,6 +220,13 @@ func TestSubset(t *testing.T) {
 		require.Equal(t, "bafyreidpt2pqocplw34auzupk2qnvjjlg3eogig2fqsonphvanu5pudyce", subset.Blocks[7].String())
 		require.Equal(t, "bafyreigzbzgt3dsb6bm3r5i3carslnjirzlolwyqcmcdwciyqqrkodqo5u", subset.Blocks[8].String())
 		require.Equal(t, "bafyreiam4aka6ymgcyylvhap5vuwinumwbded3ktl7qmti2tmprmjd7qh4", subset.Blocks[9].String())
+
+		{
+			// test CBOR encoding
+			encoded, err := subset.MarshalCBOR()
+			require.NoError(t, err)
+			require.Equal(t, subset_raw1, encoded)
+		}
 	})
 }
 
@@ -256,6 +287,43 @@ func TestBlock(t *testing.T) {
 			}
 			require.Equal(t, block.Rewards, fastBlock.Rewards)
 		}
+
+		{
+			// test CBOR encoding
+			encoded, err := block.MarshalCBOR()
+			require.NoError(t, err)
+			// require.Equal(t, block_raw0, encoded)
+			{
+				// let's test as value equivalence instead of comparing bytes
+				decoded, err := DecodeBlock(encoded)
+				require.NoError(t, err)
+				// compare field by field so it's easier to debug
+				require.EqualValues(t, block.Kind, decoded.Kind)
+				require.EqualValues(t, block.Slot, decoded.Slot)
+				require.EqualValues(t, block.Shredding, decoded.Shredding)
+				require.EqualValues(t, block.Entries, decoded.Entries)
+				{
+					blockheight1, ok1 := block.Meta.GetBlockHeight()
+					blockheight2, ok2 := decoded.Meta.GetBlockHeight()
+					require.EqualValues(t, blockheight1, blockheight2)
+					require.EqualValues(t, ok1, ok2)
+
+					require.EqualValues(t, block.Meta.Blocktime, decoded.Meta.Blocktime)
+					require.EqualValues(t, block.Meta.Parent_slot, decoded.Meta.Parent_slot)
+					require.True(t, block.Meta.Equivalent(decoded.Meta))
+				}
+				require.EqualValues(t, block.Rewards, decoded.Rewards)
+				// require.EqualValues(t, block, decoded)
+				{
+					// now compare as json
+					blockJson, err := json.Marshal(block)
+					require.NoError(t, err)
+					decodedJson, err := json.Marshal(decoded)
+					require.NoError(t, err)
+					require.JSONEq(t, string(blockJson), string(decodedJson))
+				}
+			}
+		}
 	})
 	t.Run("classic-fast/1", func(t *testing.T) {
 		block, err := _DecodeBlockClassic(block_raw1)
@@ -293,6 +361,43 @@ func TestBlock(t *testing.T) {
 				}
 			}
 			require.Equal(t, block.Rewards, fastBlock.Rewards)
+		}
+
+		{
+			// test CBOR encoding
+			encoded, err := block.MarshalCBOR()
+			require.NoError(t, err)
+			// require.Equal(t, block_raw1, encoded)
+			{
+				// let's test as value equivalence instead of comparing bytes
+				decoded, err := DecodeBlock(encoded)
+				require.NoError(t, err)
+				// compare field by field so it's easier to debug
+				require.EqualValues(t, block.Kind, decoded.Kind)
+				require.EqualValues(t, block.Slot, decoded.Slot)
+				require.EqualValues(t, block.Shredding, decoded.Shredding)
+				require.EqualValues(t, block.Entries, decoded.Entries)
+				{
+					blockheight1, ok1 := block.Meta.GetBlockHeight()
+					blockheight2, ok2 := decoded.Meta.GetBlockHeight()
+					require.EqualValues(t, blockheight1, blockheight2)
+					require.EqualValues(t, ok1, ok2)
+
+					require.EqualValues(t, block.Meta.Blocktime, decoded.Meta.Blocktime)
+					require.EqualValues(t, block.Meta.Parent_slot, decoded.Meta.Parent_slot)
+					require.True(t, block.Meta.Equivalent(decoded.Meta))
+				}
+				require.EqualValues(t, block.Rewards, decoded.Rewards)
+				// require.EqualValues(t, block, decoded)
+				{
+					// now compare as json
+					blockJson, err := json.Marshal(block)
+					require.NoError(t, err)
+					decodedJson, err := json.Marshal(decoded)
+					require.NoError(t, err)
+					require.JSONEq(t, string(blockJson), string(decodedJson))
+				}
+			}
 		}
 	})
 }
@@ -332,6 +437,32 @@ func compareRewards(t *testing.T, raw []byte, expectAsJson string) {
 		require.Equal(t, rewards.Slot, fastRewards.Slot)
 		compareDataFrame_simple(t, rewards.Data, fastRewards.Data)
 	}
+
+	{
+		// test CBOR encoding
+		encoded, err := rewards.MarshalCBOR()
+		require.NoError(t, err)
+		require.Equal(t, raw, encoded)
+		{
+			// let's test as value equivalence instead of comparing bytes
+			decoded, err := DecodeRewards(encoded)
+			require.NoError(t, err)
+			// compare field by field so it's easier to debug
+			require.EqualValues(t, rewards.Kind, decoded.Kind)
+			require.EqualValues(t, rewards.Slot, decoded.Slot)
+			compareDataFrame_simple(t, rewards.Data, decoded.Data)
+
+			// require.EqualValues(t, rewards, decoded)
+			{
+				// now compare as json
+				rewardsJson, err := json.Marshal(rewards)
+				require.NoError(t, err)
+				decodedJson, err := json.Marshal(decoded)
+				require.NoError(t, err)
+				require.JSONEq(t, string(rewardsJson), string(decodedJson))
+			}
+		}
+	}
 }
 
 func TestRewards(t *testing.T) {
@@ -341,7 +472,6 @@ func TestRewards(t *testing.T) {
 	})
 	t.Run("classic-fast/1", func(t *testing.T) {
 		expectAsJson := `{"kind":5,"slot":16848004,"data":{"kind":6,"hash":null,"index":null,"total":null,"data":"KLUv/QQAQQAAAAAAAAAAAAC7G9vK","next":null}}`
-
 		compareRewards(t, rewards_raw1, expectAsJson)
 	})
 }
@@ -381,6 +511,33 @@ func comprareEntry(t *testing.T, raw []byte, expectAsJson string) {
 		require.Equal(t, entry.Kind, fastEntry.Kind)
 		require.Equal(t, entry.NumHashes, fastEntry.NumHashes)
 		require.Equal(t, entry.Transactions, fastEntry.Transactions)
+	}
+
+	{
+		// test CBOR encoding
+		encoded, err := entry.MarshalCBOR()
+		require.NoError(t, err)
+		require.Equal(t, raw, encoded)
+		{
+			// let's test as value equivalence instead of comparing bytes
+			decoded, err := DecodeEntry(encoded)
+			require.NoError(t, err)
+			// compare field by field so it's easier to debug
+			require.EqualValues(t, entry.Hash, decoded.Hash)
+			require.EqualValues(t, entry.Kind, decoded.Kind)
+			require.EqualValues(t, entry.NumHashes, decoded.NumHashes)
+			require.EqualValues(t, entry.Transactions, decoded.Transactions)
+
+			// require.EqualValues(t, entry, decoded)
+			{
+				// now compare as json
+				entryJson, err := json.Marshal(entry)
+				require.NoError(t, err)
+				decodedJson, err := json.Marshal(decoded)
+				require.NoError(t, err)
+				require.JSONEq(t, string(entryJson), string(decodedJson))
+			}
+		}
 	}
 }
 
@@ -534,6 +691,41 @@ func compareTransaction(t *testing.T, raw []byte, expectAsJson string) {
 			require.Equal(t, classicIndex, fastIndex)
 		}
 	}
+
+	{
+		// test CBOR encoding
+		encoded, err := transaction.MarshalCBOR()
+		require.NoError(t, err)
+		require.Equal(t, raw, encoded)
+		{
+			// let's test as value equivalence instead of comparing bytes
+			decoded, err := DecodeTransaction(encoded)
+			require.NoError(t, err)
+			// compare field by field so it's easier to debug
+			require.EqualValues(t, transaction.Kind, decoded.Kind)
+			compareDataFrame_simple(t, transaction.Data, decoded.Data)
+			compareDataFrame_simple(t, transaction.Metadata, decoded.Metadata)
+			require.EqualValues(t, transaction.Slot, decoded.Slot)
+			{
+				classicIndex, okClassic := transaction.GetPositionIndex()
+				fastIndex, okFast := decoded.GetPositionIndex()
+				require.EqualValues(t, okClassic, okFast)
+				if okClassic {
+					require.EqualValues(t, classicIndex, fastIndex)
+				}
+
+				// require.EqualValues(t, transaction, decoded)
+				{
+					// now compare as json
+					transactionJson, err := json.Marshal(transaction)
+					require.NoError(t, err)
+					decodedJson, err := json.Marshal(decoded)
+					require.NoError(t, err)
+					require.JSONEq(t, string(transactionJson), string(decodedJson))
+				}
+			}
+		}
+	}
 }
 
 func TestTransaction(t *testing.T) {
@@ -683,6 +875,34 @@ func TestDataFrame(t *testing.T) {
 		gotAsJson, err := json.Marshal(frameClassic)
 		require.NoError(t, err)
 		require.JSONEq(t, expectAsJson, string(gotAsJson))
+
+		{ // test CBOR encoding
+			encoded, err := frameClassic.MarshalCBOR()
+			require.NoError(t, err)
+			require.Equal(t, dataFrame_raw0, encoded)
+			{
+				// let's test as value equivalence instead of comparing bytes
+				decoded, err := DecodeDataFrame(encoded)
+				require.NoError(t, err)
+				// compare field by field so it's easier to debug
+				require.EqualValues(t, frameClassic.Kind, decoded.Kind)
+				require.EqualValues(t, frameClassic.Hash, decoded.Hash)
+				require.EqualValues(t, frameClassic.Index, decoded.Index)
+				require.EqualValues(t, frameClassic.Total, decoded.Total)
+				require.EqualValues(t, frameClassic.Data, decoded.Data)
+				require.EqualValues(t, frameClassic.Next, decoded.Next)
+
+				// require.EqualValues(t, frameClassic, decoded)
+				{
+					// now compare as json
+					frameJson, err := json.Marshal(frameClassic)
+					require.NoError(t, err)
+					decodedJson, err := json.Marshal(decoded)
+					require.NoError(t, err)
+					require.JSONEq(t, string(frameJson), string(decodedJson))
+				}
+			}
+		}
 	})
 	t.Run("classic-fast/1", func(t *testing.T) {
 		frameClassic, err := _DecodeDataFrameClassic(dataFrame_raw1)
@@ -699,6 +919,34 @@ func TestDataFrame(t *testing.T) {
 		gotAsJson, err := json.Marshal(frameClassic)
 		require.NoError(t, err)
 		require.JSONEq(t, expectAsJson, string(gotAsJson))
+
+		{ // test CBOR encoding
+			encoded, err := frameClassic.MarshalCBOR()
+			require.NoError(t, err)
+			require.Equal(t, dataFrame_raw1, encoded)
+			{
+				// let's test as value equivalence instead of comparing bytes
+				decoded, err := DecodeDataFrame(encoded)
+				require.NoError(t, err)
+				// compare field by field so it's easier to debug
+				require.EqualValues(t, frameClassic.Kind, decoded.Kind)
+				require.EqualValues(t, frameClassic.Hash, decoded.Hash)
+				require.EqualValues(t, frameClassic.Index, decoded.Index)
+				require.EqualValues(t, frameClassic.Total, decoded.Total)
+				require.EqualValues(t, frameClassic.Data, decoded.Data)
+				require.EqualValues(t, frameClassic.Next, decoded.Next)
+
+				// require.EqualValues(t, frameClassic, decoded)
+				{
+					// now compare as json
+					frameJson, err := json.Marshal(frameClassic)
+					require.NoError(t, err)
+					decodedJson, err := json.Marshal(decoded)
+					require.NoError(t, err)
+					require.JSONEq(t, string(frameJson), string(decodedJson))
+				}
+			}
+		}
 	})
 	t.Run("classic-fast/2", func(t *testing.T) {
 		frameClassic, err := _DecodeDataFrameClassic(dataFrame_raw2)
@@ -715,6 +963,34 @@ func TestDataFrame(t *testing.T) {
 		gotAsJson, err := json.Marshal(frameClassic)
 		require.NoError(t, err)
 		require.JSONEq(t, expectAsJson, string(gotAsJson))
+
+		{ // test CBOR encoding
+			encoded, err := frameClassic.MarshalCBOR()
+			require.NoError(t, err)
+			require.Equal(t, dataFrame_raw2, encoded)
+			{
+				// let's test as value equivalence instead of comparing bytes
+				decoded, err := DecodeDataFrame(encoded)
+				require.NoError(t, err)
+				// compare field by field so it's easier to debug
+				require.EqualValues(t, frameClassic.Kind, decoded.Kind)
+				require.EqualValues(t, frameClassic.Hash, decoded.Hash)
+				require.EqualValues(t, frameClassic.Index, decoded.Index)
+				require.EqualValues(t, frameClassic.Total, decoded.Total)
+				require.EqualValues(t, frameClassic.Data, decoded.Data)
+				require.EqualValues(t, frameClassic.Next, decoded.Next)
+
+				// require.EqualValues(t, frameClassic, decoded)
+				{
+					// now compare as json
+					frameJson, err := json.Marshal(frameClassic)
+					require.NoError(t, err)
+					decodedJson, err := json.Marshal(decoded)
+					require.NoError(t, err)
+					require.JSONEq(t, string(frameJson), string(decodedJson))
+				}
+			}
+		}
 	})
 }
 

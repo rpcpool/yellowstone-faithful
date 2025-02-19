@@ -312,3 +312,22 @@ func (n SlotMeta) GetBlockHeight() (uint64, bool) {
 	}
 	return uint64(**n.Block_height), true
 }
+
+// SlotMeta.Equivalent returns whether the two SlotMeta objects are equivalent.
+func (n SlotMeta) Equivalent(other SlotMeta) bool {
+	if n.Parent_slot != other.Parent_slot {
+		return false
+	}
+	if n.Blocktime != other.Blocktime {
+		return false
+	}
+	bh1, ok1 := n.GetBlockHeight()
+	bh2, ok2 := other.GetBlockHeight()
+	if ok1 != ok2 {
+		return false
+	}
+	if ok1 && bh1 != bh2 {
+		return false
+	}
+	return true
+}

@@ -19,6 +19,45 @@ func (a _array) Get(i int) (any, bool) {
 	return a[i], true
 }
 
+// Set(i, v) sets the i-th element of the array to v.
+func (a *_array) Set(i int, v any) {
+	if i >= len(*a) {
+		*a = append(*a, make([]any, i-len(*a)+1)...)
+	}
+	(*a)[i] = v
+}
+
+func newArray(l int, init ...any) _array {
+	a := make(_array, l)
+	if len(init) > 0 {
+		if len(init) > l {
+			panic("initial values exceed array length")
+		}
+		copy(a, init)
+	}
+	return a
+}
+
+func encodeCBOR(data any) ([]byte, error) {
+	// Create encoding mode.
+	opts := cbor.CanonicalEncOptions() // use preset options as a starting point
+	// opts.IndefLength = cbor.IndefLengthAllowed
+	// opts.NilContainers = cbor.NilContainerAsNull
+	// opts.ShortestFloat = cbor.ShortestFloat16
+	em, err := opts.EncMode() // create an immutable encoding mode
+	if err != nil {
+		return nil, fmt.Errorf("failed to create encoding mode: %w", err)
+	}
+
+	// API matches encoding/json.
+	var buf bytes.Buffer
+	enc := em.NewEncoder(&buf)
+	if err := enc.Encode(data); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
 func decodeCborLinkListFromAny(maybeList any) (List__Link, error) {
 	if maybeList == nil {
 		return nil, nil
@@ -52,6 +91,11 @@ func decodeCborLinkListFromAny(maybeList any) (List__Link, error) {
 	return list, nil
 }
 
+var (
+	_ cbor.Unmarshaler = (*Epoch)(nil)
+	_ cbor.Marshaler   = (*Epoch)(nil)
+)
+
 // implement the BinaryUnmarshaler interface for EpochFast
 func (x *Epoch) UnmarshalCBOR(data []byte) error {
 	dec := cbor.NewDecoder(bytes.NewReader(data))
@@ -61,7 +105,11 @@ func (x *Epoch) UnmarshalCBOR(data []byte) error {
 	}
 	// first is the kind uint64
 	if kind, ok := arr.Get(0); ok {
-		x.Kind = int(kind.(uint64))
+		kind, err := getUint64FromInterface(kind)
+		if err != nil {
+			return fmt.Errorf("failed to get kind: %w", err)
+		}
+		x.Kind = int(kind)
 	} else {
 		return fmt.Errorf("expected kind to be present")
 	}
@@ -70,7 +118,11 @@ func (x *Epoch) UnmarshalCBOR(data []byte) error {
 	}
 	// second is the epoch uint64
 	if epoch, ok := arr.Get(1); ok {
-		x.Epoch = int(epoch.(uint64))
+		epoch, err := getUint64FromInterface(epoch)
+		if err != nil {
+			return fmt.Errorf("failed to get epoch: %w", err)
+		}
+		x.Epoch = int(epoch)
 	} else {
 		return fmt.Errorf("expected epoch to be present")
 	}
@@ -88,6 +140,74 @@ func (x *Epoch) UnmarshalCBOR(data []byte) error {
 	return nil
 }
 
+func (x *Epoch) MarshalCBOR() ([]byte, error) {
+	arr := newArray(3)
+	arr.Set(0, uint64(x.Kind))
+	arr.Set(1, uint64(x.Epoch))
+	subsets := make([]interface{}, len(x.Subsets))
+	for i, subset := range x.Subsets {
+		subsets[i] = cbor.Tag{Number: 42, Content: append([]byte{0}, subset.(cidlink.Link).Cid.Bytes()...)}
+	}
+	arr.Set(2, subsets)
+	return encodeCBOR(arr)
+}
+
+var (
+	_ cbor.Unmarshaler = (*Subset)(nil)
+	_ cbor.Marshaler   = (*Subset)(nil)
+)
+
+func (x *Subset) MarshalCBOR() ([]byte, error) {
+	arr := newArray(4)
+	arr.Set(0, int64(x.Kind))
+	arr.Set(1, int64(x.First))
+	arr.Set(2, int64(x.Last))
+	blocks := make([]interface{}, len(x.Blocks))
+	for i, block := range x.Blocks {
+		blocks[i] = cbor.Tag{Number: 42, Content: append([]byte{0}, block.(cidlink.Link).Cid.Bytes()...)}
+	}
+	// arr.Set(3, cbor.Tag{Number: 0x99, Content: blocks})
+	{
+		a, err := EncodeArrayWith16BitLen(blocks...)
+		if err != nil {
+			return nil, fmt.Errorf("EncodeArrayWith16BitLen error: %w", err)
+		}
+		arr.Set(3, cbor.RawMessage(a))
+	}
+	// arr.Set(3, blocks)
+	return encodeCBOR(arr)
+}
+
+func EncodeArrayWith16BitLen(values ...any) ([]byte, error) {
+	// 1) Encode each item individually to CBOR.
+	var items []cbor.RawMessage
+	for _, v := range values {
+		b, err := cbor.Marshal(v) // uses default options
+		if err != nil {
+			return nil, fmt.Errorf("cbor.Marshal error: %w", err)
+		}
+		items = append(items, b)
+	}
+
+	// 2) Build the array header: 0x99 = two-byte array length
+	//    Then write length as big-endian uint16.
+	length := len(items) // number of array elements
+	header := []byte{
+		0x99,
+		byte(length >> 8),
+		byte(length),
+	}
+
+	// 3) Concatenate header + item bytes
+	result := make([]byte, 0, len(header))
+	result = append(result, header...)
+	for _, it := range items {
+		result = append(result, it...)
+	}
+
+	return result, nil
+}
+
 func (x *Subset) UnmarshalCBOR(data []byte) error {
 	dec := cbor.NewDecoder(bytes.NewReader(data))
 	var arr _array
@@ -96,7 +216,11 @@ func (x *Subset) UnmarshalCBOR(data []byte) error {
 	}
 	// first is the kind uint64
 	if kind, ok := arr.Get(0); ok {
-		x.Kind = int(kind.(uint64))
+		kind, err := getUint64FromInterface(kind)
+		if err != nil {
+			return fmt.Errorf("failed to get kind: %w", err)
+		}
+		x.Kind = int(kind)
 	} else {
 		return fmt.Errorf("expected kind to be present")
 	}
@@ -105,13 +229,21 @@ func (x *Subset) UnmarshalCBOR(data []byte) error {
 	}
 	// second is the first uint64
 	if first, ok := arr.Get(1); ok {
-		x.First = int(first.(uint64))
+		first, err := getUint64FromInterface(first)
+		if err != nil {
+			return fmt.Errorf("failed to get first: %w", err)
+		}
+		x.First = int(first)
 	} else {
 		return fmt.Errorf("expected first to be present")
 	}
 	// third is the last uint64
 	if last, ok := arr.Get(2); ok {
-		x.Last = int(last.(uint64))
+		last, err := getUint64FromInterface(last)
+		if err != nil {
+			return fmt.Errorf("failed to get last: %w", err)
+		}
+		x.Last = int(last)
 	} else {
 		return fmt.Errorf("expected last to be present")
 	}
@@ -129,6 +261,39 @@ func (x *Subset) UnmarshalCBOR(data []byte) error {
 	return nil
 }
 
+var (
+	_ cbor.Unmarshaler = (*Block)(nil)
+	_ cbor.Marshaler   = (*Block)(nil)
+)
+
+func (x *Block) MarshalCBOR() ([]byte, error) {
+	arr := newArray(6)
+	arr.Set(0, uint64(x.Kind))
+	arr.Set(1, uint64(x.Slot))
+	shredding := make([]interface{}, len(x.Shredding))
+	for i, shr := range x.Shredding {
+		shreddingArr := newArray(2)
+		shreddingArr.Set(0, uint64(shr.EntryEndIdx))
+		shreddingArr.Set(1, uint64(shr.ShredEndIdx))
+		shredding[i] = shreddingArr
+	}
+	arr.Set(2, shredding)
+	entries := make([]interface{}, len(x.Entries))
+	for i, entry := range x.Entries {
+		entries[i] = cbor.Tag{Number: 42, Content: append([]byte{0}, entry.(cidlink.Link).Cid.Bytes()...)}
+	}
+	arr.Set(3, entries)
+	meta := newArray(3)
+	meta.Set(0, uint64(x.Meta.Parent_slot))
+	meta.Set(1, uint64(x.Meta.Blocktime))
+	if x.Meta.Block_height != nil && *x.Meta.Block_height != nil {
+		meta.Set(2, uint64(**x.Meta.Block_height))
+	}
+	arr.Set(4, meta)
+	arr.Set(5, cbor.Tag{Number: 42, Content: append([]byte{0}, x.Rewards.(cidlink.Link).Cid.Bytes()...)})
+	return encodeCBOR(arr)
+}
+
 func (x *Block) UnmarshalCBOR(data []byte) error {
 	dec := cbor.NewDecoder(bytes.NewReader(data))
 	var arr _array
@@ -137,7 +302,11 @@ func (x *Block) UnmarshalCBOR(data []byte) error {
 	}
 	// first is the kind uint64
 	if kind, ok := arr.Get(0); ok {
-		x.Kind = int(kind.(uint64))
+		kind, err := getUint64FromInterface(kind)
+		if err != nil {
+			return fmt.Errorf("failed to get kind: %w", err)
+		}
+		x.Kind = int(kind)
 	} else {
 		return fmt.Errorf("expected kind to be present")
 	}
@@ -146,7 +315,11 @@ func (x *Block) UnmarshalCBOR(data []byte) error {
 	}
 	// second is the slot uint64
 	if slot, ok := arr.Get(1); ok {
-		x.Slot = int(slot.(uint64))
+		slot, err := getUint64FromInterface(slot)
+		if err != nil {
+			return fmt.Errorf("failed to get slot: %w", err)
+		}
+		x.Slot = int(slot)
 	} else {
 		return fmt.Errorf("expected slot to be present")
 	}
@@ -162,23 +335,21 @@ func (x *Block) UnmarshalCBOR(data []byte) error {
 				rawShreddingArr := _array(rawShredding)
 				var shr Shredding
 				if entryEndIdx, ok := rawShreddingArr.Get(0); ok {
-					shr.EntryEndIdx = int(entryEndIdx.(uint64))
+					entryEndIdx, err := getUint64FromInterface(entryEndIdx)
+					if err != nil {
+						return fmt.Errorf("failed to get entry_end_idx: %w", err)
+					}
+					shr.EntryEndIdx = int(entryEndIdx)
 				} else {
 					return fmt.Errorf("expected entry_end_idx to be present")
 				}
 
 				if shredEndIdx, ok := rawShreddingArr.Get(1); ok {
-					asUint64, ok := shredEndIdx.(uint64)
-					if ok {
-						shr.ShredEndIdx = int(asUint64)
-					} else {
-						asInt64, ok := shredEndIdx.(int64)
-						if ok {
-							shr.ShredEndIdx = int(asInt64)
-						} else {
-							return fmt.Errorf("expected shred_end_idx to be uint64 or int64, got %T", shredEndIdx)
-						}
+					shredEndIdx, err := getUint64FromInterface(shredEndIdx)
+					if err != nil {
+						return fmt.Errorf("failed to get shred_end_idx: %w", err)
 					}
+					shr.ShredEndIdx = int(shredEndIdx)
 				} else {
 					return fmt.Errorf("expected shred_end_idx to be present")
 				}
@@ -206,18 +377,30 @@ func (x *Block) UnmarshalCBOR(data []byte) error {
 		metaArr := _array(meta.([]interface{}))
 		var m SlotMeta
 		if parentSlot, ok := metaArr.Get(0); ok {
-			m.Parent_slot = int(parentSlot.(uint64))
+			parentSlot, err := getUint64FromInterface(parentSlot)
+			if err != nil {
+				return fmt.Errorf("failed to get parent_slot: %w", err)
+			}
+			m.Parent_slot = int(parentSlot)
 		} else {
 			return fmt.Errorf("expected parent_slot to be present")
 		}
 		if blocktime, ok := metaArr.Get(1); ok {
-			m.Blocktime = int(blocktime.(uint64))
+			blocktime, err := getUint64FromInterface(blocktime)
+			if err != nil {
+				return fmt.Errorf("failed to get blocktime: %w", err)
+			}
+			m.Blocktime = int(blocktime)
 		} else {
 			return fmt.Errorf("expected blocktime to be present")
 		}
 		if blockHeight, ok := metaArr.Get(2); ok {
 			if blockHeight != nil {
-				_blockHeight := int(blockHeight.(uint64))
+				blockHeight, err := getUint64FromInterface(blockHeight)
+				if err != nil {
+					return fmt.Errorf("failed to get block_height: %w", err)
+				}
+				_blockHeight := int(blockHeight)
 				_blockHeight_ptr := &_blockHeight
 				m.Block_height = &_blockHeight_ptr
 			}
@@ -248,8 +431,59 @@ func (x *Block) UnmarshalCBOR(data []byte) error {
 	} else {
 		return fmt.Errorf("expected rewards to be present")
 	}
-
 	return nil
+}
+
+func getUint64FromInterface(i interface{}) (uint64, error) {
+	asUint64, ok := i.(uint64)
+	if ok {
+		return asUint64, nil
+	}
+	asInt64, ok := i.(int64)
+	if ok {
+		return uint64(asInt64), nil
+	}
+	return 0, fmt.Errorf("expected uint64 or int64, got %T", i)
+}
+
+func tryInterfaceToUint64OrInt64(i interface{}) (int, error) {
+	if i == nil {
+		return 0, nil
+	}
+	asUint64, ok := i.(uint64)
+	if ok {
+		return int(asUint64), nil
+	}
+	asInt64, ok := i.(int64)
+	if ok {
+		return int(asInt64), nil
+	}
+	return 0, fmt.Errorf("expected uint64 or int64, got %T", i)
+}
+
+var (
+	_ cbor.Unmarshaler = (*Rewards)(nil)
+	_ cbor.Marshaler   = (*Rewards)(nil)
+)
+
+func (x *Rewards) MarshalCBOR() ([]byte, error) {
+	arr := newArray(3)
+	arr.Set(0, uint64(x.Kind))
+	arr.Set(1, uint64(x.Slot))
+	data := newArray(5)
+	data.Set(0, uint64(x.Data.Kind))
+	if x.Data.Hash != nil && *x.Data.Hash != nil {
+		data.Set(1, uint64(**x.Data.Hash))
+	}
+	if x.Data.Index != nil && *x.Data.Index != nil {
+		data.Set(2, uint64(**x.Data.Index))
+	}
+	if x.Data.Total != nil && *x.Data.Total != nil {
+		data.Set(3, uint64(**x.Data.Total))
+	}
+	data.Set(4, x.Data.Data)
+	arr.Set(2, data)
+	return encodeCBOR(arr)
 }
 
 func (x *Rewards) UnmarshalCBOR(data []byte) error {
@@ -260,7 +494,11 @@ func (x *Rewards) UnmarshalCBOR(data []byte) error {
 	}
 	// first is the kind uint64
 	if kind, ok := arr.Get(0); ok {
-		x.Kind = int(kind.(uint64))
+		kind, err := getUint64FromInterface(kind)
+		if err != nil {
+			return fmt.Errorf("failed to get kind: %w", err)
+		}
+		x.Kind = int(kind)
 	} else {
 		return fmt.Errorf("expected kind to be present")
 	}
@@ -269,7 +507,11 @@ func (x *Rewards) UnmarshalCBOR(data []byte) error {
 	}
 	// second is the slot uint64
 	if slot, ok := arr.Get(1); ok {
-		x.Slot = int(slot.(uint64))
+		slot, err := getUint64FromInterface(slot)
+		if err != nil {
+			return fmt.Errorf("failed to get slot: %w", err)
+		}
+		x.Slot = int(slot)
 	} else {
 		return fmt.Errorf("expected slot to be present")
 	}
@@ -278,27 +520,43 @@ func (x *Rewards) UnmarshalCBOR(data []byte) error {
 		dataArr := _array(data.([]interface{}))
 		var d DataFrame
 		if kind, ok := dataArr.Get(0); ok {
-			d.Kind = int(kind.(uint64))
+			kind, err := getUint64FromInterface(kind)
+			if err != nil {
+				return fmt.Errorf("failed to get kind: %w", err)
+			}
+			d.Kind = int(kind)
 		} else {
 			return fmt.Errorf("expected kind to be present")
 		}
 		if hash, ok := dataArr.Get(1); ok {
 			if hash != nil {
-				_hash := int(hash.(uint64))
+				hash, err := getUint64FromInterface(hash)
+				if err != nil {
+					return fmt.Errorf("failed to get hash: %w", err)
+				}
+				_hash := int(hash)
 				_hash_ptr := &_hash
 				d.Hash = &_hash_ptr
 			}
 		}
 		if index, ok := dataArr.Get(2); ok {
 			if index != nil {
-				_index := int(index.(uint64))
+				index, err := getUint64FromInterface(index)
+				if err != nil {
+					return fmt.Errorf("failed to get index: %w", err)
+				}
+				_index := int(index)
 				_index_ptr := &_index
 				d.Index = &_index_ptr
 			}
 		}
 		if total, ok := dataArr.Get(3); ok {
 			if total != nil {
-				_total := int(total.(uint64))
+				total, err := getUint64FromInterface(total)
+				if err != nil {
+					return fmt.Errorf("failed to get total: %w", err)
+				}
+				_total := int(total)
 				_total_ptr := &_total
 				d.Total = &_total_ptr
 			}
@@ -321,6 +579,24 @@ func (x *Rewards) UnmarshalCBOR(data []byte) error {
 	return nil
 }
 
+var (
+	_ cbor.Unmarshaler = (*Entry)(nil)
+	_ cbor.Marshaler   = (*Entry)(nil)
+)
+
+func (x *Entry) MarshalCBOR() ([]byte, error) {
+	arr := newArray(4)
+	arr.Set(0, uint64(x.Kind))
+	arr.Set(1, uint64(x.NumHashes))
+	arr.Set(2, x.Hash)
+	transactions := make([]interface{}, len(x.Transactions))
+	for i, transaction := range x.Transactions {
+		transactions[i] = cbor.Tag{Number: 42, Content: append([]byte{0}, transaction.(cidlink.Link).Cid.Bytes()...)}
+	}
+	arr.Set(3, transactions)
+	return encodeCBOR(arr)
+}
+
 func (x *Entry) UnmarshalCBOR(data []byte) error {
 	dec := cbor.NewDecoder(bytes.NewReader(data))
 	var arr _array
@@ -329,7 +605,11 @@ func (x *Entry) UnmarshalCBOR(data []byte) error {
 	}
 	// first is the kind uint64
 	if kind, ok := arr.Get(0); ok {
-		x.Kind = int(kind.(uint64))
+		kind, err := getUint64FromInterface(kind)
+		if err != nil {
+			return fmt.Errorf("failed to get kind: %w", err)
+		}
+		x.Kind = int(kind)
 	} else {
 		return fmt.Errorf("expected kind to be present")
 	}
@@ -338,7 +618,11 @@ func (x *Entry) UnmarshalCBOR(data []byte) error {
 	}
 	// second is the num_hashes uint64
 	if numHashes, ok := arr.Get(1); ok {
-		x.NumHashes = int(numHashes.(uint64))
+		numHashes, err := getUint64FromInterface(numHashes)
+		if err != nil {
+			return fmt.Errorf("failed to get num_hashes: %w", err)
+		}
+		x.NumHashes = int(numHashes)
 	} else {
 		return fmt.Errorf("expected num_hashes to be present")
 	}
@@ -363,6 +647,47 @@ func (x *Entry) UnmarshalCBOR(data []byte) error {
 	return nil
 }
 
+var (
+	_ cbor.Unmarshaler = (*Transaction)(nil)
+	_ cbor.Marshaler   = (*Transaction)(nil)
+)
+
+func (x *Transaction) MarshalCBOR() ([]byte, error) {
+	arr := newArray(5)
+	arr.Set(0, uint64(x.Kind))
+	data := newArray(5)
+	data.Set(0, uint64(x.Data.Kind))
+	if x.Data.Hash != nil && *x.Data.Hash != nil {
+		data.Set(1, uint64(**x.Data.Hash))
+	}
+	if x.Data.Index != nil && *x.Data.Index != nil {
+		data.Set(2, uint64(**x.Data.Index))
+	}
+	if x.Data.Total != nil && *x.Data.Total != nil {
+		data.Set(3, uint64(**x.Data.Total))
+	}
+	data.Set(4, x.Data.Data)
+	arr.Set(1, data)
+	meta := newArray(5)
+	meta.Set(0, uint64(x.Metadata.Kind))
+	if x.Metadata.Hash != nil && *x.Metadata.Hash != nil {
+		meta.Set(1, uint64(**x.Metadata.Hash))
+	}
+	if x.Metadata.Index != nil && *x.Metadata.Index != nil {
+		meta.Set(2, uint64(**x.Metadata.Index))
+	}
+	if x.Metadata.Total != nil && *x.Metadata.Total != nil {
+		meta.Set(3, uint64(**x.Metadata.Total))
+	}
+	meta.Set(4, x.Metadata.Data)
+	arr.Set(2, meta)
+	arr.Set(3, uint64(x.Slot))
+	if x.Index != nil && *x.Index != nil {
+		arr.Set(4, uint64(**x.Index))
+	}
+	return encodeCBOR(arr)
+}
+
 func (x *Transaction) UnmarshalCBOR(data []byte) error {
 	dec := cbor.NewDecoder(bytes.NewReader(data))
 	var arr _array
@@ -371,7 +696,11 @@ func (x *Transaction) UnmarshalCBOR(data []byte) error {
 	}
 	// first is the kind uint64
 	if kind, ok := arr.Get(0); ok {
-		x.Kind = int(kind.(uint64))
+		kind, err := getUint64FromInterface(kind)
+		if err != nil {
+			return fmt.Errorf("failed to get kind: %w", err)
+		}
+		x.Kind = int(kind)
 	} else {
 		return fmt.Errorf("expected kind to be present")
 	}
@@ -383,27 +712,43 @@ func (x *Transaction) UnmarshalCBOR(data []byte) error {
 		dataArr := _array(data.([]interface{}))
 		var d DataFrame
 		if kind, ok := dataArr.Get(0); ok {
-			d.Kind = int(kind.(uint64))
+			kind, err := getUint64FromInterface(kind)
+			if err != nil {
+				return fmt.Errorf("failed to get kind: %w", err)
+			}
+			d.Kind = int(kind)
 		} else {
 			return fmt.Errorf("expected kind to be present")
 		}
 		if hash, ok := dataArr.Get(1); ok {
 			if hash != nil {
-				_hash := int(hash.(uint64))
+				hash, err := getUint64FromInterface(hash)
+				if err != nil {
+					return fmt.Errorf("failed to get hash: %w", err)
+				}
+				_hash := int(hash)
 				_hash_ptr := &_hash
 				d.Hash = &_hash_ptr
 			}
 		}
 		if index, ok := dataArr.Get(2); ok {
 			if index != nil {
-				_index := int(index.(uint64))
+				index, err := getUint64FromInterface(index)
+				if err != nil {
+					return fmt.Errorf("failed to get index: %w", err)
+				}
+				_index := int(index)
 				_index_ptr := &_index
 				d.Index = &_index_ptr
 			}
 		}
 		if total, ok := dataArr.Get(3); ok {
 			if total != nil {
-				_total := int(total.(uint64))
+				total, err := getUint64FromInterface(total)
+				if err != nil {
+					return fmt.Errorf("failed to get total: %w", err)
+				}
+				_total := int(total)
 				_total_ptr := &_total
 				d.Total = &_total_ptr
 			}
@@ -427,27 +772,43 @@ func (x *Transaction) UnmarshalCBOR(data []byte) error {
 		metaArr := _array(metadata.([]interface{}))
 		var m DataFrame
 		if kind, ok := metaArr.Get(0); ok {
-			m.Kind = int(kind.(uint64))
+			kind, err := getUint64FromInterface(kind)
+			if err != nil {
+				return fmt.Errorf("failed to get kind: %w", err)
+			}
+			m.Kind = int(kind)
 		} else {
 			return fmt.Errorf("expected kind to be present")
 		}
 		if hash, ok := metaArr.Get(1); ok {
 			if hash != nil {
-				_hash := int(hash.(uint64))
+				hash, err := getUint64FromInterface(hash)
+				if err != nil {
+					return fmt.Errorf("failed to get hash: %w", err)
+				}
+				_hash := int(hash)
 				_hash_ptr := &_hash
 				m.Hash = &_hash_ptr
 			}
 		}
 		if index, ok := metaArr.Get(2); ok {
 			if index != nil {
-				_index := int(index.(uint64))
+				index, err := getUint64FromInterface(index)
+				if err != nil {
+					return fmt.Errorf("failed to get index: %w", err)
+				}
+				_index := int(index)
 				_index_ptr := &_index
 				m.Index = &_index_ptr
 			}
 		}
 		if total, ok := metaArr.Get(3); ok {
 			if total != nil {
-				_total := int(total.(uint64))
+				total, err := getUint64FromInterface(total)
+				if err != nil {
+					return fmt.Errorf("failed to get total: %w", err)
+				}
+				_total := int(total)
 				_total_ptr := &_total
 				m.Total = &_total_ptr
 			}
@@ -467,14 +828,22 @@ func (x *Transaction) UnmarshalCBOR(data []byte) error {
 	}
 	// fourth is the slot uint64
 	if slot, ok := arr.Get(3); ok {
-		x.Slot = int(slot.(uint64))
+		slot, err := getUint64FromInterface(slot)
+		if err != nil {
+			return fmt.Errorf("failed to get slot: %w", err)
+		}
+		x.Slot = int(slot)
 	} else {
 		return fmt.Errorf("expected slot to be present")
 	}
 	// fifth is the index uint64
 	if index, ok := arr.Get(4); ok {
 		if index != nil {
-			_index := int(index.(uint64))
+			index, err := getUint64FromInterface(index)
+			if err != nil {
+				return fmt.Errorf("failed to get index: %w", err)
+			}
+			_index := int(index)
 			_index_ptr := &_index
 			x.Index = &_index_ptr
 		}
@@ -483,19 +852,32 @@ func (x *Transaction) UnmarshalCBOR(data []byte) error {
 	return nil
 }
 
-func tryInterfaceToUint64OrInt64(i interface{}) (int, error) {
-	if i == nil {
-		return 0, nil
+var (
+	_ cbor.Unmarshaler = (*DataFrame)(nil)
+	_ cbor.Marshaler   = (*DataFrame)(nil)
+)
+
+func (x *DataFrame) MarshalCBOR() ([]byte, error) {
+	arr := newArray(6)
+	arr.Set(0, uint64(x.Kind))
+	if x.Hash != nil && *x.Hash != nil {
+		arr.Set(1, int(**x.Hash))
 	}
-	asUint64, ok := i.(uint64)
-	if ok {
-		return int(asUint64), nil
+	if x.Index != nil && *x.Index != nil {
+		arr.Set(2, int(**x.Index))
 	}
-	asInt64, ok := i.(int64)
-	if ok {
-		return int(asInt64), nil
+	if x.Total != nil && *x.Total != nil {
+		arr.Set(3, int(**x.Total))
 	}
-	return 0, fmt.Errorf("expected uint64 or int64, got %T", i)
+	arr.Set(4, x.Data)
+	if x.Next != nil && *x.Next != nil {
+		next := make([]interface{}, len(**x.Next))
+		for i, n := range **x.Next {
+			next[i] = cbor.Tag{Number: 42, Content: append([]byte{0}, n.(cidlink.Link).Cid.Bytes()...)}
+		}
+		arr.Set(5, next)
+	}
+	return encodeCBOR(arr)
 }
 
 func (x *DataFrame) UnmarshalCBOR(data []byte) error {
@@ -506,7 +888,11 @@ func (x *DataFrame) UnmarshalCBOR(data []byte) error {
 	}
 	// first is the kind uint64
 	if kind, ok := arr.Get(0); ok {
-		x.Kind = int(kind.(uint64))
+		kind, err := getUint64FromInterface(kind)
+		if err != nil {
+			return fmt.Errorf("failed to get kind: %w", err)
+		}
+		x.Kind = int(kind)
 	} else {
 		return fmt.Errorf("expected kind to be present")
 	}
@@ -516,10 +902,11 @@ func (x *DataFrame) UnmarshalCBOR(data []byte) error {
 	// second is the hash int
 	if hash, ok := arr.Get(1); ok {
 		if hash != nil {
-			_hash, err := tryInterfaceToUint64OrInt64(hash)
+			hash, err := getUint64FromInterface(hash)
 			if err != nil {
 				return fmt.Errorf("failed to cast hash to int: %w", err)
 			}
+			_hash := int(hash)
 			_hash_ptr := &_hash
 			x.Hash = &_hash_ptr
 		}
@@ -527,7 +914,11 @@ func (x *DataFrame) UnmarshalCBOR(data []byte) error {
 	// third is the index int
 	if index, ok := arr.Get(2); ok {
 		if index != nil {
-			_index := int(index.(uint64))
+			index, err := getUint64FromInterface(index)
+			if err != nil {
+				return fmt.Errorf("failed to cast index to int: %w", err)
+			}
+			_index := int(index)
 			_index_ptr := &_index
 			x.Index = &_index_ptr
 		}
@@ -535,7 +926,11 @@ func (x *DataFrame) UnmarshalCBOR(data []byte) error {
 	// fourth is the total int
 	if total, ok := arr.Get(3); ok {
 		if total != nil {
-			_total := int(total.(uint64))
+			total, err := getUint64FromInterface(total)
+			if err != nil {
+				return fmt.Errorf("failed to cast total to int: %w", err)
+			}
+			_total := int(total)
 			_total_ptr := &_total
 			x.Total = &_total_ptr
 		}
