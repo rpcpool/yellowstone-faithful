@@ -354,10 +354,10 @@ def create_deals_for_metadata(metadata_obj, epoch_str, deal_type_suffix=""):
                 logger.info(f"Found {len(providers)} providers: {providers}")
 
                 for provider in providers:
+                    if file_item["commp_piece_cid"] not in replications:
+                        replications[file_item["commp_piece_cid"]] = []
                     if not USE_CID_GRAVITY:
-                        if file_item["commp_piece_cid"] not in replications:
-                            replications[file_item["commp_piece_cid"]] = []
-                        elif provider in replications[file_item["commp_piece_cid"]]:
+                        if provider in replications[file_item["commp_piece_cid"]]:
                             logger.info(f"Skipping deal for {file_item['commp_piece_cid']} with {provider}, already has a deal.")
                             continue
                         elif len(replications[file_item["commp_piece_cid"]]) >= replication_factor:
