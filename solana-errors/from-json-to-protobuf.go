@@ -71,26 +71,46 @@ func FromJSONToProtobuf(j map[string]interface{}) ([]byte, error) {
 							if firstKey == "" {
 								return nil, fmt.Errorf("no keys found in map")
 							}
-							if firstKey != "Custom" {
+							if firstKey != "Custom" && firstKey != "BorshIoError" {
 								return nil, fmt.Errorf("expected a Custom key")
 							}
-							doer.Do("write customErrorType", func() error {
-								return wr.WriteUint32(uint32(InstructionErrorType_CUSTOM), bin.LE)
-							})
-							customErrorTypeFloat, ok := as[firstKey].(float64)
-							if !ok {
-								return nil, fmt.Errorf("expected a float64")
+							switch firstKey {
+							case "Custom":
+								{
+									doer.Do("write customErrorType", func() error {
+										return wr.WriteUint32(uint32(InstructionErrorType_CUSTOM), bin.LE)
+									})
+									customErrorTypeFloat, ok := as[firstKey].(float64)
+									if !ok {
+										return nil, fmt.Errorf("expected a float64")
+									}
+									customErrorType := uint32(customErrorTypeFloat)
+									doer.Do("write customErrorType", func() error {
+										return wr.WriteUint32(customErrorType, bin.LE)
+									})
+								}
+							case "BorshIoError":
+								{
+									doer.Do("write borshIoErrorType", func() error {
+										return wr.WriteUint32(uint32(InstructionErrorType_BORSH_IO_ERROR), bin.LE)
+									})
+									// BorshIoError(String),
+									borshIoError, ok := as[firstKey].(string)
+									if !ok {
+										return nil, fmt.Errorf("expected a string")
+									}
+									doer.Do("write borshIoError", func() error {
+										return wr.WriteString(borshIoError)
+									})
+								}
+							default:
+								return nil, fmt.Errorf("unhandled type %T", as)
 							}
-							customErrorType := uint32(customErrorTypeFloat)
-							doer.Do("write customErrorType", func() error {
-								return wr.WriteUint32(customErrorType, bin.LE)
-							})
 						}
 					default:
 						return nil, fmt.Errorf("unhandled type %T", arr[1])
 					}
 				}
-
 			}
 
 			err := doer.Err()
