@@ -72,7 +72,7 @@ func FromJSONToProtobuf(j map[string]interface{}) ([]byte, error) {
 								return nil, fmt.Errorf("no keys found in map")
 							}
 							if firstKey != "Custom" && firstKey != "BorshIoError" {
-								return nil, fmt.Errorf("expected a Custom key")
+								return nil, fmt.Errorf("expected a Custom or BorshIoError key, got %q", firstKey)
 							}
 							switch firstKey {
 							case "Custom":
@@ -82,7 +82,7 @@ func FromJSONToProtobuf(j map[string]interface{}) ([]byte, error) {
 									})
 									customErrorTypeFloat, ok := as[firstKey].(float64)
 									if !ok {
-										return nil, fmt.Errorf("expected a float64")
+										return nil, fmt.Errorf("expected a float64, got %T", as[firstKey])
 									}
 									customErrorType := uint32(customErrorTypeFloat)
 									doer.Do("write customErrorType", func() error {
@@ -97,7 +97,7 @@ func FromJSONToProtobuf(j map[string]interface{}) ([]byte, error) {
 									// BorshIoError(String),
 									borshIoError, ok := as[firstKey].(string)
 									if !ok {
-										return nil, fmt.Errorf("expected a string")
+										return nil, fmt.Errorf("expected a string, got %T", as[firstKey])
 									}
 									doer.Do("write borshIoError", func() error {
 										return wr.WriteString(borshIoError)
