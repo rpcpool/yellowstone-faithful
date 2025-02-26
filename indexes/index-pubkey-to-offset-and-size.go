@@ -103,7 +103,9 @@ func (w *PubkeyToOffsetAndSize_Writer) SealWithFilename(ctx context.Context, dst
 	filepath := dstFilepath
 	w.finalPath = filepath
 
-	file, err := os.Create(filepath)
+	defer os.Rename(filepath+".tmp", filepath)
+
+	file, err := os.Create(filepath + ".tmp")
 	if err != nil {
 		return fmt.Errorf("failed to create file: %w", err)
 	}
