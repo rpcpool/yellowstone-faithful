@@ -9,7 +9,6 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
-	"sort"
 	"time"
 
 	"github.com/dustin/go-humanize"
@@ -65,6 +64,11 @@ func newCmd_Index_all() *cli.Command {
 				Name:  "car",
 				Usage: "Path to a CAR file containing a single Solana epoch, or multiple split CAR files (in order) containing a single Solana epoch",
 			},
+			&cli.Uint64Flag{
+				Name:     "epoch",
+				Usage:    "the epoch number",
+				Required: true,
+			},
 		},
 		Subcommands: []*cli.Command{},
 		Action: func(c *cli.Context) error {
@@ -84,6 +88,8 @@ func newCmd_Index_all() *cli.Command {
 				return fmt.Errorf("index-dir is not a directory")
 			}
 
+			epoch := c.Uint64("epoch")
+
 			{
 				startedAt := time.Now()
 				defer func() {
@@ -95,6 +101,7 @@ func newCmd_Index_all() *cli.Command {
 				indexPaths, numTotalItems, err := createAllIndexes(
 					c.Context,
 					network,
+					epoch,
 					tmpDir,
 					carPaths,
 					indexDir,
@@ -122,6 +129,7 @@ func newCmd_Index_all() *cli.Command {
 func createAllIndexes(
 	ctx context.Context,
 	network indexes.Network,
+	epoch uint64,
 	tmpDir string,
 	carPaths []string,
 	indexDir string,
@@ -143,40 +151,15 @@ func createAllIndexes(
 	}
 	klog.Infof("Root CID: %s", rootCID)
 
-	klog.Infof("Counting items in car file...")
-	numItems, epochObject, err := carCountItemsByFirstByte(carPaths...)
-	if err != nil {
-		return nil, 0, fmt.Errorf("failed to count items in car file: %w", err)
-	}
-	if epochObject == nil {
-		return nil, 0, fmt.Errorf("failed to find epoch object in the car file")
-	}
-	fmt.Println()
-	klog.Infof("Found items in car file:")
-	numTotalItems := uint64(0)
-	var kinds []byte
-	for kind := range numItems {
-		kinds = append(kinds, kind)
-	}
-	// sort from byte value:
-	sort.Slice(kinds, func(i, j int) bool {
-		return kinds[i] < kinds[j]
-	})
-	for _, kind := range kinds {
-		klog.Infof("  %s: %s items", iplddecoders.Kind(kind), humanize.Comma(int64(numItems[kind])))
-		numTotalItems += numItems[kind]
-	}
-	klog.Infof("Total: %s items", humanize.Comma(int64(numTotalItems)))
-
-	epoch := uint64(epochObject.Epoch)
 	klog.Infof("This CAR file is for epoch %d and cluster %s", epoch, network)
 
+	hardcodedNumTotalItems := uint64(1_000_000_000)
 	cid_to_offset_and_size, err := NewBuilder_CidToOffset(
 		epoch,
 		rootCID,
 		network,
 		tmpDir,
-		numTotalItems,
+		hardcodedNumTotalItems,
 	)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to create cid_to_offset_and_size index: %w", err)
@@ -188,19 +171,19 @@ func createAllIndexes(
 		rootCID,
 		network,
 		tmpDir,
-		numItems[byte(iplddecoders.KindBlock)],
 	)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to create slot_to_cid index: %w", err)
 	}
 	defer slot_to_cid.Close()
 
+	hardcodedNumTransactions := uint64(1_000_000_000) // THis is used to determine the number of buckets in the index
 	sig_to_cid, err := NewBuilder_SignatureToCid(
 		epoch,
 		rootCID,
 		network,
 		tmpDir,
-		numItems[byte(iplddecoders.KindTransaction)],
+		hardcodedNumTransactions,
 	)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to create sig_to_cid index: %w", err)
@@ -292,7 +275,7 @@ func createAllIndexes(
 
 		if numIndexedOffsets%1_000_000 == 0 && numIndexedOffsets > 0 {
 			timeForChunk := time.Since(lastCheckpoint)
-			numChunksLeft := ((numTotalItems - numIndexedOffsets) / 1_000_000) + 1
+			numChunksLeft := ((hardcodedNumTotalItems - numIndexedOffsets) / 1_000_000) + 1
 			eta = timeForChunk * time.Duration(numChunksLeft)
 			lastCheckpoint = time.Now()
 		}
@@ -306,8 +289,8 @@ func createAllIndexes(
 			printToStderr(
 				fmt.Sprintf("\rIndexing: %s/%s items [%s%%] %s",
 					humanize.Comma(int64(numIndexedOffsets)),
-					humanize.Comma(int64(numTotalItems)),
-					humanize.CommafWithDigits(float64(numIndexedOffsets)/float64(numTotalItems)*100, 2),
+					humanize.Comma(int64(hardcodedNumTotalItems)),
+					humanize.CommafWithDigits(float64(numIndexedOffsets)/float64(hardcodedNumTotalItems)*100, 2),
 					etaString,
 				),
 			)
@@ -411,7 +394,7 @@ func createAllIndexes(
 		}
 	}
 
-	return paths, numTotalItems, nil
+	return paths, hardcodedNumTotalItems, nil
 }
 
 func greenBackground(s string) string {
@@ -508,7 +491,6 @@ func NewBuilder_SlotToCid(
 	rootCid cid.Cid,
 	network indexes.Network,
 	tmpDir string,
-	numItems uint64,
 ) (*indexes.SlotToCid_Writer, error) {
 	tmpDir = filepath.Join(tmpDir, "index-slot-to-cid-"+time.Now().Format("20060102-150405.000000000")+fmt.Sprintf("-%d", rand.Int63()))
 	if err := os.MkdirAll(tmpDir, 0o755); err != nil {
@@ -519,7 +501,6 @@ func NewBuilder_SlotToCid(
 		rootCid,
 		network,
 		tmpDir,
-		numItems,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create slot_to_cid index: %w", err)
