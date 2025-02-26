@@ -378,7 +378,7 @@ func (b *tempBucket) mine(ctx context.Context, attempts uint32) (entries []Entry
 
 	kv, err := b.kv.readAll()
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, fmt.Errorf("failed to read all entries: %w", err)
 	}
 	dedupKeepNewest(kv)
 
