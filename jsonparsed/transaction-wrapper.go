@@ -1,4 +1,4 @@
-package txstatus
+package jsonparsed
 
 import (
 	"encoding/json"

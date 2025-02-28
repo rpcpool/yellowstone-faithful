@@ -9559,6 +9559,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "transaction-status-ffi"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "solana-sdk",
+ "solana-transaction-status",
+]
+
+[[package]]
 name = "trees"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"

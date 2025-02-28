@@ -6,15 +6,15 @@ BASE_LD_FLAGS := -X main.GitCommit=`git rev-parse HEAD` -X main.GitTag=`git symb
 ROOT_DIR := $(dir $(realpath $(lastword $(MAKEFILE_LIST))))
 
 build-rust-wrapper:
-	rm -rf txstatus/lib
-	cd txstatus && cargo build --release --lib --target=x86_64-unknown-linux-gnu --target-dir=target
-	cbindgen ./txstatus -o txstatus/lib/transaction_status.h --lang c
+	rm -rf jsonparsed/lib
+	cd jsonparsed && cargo build --release --lib --target=x86_64-unknown-linux-gnu --target-dir=target
+	cbindgen ./jsonparsed -o jsonparsed/lib/transaction_status.h --lang c
 	echo "build-rust-wrapper done"
 jsonParsed-linux: build-rust-wrapper
 	# build faithful-cli with jsonParsed format support via ffi (rust)
 	rm -rf ./bin/faithful-cli_jsonParsed
 	# static linking:
-	cp txstatus/target/x86_64-unknown-linux-gnu/release/libdemo_transaction_status_ffi.a ./txstatus/lib/libsolana_transaction_status_wrapper.a
+	cp jsonparsed/target/x86_64-unknown-linux-gnu/release/libdemo_transaction_status_ffi.a ./jsonparsed/lib/libsolana_transaction_status_wrapper.a
 	LD_FLAGS="$(BASE_LD_FLAGS) -extldflags -static"
 	go build -ldflags=$(LD_FLAGS) -tags ffi -o ./bin/faithful-cli_jsonParsed .
 	echo "SUCCESS: built old-faithful with jsonParsed format support via ffi (rust)"
