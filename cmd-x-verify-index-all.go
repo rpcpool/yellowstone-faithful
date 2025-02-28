@@ -21,7 +21,7 @@ func newCmd_VerifyIndex_all() *cli.Command {
 				Usage: "Path to a CAR file containing a single Solana epoch, or multiple split CAR files (in order) containing a single Solana epoch",
 			},
 			&cli.StringFlag{
-				Name:  "index-cid-to-offset",
+				Name:  "index-cid-to-offset-and-size",
 				Usage: "Path to the CID-to-offset index file",
 			},
 			&cli.StringFlag{
@@ -36,13 +36,18 @@ func newCmd_VerifyIndex_all() *cli.Command {
 				Name:  "index-sig-exists",
 				Usage: "Path to the signature-exists index file",
 			},
+			&cli.StringFlag{
+				Name:  "index-slot-to-blocktime",
+				Usage: "Path to the slot-to-blocktime index file",
+			},
 		},
 		Action: func(c *cli.Context) error {
 			carPaths := c.StringSlice("car")
-			indexFilePathCid2Offset := c.String("index-cid-to-offset")
+			indexFilePathCid2OffsetAndSize := c.String("index-cid-to-offset-and-size")
 			indexFilePathSlot2Cid := c.String("index-slot-to-cid")
 			indexFilePathSig2Cid := c.String("index-sig-to-cid")
 			indexFilePathSigExists := c.String("index-sig-exists")
+			indexFilePathSlot2Blocktime := c.String("index-slot-to-blocktime")
 
 			{
 				startedAt := time.Now()
@@ -54,10 +59,11 @@ func newCmd_VerifyIndex_all() *cli.Command {
 					context.TODO(),
 					carPaths,
 					&IndexPaths{
-						CidToOffsetAndSize: indexFilePathCid2Offset,
+						CidToOffsetAndSize: indexFilePathCid2OffsetAndSize,
 						SlotToCid:          indexFilePathSlot2Cid,
 						SignatureToCid:     indexFilePathSig2Cid,
 						SignatureExists:    indexFilePathSigExists,
+						SlotToBlocktime:    indexFilePathSlot2Blocktime,
 					},
 					0,
 				)
