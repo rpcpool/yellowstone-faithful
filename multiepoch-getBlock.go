@@ -274,9 +274,10 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 
 	var allTransactions []GetTransactionResponse
 	var rewards any
-	hasRewards := !block.Rewards.(cidlink.Link).Cid.Equals(DummyCID)
+	rewardsCid := block.Rewards.(cidlink.Link).Cid
+	hasRewards := !rewardsCid.Equals(DummyCID)
 	if *params.Options.Rewards && hasRewards {
-		rewardsNode, err := epochHandler.GetRewardsByCid(ctx, block.Rewards.(cidlink.Link).Cid)
+		rewardsNode, err := epochHandler.GetRewardsByCid(ctx, rewardsCid)
 		if err != nil {
 			return &jsonrpc2.Error{
 				Code:    jsonrpc2.CodeInternalError,

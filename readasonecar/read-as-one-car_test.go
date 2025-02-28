@@ -14,6 +14,7 @@ import (
 	"github.com/ipfs/go-libipfs/blocks"
 	carv1 "github.com/ipld/go-car"
 	"github.com/rpcpool/yellowstone-faithful/carreader"
+	"github.com/stretchr/testify/require"
 )
 
 func TestReader(t *testing.T) {
@@ -63,6 +64,23 @@ func TestReader(t *testing.T) {
 			if !bytes.Equal(thisData, data) {
 				t.Fatalf("expected data %s, got %s", thisData, gotData)
 			}
+			{
+				// now use a normal reader to read the section and compare the data
+				normalFile1, err := os.Open(file1)
+				require.NoError(t, err)
+				normalReader, err := carreader.New(normalFile1)
+				require.NoError(t, err)
+				defer normalReader.Close()
+				_, _, normalData, err := normalReader.NextNodeBytes()
+				require.NoError(t, err)
+				require.Equal(t, data, normalData)
+				{
+					secondTest := make([]byte, expectedSectionSize)
+					_, err = normalFile1.ReadAt(secondTest, int64(sectionOffset))
+					require.NoError(t, err)
+					require.Equal(t, secondTest, section)
+				}
+			}
 		}
 	}
 	{
@@ -97,6 +115,25 @@ func TestReader(t *testing.T) {
 			}
 			if !bytes.Equal(thisData, data) {
 				t.Fatalf("expected data %s, got %s", thisData, gotData)
+			}
+			{
+				// now use a normal reader to read the section and compare the data
+				normalFile1, err := os.Open(file1)
+				require.NoError(t, err)
+				normalReader, err := carreader.New(normalFile1)
+				require.NoError(t, err)
+				defer normalReader.Close()
+				_, _, _, err = normalReader.NextNodeBytes()
+				require.NoError(t, err)
+				_, _, normalData, err := normalReader.NextNodeBytes()
+				require.NoError(t, err)
+				require.Equal(t, data, normalData)
+				{
+					secondTest := make([]byte, expectedSectionSize)
+					_, err = normalFile1.ReadAt(secondTest, int64(sectionOffset))
+					require.NoError(t, err)
+					require.Equal(t, secondTest, section)
+				}
 			}
 		}
 	}

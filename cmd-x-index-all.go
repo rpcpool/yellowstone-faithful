@@ -588,7 +588,7 @@ func verifyAllIndexes(
 	var eta time.Duration
 	startedAt := time.Now()
 	for {
-		totalOffset, ok := rd.GetGlobalOffsetForNextRead()
+		sectionOffset, ok := rd.GetGlobalOffsetForNextRead()
 		if !ok {
 			break
 		}
@@ -606,8 +606,8 @@ func verifyAllIndexes(
 		if err != nil {
 			return fmt.Errorf("failed to lookup offset for %s: %w", _cid, err)
 		}
-		if offset.Offset != totalOffset {
-			return fmt.Errorf("offset mismatch for %s: %d != %d", _cid, offset, totalOffset)
+		if offset.Offset != sectionOffset {
+			return fmt.Errorf("offset mismatch for %s: %d != %d", _cid, offset, sectionOffset)
 		}
 		if offset.Size != sectionLength {
 			return fmt.Errorf("length mismatch for %s: %d != %d", _cid, offset, sectionLength)
