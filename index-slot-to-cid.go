@@ -54,7 +54,6 @@ func CreateIndex_slot2cid(
 		rootCID,
 		network,
 		tmpDir,
-		numItems,
 	)
 	if err != nil {
 		return "", fmt.Errorf("failed to open index store: %w", err)
