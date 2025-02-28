@@ -289,10 +289,11 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 
 	var allTransactions []GetTransactionResponse
 	var rewards any
-	hasRewards := !block.Rewards.(cidlink.Link).Cid.Equals(DummyCID)
+	rewardsCid := block.Rewards.(cidlink.Link).Cid
+	hasRewards := !rewardsCid.Equals(DummyCID)
 	if *params.Options.Rewards && hasRewards {
 		rewardsSpanCtx, rewardsSpan := telemetry.StartSpan(rpcSpanCtx, "GetBlock_RewardsProcessing")
-		rewardsNode, err := epochHandler.GetRewardsByCid(rewardsSpanCtx, block.Rewards.(cidlink.Link).Cid)
+		rewardsNode, err := epochHandler.GetRewardsByCid(rewardsSpanCtx, rewardsCid)
 		if err != nil {
 			telemetry.RecordError(rewardsSpan, err, "Failed to get RewardsByCid")
 			rewardsSpan.End()
