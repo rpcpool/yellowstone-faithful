@@ -172,7 +172,6 @@ func createAllIndexes(
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to create cid_to_offset_and_size index: %w", err)
 	}
-	defer cid_to_offset_and_size.Close()
 
 	slot_to_cid, err := NewBuilder_SlotToCid(
 		epoch,
@@ -183,7 +182,6 @@ func createAllIndexes(
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to create slot_to_cid index: %w", err)
 	}
-	defer slot_to_cid.Close()
 
 	hardcodedNumTransactions := uint64(1_000_000_000) // THis is used to determine the number of buckets in the index
 	sig_to_cid, err := NewBuilder_SignatureToCid(
@@ -196,7 +194,6 @@ func createAllIndexes(
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to create sig_to_cid index: %w", err)
 	}
-	defer sig_to_cid.Close()
 
 	sigExistsFilepath := formatSigExistsIndexFilePath(indexDir, epoch, rootCID, network)
 	sig_exists, err := bucketteer.NewWriter(
@@ -205,7 +202,6 @@ func createAllIndexes(
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to create sig_exists index: %w", err)
 	}
-	defer sig_exists.Close()
 
 	slot_to_blocktime := blocktimeindex.NewForEpoch(epoch)
 
@@ -335,6 +331,8 @@ func createAllIndexes(
 			}
 			paths.CidToOffsetAndSize = cid_to_offset_and_size.GetFilepath()
 			klog.Infof("Successfully sealed cid_to_offset_and_size index: %s", paths.CidToOffsetAndSize)
+			cid_to_offset_and_size.Close()
+			klog.Info("Closed cid_to_offset_and_size index")
 			return nil
 		})
 
@@ -346,6 +344,8 @@ func createAllIndexes(
 			}
 			paths.SlotToCid = slot_to_cid.GetFilepath()
 			klog.Infof("Successfully sealed slot_to_cid index: %s", paths.SlotToCid)
+			slot_to_cid.Close()
+			klog.Info("Closed slot_to_cid index")
 			return nil
 		})
 
@@ -357,6 +357,8 @@ func createAllIndexes(
 			}
 			paths.SignatureToCid = sig_to_cid.GetFilepath()
 			klog.Infof("Successfully sealed sig_to_cid index: %s", paths.SignatureToCid)
+			sig_to_cid.Close()
+			klog.Info("Closed sig_to_cid index")
 			return nil
 		})
 
@@ -376,6 +378,8 @@ func createAllIndexes(
 				return fmt.Errorf("failed to seal sig_exists index: %w", err)
 			}
 			klog.Infof("Successfully sealed sig_exists index: %s", paths.SignatureExists)
+			sig_exists.Close()
+			klog.Info("Closed sig_exists index")
 			return nil
 		})
 
@@ -569,6 +573,13 @@ func verifyAllIndexes(
 		defer sig_exists.Close()
 	}
 
+	slot_to_blocktime, err := OpenIndex_SlotToBlocktime(
+		indexes.SlotToBlocktime,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to open slot_to_blocktime index: %w", err)
+	}
+
 	numIndexedOffsets := uint64(0)
 	numIndexedBlocks := uint64(0)
 	numIndexedTransactions := uint64(0)
@@ -613,12 +624,24 @@ func verifyAllIndexes(
 					return fmt.Errorf("failed to decode block: %w", err)
 				}
 
-				got, err := slot_to_cid.Get(uint64(block.Slot))
-				if err != nil {
-					return fmt.Errorf("failed to index slot to cid: %w", err)
+				{
+					got, err := slot_to_cid.Get(uint64(block.Slot))
+					if err != nil {
+						return fmt.Errorf("failed to index slot to cid: %w", err)
+					}
+					if !got.Equals(_cid) {
+						return fmt.Errorf("slot to cid mismatch for %d: expected cid %s, got %s", block.Slot, _cid, got)
+					}
 				}
-				if !got.Equals(_cid) {
-					return fmt.Errorf("slot to cid mismatch for %d: expected cid %s, got %s", block.Slot, _cid, got)
+
+				{
+					blocktime, err := slot_to_blocktime.Get(uint64(block.Slot))
+					if err != nil {
+						return fmt.Errorf("failed to index slot to blocktime: %w", err)
+					}
+					if blocktime != int64(block.Meta.Blocktime) {
+						return fmt.Errorf("blocktime mismatch for %d: expected %d, got %d", block.Slot, block.Meta.Blocktime, blocktime)
+					}
 				}
 				numIndexedBlocks++
 			}
@@ -723,6 +746,16 @@ func OpenIndex_SigToCid(
 	index, err := indexes.Open_SigToCid(indexFilePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open sig_to_cid index: %w", err)
+	}
+	return index, nil
+}
+
+func OpenIndex_SlotToBlocktime(
+	indexFilePath string,
+) (*blocktimeindex.Index, error) {
+	index, err := blocktimeindex.FromFile(indexFilePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open slot_to_cid index: %w", err)
 	}
 	return index, nil
 }
