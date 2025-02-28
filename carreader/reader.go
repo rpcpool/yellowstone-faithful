@@ -18,9 +18,10 @@ import (
 )
 
 type CarReader struct {
-	headerSize *uint64
-	Header     *carv1.CarHeader
-	br         *bufio.Reader
+	totalOffset uint64
+	headerSize  *uint64
+	Header      *carv1.CarHeader
+	br          *bufio.Reader
 }
 
 func alignValueToPageSize(value int) int {
@@ -39,14 +40,23 @@ func New(r io.ReadCloser) (*CarReader, error) {
 		return nil, fmt.Errorf("invalid car version: %d", ch.Version)
 	}
 
-	if len(ch.Roots) == 0 {
-		return nil, fmt.Errorf("empty car, no roots")
-	}
+	// TODO: ???
+	// if len(ch.Roots) == 0 {
+	// 	return nil, fmt.Errorf("empty car, no roots")
+	// }
 
-	return &CarReader{
+	cr := &CarReader{
 		br:     br,
 		Header: ch,
-	}, nil
+	}
+
+	headerSize, err := cr.HeaderSize()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get header size: %w", err)
+	}
+	cr.totalOffset = headerSize
+
+	return cr, nil
 }
 
 func ReadHeader(br io.Reader) (*carv1.CarHeader, error) {
@@ -63,11 +73,24 @@ func ReadHeader(br io.Reader) (*carv1.CarHeader, error) {
 	return &ch, nil
 }
 
+func (cr *CarReader) ReadAt(p []byte, off int64) (n int, err error) {
+	panic("not implemented")
+}
+
+func (cr *CarReader) Next() (blocks.Block, error) {
+	_, _, block, err := cr.NextNode()
+	if err != nil {
+		return nil, err
+	}
+	return block, nil
+}
+
 func (cr *CarReader) NextInfo() (cid.Cid, uint64, error) {
 	c, sectionLen, err := ReadNodeInfoWithoutData(cr.br)
 	if err != nil {
 		return c, 0, err
 	}
+	cr.totalOffset += sectionLen
 	return c, sectionLen, nil
 }
 
@@ -80,6 +103,7 @@ func (cr *CarReader) NextNode() (cid.Cid, uint64, *blocks.BasicBlock, error) {
 	if err != nil {
 		return c, 0, nil, fmt.Errorf("failed to create block: %w", err)
 	}
+	cr.totalOffset += sectionLen
 	return c, sectionLen, bl, nil
 }
 
@@ -88,6 +112,7 @@ func (cr *CarReader) NextNodeBytes() (cid.Cid, uint64, []byte, error) {
 	if err != nil {
 		return c, 0, nil, fmt.Errorf("failed to read node info: %w", err)
 	}
+	cr.totalOffset += sectionLen
 	return c, sectionLen, data, nil
 }
 
@@ -101,6 +126,15 @@ func (cr *CarReader) HeaderSize() (uint64, error) {
 		cr.headerSize = &size
 	}
 	return *cr.headerSize, nil
+}
+
+func (cr *CarReader) Close() error {
+	return nil
+}
+
+func (cr *CarReader) GetGlobalOffsetForNextRead() (uint64, bool) {
+	// NOTE: this will NOT return false because we don't know the total size of the file.
+	return cr.totalOffset, true
 }
 
 func ReadNodeInfoWithoutData(br *bufio.Reader) (cid.Cid, uint64, error) {

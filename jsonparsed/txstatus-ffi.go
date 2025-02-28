@@ -1,7 +1,7 @@
 //go:build ffi
 // +build ffi
 
-package txstatus
+package jsonparsed
 
 /*
 #cgo LDFLAGS: -L./lib -lsolana_transaction_status_wrapper -lm -ldl

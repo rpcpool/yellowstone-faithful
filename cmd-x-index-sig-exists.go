@@ -36,7 +36,7 @@ func newCmd_Index_sigExists() *cli.Command {
 	return &cli.Command{
 		Name:        "sig-exists",
 		Description: "Create sig-exists index from a CAR file",
-		ArgsUsage:   "<car-path> <index-dir>",
+		ArgsUsage:   "--index-dir=<index-dir> --car=<car-path>",
 		Before: func(c *cli.Context) error {
 			if network == "" {
 				network = indexes.NetworkMainnet
@@ -78,15 +78,26 @@ func newCmd_Index_sigExists() *cli.Command {
 					return nil
 				},
 			},
+			&cli.StringSliceFlag{
+				Name:  "car",
+				Usage: "Path to a CAR file containing a single Solana epoch, or multiple split CAR files (in order) containing a single Solana epoch",
+			},
+			&cli.StringFlag{
+				Name:  "index-dir",
+				Usage: "Directory to store the index",
+			},
 		},
 		Action: func(c *cli.Context) error {
-			carPath := c.Args().First()
+			carPaths := c.StringSlice("car")
 			var file fs.File
 			var err error
-			if carPath == "-" {
+			if len(carPaths) == 0 {
+				klog.Exit("Please provide a CAR file")
+			}
+			if carPaths[0] == "-" {
 				file = os.Stdin
 			} else {
-				file, err = os.Open(carPath)
+				file, err = os.Open(carPaths[0])
 				if err != nil {
 					klog.Exit(err.Error())
 				}
@@ -114,7 +125,7 @@ func newCmd_Index_sigExists() *cli.Command {
 				}
 			}
 
-			indexDir := c.Args().Get(1)
+			indexDir := c.String("index-dir")
 
 			if ok, err := isDirectory(indexDir); err != nil {
 				return err
@@ -122,7 +133,7 @@ func newCmd_Index_sigExists() *cli.Command {
 				return fmt.Errorf("index-dir is not a directory")
 			}
 
-			klog.Infof("Creating sig-exists index for %s", carPath)
+			klog.Infof("Creating sig-exists index for %v", carPaths)
 			indexFilePath := formatSigExistsIndexFilePath(indexDir, epoch, rootCID, network)
 			index, err := bucketteer.NewWriter(
 				indexFilePath,
@@ -247,12 +258,12 @@ func newCmd_Index_sigExists() *cli.Command {
 			klog.Infof("Success: sig-exists index created at %s", indexFilePath)
 
 			if verify {
-				klog.Infof("Verifying index for %s located at %s", carPath, indexFilePath)
+				klog.Infof("Verifying index for %s located at %v", carPaths, indexFilePath)
 				startedAt := time.Now()
 				defer func() {
 					klog.Infof("Finished in %s", time.Since(startedAt))
 				}()
-				err := VerifyIndex_sigExists(context.TODO(), carPath, indexFilePath)
+				err := VerifyIndex_sigExists(context.TODO(), carPaths, indexFilePath)
 				if err != nil {
 					return cli.Exit(err, 1)
 				}

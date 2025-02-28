@@ -25,7 +25,6 @@ func TestSlotToCid(t *testing.T) {
 		rootCid,
 		indexes.NetworkMainnet,
 		"",
-		numItems,
 	)
 	require.NoError(t, err)
 	require.NotNil(t, writer)

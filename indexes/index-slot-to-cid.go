@@ -37,12 +37,13 @@ func formatFilename_SlotToCid(epoch uint64, rootCid cid.Cid, network Network) st
 
 var Kind_SlotToCid = []byte("slot-to-cid")
 
+const SLOTS_PER_EPOCH = 432000
+
 func NewWriter_SlotToCid(
 	epoch uint64,
 	rootCid cid.Cid,
 	network Network,
 	tmpDir string, // Where to put the temporary index files; WILL BE DELETED.
-	numItems uint64,
 ) (*SlotToCid_Writer, error) {
 	if !IsValidNetwork(network) {
 		return nil, ErrInvalidNetwork
@@ -52,7 +53,7 @@ func NewWriter_SlotToCid(
 	}
 	index, err := compactindexsized.NewBuilderSized(
 		tmpDir,
-		uint(numItems),
+		uint(SLOTS_PER_EPOCH),
 		IndexValueSize_SlotToCid,
 	)
 	if err != nil {
@@ -94,7 +95,9 @@ func (w *SlotToCid_Writer) Seal(ctx context.Context, dstDir string) error {
 	filepath := filepath.Join(dstDir, formatFilename_SlotToCid(w.meta.Epoch, w.meta.RootCid, w.meta.Network))
 	w.finalPath = filepath
 
-	file, err := os.Create(filepath)
+	defer os.Rename(filepath+".tmp", filepath)
+
+	file, err := os.Create(filepath + ".tmp")
 	if err != nil {
 		return fmt.Errorf("failed to create file: %w", err)
 	}

@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"github.com/dustin/go-humanize"
-	"github.com/rpcpool/yellowstone-faithful/carreader"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
+	"github.com/rpcpool/yellowstone-faithful/readasonecar"
 )
 
 func isDirEmpty(dir string) (bool, error) {
@@ -35,51 +35,31 @@ func getFileSize(path string) (uint64, error) {
 	return uint64(st.Size()), nil
 }
 
-func carCountItems(carPath string) (uint64, error) {
-	file, err := os.Open(carPath)
+func carCountItems(carPath ...string) (uint64, error) {
+	counts, _, err := carCountItemsByFirstByte(carPath...)
 	if err != nil {
 		return 0, err
 	}
-	defer file.Close()
-
-	rd, err := carreader.New(file)
-	if err != nil {
-		return 0, fmt.Errorf("failed to open car file: %w", err)
+	var numItems uint64
+	for _, count := range counts {
+		numItems += count
 	}
-
-	var count uint64
-	for {
-		_, _, err := rd.NextInfo()
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				break
-			}
-			return 0, err
-		}
-		count++
-	}
-
-	return count, nil
+	return numItems, nil
 }
 
-func carCountItemsByFirstByte(carPath string) (map[byte]uint64, *ipldbindcode.Epoch, error) {
-	file, err := os.Open(carPath)
-	if err != nil {
-		return nil, nil, err
-	}
-	defer file.Close()
-
-	rd, err := carreader.New(file)
+func carCountItemsByFirstByte(carPath ...string) (map[byte]uint64, *ipldbindcode.Epoch, error) {
+	rd, err := readasonecar.NewMultiReader(carPath...)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to open car file: %w", err)
 	}
+	defer rd.Close()
 
 	numTotalItems := uint64(0)
 	counts := make(map[byte]uint64)
 	startedCountAt := time.Now()
 	var epochObject *ipldbindcode.Epoch
 	for {
-		_, _, block, err := rd.NextNodeBytes()
+		_, _, nodeData, err := rd.NextNodeBytes()
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				break
@@ -87,7 +67,7 @@ func carCountItemsByFirstByte(carPath string) (map[byte]uint64, *ipldbindcode.Ep
 			return nil, nil, err
 		}
 		// the first data byte is the block type (after the CBOR tag)
-		firstDataByte := block[1]
+		firstDataByte := nodeData[1]
 		counts[firstDataByte]++
 		numTotalItems++
 
@@ -98,7 +78,7 @@ func carCountItemsByFirstByte(carPath string) (map[byte]uint64, *ipldbindcode.Ep
 		}
 
 		if iplddecoders.Kind(firstDataByte) == iplddecoders.KindEpoch {
-			epochObject, err = iplddecoders.DecodeEpoch(block)
+			epochObject, err = iplddecoders.DecodeEpoch(nodeData)
 			if err != nil {
 				return nil, nil, fmt.Errorf("failed to decode Epoch node: %w", err)
 			}
