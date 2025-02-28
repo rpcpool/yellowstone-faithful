@@ -20,11 +20,11 @@ func LoadDataFromDataFrames(
 		return nil, err
 	}
 	expectedTotal, ok := firstDataFrame.GetTotal()
-	if !ok {
-		return nil, nil
-	}
-	if len(allFrames) != expectedTotal {
-		return nil, fmt.Errorf("expected %d frames, got %d", expectedTotal, len(allFrames))
+	if ok {
+		if len(allFrames) != expectedTotal {
+			return nil, fmt.Errorf("expected %d frames, got %d", expectedTotal, len(allFrames))
+		}
+		// If firstDataFrame does not have a total, it means it is the only frame.
 	}
 	dataBuffer := new(bytes.Buffer)
 	for i := range allFrames {
