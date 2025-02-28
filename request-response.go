@@ -15,8 +15,8 @@ import (
 	jsoniter "github.com/json-iterator/go"
 	"github.com/mostynb/zstdpool-freelist"
 	"github.com/mr-tron/base58"
+	jsonparsed "github.com/rpcpool/yellowstone-faithful/jsonparsed"
 	"github.com/rpcpool/yellowstone-faithful/third_party/solana_proto/confirmed_block"
-	"github.com/rpcpool/yellowstone-faithful/txstatus"
 	"github.com/sourcegraph/jsonrpc2"
 	"github.com/valyala/fasthttp"
 )
@@ -83,38 +83,6 @@ func toLowerCamelCase(v string) string {
 	return strings.ToLower(pascal[:1]) + pascal[1:]
 }
 
-// Reply sends a response to the client with the given result.
-// The result fields keys are converted to camelCase.
-// If remapCallback is not nil, it is called with the result map[string]interface{}.
-func (c *requestContext) Reply(
-	ctx context.Context,
-	id jsonrpc2.ID,
-	result interface{},
-	remapCallback func(map[string]any) map[string]any,
-) error {
-	mm, err := toMapAny(result)
-	if err != nil {
-		return err
-	}
-	result = MapToCamelCaseAny(mm)
-	if remapCallback != nil {
-		if mp, ok := result.(map[string]any); ok {
-			result = remapCallback(mp)
-		}
-	}
-	resRaw, err := jsoniter.ConfigCompatibleWithStandardLibrary.Marshal(result)
-	if err != nil {
-		return err
-	}
-	raw := json.RawMessage(resRaw)
-	resp := &jsonrpc2.Response{
-		ID:     id,
-		Result: &raw,
-	}
-	replyJSON(c.ctx, http.StatusOK, resp)
-	return err
-}
-
 // ReplyRaw sends a raw response without any processing (no camelCase conversion, etc).
 func (c *requestContext) ReplyRaw(
 	ctx context.Context,
@@ -171,8 +139,10 @@ func (req *GetBlockRequest) Validate() error {
 	) {
 		return fmt.Errorf("unsupported encoding")
 	}
-	if req.Options.Encoding != nil && *req.Options.Encoding == solana.EncodingJSONParsed && !txstatus.IsEnabled() {
-		return fmt.Errorf("encoding=jsonParsed is not enabled on this server")
+	if req.Options.Encoding != nil && *req.Options.Encoding == solana.EncodingJSONParsed {
+		if !jsonparsed.IsEnabled() {
+			return fmt.Errorf("encoding=jsonParsed is not enabled on this server")
+		}
 	}
 	return nil
 }
@@ -303,10 +273,10 @@ func (req *GetTransactionRequest) Validate() error {
 		return fmt.Errorf("unsupported encoding")
 	}
 	{
-		if req.Options.Encoding != nil &&
-			*req.Options.Encoding == solana.EncodingJSONParsed &&
-			!txstatus.IsEnabled() {
-			return fmt.Errorf("encoding=jsonParsed is not enabled on this server")
+		if req.Options.Encoding != nil && *req.Options.Encoding == solana.EncodingJSONParsed {
+			if !jsonparsed.IsEnabled() {
+				return fmt.Errorf("encoding=jsonParsed is not enabled on this server")
+			}
 		}
 	}
 	return nil
@@ -397,9 +367,9 @@ func compiledInstructionsToJsonParsed(
 		return nil, fmt.Errorf("failed to resolve program ID index: %w", err)
 	}
 	keys := tx.Message.AccountKeys
-	instrParams := txstatus.Parameters{
+	instrParams := jsonparsed.Parameters{
 		ProgramID: programId,
-		Instruction: txstatus.CompiledInstruction{
+		Instruction: jsonparsed.CompiledInstruction{
 			ProgramIDIndex: uint8(inst.ProgramIDIndex),
 			Accounts: func() []uint8 {
 				out := make([]uint8, len(inst.Accounts))
@@ -410,15 +380,15 @@ func compiledInstructionsToJsonParsed(
 			}(),
 			Data: inst.Data,
 		},
-		AccountKeys: txstatus.AccountKeys{
+		AccountKeys: jsonparsed.AccountKeys{
 			StaticKeys: func() []solana.PublicKey {
 				return clone(keys)
 			}(),
 			// TODO: test this:
-			DynamicKeys: func() *txstatus.LoadedAddresses {
+			DynamicKeys: func() *jsonparsed.LoadedAddresses {
 				switch vv := meta.(type) {
 				case *confirmed_block.TransactionStatusMeta:
-					return &txstatus.LoadedAddresses{
+					return &jsonparsed.LoadedAddresses{
 						Writable: func() []solana.PublicKey {
 							return byteSlicesToKeySlice(vv.LoadedWritableAddresses)
 						}(),
@@ -472,7 +442,7 @@ func encodeTransactionResponseBasedOnWantedEncoding(
 		tOut, err := encodeBytesResponseBasedOnWantedEncoding(encoding, txBuf)
 		return tOut, meta, err
 	case solana.EncodingJSONParsed:
-		if !txstatus.IsEnabled() {
+		if !jsonparsed.IsEnabled() {
 			return nil, nil, fmt.Errorf("unsupported encoding")
 		}
 
@@ -545,9 +515,9 @@ func encodeTransactionResponseBasedOnWantedEncoding(
 			parsedInstructions = append(parsedInstructions, parsedInstructionJSON)
 		}
 
-		resp, err := txstatus.FromTransaction(tx)
+		resp, err := jsonparsed.FromTransaction(tx)
 		if err != nil {
-			return nil, nil, fmt.Errorf("failed to convert transaction to txstatus.Transaction: %w", err)
+			return nil, nil, fmt.Errorf("failed to convert transaction to jsonparsed.Transaction: %w", err)
 		}
 		resp.Message.Instructions = parsedInstructions
 
