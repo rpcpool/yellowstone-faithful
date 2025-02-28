@@ -83,7 +83,15 @@ func newCmd_Index_all() *cli.Command {
 				return fmt.Errorf("missing index-dir argument")
 			}
 			if ok, err := isDirectory(indexDir); err != nil {
-				return err
+				if errors.Is(err, os.ErrNotExist) {
+					if err := os.MkdirAll(indexDir, 0o755); err != nil {
+						return fmt.Errorf("failed to create index-dir: %w", err)
+					} else {
+						klog.Infof("Created index-dir: %s", indexDir)
+					}
+				} else {
+					return err
+				}
 			} else if !ok {
 				return fmt.Errorf("index-dir is not a directory")
 			}
