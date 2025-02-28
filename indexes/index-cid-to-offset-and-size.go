@@ -97,7 +97,9 @@ func (w *CidToOffsetAndSize_Writer) Seal(ctx context.Context, dstDir string) err
 	filepath := filepath.Join(dstDir, formatFilename_CidToOffsetAndSize(w.meta.Epoch, w.meta.RootCid, w.meta.Network))
 	w.finalPath = filepath
 
-	file, err := os.Create(filepath)
+	defer os.Rename(filepath+".tmp", filepath)
+
+	file, err := os.Create(filepath + ".tmp")
 	if err != nil {
 		return fmt.Errorf("failed to create file: %w", err)
 	}

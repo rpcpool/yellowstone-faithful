@@ -12,10 +12,8 @@ import (
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/dustin/go-humanize"
-	"github.com/gagliardetto/solana-go"
 	"github.com/ipfs/go-cid"
 	"github.com/rpcpool/yellowstone-faithful/accum"
-	"github.com/rpcpool/yellowstone-faithful/carreader"
 	"github.com/rpcpool/yellowstone-faithful/gsfa"
 	"github.com/rpcpool/yellowstone-faithful/indexes"
 	"github.com/rpcpool/yellowstone-faithful/indexmeta"
@@ -23,6 +21,7 @@ import (
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
 	metalatest "github.com/rpcpool/yellowstone-faithful/parse_legacy_transaction_status_meta/v-latest"
 	metaoldest "github.com/rpcpool/yellowstone-faithful/parse_legacy_transaction_status_meta/v-oldest"
+	"github.com/rpcpool/yellowstone-faithful/readasonecar"
 	"github.com/rpcpool/yellowstone-faithful/slottools"
 	"github.com/urfave/cli/v2"
 	"k8s.io/klog/v2"
@@ -34,7 +33,7 @@ func newCmd_Index_gsfa() *cli.Command {
 	return &cli.Command{
 		Name:        "gsfa",
 		Description: "Create GSFA index from a CAR file",
-		ArgsUsage:   "<car-path> <index-dir>",
+		ArgsUsage:   "--index-dir=<index-dir> --car=<car-path>",
 		Before: func(c *cli.Context) error {
 			if network == "" {
 				network = indexes.NetworkMainnet
@@ -76,46 +75,49 @@ func newCmd_Index_gsfa() *cli.Command {
 				Usage: "temporary directory to use for storing intermediate files; WILL BE DELETED",
 				Value: os.TempDir(),
 			},
+			&cli.StringSliceFlag{
+				Name:  "car",
+				Usage: "Path to a CAR file containing a single Solana epoch, or multiple split CAR files (in order) containing a single Solana epoch",
+			},
+			&cli.StringFlag{
+				Name:  "index-dir",
+				Usage: "Destination directory for the output files",
+			},
 		},
 		Action: func(c *cli.Context) error {
-			carPath := c.Args().First()
+			carPaths := c.StringSlice("car")
 			var file fs.File
 			var err error
-			if carPath == "-" {
+			if len(carPaths) == 0 {
+				klog.Exit("Please provide a CAR file")
+			}
+			if carPaths[0] == "-" {
 				file = os.Stdin
 			} else {
-				file, err = os.Open(carPath)
+				file, err = os.Open(carPaths[0])
 				if err != nil {
 					klog.Exit(err.Error())
 				}
 				defer file.Close()
 			}
 
-			rd, err := carreader.New(file)
+			rd, err := readasonecar.NewMultiReader(carPaths...)
 			if err != nil {
 				klog.Exitf("Failed to open CAR: %s", err)
 			}
-			{
-				// print roots:
-				roots := rd.Header.Roots
-				klog.Infof("Roots: %d", len(roots))
-				for i, root := range roots {
-					if i == 0 && len(roots) == 1 {
-						klog.Infof("- %s (Epoch CID)", root.String())
-					} else {
-						klog.Infof("- %s", root.String())
-					}
-				}
-			}
+			defer rd.Close()
 
-			indexDir := c.Args().Get(1)
+			indexDir := c.String("index-dir")
 			if ok, err := isDirectory(indexDir); err != nil {
 				return err
 			} else if !ok {
 				return fmt.Errorf("index-dir is not a directory")
 			}
 
-			rootCID := rd.Header.Roots[0]
+			rootCID, err := rd.FindRoot()
+			if err != nil {
+				return fmt.Errorf("failed to find root CID: %w", err)
+			}
 
 			// Use the car file name and root CID to name the gsfa index dir:
 			gsfaIndexDir := filepath.Join(indexDir, formatIndexDirname_gsfa(
@@ -321,17 +323,4 @@ func formatIndexDirname_gsfa(epoch uint64, rootCid cid.Cid, network indexes.Netw
 		network,
 		"gsfa.indexdir",
 	)
-}
-
-func IsVote(tx *solana.Transaction) bool {
-	// is vote if any of the instructions are of the vote program
-	for _, inst := range tx.Message.Instructions {
-		progKey, err := tx.ResolveProgramIDIndex(inst.ProgramIDIndex)
-		if err == nil {
-			if progKey.Equals(solana.VoteProgramID) {
-				return true
-			}
-		}
-	}
-	return false
 }

@@ -518,7 +518,6 @@ type carFileInfo struct {
 }
 
 func SortCarFiles(carFiles []string) ([]carFileInfo, error) {
-
 	var fileInfos []carFileInfo
 
 	for _, path := range carFiles {

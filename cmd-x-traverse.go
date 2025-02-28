@@ -11,6 +11,7 @@ import (
 	"github.com/ipfs/go-cid"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
+	solanablockrewards "github.com/rpcpool/yellowstone-faithful/solana-block-rewards"
 	solanatxmetaparsers "github.com/rpcpool/yellowstone-faithful/solana-tx-meta-parsers"
 	"github.com/rpcpool/yellowstone-faithful/tooling"
 	"github.com/urfave/cli/v2"
@@ -73,6 +74,45 @@ func newCmd_XTraverse() *cli.Command {
 						block, err := simpleIter.GetBlock(context.Background(), blockCID.(cidlink.Link).Cid)
 						if err != nil {
 							return fmt.Errorf("failed to get block: %w", err)
+						}
+						{
+							if block.Rewards != nil {
+								rewardsCid := block.Rewards.(cidlink.Link).Cid
+								// klog.Infof("Block %d rewards CID: %v", block.Slot, rewardsCid)
+
+								if !rewardsCid.Equals(DummyCID) {
+									klog.Infof("Found block %d with non-dummy rewards!", block.Slot)
+									klog.Info("Getting rewards node...")
+									rewards, err := simpleIter.GetRewards(context.Background(), block.Rewards.(cidlink.Link).Cid)
+									if err != nil {
+										return fmt.Errorf("failed to get rewards: %w", err)
+									}
+									rewardsBuffer, err := tooling.LoadDataFromDataFrames(&rewards.Data, simpleIter.GetDataFrame)
+									if err != nil {
+										panic(err)
+									}
+									if len(rewardsBuffer) > 0 {
+										uncompressedRewards, err := tooling.DecompressZstd(rewardsBuffer)
+										if err != nil {
+											panic(err)
+										}
+										// try decoding as protobuf
+										parsed, err := solanablockrewards.ParseRewards(uncompressedRewards)
+										if err != nil {
+											// TODO: add support for legacy rewards format
+											fmt.Println("Rewards are not protobuf: " + err.Error())
+										} else {
+											spew.Dump(parsed)
+										}
+									} else {
+										klog.Info("Block has no rewards")
+									}
+								} else {
+									klog.Info("Block has no rewards")
+								}
+							} else {
+								klog.Info("Block has no rewards")
+							}
 						}
 						yes := askForConfirmation("		Block %d contains %d entries. Do you want to continue?", blockIndex, len(block.Entries))
 						if !yes {

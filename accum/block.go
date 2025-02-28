@@ -8,14 +8,14 @@ import (
 
 	"github.com/filecoin-project/go-leb128"
 	"github.com/ipfs/go-cid"
-	"github.com/rpcpool/yellowstone-faithful/carreader"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
+	"github.com/rpcpool/yellowstone-faithful/readasonecar"
 )
 
 type ObjectAccumulator struct {
 	skipNodes   uint64
 	flushOnKind iplddecoders.Kind
-	reader      *carreader.CarReader
+	reader      readasonecar.CarReader
 	ignoreKinds iplddecoders.KindSlice
 	callback    func(*ObjectWithMetadata, []ObjectWithMetadata) error
 	flushWg     sync.WaitGroup
@@ -29,7 +29,7 @@ func isStop(err error) bool {
 }
 
 func NewObjectAccumulator(
-	reader *carreader.CarReader,
+	reader readasonecar.CarReader,
 	flushOnKind iplddecoders.Kind,
 	callback func(*ObjectWithMetadata, []ObjectWithMetadata) error,
 	ignoreKinds ...iplddecoders.Kind,
@@ -116,14 +116,7 @@ func (oa *ObjectAccumulator) Run(ctx context.Context) error {
 		oa.flushWg.Wait()
 		close(oa.flushQueue)
 	}()
-	totalOffset := uint64(0)
-	{
-		if size, err := oa.reader.HeaderSize(); err != nil {
-			return err
-		} else {
-			totalOffset += size
-		}
-	}
+
 	numSkipped := uint64(0)
 	objectCap := 5000
 buffersLoop:
@@ -134,6 +127,11 @@ buffersLoop:
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
+			offset, ok := oa.reader.GetGlobalOffsetForNextRead()
+			if !ok {
+				break buffersLoop
+			}
+
 			cid_, sectionLength, data, err := oa.reader.NextNodeBytes()
 			if err != nil {
 				if errors.Is(err, io.EOF) {
@@ -142,8 +140,6 @@ buffersLoop:
 				}
 				return err
 			}
-			currentOffset := totalOffset
-			totalOffset += sectionLength
 
 			if numSkipped < oa.skipNodes {
 				numSkipped++
@@ -157,7 +153,7 @@ buffersLoop:
 
 			element := ObjectWithMetadata{
 				Cid:           cid_,
-				Offset:        currentOffset,
+				Offset:        offset,
 				SectionLength: sectionLength,
 				ObjectData:    data,
 			}
