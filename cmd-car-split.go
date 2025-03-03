@@ -78,7 +78,7 @@ func newCmd_SplitCar() *cli.Command {
 			&cli.Int64Flag{
 				Name:     "size",
 				Aliases:  []string{"s"},
-				Value:    2 * 1024 * 1024 * 1024, // 2 GiB. FR32 padding means we need to set this to less than 4GiB https://spec.filecoin.io/systems/filecoin_files/piece/
+				Value:    4*1024*1024*1024/256*254, // To account for FR32 padding. https://spec.filecoin.io/systems/filecoin_files/piece/
 				Usage:    "Target size in bytes to chunk CARs to.",
 				Required: false,
 			},
