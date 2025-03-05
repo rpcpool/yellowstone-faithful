@@ -10,7 +10,7 @@ NC='\033[0m' # No Color
 if [ -z "$1" ]; then
     echo -e "${RED}Error: Authentication token is required.${NC}"
     echo -e "Usage: $0 <auth_token> [server] [proto_path]"
-    echo -e "Example: $0 248dhaca3-9e7b-4148-8d9e-684d173a5829"
+    echo -e "Example: $0 4e730ca3-9e7b-4148-859e-6840173c58a9"
     exit 1
 fi
 
@@ -51,15 +51,19 @@ run_test() {
     fi
 }
 
+# Signature in base64 format for binary fields
+# This is the base64 encoding of the binary data that corresponds to the base58 signature:
+# "WpDjQNbgsxhrfRuy8An2QUhzoBHcSgwNAEiBSek4kB7ydgqoNmDsfHD5SoLhRhxbJGJ6uuZCwW5zdQk4KoAoSzV"
+TX_SIG_BASE64="GbXoI+D7hhgeiUwovUhtaxog6zsxFcd5PKfhQM85GR6+NqmiFmQDf9cCCVj8BRj+DR1RvgR/E2E/ckbSGuQKCg=="
+
 # 1. Test GetVersion
 run_test "GetVersion" "OldFaithful.OldFaithful/GetVersion" '{}'
 
 # 2. Test GetBlock (with a known slot)
 run_test "GetBlock" "OldFaithful.OldFaithful/GetBlock" '{"slot": 307152000}'
 
-# 3. Test GetTransaction (with a known signature)
-# Note: You might need to replace this with a valid transaction signature
-run_test "GetTransaction" "OldFaithful.OldFaithful/GetTransaction" '{"signature": "29mRGbKwAcd7azaLAFa6vg9SUQgJNaVnadqinfZfNn65bSjQxgEvU7EQqDSeYr89U96b5wBdvCAJiknLAoh65qdu"}'
+# 3. Test GetTransaction with properly formatted signature
+run_test "GetTransaction" "OldFaithful.OldFaithful/GetTransaction" "{\"signature\":\"$TX_SIG_BASE64\"}"
 
 # 4. Test StreamBlocks (a small range)
 run_test "StreamBlocks" "OldFaithful.OldFaithful/StreamBlocks" '{"start_slot": 307152000, "end_slot": 307152010}'
@@ -78,7 +82,7 @@ echo -e "\n${YELLOW}Testing bidirectional streaming with Get...${NC}"
 temp_file=$(mktemp)
 cat > $temp_file << EOF
 {"id": 1, "block": {"slot": 307152000}}
-{"id": 2, "transaction": {"signature": "29mRGbKwAcd7azaLAFa6vg9SUQgJNaVnadqinfZfNn65bSjQxgEvU7EQqDSeYr89U96b5wBdvCAJiknLAoh65qdu"}}
+{"id": 2, "transaction": {"signature": "$TX_SIG_BASE64"}}
 {"id": 3, "version": {}}
 EOF
 
@@ -87,16 +91,7 @@ cat $temp_file
 echo
 
 echo "Running bidirectional stream with Get..."
-result=$(cat $temp_file | grpcurl -proto $PROTO_PATH -H "x-token: $TOKEN" -d @ $SERVER OldFaithful.OldFaithful/Get 2>&1)
-
-if [ $? -eq 0 ]; then
-    echo -e "${GREEN}✓ Bidirectional streaming successful!${NC}"
-    echo "Response snippet (first 300 chars):"
-    echo "${result:0:300}..."
-else
-    echo -e "${RED}✗ Bidirectional streaming failed!${NC}"
-    echo "Error: $result"
-fi
+cat $temp_file | grpcurl -proto $PROTO_PATH -H "x-token: $TOKEN" -d @ $SERVER OldFaithful.OldFaithful/Get
 
 rm $temp_file
 
