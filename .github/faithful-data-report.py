@@ -210,7 +210,7 @@ class FaithfulDataReport:
         else:
             txmeta_cell = f"[✗]({data.txmeta_url})" if data.txmeta != "n/a" and not validate_txmeta_output(data.txmeta) else \
                          f"[✓]({data.txmeta_url})" if data.txmeta != "n/a" else "✗"
-        
+
         poh_cell = f"[✗]({data.poh_url})" if data.poh != "n/a" and not validate_poh_output(data.poh) else \
                    f"[✓]({data.poh_url})" if data.poh != "n/a" else "✗"
         indices_cell = "✓" if data.indices != "n/a" else "✗"

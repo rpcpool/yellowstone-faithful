@@ -289,6 +289,21 @@ func ParseTransactionError(v any) (map[string]any, error) {
 						},
 					},
 				}, nil
+			case InstructionErrorType_BORSH_IO_ERROR:
+				borshIoError, err := dec.ReadString()
+				if err != nil {
+					return nil, err
+				}
+				return map[string]any{
+					transactionErrorTypeName: []any{
+						errorCode,
+						map[string]any{
+							instructionErrorTypeName: borshIoError,
+						},
+					},
+				}, nil
+			default:
+				return nil, fmt.Errorf("unknown instruction error type: %d", instructionErrorType)
 			}
 
 			return map[string]any{
