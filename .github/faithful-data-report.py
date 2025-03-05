@@ -18,11 +18,22 @@ class EpochData:
     deals: str = "n/a"
     indices: str = "n/a"
     indices_size: str = "n/a"
+    slots_url: str = "n/a"
 
 class FaithfulDataReport:
     def __init__(self):
         self.host = "https://files.old-faithful.net"
         self.deals_host = "https://filecoin-car-storage-cdn.b-cdn.net"
+        self.txmeta_first_epoch = 92
+        self.issues = []  # Track issues for summary report
+        self.index_files = [
+            "mainnet-cid-to-offset-and-size.index",
+            "mainnet-sig-to-cid.index",
+            "mainnet-sig-exists.index",
+            "mainnet-slot-to-cid.index",
+            "mainnet-slot-to-blocktime.index",
+            "gsfa.index.tar.zstd"
+        ]
         
     async def check_url(self, session: aiohttp.ClientSession, url: str) -> bool:
         try:
@@ -45,11 +56,30 @@ class FaithfulDataReport:
             async with session.head(url) as response:
                 if response.status == 200:
                     size_bytes = int(response.headers.get('content-length', 0))
-                    size_gb = round(size_bytes / (1024 * 1024 * 1024))
-                    return str(size_gb)
+                    if size_bytes > 0:
+                        size_gb = max(1, round(size_bytes / (1024 * 1024 * 1024)))
+                        return str(size_gb)
         except:
             pass
         return "n/a"
+
+    async def check_gsfa_magic(self, session: aiohttp.ClientSession, epoch: int) -> bool:
+        """
+        Validates the GSFA index manifest by checking its magic version
+        Returns True if valid, False otherwise
+        """
+        manifest_url = f"{self.host}/{epoch}/gsfa.manifest"
+        try:
+            headers = {'Range': 'bytes=8-15'}
+            async with session.get(manifest_url, headers=headers) as response:
+                if response.status == 206:  # Partial Content
+                    content = await response.read()
+                    # Convert bytes to hex string
+                    hex_content = ''.join([f'{b:02X}' for b in content])
+                    return hex_content == '0500000000000000'
+        except:
+            pass
+        return False
 
     async def get_indices(self, session: aiohttp.ClientSession, epoch: int) -> str:
         cid_url = f"{self.host}/{epoch}/epoch-{epoch}.cid"
@@ -57,24 +87,42 @@ class FaithfulDataReport:
         # Get the CID first
         bafy = await self.fetch_text(session, cid_url)
         if not bafy:
+            self.issues.append((epoch, ["failed to get CID"]))
             return "n/a"
 
-        # Check all required index files
-        index_files = [
-            f"epoch-{epoch}-{bafy}-mainnet-cid-to-offset-and-size.index",
-            f"epoch-{epoch}-{bafy}-mainnet-sig-to-cid.index",
-            f"epoch-{epoch}-{bafy}-mainnet-sig-exists.index",
-            f"epoch-{epoch}-{bafy}-mainnet-slot-to-cid.index",
-            f"epoch-{epoch}-gsfa.index.tar.zstd"
-        ]
-
+        # Check all regular index files excluding gsfa
+        regular_files = self.index_files[:-1]  # All files except gsfa
         checks = await asyncio.gather(*[
-            self.check_url(session, f"{self.host}/{epoch}/{file}")
-            for file in index_files
+            self.check_url(session, f"{self.host}/{epoch}/epoch-{epoch}-{bafy}-{file}")
+            for file in regular_files
         ])
+        
+        # Track which files failed validation
+        missing_files = []
+        for i, exists in enumerate(checks):
+            if not exists:
+                missing_files.append(f"missing index file: {regular_files[i]}")
+        
+        # Check gsfa file existence and validate its magic version
+        gsfa_file = self.index_files[-1]
+        gsfa_exists = await self.check_url(session, f"{self.host}/{epoch}/epoch-{epoch}-{gsfa_file}")
+        gsfa_valid = True
+        if not gsfa_exists:
+            missing_files.append("missing GSFA index file")
+        else:
+            gsfa_valid = await self.check_gsfa_magic(session, epoch)
+            if not gsfa_valid:
+                missing_files.append("GSFA index file failed magic validation")
+        
+        # Add all missing files to issues if any
+        if missing_files:
+            self.issues.append((epoch, missing_files))
+        
+        # Add gsfa validation result to checks
+        checks.append(gsfa_exists and gsfa_valid)
 
         return f"{self.host}/{epoch}/epoch-{epoch}-indices" if all(checks) else "n/a"
-
+    
     async def get_indices_size(self, session: aiohttp.ClientSession, epoch: int) -> str:
         cid_url = f"{self.host}/{epoch}/epoch-{epoch}.cid"
         
@@ -83,20 +131,15 @@ class FaithfulDataReport:
         if not bafy:
             return "n/a"
 
-        # Check all required index files
-        index_files = [
-            f"epoch-{epoch}-{bafy}-mainnet-cid-to-offset-and-size.index",
-            f"epoch-{epoch}-{bafy}-mainnet-sig-to-cid.index",
-            f"epoch-{epoch}-{bafy}-mainnet-sig-exists.index",
-            f"epoch-{epoch}-{bafy}-mainnet-slot-to-cid.index",
-            f"epoch-{epoch}-{bafy}-mainnet-slot-to-blocktime.index",
-            f"epoch-{epoch}-gsfa.index.tar.zstd"
-        ]
-
+        # Get sizes for all regular index files (excluding gsfa which has a different naming pattern)
         sizes = await asyncio.gather(*[
-            self.get_size(session, f"{self.host}/{epoch}/{file}")
-            for file in index_files
+            self.get_size(session, f"{self.host}/{epoch}/epoch-{epoch}-{bafy}-{file}")
+            for file in self.index_files[:-1]  # All files except gsfa
         ])
+        
+        # Get gsfa size separately since it doesn't include the bafy CID in its filename
+        gsfa_size = await self.get_size(session, f"{self.host}/{epoch}/epoch-{epoch}-{self.index_files[-1]}")
+        sizes.append(gsfa_size)
 
         # Convert sizes to integers, treating "n/a" as 0
         size_ints = [int(size) if size != "n/a" else 0 for size in sizes]
@@ -136,6 +179,10 @@ class FaithfulDataReport:
             self.get_deals(session, epoch)
         )
 
+        # Construct slots.txt URL
+        slots_url = f"{self.host}/{epoch}/{epoch}.slots.txt"
+
+
         return EpochData(
             epoch=epoch,
             car=car_url,
@@ -148,22 +195,47 @@ class FaithfulDataReport:
             txmeta_url=txmeta_url,
             deals=deals,
             indices=indices,
-            indices_size=indices_size
+            indices_size=indices_size,
+            slots_url=slots_url
         )
 
     def format_row(self, data: EpochData) -> str:
         car_cell = f"[epoch-{data.epoch}.car]({data.car})" if data.car != "n/a" else "✗"
         sha_cell = f"[{data.sha[:7]}]({data.sha_url})" if data.sha != "n/a" else "✗"
         size_cell = f"{data.size} GB" if data.size != "n/a" else "✗"
-        txmeta_cell = f"[✗]({data.txmeta_url})" if data.txmeta != "n/a" and not validate_txmeta_output(data.txmeta) else \
-                      f"[✓]({data.txmeta_url})" if data.txmeta != "n/a" else "✗"
+        
+        # Special handling for earlier epochs txmeta validation
+        if 0 <= data.epoch < self.txmeta_first_epoch and data.txmeta != "n/a":
+            txmeta_cell = f"[★]({data.txmeta_url})"
+        else:
+            txmeta_cell = f"[✗]({data.txmeta_url})" if data.txmeta != "n/a" and not validate_txmeta_output(data.txmeta) else \
+                         f"[✓]({data.txmeta_url})" if data.txmeta != "n/a" else "✗"
+
         poh_cell = f"[✗]({data.poh_url})" if data.poh != "n/a" and not validate_poh_output(data.poh) else \
                    f"[✓]({data.poh_url})" if data.poh != "n/a" else "✗"
         indices_cell = "✓" if data.indices != "n/a" else "✗"
         indices_size_cell = f"{data.indices_size} GB" if data.indices_size != "n/a" else "✗"
         deals_cell = f"[✓]({data.deals})" if data.deals != "n/a" else "✗"
+        slots_cell = f"[{data.epoch}.slots.txt]({data.slots_url})" if data.slots_url != "n/a" else "✗"
 
-        return f"| {data.epoch} | {car_cell} | {sha_cell} | {size_cell} | {txmeta_cell} | {poh_cell} | {indices_cell} | {indices_size_cell} | {deals_cell} |"
+        # Track issues for summary report
+        issues = []
+        if data.car == "n/a": issues.append("missing CAR")
+        if data.sha == "n/a": issues.append("missing SHA")
+        if data.size == "n/a": issues.append("missing size")
+        if data.poh == "n/a": issues.append("missing POH check")
+        elif not validate_poh_output(data.poh): issues.append("failed POH check")
+        if data.txmeta == "n/a": issues.append("missing tx meta check")
+        elif not validate_txmeta_output(data.txmeta) and not (0 <= data.epoch < self.txmeta_first_epoch):
+            issues.append("failed tx meta check")
+        if data.indices == "n/a": issues.append("missing indices")
+        if data.indices_size == "n/a": issues.append("missing indices size")
+        #if data.deals == "n/a": issues.append("missing deals")
+        
+        if issues:
+            self.issues.append((data.epoch, issues))
+
+        return f"| {data.epoch} | {car_cell} | {sha_cell} | {size_cell} | {txmeta_cell} | {poh_cell} | {indices_cell} | {indices_size_cell} | {deals_cell} | {slots_cell} |"
 
     async def get_current_epoch(self) -> int:
         async with aiohttp.ClientSession() as session:
@@ -176,10 +248,11 @@ class FaithfulDataReport:
 
     async def run(self):
         current_epoch = await self.get_current_epoch()
-        epochs = range(current_epoch, -1, -1)  # descending order
-        
-        print("| Epoch #  | CAR  | CAR SHA256  | CAR filesize | tx meta check | poh check | Indices | Indices Size | Filecoin Deals |")
-        print("|---|---|---|---|---|---|---|---|---|")
+        epochs = range((current_epoch-1), -1, -1)  # descending order
+
+        print("| Epoch #  | CAR  | CAR SHA256  | CAR filesize | tx meta check | poh check | Indices | Indices Size | Filecoin Deals | Slots")
+        print("|---|---|---|---|---|---|---|---|---|---|")
+        print("|%s|epoch is|ongoing||||||||" % current_epoch)
 
         # concurrency levels
         chunk_size = 20  
@@ -194,6 +267,14 @@ class FaithfulDataReport:
                 # Print results in order
                 for result in results:
                     print(self.format_row(result))
+
+        print("\n★ = tx meta validation skipped (epochs 0-%s where tx meta wasn't enabled yet)" % self.txmeta_first_epoch)
+
+        # Print summary report
+        if self.issues:
+            print("\n### Summary of Issues")
+            for epoch, issues in sorted(self.issues):
+                print(f"- Epoch {epoch}: {', '.join(issues)}")
 
 def validate_txmeta_output(txmeta_text: str) -> bool:
     """
