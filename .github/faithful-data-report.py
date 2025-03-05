@@ -18,6 +18,7 @@ class EpochData:
     deals: str = "n/a"
     indices: str = "n/a"
     indices_size: str = "n/a"
+    slots_url: str = "n/a"
 
 class FaithfulDataReport:
     def __init__(self):
@@ -178,6 +179,10 @@ class FaithfulDataReport:
             self.get_deals(session, epoch)
         )
 
+        # Construct slots.txt URL
+        slots_url = f"{self.host}/{epoch}/{epoch}.slots.txt"
+
+
         return EpochData(
             epoch=epoch,
             car=car_url,
@@ -190,7 +195,8 @@ class FaithfulDataReport:
             txmeta_url=txmeta_url,
             deals=deals,
             indices=indices,
-            indices_size=indices_size
+            indices_size=indices_size,
+            slots_url=slots_url
         )
 
     def format_row(self, data: EpochData) -> str:
@@ -210,6 +216,7 @@ class FaithfulDataReport:
         indices_cell = "✓" if data.indices != "n/a" else "✗"
         indices_size_cell = f"{data.indices_size} GB" if data.indices_size != "n/a" else "✗"
         deals_cell = f"[✓]({data.deals})" if data.deals != "n/a" else "✗"
+        slots_cell = f"[slots]({data.slots_url})" if data.slots_url != "n/a" else "✗"
 
         # Track issues for summary report
         issues = []
@@ -228,7 +235,7 @@ class FaithfulDataReport:
         if issues:
             self.issues.append((data.epoch, issues))
 
-        return f"| {data.epoch} | {car_cell} | {sha_cell} | {size_cell} | {txmeta_cell} | {poh_cell} | {indices_cell} | {indices_size_cell} | {deals_cell} |"
+        return f"| {data.epoch} | {car_cell} | {sha_cell} | {size_cell} | {txmeta_cell} | {poh_cell} | {indices_cell} | {indices_size_cell} | {deals_cell} | {slots_cell} |"
 
     async def get_current_epoch(self) -> int:
         async with aiohttp.ClientSession() as session:
@@ -243,9 +250,9 @@ class FaithfulDataReport:
         current_epoch = await self.get_current_epoch()
         epochs = range((current_epoch-1), -1, -1)  # descending order
 
-        print("| Epoch #  | CAR  | CAR SHA256  | CAR filesize | tx meta check | poh check | Indices | Indices Size | Filecoin Deals |")
-        print("|---|---|---|---|---|---|---|---|---|")
-        print("|%s|currently ongoing||||||||" % current_epoch)
+        print("| Epoch #  | CAR  | CAR SHA256  | CAR filesize | tx meta check | poh check | Indices | Indices Size | Filecoin Deals | Slots")
+        print("|---|---|---|---|---|---|---|---|---|---|")
+        print("|%s|currently ongoing|||||||||" % current_epoch)
 
         # concurrency levels
         chunk_size = 20  
