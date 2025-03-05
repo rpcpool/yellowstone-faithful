@@ -1,5 +1,5 @@
 [package]
-name = "demo-transaction-status-ffi"
+name = "transaction-status-ffi"
 version = "0.1.0"
 edition = "2021"
 publish = false

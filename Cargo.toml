@@ -3,7 +3,7 @@ members = [
     "geyser-plugin-runner",
     "geyser-plugin-runner/demo-plugin",
     "old-faithful-proto",
-    "txstatus",
+    "jsonparsed",
 ]
 resolver = "2"
 

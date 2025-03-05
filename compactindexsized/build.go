@@ -7,6 +7,7 @@ package compactindexsized
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/binary"
 	"errors"
@@ -14,6 +15,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"syscall"
 
@@ -72,8 +74,7 @@ func NewBuilderSized(
 			return nil, err
 		}
 		closers = append(closers, f)
-		buckets[i].file = f
-		buckets[i].writer = bufio.NewWriter(f)
+		buckets[i].kv = newFileKV(f, valueSizeBytes)
 		buckets[i].valueSize = uint(valueSizeBytes)
 	}
 
@@ -87,6 +88,96 @@ func NewBuilderSized(
 		buckets: buckets,
 		tmpDir:  tmpDir,
 	}, nil
+}
+
+type kvRW interface {
+	writeTuple(key []byte, value []byte) error
+	readAll() ([]keyval, error)
+}
+
+var (
+	_ kvRW = (*inMemoryKV)(nil)
+	_ kvRW = (*fileKV)(nil)
+)
+
+type inMemoryKV struct {
+	kv []keyval
+}
+
+func newInMemoryKV() *inMemoryKV {
+	return &inMemoryKV{
+		kv: make([]keyval, 0),
+	}
+}
+
+func (m *inMemoryKV) writeTuple(key []byte, value []byte) error {
+	m.kv = append(m.kv, newkv(key, value))
+	return nil
+}
+
+func (m *inMemoryKV) readAll() ([]keyval, error) {
+	return m.kv, nil
+}
+
+type fileKV struct {
+	valueSize uint
+	file      *os.File
+	writer    *bufio.Writer
+}
+
+func newFileKV(file *os.File, valueSize uint) *fileKV {
+	bufSize := 1024 * 8
+	writer := bufio.NewWriterSize(file, bufSize)
+	return &fileKV{
+		valueSize: valueSize,
+		file:      file,
+		writer:    writer,
+	}
+}
+
+func (b *fileKV) writeTuple(key []byte, value []byte) error {
+	static := make([]byte, 2+b.valueSize)
+	binary.LittleEndian.PutUint16(static[0:2], uint16(len(key)))
+	copy(static[2:], value[:])
+	if _, err := b.writer.Write(static[:]); err != nil {
+		return err
+	}
+	_, err := b.writer.Write(key)
+	return err
+}
+
+func (b *fileKV) readAll() ([]keyval, error) {
+	// flush writer
+	if err := b.writer.Flush(); err != nil {
+		return nil, err
+	}
+	b.writer = nil
+	_, err := b.file.Seek(0, io.SeekStart)
+	if err != nil {
+		return nil, err
+	}
+	kv := make([]keyval, 0)
+	reader := bufio.NewReader(b.file)
+	static := make([]byte, 2+b.valueSize)
+	for i := 0; ; i++ {
+		_, err := io.ReadFull(reader, static[:])
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		keyLen := binary.LittleEndian.Uint16(static[0:2])
+		value := make([]byte, b.valueSize)
+		copy(value[:], static[2:])
+		key := make([]byte, keyLen)
+		_, err = io.ReadFull(reader, key)
+		if err != nil {
+			return nil, err
+		}
+		kv = append(kv, newkv(key, value))
+	}
+	return kv, nil
 }
 
 // SetKind sets the kind of the index.
@@ -239,29 +330,41 @@ func (b *Builder) Close() error {
 type tempBucket struct {
 	records   uint
 	valueSize uint
-	file      *os.File
-	writer    *bufio.Writer
+	kv        kvRW
+}
+
+type keyval struct {
+	key   []byte
+	value []byte
+}
+
+func cloneBytes(b []byte) []byte {
+	if b == nil {
+		return nil
+	}
+	if len(b) == 0 {
+		return []byte{}
+	}
+	c := make([]byte, len(b))
+	copy(c, b)
+	return c
+}
+
+func newkv(k, v []byte) keyval {
+	return keyval{
+		key:   cloneBytes(k),
+		value: cloneBytes(v),
+	}
 }
 
 // writeTuple performs a buffered write of a KV-tuple.
 func (b *tempBucket) writeTuple(key []byte, value []byte) (err error) {
 	b.records++
-	static := make([]byte, 2+b.valueSize)
-	binary.LittleEndian.PutUint16(static[0:2], uint16(len(key)))
-	copy(static[2:], value[:])
-	if _, err = b.writer.Write(static[:]); err != nil {
-		return err
-	}
-	_, err = b.writer.Write(key)
-	return
+	return b.kv.writeTuple(key, value)
 }
 
 // flush empties the in-memory write buffer to the file.
 func (b *tempBucket) flush() error {
-	if err := b.writer.Flush(); err != nil {
-		return fmt.Errorf("failed to flush writer: %w", err)
-	}
-	b.writer = nil
 	return nil
 }
 
@@ -273,7 +376,12 @@ func (b *tempBucket) mine(ctx context.Context, attempts uint32) (entries []Entry
 	entries = make([]Entry, b.records)
 	bitmap := make([]byte, 1<<21)
 
-	rd := bufio.NewReader(b.file)
+	kv, err := b.kv.readAll()
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to read all entries: %w", err)
+	}
+	dedupKeepNewest(kv)
+
 	for domain = uint32(0); domain < attempts; domain++ {
 		if err = ctx.Err(); err != nil {
 			return
@@ -282,13 +390,8 @@ func (b *tempBucket) mine(ctx context.Context, attempts uint32) (entries []Entry
 		for i := range bitmap {
 			bitmap[i] = 0
 		}
-		// Reset reader
-		if _, err = b.file.Seek(0, io.SeekStart); err != nil {
-			return
-		}
-		rd.Reset(b.file)
 
-		if hashErr := hashBucket(b.valueSize, rd, entries, bitmap, domain); errors.Is(hashErr, ErrCollision) {
+		if hashErr := hashBucket(b.valueSize, kv, entries, bitmap, domain); errors.Is(hashErr, ErrCollision) {
 			continue
 		} else if hashErr != nil {
 			return nil, 0, hashErr
@@ -300,6 +403,15 @@ func (b *tempBucket) mine(ctx context.Context, attempts uint32) (entries []Entry
 	return nil, domain, ErrCollision
 }
 
+func dedupKeepNewest(kv []keyval) {
+	// reverse, so that newer entries are first
+	slices.Reverse(kv)
+	// dedup, keeping the first entry
+	kv = slices.CompactFunc(kv, func(i keyval, j keyval) bool {
+		return bytes.Equal(i.key, j.key)
+	})
+}
+
 var ErrCollision = errors.New("hash collision")
 
 // hashBucket reads and hashes entries from a temporary bucket file.
@@ -307,7 +419,7 @@ var ErrCollision = errors.New("hash collision")
 // Uses a 2^24 wide bitmap to detect collisions.
 func hashBucket(
 	valueSize uint,
-	rd *bufio.Reader,
+	kv []keyval,
 	entries []Entry,
 	bitmap []byte,
 	nonce uint32,
@@ -316,19 +428,9 @@ func hashBucket(
 	mask := uint64(0xffffff)
 
 	// Scan provided reader for entries and hash along the way.
-	static := make([]byte, 2+valueSize)
 	for i := range entries {
-		// Read next key from file (as defined by writeTuple)
-		if _, err := io.ReadFull(rd, static[:]); err != nil {
-			return err
-		}
-		keyLen := binary.LittleEndian.Uint16(static[0:2])
-		value := make([]byte, valueSize)
-		copy(value[:], static[2:])
-		key := make([]byte, keyLen)
-		if _, err := io.ReadFull(rd, key); err != nil {
-			return err
-		}
+		key := kv[i].key
+		value := kv[i].value
 
 		// Hash to entry
 		hash := EntryHash64(nonce, key) & mask

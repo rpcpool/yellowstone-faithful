@@ -3,6 +3,8 @@ package tooling
 import (
 	"bytes"
 	"context"
+	"fmt"
+	"sort"
 
 	"github.com/ipfs/go-cid"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
@@ -13,13 +15,20 @@ func LoadDataFromDataFrames(
 	firstDataFrame *ipldbindcode.DataFrame,
 	dataFrameGetter func(ctx context.Context, wantedCid cid.Cid) (*ipldbindcode.DataFrame, error),
 ) ([]byte, error) {
-	dataBuffer := new(bytes.Buffer)
 	allFrames, err := getAllFramesFromDataFrame(firstDataFrame, dataFrameGetter)
 	if err != nil {
 		return nil, err
 	}
-	for _, frame := range allFrames {
-		dataBuffer.Write(frame.Bytes())
+	expectedTotal, ok := firstDataFrame.GetTotal()
+	if ok {
+		if len(allFrames) != expectedTotal {
+			return nil, fmt.Errorf("expected %d frames, got %d", expectedTotal, len(allFrames))
+		}
+		// If firstDataFrame does not have a total, it means it is the only frame.
+	}
+	dataBuffer := new(bytes.Buffer)
+	for i := range allFrames {
+		dataBuffer.Write(allFrames[i].Bytes())
 	}
 	// verify the data hash (if present)
 	bufHash, ok := firstDataFrame.GetHash()
@@ -54,5 +63,15 @@ func getAllFramesFromDataFrame(
 		}
 		frames = append(frames, nextFrames...)
 	}
+
+	// Order the frames by index
+	sort.Slice(frames, func(i, j int) bool {
+		iIndex, iOk := frames[i].GetIndex()
+		jIndex, jOk := frames[j].GetIndex()
+		if !iOk || !jOk {
+			return iOk
+		}
+		return iIndex < jIndex
+	})
 	return frames, nil
 }

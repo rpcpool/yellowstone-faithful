@@ -30,12 +30,14 @@ func (n DataFrame) GetHash() (uint64, bool) {
 }
 
 // HasIndex returns whether the 'Index' field is present.
+// If the field is not present, assume the index is 0.
 func (n DataFrame) HasIndex() bool {
 	return n.Index != nil && *n.Index != nil
 }
 
 // GetIndex returns the value of the 'Index' field and
 // a flag indicating whether the field has a value.
+// If the field is not present, assume the index is 0.
 func (n DataFrame) GetIndex() (int, bool) {
 	if n.Index == nil || *n.Index == nil {
 		return 0, false
@@ -44,12 +46,14 @@ func (n DataFrame) GetIndex() (int, bool) {
 }
 
 // HasTotal returns whether the 'Total' field is present.
+// If the field is not present, assume the total is 1.
 func (n DataFrame) HasTotal() bool {
 	return n.Total != nil && *n.Total != nil
 }
 
 // GetTotal returns the value of the 'Total' field and
 // a flag indicating whether the field has a value.
+// If the field is not present, assume the total is 1.
 func (n DataFrame) GetTotal() (int, bool) {
 	if n.Total == nil || *n.Total == nil {
 		return 0, false
@@ -71,7 +75,7 @@ func (n DataFrame) HasNext() bool {
 // GetNext returns the value of the 'Next' field and
 // a flag indicating whether the field has a value.
 func (n DataFrame) GetNext() (List__Link, bool) {
-	if n.Next == nil || *n.Next == nil {
+	if n.Next == nil || *n.Next == nil || **n.Next == nil {
 		return nil, false
 	}
 	return **n.Next, true
@@ -311,4 +315,23 @@ func (n SlotMeta) GetBlockHeight() (uint64, bool) {
 		return 0, false
 	}
 	return uint64(**n.Block_height), true
+}
+
+// SlotMeta.Equivalent returns whether the two SlotMeta objects are equivalent.
+func (n SlotMeta) Equivalent(other SlotMeta) bool {
+	if n.Parent_slot != other.Parent_slot {
+		return false
+	}
+	if n.Blocktime != other.Blocktime {
+		return false
+	}
+	bh1, ok1 := n.GetBlockHeight()
+	bh2, ok2 := other.GetBlockHeight()
+	if ok1 != ok2 {
+		return false
+	}
+	if ok1 && bh1 != bh2 {
+		return false
+	}
+	return true
 }
