@@ -216,7 +216,7 @@ class FaithfulDataReport:
         indices_cell = "✓" if data.indices != "n/a" else "✗"
         indices_size_cell = f"{data.indices_size} GB" if data.indices_size != "n/a" else "✗"
         deals_cell = f"[✓]({data.deals})" if data.deals != "n/a" else "✗"
-        slots_cell = f"[slots]({data.slots_url})" if data.slots_url != "n/a" else "✗"
+        slots_cell = f"[{data.epoch}.slots.txt]({data.slots_url})" if data.slots_url != "n/a" else "✗"
 
         # Track issues for summary report
         issues = []
@@ -252,7 +252,7 @@ class FaithfulDataReport:
 
         print("| Epoch #  | CAR  | CAR SHA256  | CAR filesize | tx meta check | poh check | Indices | Indices Size | Filecoin Deals | Slots")
         print("|---|---|---|---|---|---|---|---|---|---|")
-        print("|%s|currently ongoing|||||||||" % current_epoch)
+        print("|%s|epoch is|ongoing||||||||" % current_epoch)
 
         # concurrency levels
         chunk_size = 20  
