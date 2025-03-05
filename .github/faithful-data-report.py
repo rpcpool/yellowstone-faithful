@@ -198,7 +198,7 @@ class FaithfulDataReport:
         sha_cell = f"[{data.sha[:7]}]({data.sha_url})" if data.sha != "n/a" else "✗"
         size_cell = f"{data.size} GB" if data.size != "n/a" else "✗"
         
-        # Special handling for early epochs (0-12) txmeta validation
+        # Special handling for earlier epochs txmeta validation
         if 0 <= data.epoch < self.txmeta_first_epoch and data.txmeta != "n/a":
             txmeta_cell = f"[★]({data.txmeta_url})"
         else:
