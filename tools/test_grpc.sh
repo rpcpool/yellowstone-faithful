@@ -10,7 +10,7 @@ NC='\033[0m' # No Color
 if [ -z "$1" ]; then
     echo -e "${RED}Error: Authentication token is required.${NC}"
     echo -e "Usage: $0 <auth_token> [server] [proto_path]"
-    echo -e "Example: $0 4e730ca3-9e7b-4148-859e-6840173c58a9"
+    echo -e "Example: $0 248dhaca3-9e7b-4148-8d9e-684d173a5829"
     exit 1
 fi
 
