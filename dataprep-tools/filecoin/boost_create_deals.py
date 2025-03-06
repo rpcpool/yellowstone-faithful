@@ -27,6 +27,7 @@ start_epoch_head_offset = int(604800 / 30)
 default_replication_factor = 3
 default_retry_interval_seconds = 600  # 10 minutes between retry attempts
 default_max_retry_attempts = 10  # Maximum number of retry attempts
+default_deal_duration = 3427200  # 3.5 years, units of filecoin epochs (30 seconds)
 
 # --- Configuration ---
 DRY_RUN = environ.get("DRY_RUN") == "true"
@@ -46,6 +47,7 @@ REPLICATION_FACTOR_ENV = environ.get("REPLICATION_FACTOR")
 WALLET = environ.get("WALLET")
 RETRY_INTERVAL_SECONDS = int(environ.get("RETRY_INTERVAL_SECONDS", default_retry_interval_seconds))
 MAX_RETRY_ATTEMPTS = int(environ.get("MAX_RETRY_ATTEMPTS", default_max_retry_attempts))
+DEAL_DURATION = int(environ.get("DEAL_DURATION", default_deal_duration))
 
 # --- Logging Setup ---
 logging.basicConfig(
@@ -156,7 +158,7 @@ def get_providers(piece_cid, size, padded_size):
     payload = {
         "pieceCid": piece_cid,
         "startEpoch": start_epoch,
-        "duration": 1468800,
+        "duration": DEAL_DURATION,
         "storagePricePerEpoch": 0,
         "verifiedDeal": True,
         "transferSize": size,
@@ -436,7 +438,7 @@ def create_deals_for_metadata(metadata_obj, epoch_str, deal_type_suffix="", retr
                         "storage-price": "0",
                         "start-epoch-head-offset": start_epoch_head_offset,
                         "verified": "true",
-                        "duration": 1468800,
+                        "duration": DEAL_DURATION,
                         "wallet": WALLET,
                     }
                     if online:
