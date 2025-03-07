@@ -12,7 +12,6 @@ import (
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/dustin/go-humanize"
-	"github.com/gagliardetto/solana-go"
 	"github.com/ipfs/go-cid"
 	"github.com/rpcpool/yellowstone-faithful/accum"
 	"github.com/rpcpool/yellowstone-faithful/carreader"
@@ -321,17 +320,4 @@ func formatIndexDirname_gsfa(epoch uint64, rootCid cid.Cid, network indexes.Netw
 		network,
 		"gsfa.indexdir",
 	)
-}
-
-func IsVote(tx *solana.Transaction) bool {
-	// is vote if any of the instructions are of the vote program
-	for _, inst := range tx.Message.Instructions {
-		progKey, err := tx.ResolveProgramIDIndex(inst.ProgramIDIndex)
-		if err == nil {
-			if progKey.Equals(solana.VoteProgramID) {
-				return true
-			}
-		}
-	}
-	return false
 }

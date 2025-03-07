@@ -171,6 +171,9 @@ func (req *GetBlockRequest) Validate() error {
 	) {
 		return fmt.Errorf("unsupported encoding")
 	}
+	if req.Options.Encoding != nil && *req.Options.Encoding == solana.EncodingJSONParsed && !txstatus.IsEnabled() {
+		return fmt.Errorf("encoding=jsonParsed is not enabled on this server")
+	}
 	return nil
 }
 
@@ -298,6 +301,13 @@ func (req *GetTransactionRequest) Validate() error {
 		solana.EncodingJSONParsed,
 	) {
 		return fmt.Errorf("unsupported encoding")
+	}
+	{
+		if req.Options.Encoding != nil &&
+			*req.Options.Encoding == solana.EncodingJSONParsed &&
+			!txstatus.IsEnabled() {
+			return fmt.Errorf("encoding=jsonParsed is not enabled on this server")
+		}
 	}
 	return nil
 }
