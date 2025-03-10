@@ -5,7 +5,7 @@
 
 # Check if stream-commp is installed
 if ! command -v stream-commp &> /dev/null; then
-    echo "Error: stream-commp is not installed or not in PATH"
+    echo "Error: stream-commp is not installed or not in PATH. See https://github.com/filecoin-project/go-fil-commp-hashhash/tree/master/cmd/stream-commp"
     exit 1
 fi
 
