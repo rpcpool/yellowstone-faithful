@@ -75,6 +75,11 @@ func newCmd_Index_gsfa() *cli.Command {
 				Usage: "temporary directory to use for storing intermediate files; WILL BE DELETED",
 				Value: os.TempDir(),
 			},
+			&cli.BoolFlag{
+				Name:  "sigverify",
+				Usage: "verify signatures",
+				Value: true,
+			},
 		},
 		Action: func(c *cli.Context) error {
 			carPath := c.Args().First()
@@ -168,6 +173,7 @@ func newCmd_Index_gsfa() *cli.Command {
 			}()
 
 			verifyHash := c.Bool("verify-hash")
+			sigverify := c.Bool("sigverify")
 			ipldbindcode.DisableHashVerification = !verifyHash
 
 			epochStart, epochEnd := slottools.CalcEpochLimits(epoch)
@@ -225,6 +231,16 @@ func newCmd_Index_gsfa() *cli.Command {
 
 					for ii := range transactions {
 						txWithInfo := transactions[ii]
+						if sigverify {
+							if err := txWithInfo.Transaction.VerifySignatures(); err != nil {
+								klog.Fatalf(
+									"Error while verifying signatures for transaction %s: %s",
+									txWithInfo.Transaction.Signatures[0],
+									err,
+								)
+								continue
+							}
+						}
 						numProcessedTransactions.Add(1)
 						accountKeys := txWithInfo.Transaction.Message.AccountKeys
 						if txWithInfo.Metadata != nil && txWithInfo.Metadata.IsProtobuf() {
