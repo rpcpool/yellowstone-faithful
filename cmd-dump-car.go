@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -116,22 +116,28 @@ func newCmd_DumpCar() *cli.Command {
 			}
 
 			carPath := c.Args().First()
-			var file fs.File
+			var reader io.ReadCloser
 			var err error
 			if carPath == "-" {
-				file = os.Stdin
+				reader = os.Stdin
+			} else if strings.HasPrefix(carPath, "http://") || strings.HasPrefix(carPath, "https://") {
+				resp, err := http.Get(carPath)
+				if err != nil {
+					klog.Exitf("HTTP request failed: %s", err.Error())
+				}
+				reader = resp.Body
 			} else {
-				file, err = os.Open(carPath)
+				reader, err = os.Open(carPath)
 				if err != nil {
 					klog.Exit(err.Error())
 				}
-				defer file.Close()
 			}
 
-			cachingReader, err := readahead.NewCachingReaderFromReader(file, readahead.DefaultChunkSize)
+			cachingReader, err := readahead.NewCachingReaderFromReader(reader, readahead.DefaultChunkSize)
 			if err != nil {
 				klog.Exitf("Failed to create caching reader: %s", err)
 			}
+			defer cachingReader.Close()
 
 			rd, err := car.NewCarReader(cachingReader)
 			if err != nil {
