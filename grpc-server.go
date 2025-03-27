@@ -58,7 +58,6 @@ func (me *MultiEpoch) GetVersion(context.Context, *old_faithful_grpc.VersionRequ
 	// faithfulVersion["version"] = GitTag
 	// faithfulVersion["commit"] = GitCommit
 	// faithfulVersion["epochs"] = me.GetEpochNumbers()
-	klog.Infof("GetVersion called")
 	resp := &old_faithful_grpc.VersionResponse{
 		Version: func() string {
 			if GitTag == "" {
@@ -713,6 +712,9 @@ func blockContainsAccounts(block *old_faithful_grpc.BlockResponse, accounts []st
 func (multi *MultiEpoch) StreamTransactions(params *old_faithful_grpc.StreamTransactionsRequest, ser old_faithful_grpc.OldFaithful_StreamTransactionsServer) error {
 	ctx := ser.Context()
 
+	ctx, overallCancel := context.WithTimeout(ctx, 60*time.Second)
+	defer overallCancel()
+
 	startSlot := params.StartSlot
 	endSlot := startSlot + maxSlotsToStream
 
@@ -867,26 +869,45 @@ func (multi *MultiEpoch) processSlotTransactions(
 		return nil
 	} else {
 
-		const batchSize = 1000
+		const batchSize = 100
 		buffer := newTxBuffer(uint64(startSlot), uint64(endSlot))
 		errChan := make(chan error, len(filter.AccountInclude))
 
 		var wg sync.WaitGroup
 
+		const maxConcurrentAccounts = 5
+		sem := make(chan struct{}, maxConcurrentAccounts)
+
 		for _, account := range filter.AccountInclude {
+			sem <- struct{}{} // Acquire token
 			wg.Add(1)
 
 			go func(acc string) {
-				defer wg.Done()
+				defer func() {
+					<-sem // Release token
+					wg.Done()
+				}()
 
 				pKey := solana.MustPublicKeyFromBase58(acc)
+
+				queryCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+				defer cancel()
+
+				startTime := time.Now()
+				klog.Infof("Starting GSFA query for account %s, from slot %d to %d", pKey.String(), startSlot, endSlot)
+
 				epochToTxns, err := gsfaReader.GetBeforeUntilSlot(
-					ctx,
+					queryCtx,
 					pKey,
 					batchSize,
 					endSlot+1, //  Before (exclusive)
 					startSlot, // Until (inclusive)
 					func(epochNum uint64, oas linkedlog.OffsetAndSizeAndSlot) (*ipldbindcode.Transaction, error) {
+						fnStartTime := time.Now()
+						defer func() {
+							klog.V(3).Infof("GSFA transaction lookup for epoch %d took %s",
+								epochNum, time.Since(fnStartTime))
+						}()
 						epoch, err := multi.GetEpoch(epochNum)
 						if err != nil {
 							return nil, fmt.Errorf("failed to get epoch %d: %w", epochNum, err)
@@ -909,6 +930,8 @@ func (multi *MultiEpoch) processSlotTransactions(
 					errChan <- err
 					return
 				}
+				duration := time.Since(startTime)
+				klog.Infof("GSFA query completed for account %s, from slot %d to %d took %s", pKey.String(), startSlot, endSlot, duration)
 
 				for epochNumber, txns := range epochToTxns {
 					epochHandler, err := multi.GetEpoch(epochNumber)
