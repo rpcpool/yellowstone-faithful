@@ -941,7 +941,9 @@ func (multi *MultiEpoch) processSlotTransactions(
 					}
 
 					for _, txn := range txns {
+						txStartTime := time.Now()
 						tx, meta, err := parseTransactionAndMetaFromNode(txn, epochHandler.GetDataFrameByCid)
+						klog.Infof("Parsing transaction for account %s took %s", pKey.String(), time.Since(txStartTime))
 						if err != nil {
 							errChan <- status.Errorf(codes.Internal, "Failed to parse transaction from node: %v", err)
 							return
@@ -988,9 +990,12 @@ func (multi *MultiEpoch) processSlotTransactions(
 		wg.Wait()
 
 		// Flush after all processing is done
+		klog.Infof("Starting buffer flush with %d slots of transactions", len(buffer.items))
+		flushStartTime := time.Now()
 		if err := buffer.flush(ser); err != nil {
 			return err
 		}
+		klog.Infof("Buffer flush completed in %s", time.Since(flushStartTime))
 
 		// Handle any errors
 		select {
@@ -1024,7 +1029,12 @@ func newTxBuffer(startSlot, endSlot uint64) *txBuffer {
 }
 
 func (b *txBuffer) add(slot, idx uint64, tx *old_faithful_grpc.TransactionResponse) {
+	addStartTime := time.Now()
 	b.mu.Lock()
+	lockTime := time.Since(addStartTime)
+	if lockTime > 100*time.Millisecond {
+		klog.Warningf("txBuffer.add lock acquisition took %s", lockTime)
+	}
 	defer b.mu.Unlock()
 
 	if _, exists := b.items[slot]; !exists {
@@ -1036,6 +1046,12 @@ func (b *txBuffer) add(slot, idx uint64, tx *old_faithful_grpc.TransactionRespon
 func (b *txBuffer) flush(ser old_faithful_grpc.OldFaithful_StreamTransactionsServer) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+
+	totalTxs := 0
+	for _, txMap := range b.items {
+		totalTxs += len(txMap)
+	}
+	klog.Infof("Flushing buffer with %d slots containing %d total transactions", len(b.items), totalTxs)
 
 	for b.currentSlot <= b.endSlot {
 		// Send all transactions for this slot in index order
