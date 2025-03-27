@@ -998,14 +998,21 @@ func (multi *MultiEpoch) processSlotTransactions(
 		klog.Infof("Buffer flush completed in %s", time.Since(flushStartTime))
 
 		// Handle any errors
+		klog.Infof("Checking for errors from goroutines")
+		errCheckStartTime := time.Now()
 		select {
 		case err := <-errChan:
+			klog.Infof("Received error from error channel: %v", err)
 			if err != nil {
 				return err
 			}
 		case <-ctx.Done():
+			klog.Infof("Context done while checking errors")
 			return ctx.Err()
+		default:
+			klog.Infof("No errors found in channel")
 		}
+		klog.Infof("Error check completed in %s", time.Since(errCheckStartTime))
 
 		return nil
 	}
