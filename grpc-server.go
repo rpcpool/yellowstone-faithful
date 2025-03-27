@@ -58,6 +58,7 @@ func (me *MultiEpoch) GetVersion(context.Context, *old_faithful_grpc.VersionRequ
 	// faithfulVersion["version"] = GitTag
 	// faithfulVersion["commit"] = GitCommit
 	// faithfulVersion["epochs"] = me.GetEpochNumbers()
+	klog.Infof("GetVersion called")
 	resp := &old_faithful_grpc.VersionResponse{
 		Version: func() string {
 			if GitTag == "" {
