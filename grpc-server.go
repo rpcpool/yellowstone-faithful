@@ -712,6 +712,9 @@ func blockContainsAccounts(block *old_faithful_grpc.BlockResponse, accounts []st
 func (multi *MultiEpoch) StreamTransactions(params *old_faithful_grpc.StreamTransactionsRequest, ser old_faithful_grpc.OldFaithful_StreamTransactionsServer) error {
 	ctx := ser.Context()
 
+	ctx, overallCancel := context.WithTimeout(ctx, 60*time.Second)
+	defer overallCancel()
+
 	startSlot := params.StartSlot
 	endSlot := startSlot + maxSlotsToStream
 
@@ -722,7 +725,7 @@ func (multi *MultiEpoch) StreamTransactions(params *old_faithful_grpc.StreamTran
 
 	gsfaReadersLoaded := true
 	if len(epochNums) == 0 {
-		klog.Warning("No gsfa readers were loaded")
+		klog.V(2).Info("No gsfa readers were loaded")
 		gsfaReadersLoaded = false
 	}
 
@@ -761,7 +764,7 @@ func (multi *MultiEpoch) processSlotTransactions(
 				pkey := solana.MustPublicKeyFromBase58(acc)
 				ok, err := tx.HasAccount(pkey)
 				if err != nil {
-					klog.Errorf("Failed to check if transaction %v has account %s", tx, acc)
+					klog.V(2).Infof("Failed to check if transaction %v has account %s", tx, acc)
 					return false
 				}
 				if ok {
@@ -778,7 +781,7 @@ func (multi *MultiEpoch) processSlotTransactions(
 			pkey := solana.MustPublicKeyFromBase58(acc)
 			ok, err := tx.HasAccount(pkey)
 			if err != nil {
-				klog.Errorf("Failed to check if transaction %v has account %s", tx, acc)
+				klog.V(2).Infof("Failed to check if transaction %v has account %s", tx, acc)
 				return false
 			}
 			if ok { // If any excluded account is present, filter out the transaction
@@ -790,7 +793,7 @@ func (multi *MultiEpoch) processSlotTransactions(
 			pkey := solana.MustPublicKeyFromBase58(acc)
 			ok, err := tx.HasAccount(pkey)
 			if err != nil {
-				klog.Errorf("Failed to check if transaction %v has account %s", tx, acc)
+				klog.V(2).Infof("Failed to check if transaction %v has account %s", tx, acc)
 				return false
 			}
 			if !ok { // If any required account is missing, filter out the transaction
@@ -866,26 +869,45 @@ func (multi *MultiEpoch) processSlotTransactions(
 		return nil
 	} else {
 
-		const batchSize = 1000
+		const batchSize = 100
 		buffer := newTxBuffer(uint64(startSlot), uint64(endSlot))
 		errChan := make(chan error, len(filter.AccountInclude))
 
 		var wg sync.WaitGroup
 
+		const maxConcurrentAccounts = 10
+		sem := make(chan struct{}, maxConcurrentAccounts)
+
 		for _, account := range filter.AccountInclude {
+			sem <- struct{}{} // Acquire token
 			wg.Add(1)
 
 			go func(acc string) {
-				defer wg.Done()
+				defer func() {
+					<-sem // Release token
+					wg.Done()
+				}()
 
 				pKey := solana.MustPublicKeyFromBase58(acc)
+
+				queryCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+				defer cancel()
+
+				startTime := time.Now()
+				klog.V(2).Infof("Starting GSFA query for account %s, from slot %d to %d", pKey.String(), startSlot, endSlot)
+
 				epochToTxns, err := gsfaReader.GetBeforeUntilSlot(
-					ctx,
+					queryCtx,
 					pKey,
 					batchSize,
 					endSlot+1, //  Before (exclusive)
 					startSlot, // Until (inclusive)
 					func(epochNum uint64, oas linkedlog.OffsetAndSizeAndSlot) (*ipldbindcode.Transaction, error) {
+						fnStartTime := time.Now()
+						defer func() {
+							klog.V(4).Infof("GSFA transaction lookup for epoch %d took %s",
+								epochNum, time.Since(fnStartTime))
+						}()
 						epoch, err := multi.GetEpoch(epochNum)
 						if err != nil {
 							return nil, fmt.Errorf("failed to get epoch %d: %w", epochNum, err)
@@ -908,6 +930,8 @@ func (multi *MultiEpoch) processSlotTransactions(
 					errChan <- err
 					return
 				}
+				duration := time.Since(startTime)
+				klog.V(2).Infof("GSFA query completed for account %s, from slot %d to %d took %s", pKey.String(), startSlot, endSlot, duration)
 
 				for epochNumber, txns := range epochToTxns {
 					epochHandler, err := multi.GetEpoch(epochNumber)
@@ -917,7 +941,9 @@ func (multi *MultiEpoch) processSlotTransactions(
 					}
 
 					for _, txn := range txns {
+						txStartTime := time.Now()
 						tx, meta, err := parseTransactionAndMetaFromNode(txn, epochHandler.GetDataFrameByCid)
+						klog.V(3).Infof("Parsing transaction for account %s took %s", pKey.String(), time.Since(txStartTime))
 						if err != nil {
 							errChan <- status.Errorf(codes.Internal, "Failed to parse transaction from node: %v", err)
 							return
@@ -964,18 +990,41 @@ func (multi *MultiEpoch) processSlotTransactions(
 		wg.Wait()
 
 		// Flush after all processing is done
+		klog.V(2).Infof("Starting buffer flush with %d slots of transactions", len(buffer.items))
+		flushStartTime := time.Now()
 		if err := buffer.flush(ser); err != nil {
 			return err
 		}
+		klog.V(2).Infof("Buffer flush completed in %s", time.Since(flushStartTime))
 
 		// Handle any errors
+		klog.V(2).Infof("Checking for errors from goroutines")
+		errCheckStartTime := time.Now()
 		select {
 		case err := <-errChan:
 			if err != nil {
+				klog.Infof("Received error from error channel: %v", err)
 				return err
 			}
+			klog.V(3).Infof("Received nil error from error channel")
 		case <-ctx.Done():
+			klog.V(2).Infof("Context done while checking errors")
 			return ctx.Err()
+		default:
+			klog.V(3).Infof("No errors found in channel")
+		}
+		klog.V(3).Infof("Error check completed in %s", time.Since(errCheckStartTime))
+
+		// If we got here with no transactions (buffer is empty), send an empty response
+		if len(buffer.items) == 0 {
+			klog.V(2).Infof("No transactions found for the requested accounts, sending empty response")
+			emptyResp := &old_faithful_grpc.TransactionResponse{
+				Slot: startSlot,
+				// Include other required fields as needed
+			}
+			if err := ser.Send(emptyResp); err != nil {
+				return err
+			}
 		}
 
 		return nil
@@ -1000,7 +1049,12 @@ func newTxBuffer(startSlot, endSlot uint64) *txBuffer {
 }
 
 func (b *txBuffer) add(slot, idx uint64, tx *old_faithful_grpc.TransactionResponse) {
+	addStartTime := time.Now()
 	b.mu.Lock()
+	lockTime := time.Since(addStartTime)
+	if lockTime > 100*time.Millisecond {
+		klog.V(2).Infof("txBuffer.add lock acquisition took %s", lockTime)
+	}
 	defer b.mu.Unlock()
 
 	if _, exists := b.items[slot]; !exists {
@@ -1012,6 +1066,12 @@ func (b *txBuffer) add(slot, idx uint64, tx *old_faithful_grpc.TransactionRespon
 func (b *txBuffer) flush(ser old_faithful_grpc.OldFaithful_StreamTransactionsServer) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+
+	totalTxs := 0
+	for _, txMap := range b.items {
+		totalTxs += len(txMap)
+	}
+	klog.V(2).Infof("Flushing buffer with %d slots containing %d total transactions", len(b.items), totalTxs)
 
 	for b.currentSlot <= b.endSlot {
 		// Send all transactions for this slot in index order
@@ -1027,8 +1087,20 @@ func (b *txBuffer) flush(ser old_faithful_grpc.OldFaithful_StreamTransactionsSer
 
 			// Send transactions in order
 			for _, idx := range indices {
+				// Check context before each send for early cancellation
+				select {
+				case <-ser.Context().Done():
+					return ser.Context().Err()
+				default:
+					// Continue with send
+				}
+
+				sendStart := time.Now()
 				if err := ser.Send(txMap[idx]); err != nil {
 					return err
+				}
+				if time.Since(sendStart) > 100*time.Millisecond {
+					klog.V(2).Infof("Sending transaction took %s", time.Since(sendStart))
 				}
 			}
 		}
