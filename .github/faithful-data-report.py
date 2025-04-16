@@ -150,11 +150,20 @@ class FaithfulDataReport:
         return str(total_size) if total_size > 0 else "n/a"
 
     async def get_deals(self, session: aiohttp.ClientSession, epoch: int) -> str:
+        # Check both possible filenames for deals
         deals_url = f"{self.deals_host}/{epoch}/deals.csv"
-        deals_content = await self.fetch_text(session, deals_url)
+        deals_metadata_url = f"{self.deals_host}/{epoch}/deals-metadata.csv"
         
+        # check deals.csv
+        deals_content = await self.fetch_text(session, deals_url)
         if deals_content and len(deals_content.splitlines()) > 1:
             return deals_url
+            
+        # check deals-metadata.csv (recent change)
+        deals_metadata_content = await self.fetch_text(session, deals_metadata_url)
+        if deals_metadata_content and len(deals_metadata_content.splitlines()) > 1:
+            return deals_metadata_url
+
         return "n/a"
 
     async def get_epoch_data(self, session: aiohttp.ClientSession, epoch: int) -> EpochData:
