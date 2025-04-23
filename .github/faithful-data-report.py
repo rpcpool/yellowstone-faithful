@@ -220,8 +220,16 @@ class FaithfulDataReport:
             txmeta_cell = f"[✗]({data.txmeta_url})" if data.txmeta != "n/a" and not validate_txmeta_output(data.txmeta) else \
                          f"[✓]({data.txmeta_url})" if data.txmeta != "n/a" else "✗"
 
-        poh_cell = f"[✗]({data.poh_url})" if data.poh != "n/a" and not validate_poh_output(data.poh) else \
-                   f"[✓]({data.poh_url})" if data.poh != "n/a" else "✗"
+        # epoch 208 POH validation is handled differently
+        if data.epoch == 208 and data.poh != "n/a":
+            poh_cell = f"[★★]({data.poh_url})"
+        elif data.poh != "n/a" and not validate_poh_output(data.poh):
+            poh_cell = f"[✗]({data.poh_url})"
+        elif data.poh != "n/a":
+            poh_cell = f"[✓]({data.poh_url})"
+        else:
+            poh_cell = "✗"
+
         indices_cell = "✓" if data.indices != "n/a" else "✗"
         indices_size_cell = f"{data.indices_size} GB" if data.indices_size != "n/a" else "✗"
         deals_cell = f"[✓]({data.deals})" if data.deals != "n/a" else "✗"
@@ -278,6 +286,7 @@ class FaithfulDataReport:
                     print(self.format_row(result))
 
         print("\n★ = tx meta validation skipped (epochs 0-%s where tx meta wasn't enabled yet)" % self.txmeta_first_epoch)
+        print("\n★★ = epoch 208 POH validation is handled differently, see more in https://docs.old-faithful.net/validation")
 
         # Print summary report
         if self.issues:
