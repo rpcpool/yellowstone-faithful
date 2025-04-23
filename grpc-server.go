@@ -751,7 +751,7 @@ func (multi *MultiEpoch) processSlotTransactions(
 			return false
 		}
 
-		if !(*filter.Failed) { // If failed is false, we should filter out failed transactions
+		if filter.Failed != nil && !(*filter.Failed) { // If failed is false, we should filter out failed transactions
 			err := getErr(meta)
 			if err != nil {
 				return false
