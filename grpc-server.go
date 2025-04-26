@@ -747,11 +747,11 @@ func (multi *MultiEpoch) processSlotTransactions(
 			return true
 		}
 
-		if !(*filter.Vote) && IsSimpleVoteTransaction(&tx) { // If vote is false, we should filter out vote transactions
+		if filter.Vote != nil && !(*filter.Vote) && IsSimpleVoteTransaction(&tx) { // If vote is false, we should filter out vote transactions
 			return false
 		}
 
-		if !(*filter.Failed) { // If failed is false, we should filter out failed transactions
+		if filter.Failed != nil && !(*filter.Failed) { // If failed is false, we should filter out failed transactions
 			err := getErr(meta)
 			if err != nil {
 				return false
@@ -941,6 +941,11 @@ func (multi *MultiEpoch) processSlotTransactions(
 					}
 
 					for _, txn := range txns {
+						if txn == nil {
+							klog.V(2).Infof("Skipping nil transaction from epoch %d", epochNumber)
+							continue
+						}
+
 						txStartTime := time.Now()
 						tx, meta, err := parseTransactionAndMetaFromNode(txn, epochHandler.GetDataFrameByCid)
 						klog.V(3).Infof("Parsing transaction for account %s took %s", pKey.String(), time.Since(txStartTime))
@@ -1095,8 +1100,14 @@ func (b *txBuffer) flush(ser old_faithful_grpc.OldFaithful_StreamTransactionsSer
 					// Continue with send
 				}
 
+				txResp := txMap[idx]
+				if txResp == nil {
+					klog.V(2).Infof("Skipping nil transaction response at slot %d, index %d", b.currentSlot, idx)
+					continue
+				}
+
 				sendStart := time.Now()
-				if err := ser.Send(txMap[idx]); err != nil {
+				if err := ser.Send(txResp); err != nil {
 					return err
 				}
 				if time.Since(sendStart) > 100*time.Millisecond {
