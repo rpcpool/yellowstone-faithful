@@ -211,6 +211,7 @@ func (multi *GsfaReaderMultiepoch) GetBeforeUntilSlot(
 	fetcher func(uint64, linkedlog.OffsetAndSizeAndSlot) (*ipldbindcode.Transaction, error),
 ) (EpochToTransactionObjects, error) {
 	if limit <= 0 {
+		klog.V(4).Infof("limit is less than or equal to zero: %d", limit)
 		return make(EpochToTransactionObjects), nil
 	}
 	return multi.iterBeforeUntilSlot(ctx, pk, limit, before, until, fetcher)
@@ -227,6 +228,7 @@ func (multi *GsfaReaderMultiepoch) iterBeforeUntilSlot(
 	fetcher func(uint64, linkedlog.OffsetAndSizeAndSlot) (*ipldbindcode.Transaction, error),
 ) (EpochToTransactionObjects, error) {
 	if limit <= 0 || before < until {
+		klog.V(4).Infof("limit is less than or equal to zero OR before is less than until: %d, %d, %d", limit, before, until)
 		return make(EpochToTransactionObjects), nil
 	}
 
