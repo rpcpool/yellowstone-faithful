@@ -211,7 +211,7 @@ func (multi *GsfaReaderMultiepoch) GetBeforeUntilSlot(
 	fetcher func(uint64, linkedlog.OffsetAndSizeAndSlot) (*ipldbindcode.Transaction, error),
 ) (EpochToTransactionObjects, error) {
 	if limit <= 0 {
-		klog.V(4).Infof("limit is less than or equal to zero: %d", limit)
+		klog.V(1).Infof("limit is less than or equal to zero: %d", limit)
 		return make(EpochToTransactionObjects), nil
 	}
 	return multi.iterBeforeUntilSlot(ctx, pk, limit, before, until, fetcher)
@@ -228,12 +228,20 @@ func (multi *GsfaReaderMultiepoch) iterBeforeUntilSlot(
 	fetcher func(uint64, linkedlog.OffsetAndSizeAndSlot) (*ipldbindcode.Transaction, error),
 ) (EpochToTransactionObjects, error) {
 	if limit <= 0 || before < until {
-		klog.V(4).Infof("limit is less than or equal to zero OR before is less than until: %d, %d, %d", limit, before, until)
+		klog.V(1).Infof("limit is less than or equal to zero OR before is less than until: %d, %d, %d", limit, before, until)
 		return make(EpochToTransactionObjects), nil
 	}
 
+	// Log the search parameters for debugging
+	klog.V(1).Infof("Searching for transactions for account %s between slots %d and %d (limit: %d)",
+		pk.String(), until, before, limit)
+
 	transactions := make(EpochToTransactionObjects)
 	beforeEpoch := slottools.CalcEpochForSlot(before)
+	untilEpoch := slottools.CalcEpochForSlot(until)
+
+	// Log which epochs we should be searching
+	klog.V(1).Infof("Slot range spans epochs %d to %d", untilEpoch, beforeEpoch)
 
 epochLoop:
 	for readerIndex, index := range multi.epochs {
@@ -284,9 +292,13 @@ epochLoop:
 				if err != nil {
 					return nil, fmt.Errorf("error while getting signature at index=%v: %w", txLoc, err)
 				}
+
+				// Log every transaction we find for this account
+				klog.V(1).Infof("Found transaction in slot %d for account %s", tx.Slot, pk.String())
 				if tx.Slot < int(until) {
 					break epochLoop
 				}
+
 				sig, err := tx.Signature()
 				if err != nil {
 					return nil, fmt.Errorf("error while getting signature: %w", err)
@@ -299,5 +311,8 @@ epochLoop:
 			}
 		}
 	}
+	// Log summary of what we found
+	klog.V(1).Infof("Found %d transactions for account %s between slots %d and %d",
+		transactions.Count(), pk.String(), until, before)
 	return transactions, nil
 }
