@@ -102,7 +102,7 @@ impl Transaction {
 
     pub fn as_parsed(
         &self,
-    ) -> Result<solana_sdk::transaction::VersionedTransaction, Box<dyn Error>> {
+    ) -> Result<solana_transaction::versioned::VersionedTransaction, Box<dyn Error>> {
         Ok(deserialize(&self.data.data.to_vec())?)
     }
 

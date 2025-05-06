@@ -12,11 +12,9 @@ pub mod decode {
         },
         anyhow::Context,
         prost_011::Message,
-        solana_sdk::{
-            hash::{Hash, HASH_BYTES},
-            transaction::VersionedTransaction,
-        },
+        solana_hash::{Hash, HASH_BYTES},
         solana_storage_proto::convert::generated,
+        solana_transaction::versioned::VersionedTransaction,
         solana_transaction_status::{
             ConfirmedBlock, ConfirmedTransactionWithStatusMeta, Reward, TransactionStatusMeta,
             TransactionWithStatusMeta, VersionedTransactionWithStatusMeta,
@@ -96,7 +94,8 @@ pub mod decode {
 mod solana {
     use {
         serde::{Deserialize, Serialize},
-        solana_sdk::{message::v0::LoadedAddresses, transaction::TransactionError},
+        solana_message::v0::LoadedAddresses,
+        solana_transaction_error::TransactionError,
         solana_transaction_status::{Reward, TransactionStatusMeta},
     };
 
