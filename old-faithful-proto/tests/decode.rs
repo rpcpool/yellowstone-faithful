@@ -4,7 +4,7 @@ use {
         de::{self, Deserializer},
         Deserialize,
     },
-    solana_sdk::clock::{Slot, UnixTimestamp},
+    solana_clock::{Slot, UnixTimestamp},
 };
 
 #[derive(Debug, Deserialize)]

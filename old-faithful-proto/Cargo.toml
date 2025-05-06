@@ -10,11 +10,14 @@ bincode = { workspace = true }
 prost = { workspace = true }
 prost_011 = { workspace = true }
 serde = { workspace = true }
-solana-sdk = { workspace = true }
 solana-storage-proto = { workspace = true }
 solana-transaction-status = { workspace = true }
 tonic = { workspace = true }
-
+solana-hash = { workspace = true }
+solana-transaction = { workspace = true }
+solana-message = { workspace = true }
+solana-transaction-error = { workspace = true }
+solana-clock = { workspace = true }
 [dev-dependencies]
 const-hex = { workspace = true }
 serde_json = { workspace = true }
