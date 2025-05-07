@@ -38,7 +38,7 @@ import (
 
 const maxSlotsToStream uint64 = 100
 
-// ListeAndServe starts listening on the configured address and serves the RPC API.
+// ListenAndServeGRPC starts listening on the configured address and serves the RPC API.
 func (me *MultiEpoch) ListenAndServeGRPC(ctx context.Context, listenOn string) error {
 	lis, err := net.Listen("tcp", listenOn)
 	if err != nil {
