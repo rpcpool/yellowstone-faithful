@@ -1,0 +1,41 @@
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+name: Filecoin Deals Report Generator
+on:
+  # push:
+  schedule:
+    - cron: '11 3 * * *'  # Run once a day at 03:11 UTC
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  generate-report:
+    runs-on: ubuntu-latest
+    
+    permissions:
+      # Give the default GITHUB_TOKEN write permission to commit and push the
+      # added or changed files to the repository.
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        
+      - name: Generate Report
+        run: |
+          mkdir -p docs
+          python3 -m pip install aiohttp
+          python3 .github/faithful-deals-report.py > docs/DEALS-REPORT.md
+          
+      # Commit changed files back to the repository
+      - uses: EndBug/add-and-commit@v9
+        with:
+          message: Old Faithful CAR data report update
+          new_branch: 'gha-report'
+          add: 'docs/*.md'
+          author_name: github-actions[bot]
+          author_email: 41898282+github-actions[bot]@users.noreply.github.com
+          fetch: origin gha-report
+          push: origin gha-report --force
+          pull: ' '
+
