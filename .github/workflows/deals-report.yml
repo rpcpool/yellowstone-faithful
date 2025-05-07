@@ -20,6 +20,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: gha-report  # Checkout the gha-report branch
+          fetch-depth: 0   # Fetch all history to ensure we have the latest changes
         
       - name: Generate Report
         run: |
@@ -31,11 +34,8 @@ jobs:
       - uses: EndBug/add-and-commit@v9
         with:
           message: Old Faithful Filecoin Deals report update
-          new_branch: 'gha-report'
-          add: 'docs/*.md'
+          add: 'docs/DEALS-REPORT.md'  # Only add this specific file
           author_name: github-actions[bot]
           author_email: 41898282+github-actions[bot]@users.noreply.github.com
-          fetch: origin gha-report
-          push: origin gha-report --force
-          pull: ' '
+          push: origin gha-report
 
