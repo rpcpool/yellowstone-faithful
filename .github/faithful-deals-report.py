@@ -88,23 +88,23 @@ def main():
         total_deals_active += online_pieces
         
         # Print table row
-        print(f"| {epoch} | {metadata_count} | {total_pieces} | {deals_to_metadata_percentage:.1f}% | {online_pieces} | {active_percentage:.1f}% | {error_count} |")
+        print(f"| {epoch} | {metadata_count:,} | {total_pieces:,} | {deals_to_metadata_percentage:.1f}% | {online_pieces:,} | {active_percentage:.1f}% | {error_count:,} |")
     
     # Calculate summary percentages
     overall_deals_to_metadata_percentage = (total_deals_in_csv / total_metadata_entries * 100) if total_metadata_entries > 0 else 0
     overall_active_percentage = (total_deals_active / total_deals_in_csv * 100) if total_deals_in_csv > 0 else 0
     
     # Add totals row to the table
-    print(f"| **Total** | {total_metadata_entries} | {total_deals_in_csv} | {overall_deals_to_metadata_percentage:.1f}% | {total_deals_active} | {overall_active_percentage:.1f}% | {total_errors} |")
+    print(f"| **Total** | {total_metadata_entries:,} | {total_deals_in_csv:,} | {overall_deals_to_metadata_percentage:.1f}% | {total_deals_active:,} | {overall_active_percentage:.1f}% | {total_errors:,} |")
     
     # Print summary for all epochs
     print("\n## Summary for All Epochs\n")
-    print(f"- **Metadata Entries**: {total_metadata_entries}")
-    print(f"- **Deals in CSV**: {total_deals_in_csv}")
+    print(f"- **Metadata Entries**: {total_metadata_entries:,}")
+    print(f"- **Deals in CSV**: {total_deals_in_csv:,}")
     print(f"- **Deals to Metadata Ratio**: {overall_deals_to_metadata_percentage:.1f}%")
-    print(f"- **Deals Active**: {total_deals_active}")
+    print(f"- **Deals Active**: {total_deals_active:,}")
     print(f"- **Percent Active**: {overall_active_percentage:.1f}%")
-    print(f"- **Pieces Not Found**: {total_errors}")
+    print(f"- **Pieces Not Found**: {total_errors:,}")
 
 if __name__ == "__main__":
     main()
