@@ -54,8 +54,8 @@ func is_simple_vote_transaction_impl(
 ) bool {
 	return len(signatures) < 3 &&
 		is_legacy_message &&
-		(len(instruction_programs) == 1 || len(instruction_programs) == 2) &&
-		(instruction_programs[0] == solana.VoteProgramID || instruction_programs[1] == solana.VoteProgramID)
+		((len(instruction_programs) == 1 && instruction_programs[0] == solana.VoteProgramID) ||
+			(len(instruction_programs) == 2 && instruction_programs[1] == solana.VoteProgramID))
 }
 
 func IsSimpleVoteTransaction(tx *solana.Transaction) bool {
