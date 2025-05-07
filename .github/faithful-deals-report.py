@@ -51,7 +51,7 @@ def main():
     # Get the current epoch
     current_epoch = get_current_epoch()
     # skip the last 2 epochs as they will take longer to get online
-    epochs = range(770, current_epoch - 2)
+    epochs = range(700, current_epoch - 2)
     all_results = []
     
     # Process epochs in parallel
@@ -60,56 +60,51 @@ def main():
         for future in concurrent.futures.as_completed(future_to_epoch):
             all_results.append(future.result())
     
-    # Print report
-    print("=== Epoch Deals Summary ===")
+    # Print report in Markdown format
+    print("# Faithful Deals Report\n")
+    print("## Epoch Deals Summary\n")
+    
+    # Print table header
+    print("| Epoch | Metadata Entries | Deals in CSV | Deals to Metadata Ratio | Deals Active | Percent Active | Pieces Not Found |")
+    print("|-------|------------------|--------------|-------------------------|--------------|----------------|------------------|")
+    
     total_errors = 0
     
     # Track totals for summary
     total_metadata_entries = 0
     total_deals_in_csv = 0
-    total_deals_online = 0
+    total_deals_active = 0
     
-    for epoch, metadata_count, total_pieces, online_pieces, errors in sorted(all_results):
+    # Sort results in descending order by epoch
+    for epoch, metadata_count, total_pieces, online_pieces, errors in sorted(all_results, key=lambda x: x[0], reverse=True):
         error_count = len(errors)
         total_errors += error_count
-        online_percentage = (online_pieces / total_pieces * 100) if total_pieces > 0 else 0
+        active_percentage = (online_pieces / total_pieces * 100) if total_pieces > 0 else 0
         deals_to_metadata_percentage = (total_pieces / metadata_count * 100) if metadata_count > 0 else 0
         
         # Add to totals
         total_metadata_entries += metadata_count
         total_deals_in_csv += total_pieces
-        total_deals_online += online_pieces
+        total_deals_active += online_pieces
         
-        print(f"Epoch {epoch}:")
-        print(f"  Metadata entries: {metadata_count}")
-        print(f"  Deals in CSV: {total_pieces}")
-        print(f"  Deals to metadata ratio: {deals_to_metadata_percentage:.1f}%")
-        print(f"  Deals online: {online_pieces}")
-        print(f"  Percent online: {online_percentage:.1f}%")
-        
-        if errors:
-            print(f"  Pieces not found: {error_count}")
-            # Uncomment to print individual pieces
-            # for piece in errors:
-            #     print(f"    {piece}")
-        
-        print()  # Add a blank line between epochs
+        # Print table row
+        print(f"| {epoch} | {metadata_count} | {total_pieces} | {deals_to_metadata_percentage:.1f}% | {online_pieces} | {active_percentage:.1f}% | {error_count} |")
     
     # Calculate summary percentages
     overall_deals_to_metadata_percentage = (total_deals_in_csv / total_metadata_entries * 100) if total_metadata_entries > 0 else 0
-    overall_online_percentage = (total_deals_online / total_deals_in_csv * 100) if total_deals_in_csv > 0 else 0
+    overall_active_percentage = (total_deals_active / total_deals_in_csv * 100) if total_deals_in_csv > 0 else 0
+    
+    # Add totals row to the table
+    print(f"| **Total** | {total_metadata_entries} | {total_deals_in_csv} | {overall_deals_to_metadata_percentage:.1f}% | {total_deals_active} | {overall_active_percentage:.1f}% | {total_errors} |")
     
     # Print summary for all epochs
-    print("=== Summary for All Epochs ===")
-    print(f"  Metadata entries: {total_metadata_entries}")
-    print(f"  Deals in CSV: {total_deals_in_csv}")
-    print(f"  Deals to metadata ratio: {overall_deals_to_metadata_percentage:.1f}%")
-    print(f"  Deals online: {total_deals_online}")
-    print(f"  Percent online: {overall_online_percentage:.1f}%")
-    print(f"  Pieces not found: {total_errors}")
-    print()
-    
-    print(f"=== Total Errors: {total_errors} ===")
+    print("\n## Summary for All Epochs\n")
+    print(f"- **Metadata Entries**: {total_metadata_entries}")
+    print(f"- **Deals in CSV**: {total_deals_in_csv}")
+    print(f"- **Deals to Metadata Ratio**: {overall_deals_to_metadata_percentage:.1f}%")
+    print(f"- **Deals Active**: {total_deals_active}")
+    print(f"- **Percent Active**: {overall_active_percentage:.1f}%")
+    print(f"- **Pieces Not Found**: {total_errors}")
 
 if __name__ == "__main__":
     main()
