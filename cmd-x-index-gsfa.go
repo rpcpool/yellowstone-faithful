@@ -19,8 +19,7 @@ import (
 	"github.com/rpcpool/yellowstone-faithful/indexmeta"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
-	metalatest "github.com/rpcpool/yellowstone-faithful/parse_legacy_transaction_status_meta/v-latest"
-	metaoldest "github.com/rpcpool/yellowstone-faithful/parse_legacy_transaction_status_meta/v-oldest"
+	serde_agave "github.com/rpcpool/yellowstone-faithful/parse_legacy_transaction_status_meta"
 	"github.com/rpcpool/yellowstone-faithful/readasonecar"
 	"github.com/rpcpool/yellowstone-faithful/slottools"
 	"github.com/urfave/cli/v2"
@@ -248,16 +247,9 @@ func newCmd_Index_gsfa() *cli.Command {
 									return true
 								}
 							}
-							if txWithInfo.Metadata.IsSerdeLatest() {
-								meta := txWithInfo.Metadata.GetSerdeLatest()
-								_, ok := meta.Status.(*metalatest.Result__Ok)
-								if ok {
-									return true
-								}
-							}
-							if txWithInfo.Metadata.IsSerdeOldest() {
-								meta := txWithInfo.Metadata.GetSerdeOldest()
-								_, ok := meta.Status.(*metaoldest.Result__Ok)
+							if txWithInfo.Metadata.IsSerde() {
+								meta := txWithInfo.Metadata.GetSerde()
+								_, ok := meta.Status.(*serde_agave.Result__Ok)
 								if ok {
 									return true
 								}
