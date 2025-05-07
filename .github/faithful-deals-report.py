@@ -13,7 +13,7 @@ def get_current_epoch() -> int:
 
 def check_epoch(epoch):
     errors = []
-    total_pieces = 0
+    sent_deals = 0
     metadata_count = 0
     
     try:
@@ -34,7 +34,7 @@ def check_epoch(epoch):
         
         # Skip header line and extract pieces
         pieces = [line.split(",")[4] for line in deals_data.strip().split("\n")[1:] if len(line.split(",")) > 4]
-        total_pieces = len(pieces)
+        sent_deals = len(pieces)
         
         for piece in pieces:
             search_response = requests.get(f"https://api.filecoin.tools/api/search?filter={piece}")
@@ -45,7 +45,7 @@ def check_epoch(epoch):
     except Exception as e:
         print(f"Error processing epoch {epoch}: {str(e)}")
     
-    return epoch, metadata_count, total_pieces, len(pieces) - len(errors), errors
+    return epoch, metadata_count, sent_deals, len(pieces) - len(errors), errors
 
 def main():
     # Get the current epoch
@@ -74,17 +74,29 @@ def main():
     total_deals_in_csv = 0
     total_deals_active = 0
     
+    # Lists to track epochs with specific conditions
+    metadata_exceeds_deals = []
+    deals_exceeds_active = []
+    
     # Sort results in descending order by epoch
-    for epoch, metadata_count, total_pieces, online_pieces, errors in sorted(all_results, key=lambda x: x[0], reverse=True):
+    for epoch, metadata_count, sent_deals, online_pieces, errors in sorted(all_results, key=lambda x: x[0], reverse=True):
         error_count = len(errors)
         total_errors += error_count
-        active_percentage = (online_pieces / total_pieces * 100) if total_pieces > 0 else 0
-        deals_to_metadata_percentage = (total_pieces / metadata_count * 100) if metadata_count > 0 else 0
+        active_percentage = (online_pieces / sent_deals * 100) if sent_deals > 0 else 0
+        deals_to_metadata_percentage = (sent_deals / metadata_count * 100) if metadata_count > 0 else 0
         
         # Add to totals
         total_metadata_entries += metadata_count
-        total_deals_in_csv += total_pieces
+        total_deals_in_csv += sent_deals
         total_deals_active += online_pieces
+        
+        # Track epochs where metadata > deals
+        if metadata_count > sent_deals and metadata_count > 0 and sent_deals > 0:
+            metadata_exceeds_deals.append(epoch)
+            
+        # Track epochs where deals > active deals
+        if sent_deals > online_pieces and sent_deals > 0:
+            deals_exceeds_active.append(epoch)
         
         # Print table row
         # Show "Current Epoch" for the current epoch, "Pending Cargen" if metadata_count is 0
@@ -95,7 +107,7 @@ def main():
         else:
             metadata_display = f"{metadata_count:,}"
             
-        print(f"| {epoch} | {metadata_display} | {total_pieces:,} | {deals_to_metadata_percentage:.1f}% | {online_pieces:,} | {active_percentage:.1f}% | {error_count:,} |")
+        print(f"| {epoch} | {metadata_display} | {sent_deals:,} | {deals_to_metadata_percentage:.1f}% | {online_pieces:,} | {active_percentage:.1f}% | {error_count:,} |")
     
     # Calculate summary percentages
     overall_deals_to_metadata_percentage = (total_deals_in_csv / total_metadata_entries * 100) if total_metadata_entries > 0 else 0
@@ -112,6 +124,22 @@ def main():
     print(f"- **Deals Active**: {total_deals_active:,}")
     print(f"- **Percent Active**: {overall_active_percentage:.1f}%")
     print(f"- **Pieces Not Found**: {total_errors:,}")
+    
+    # Print epochs where metadata > deals as a simple list
+    print(f"\n## Epochs where metadata > deals ({len(metadata_exceeds_deals)} epochs)\n")
+    if metadata_exceeds_deals:
+        for epoch in sorted(metadata_exceeds_deals):
+            print(f"- {epoch}")
+    else:
+        print("No epochs found where metadata entries exceed deals.")
+    
+    # Print epochs where deals > active deals as a simple list
+    print(f"\n## Epochs where deals > active deals ({len(deals_exceeds_active)} epochs)\n")
+    if deals_exceeds_active:
+        for epoch in sorted(deals_exceeds_active):
+            print(f"- {epoch}")
+    else:
+        print("No epochs found where deals exceed active deals.")
 
 if __name__ == "__main__":
     main()
