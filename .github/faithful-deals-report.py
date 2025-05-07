@@ -50,8 +50,7 @@ def check_epoch(epoch):
 def main():
     # Get the current epoch
     current_epoch = get_current_epoch()
-    # skip the last 2 epochs as they will take longer to get online
-    epochs = range(700, current_epoch - 2)
+    epochs = range(0, current_epoch)
     all_results = []
     
     # Process epochs in parallel
@@ -88,7 +87,15 @@ def main():
         total_deals_active += online_pieces
         
         # Print table row
-        print(f"| {epoch} | {metadata_count:,} | {total_pieces:,} | {deals_to_metadata_percentage:.1f}% | {online_pieces:,} | {active_percentage:.1f}% | {error_count:,} |")
+        # Show "Current Epoch" for the current epoch, "Pending Cargen" if metadata_count is 0
+        if epoch == current_epoch:
+            metadata_display = "current epoch"
+        elif metadata_count == 0:
+            metadata_display = "pending cargen"
+        else:
+            metadata_display = f"{metadata_count:,}"
+            
+        print(f"| {epoch} | {metadata_display} | {total_pieces:,} | {deals_to_metadata_percentage:.1f}% | {online_pieces:,} | {active_percentage:.1f}% | {error_count:,} |")
     
     # Calculate summary percentages
     overall_deals_to_metadata_percentage = (total_deals_in_csv / total_metadata_entries * 100) if total_metadata_entries > 0 else 0
