@@ -4,7 +4,7 @@ concurrency:
 
 name: Filecoin Deals Report Generator
 on:
-  # push:
+  push:
   schedule:
     - cron: '11 3 * * *'  # Run once a day at 03:11 UTC
   workflow_dispatch:  # Allow manual trigger
@@ -30,7 +30,7 @@ jobs:
       # Commit changed files back to the repository
       - uses: EndBug/add-and-commit@v9
         with:
-          message: Old Faithful CAR data report update
+          message: Old Faithful Filecoin Deals report update
           new_branch: 'gha-report'
           add: 'docs/*.md'
           author_name: github-actions[bot]
