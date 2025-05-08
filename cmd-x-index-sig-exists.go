@@ -143,7 +143,7 @@ func newCmd_Index_sigExists() *cli.Command {
 			}
 			defer func() {
 				if err := index.Close(); err != nil {
-					klog.Errorf("Error while closing: %s", err)
+					klog.Fatalf("Error while closing: %s", err)
 				}
 			}()
 

@@ -107,8 +107,11 @@ func newCmd_Index_gsfa() *cli.Command {
 			defer rd.Close()
 
 			indexDir := c.String("index-dir")
+			if indexDir == "" {
+				klog.Exit("Please provide an --index-dir=<dir to store the index>")
+			}
 			if ok, err := isDirectory(indexDir); err != nil {
-				return err
+				return fmt.Errorf("error checking index-dir %q: %w", indexDir, err)
 			} else if !ok {
 				return fmt.Errorf("index-dir is not a directory")
 			}
@@ -163,7 +166,7 @@ func newCmd_Index_gsfa() *cli.Command {
 				klog.Info("Finalizing index -- this may take a while, DO NOT EXIT")
 				klog.Info("Closing index")
 				if err := indexW.Close(); err != nil {
-					klog.Errorf("Error while closing: %s", err)
+					klog.Fatalf("Error while closing: %s", err)
 				}
 				klog.Infof("Success: gSFA index created at %s with %d transactions", gsfaIndexDir, numProcessedTransactions.Load())
 				klog.Infof("Finished in %s", time.Since(startedAt))
