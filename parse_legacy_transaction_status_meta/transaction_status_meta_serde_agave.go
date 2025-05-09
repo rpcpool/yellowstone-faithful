@@ -9,18 +9,8 @@ import (
 
 type CompiledInstruction struct {
 	ProgramIdIndex uint8
-	Accounts       struct {
-		Field0 struct{ Field0 uint8 }
-		Field1 uint8
-		Field2 uint8
-		Field3 uint8
-	}
-	Data struct {
-		Field0 struct{ Field0 uint8 }
-		Field1 uint8
-		Field2 uint8
-		Field3 uint8
-	}
+	Accounts       []uint8
+	Data           []uint8
 }
 
 func (obj *CompiledInstruction) Serialize(serializer serde.Serializer) error {
@@ -30,10 +20,10 @@ func (obj *CompiledInstruction) Serialize(serializer serde.Serializer) error {
 	if err := serializer.SerializeU8(obj.ProgramIdIndex); err != nil {
 		return err
 	}
-	if err := serialize_tuple4_tuple1_u8_u8_u8_u8(obj.Accounts, serializer); err != nil {
+	if err := serialize_vector_u8(obj.Accounts, serializer); err != nil {
 		return err
 	}
-	if err := serialize_tuple4_tuple1_u8_u8_u8_u8(obj.Data, serializer); err != nil {
+	if err := serialize_vector_u8(obj.Data, serializer); err != nil {
 		return err
 	}
 	serializer.DecreaseContainerDepth()
@@ -61,12 +51,12 @@ func DeserializeCompiledInstruction(deserializer serde.Deserializer) (CompiledIn
 	} else {
 		return obj, err
 	}
-	if val, err := deserialize_tuple4_tuple1_u8_u8_u8_u8(deserializer); err == nil {
+	if val, err := deserialize_vector_u8(deserializer); err == nil {
 		obj.Accounts = val
 	} else {
 		return obj, err
 	}
-	if val, err := deserialize_tuple4_tuple1_u8_u8_u8_u8(deserializer); err == nil {
+	if val, err := deserialize_vector_u8(deserializer); err == nil {
 		obj.Data = val
 	} else {
 		return obj, err
@@ -3390,8 +3380,8 @@ func load_TransactionError__BlockhashNotFound(deserializer serde.Deserializer) (
 }
 
 type TransactionError__InstructionError struct {
-	Field0 uint8
-	Field1 InstructionError
+	ErrorCode uint8
+	Error     InstructionError
 }
 
 func (*TransactionError__InstructionError) isTransactionError() {}
@@ -3401,10 +3391,10 @@ func (obj *TransactionError__InstructionError) Serialize(serializer serde.Serial
 		return err
 	}
 	serializer.SerializeVariantIndex(8)
-	if err := serializer.SerializeU8(obj.Field0); err != nil {
+	if err := serializer.SerializeU8(obj.ErrorCode); err != nil {
 		return err
 	}
-	if err := obj.Field1.Serialize(serializer); err != nil {
+	if err := obj.Error.Serialize(serializer); err != nil {
 		return err
 	}
 	serializer.DecreaseContainerDepth()
@@ -3428,12 +3418,12 @@ func load_TransactionError__InstructionError(deserializer serde.Deserializer) (T
 		return obj, err
 	}
 	if val, err := deserializer.DeserializeU8(); err == nil {
-		obj.Field0 = val
+		obj.ErrorCode = val
 	} else {
 		return obj, err
 	}
 	if val, err := DeserializeInstructionError(deserializer); err == nil {
-		obj.Field1 = val
+		obj.Error = val
 	} else {
 		return obj, err
 	}
@@ -5201,81 +5191,6 @@ func deserialize_option_vector_str(deserializer serde.Deserializer) (*[]string, 
 	} else {
 		return nil, nil
 	}
-}
-
-func serialize_tuple1_u8(value struct{ Field0 uint8 }, serializer serde.Serializer) error {
-	if err := serializer.SerializeU8(value.Field0); err != nil {
-		return err
-	}
-	return nil
-}
-
-func deserialize_tuple1_u8(deserializer serde.Deserializer) (struct{ Field0 uint8 }, error) {
-	var obj struct{ Field0 uint8 }
-	if val, err := deserializer.DeserializeU8(); err == nil {
-		obj.Field0 = val
-	} else {
-		return obj, err
-	}
-	return obj, nil
-}
-
-func serialize_tuple4_tuple1_u8_u8_u8_u8(value struct {
-	Field0 struct{ Field0 uint8 }
-	Field1 uint8
-	Field2 uint8
-	Field3 uint8
-}, serializer serde.Serializer,
-) error {
-	if err := serialize_tuple1_u8(value.Field0, serializer); err != nil {
-		return err
-	}
-	if err := serializer.SerializeU8(value.Field1); err != nil {
-		return err
-	}
-	if err := serializer.SerializeU8(value.Field2); err != nil {
-		return err
-	}
-	if err := serializer.SerializeU8(value.Field3); err != nil {
-		return err
-	}
-	return nil
-}
-
-func deserialize_tuple4_tuple1_u8_u8_u8_u8(deserializer serde.Deserializer) (struct {
-	Field0 struct{ Field0 uint8 }
-	Field1 uint8
-	Field2 uint8
-	Field3 uint8
-}, error,
-) {
-	var obj struct {
-		Field0 struct{ Field0 uint8 }
-		Field1 uint8
-		Field2 uint8
-		Field3 uint8
-	}
-	if val, err := deserialize_tuple1_u8(deserializer); err == nil {
-		obj.Field0 = val
-	} else {
-		return obj, err
-	}
-	if val, err := deserializer.DeserializeU8(); err == nil {
-		obj.Field1 = val
-	} else {
-		return obj, err
-	}
-	if val, err := deserializer.DeserializeU8(); err == nil {
-		obj.Field2 = val
-	} else {
-		return obj, err
-	}
-	if val, err := deserializer.DeserializeU8(); err == nil {
-		obj.Field3 = val
-	} else {
-		return obj, err
-	}
-	return obj, nil
 }
 
 func serialize_vector_InnerInstruction(value []InnerInstruction, serializer serde.Serializer) error {
