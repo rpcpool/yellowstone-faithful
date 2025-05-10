@@ -14,7 +14,7 @@ jsonParsed-linux: build-rust-wrapper
 	# build faithful-cli with jsonParsed format support via ffi (rust)
 	rm -rf ./bin/faithful-cli_jsonParsed
 	# static linking:
-	cp jsonparsed/target/x86_64-unknown-linux-gnu/release/libdemo_transaction_status_ffi.a ./jsonparsed/lib/libsolana_transaction_status_wrapper.a
+	cp jsonparsed/target/x86_64-unknown-linux-gnu/release/libtransaction_status_ffi.a ./jsonparsed/lib/libsolana_transaction_status_wrapper.a
 	LD_FLAGS="$(BASE_LD_FLAGS) -extldflags -static"
 	go build -ldflags=$(LD_FLAGS) -tags ffi -o ./bin/faithful-cli_jsonParsed .
 	echo "SUCCESS: built old-faithful with jsonParsed format support via ffi (rust)"
