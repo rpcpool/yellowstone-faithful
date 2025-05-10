@@ -4,7 +4,9 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/gagliardetto/solana-go"
 	serde_agave "github.com/rpcpool/yellowstone-faithful/parse_legacy_transaction_status_meta"
+	transaction_status_meta_serde_agave "github.com/rpcpool/yellowstone-faithful/parse_legacy_transaction_status_meta"
 	"github.com/rpcpool/yellowstone-faithful/third_party/solana_proto/confirmed_block"
 	"google.golang.org/protobuf/proto"
 )
@@ -44,20 +46,58 @@ func (c *TransactionStatusMetaContainer) GetSerde() *serde_agave.TransactionStat
 	return c.vSerde
 }
 
-func (c *TransactionStatusMetaContainer) GetLoadedAccounts() [][]byte {
+// IsErr whether the metadata tells us that the transaction failed.
+func (c *TransactionStatusMetaContainer) IsErr() bool {
 	if c.vProtobuf != nil {
-		return append(
-			c.vProtobuf.LoadedReadonlyAddresses,
-			c.vProtobuf.LoadedWritableAddresses...,
-		)
+		return c.vProtobuf.Err != nil
 	}
 	if c.vSerde != nil {
-		return append(
-			serdePubkeySliceToBytesSlice(c.vSerde.LoadedAddresses.Readonly),
-			serdePubkeySliceToBytesSlice(c.vSerde.LoadedAddresses.Writable)...,
-		)
+		return c.vSerde.Status != nil && c.vSerde.Status.(*serde_agave.Result__Err) != nil
 	}
-	return nil
+	return false
+}
+
+func (c *TransactionStatusMetaContainer) GetTxError() (transaction_status_meta_serde_agave.Result, bool, error) {
+	if c.vProtobuf != nil {
+		if c.vProtobuf.Err == nil {
+			return nil, false, nil
+		}
+		unmarshaledErr, err := transaction_status_meta_serde_agave.BincodeDeserializeResult(c.vProtobuf.Err.Err)
+		if err != nil {
+			return nil, false, fmt.Errorf("failed to unmarshal error: %w", err)
+		}
+		return unmarshaledErr, true, nil
+	}
+	if c.vSerde != nil {
+		if c.vSerde.Status == nil {
+			return nil, false, nil
+		}
+		return c.vSerde.Status, true, nil
+	}
+	return nil, false, fmt.Errorf("no error found")
+}
+
+func (c *TransactionStatusMetaContainer) GetLoadedAccountsRaw() ([][]byte, [][]byte) {
+	if c.vProtobuf != nil {
+		return c.vProtobuf.LoadedWritableAddresses, c.vProtobuf.LoadedReadonlyAddresses
+	}
+	if c.vSerde != nil {
+		return serdePubkeySliceToBytesSlice(c.vSerde.LoadedAddresses.Writable), serdePubkeySliceToBytesSlice(c.vSerde.LoadedAddresses.Readonly)
+	}
+	return nil, nil
+}
+
+func (c *TransactionStatusMetaContainer) GetLoadedAccounts() (solana.PublicKeySlice, solana.PublicKeySlice) {
+	writable, readonly := c.GetLoadedAccountsRaw()
+	writableKeys := make(solana.PublicKeySlice, len(writable))
+	readonlyKeys := make(solana.PublicKeySlice, len(readonly))
+	for i, pubkey := range writable {
+		writableKeys[i] = solana.PublicKeyFromBytes(pubkey)
+	}
+	for i, pubkey := range readonly {
+		readonlyKeys[i] = solana.PublicKeyFromBytes(pubkey)
+	}
+	return writableKeys, readonlyKeys
 }
 
 func serdePubkeySliceToBytesSlice(serdePubkeys []serde_agave.Pubkey) [][]byte {
@@ -92,13 +132,13 @@ func ParseAnyTransactionStatusMeta(buf []byte) (any, error) {
 	if err == nil {
 		return asProtobuf, nil
 	}
-	errs = append(errs, err)
+	errs = append(errs, fmt.Errorf("failed to parse protobuf: %w", err))
 	// try to parse as legacy serde format
 	asSerde, err := ParseTransactionStatusMeta_Serde(buf)
 	if err == nil {
 		return asSerde, nil
 	}
-	errs = append(errs, err)
+	errs = append(errs, fmt.Errorf("failed to parse serde: %w", err))
 	return nil, fmt.Errorf("failed to parse tx meta: %w", errors.Join(errs...))
 }
 

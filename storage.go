@@ -125,7 +125,7 @@ type GetTransactionResponse struct {
 func parseTransactionAndMetaFromNode(
 	transactionNode *ipldbindcode.Transaction,
 	dataFrameGetter func(ctx context.Context, wantedCid cid.Cid) (*ipldbindcode.DataFrame, error),
-) (tx solana.Transaction, meta any, _ error) {
+) (tx solana.Transaction, meta *solanatxmetaparsers.TransactionStatusMetaContainer, _ error) {
 	{
 		transactionBuffer, err := tooling.LoadDataFromDataFrames(&transactionNode.Data, dataFrameGetter)
 		if err != nil {
@@ -151,7 +151,7 @@ func parseTransactionAndMetaFromNode(
 				klog.Errorf("failed to decompress metadata: %v", err)
 				return
 			}
-			status, err := solanatxmetaparsers.ParseAnyTransactionStatusMeta(uncompressedMeta)
+			status, err := solanatxmetaparsers.ParseTransactionStatusMetaContainer(uncompressedMeta)
 			if err != nil {
 				klog.Errorf("failed to parse metadata: %v", err)
 				return
