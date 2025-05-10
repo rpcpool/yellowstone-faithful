@@ -75,6 +75,14 @@ func (o *OrderedJSONObject) Int(key string, value int64) *OrderedJSONObject {
 	return o.Value(key, value)
 }
 
+func (o *OrderedJSONObject) Uint(key string, value uint64) *OrderedJSONObject {
+	return o.Value(key, value)
+}
+
+func (o *OrderedJSONObject) Uint8(key string, value uint8) *OrderedJSONObject {
+	return o.Value(key, value)
+}
+
 // Float adds a float field to the object
 func (o *OrderedJSONObject) Float(key string, value float64) *OrderedJSONObject {
 	return o.Value(key, value)
@@ -90,14 +98,34 @@ func (o *OrderedJSONObject) Object(key string, obj *OrderedJSONObject) *OrderedJ
 	return o.Value(key, obj)
 }
 
+func (o *OrderedJSONObject) ObjectFunc(key string, fn func(*OrderedJSONObject)) *OrderedJSONObject {
+	if obj := NewObject(); obj != nil {
+		fn(obj)
+		return o.Object(key, obj)
+	}
+	return o
+}
+
 // Array adds a JSON array field
 func (o *OrderedJSONObject) Array(key string, arr *ArrayBuilder) *OrderedJSONObject {
 	return o.Value(key, arr)
 }
 
+func (o *OrderedJSONObject) ArrayFunc(key string, fn func(*ArrayBuilder)) *OrderedJSONObject {
+	if arr := NewArray(); arr != nil {
+		fn(arr)
+		return o.Array(key, arr)
+	}
+	return o
+}
+
 // Null adds a null field to the object
 func (o *OrderedJSONObject) Null(key string) *OrderedJSONObject {
 	return o.Value(key, nil)
+}
+
+func (o *OrderedJSONObject) Raw(key string, value json.RawMessage) *OrderedJSONObject {
+	return o.Value(key, value)
 }
 
 // Func applies a function to modify the object
@@ -140,6 +168,14 @@ func (a *ArrayBuilder) AddValue(value any) *ArrayBuilder {
 
 // AddString appends a string value to the array
 func (a *ArrayBuilder) AddString(value string) *ArrayBuilder {
+	return a.AddValue(value)
+}
+
+func (a *ArrayBuilder) AddUint8(value uint8) *ArrayBuilder {
+	return a.AddValue(value)
+}
+
+func (a *ArrayBuilder) AddUint(value uint64) *ArrayBuilder {
 	return a.AddValue(value)
 }
 

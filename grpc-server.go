@@ -19,6 +19,7 @@ import (
 	"github.com/ipld/go-car/util"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/rpcpool/yellowstone-faithful/compactindexsized"
+	"github.com/rpcpool/yellowstone-faithful/dummycid"
 	"github.com/rpcpool/yellowstone-faithful/gsfa"
 	"github.com/rpcpool/yellowstone-faithful/gsfa/linkedlog"
 	"github.com/rpcpool/yellowstone-faithful/indexes"
@@ -270,7 +271,7 @@ func (multi *MultiEpoch) GetBlock(ctx context.Context, params *old_faithful_grpc
 	}
 
 	var allTransactions []*old_faithful_grpc.Transaction
-	hasRewards := !block.Rewards.(cidlink.Link).Cid.Equals(DummyCID)
+	hasRewards := !block.Rewards.(cidlink.Link).Cid.Equals(dummycid.DummyCID)
 	if hasRewards {
 		rewardsNode, err := epochHandler.GetRewardsByCid(ctx, block.Rewards.(cidlink.Link).Cid)
 		if err != nil {
@@ -673,9 +674,9 @@ func (multi *MultiEpoch) StreamBlocks(params *old_faithful_grpc.StreamBlocksRequ
 }
 
 func blockContainsAccounts(block *old_faithful_grpc.BlockResponse, accounts []string) bool {
-	accountSet := make(map[string]struct{}, len(accounts))
-	for _, acc := range accounts {
-		accountSet[acc] = struct{}{}
+	accountSet := make(solana.PublicKeySlice, len(accounts))
+	for i, acc := range accounts {
+		accountSet[i] = solana.MustPublicKeyFromBase58(acc)
 	}
 
 	for _, tx := range block.Transactions {
@@ -687,7 +688,7 @@ func blockContainsAccounts(block *old_faithful_grpc.BlockResponse, accounts []st
 		}
 
 		for _, acc := range solTx.Message.AccountKeys {
-			if _, exists := accountSet[acc.String()]; exists {
+			if accountSet.Contains(acc) {
 				return true
 			}
 		}
@@ -697,10 +698,9 @@ func blockContainsAccounts(block *old_faithful_grpc.BlockResponse, accounts []st
 			klog.Errorf("Failed to parse transaction meta: %v", err)
 		}
 
-		loadedAccounts := meta.GetLoadedAccounts()
-		keys := byteSlicesToKeySlice(loadedAccounts)
-		for _, key := range keys {
-			if _, exists := accountSet[key.String()]; exists {
+		writable, readonly := meta.GetLoadedAccounts()
+		for _, acc := range accountSet {
+			if writable.Contains(acc) || readonly.Contains(acc) {
 				return true
 			}
 		}
@@ -718,28 +718,29 @@ func (multi *MultiEpoch) StreamTransactions(params *old_faithful_grpc.StreamTran
 	if params.EndSlot != nil {
 		endSlot = *params.EndSlot
 	}
-	gsfaReader, epochNums := multi.getGsfaReadersInEpochDescendingOrderForSlotRange(ctx, startSlot, endSlot)
+	gsfaReader, _ := multi.getGsfaReadersInEpochDescendingOrderForSlotRange(ctx, startSlot, endSlot)
 
-	gsfaReadersLoaded := true
-	if len(epochNums) == 0 {
-		klog.Warning("No gsfa readers were loaded")
-		gsfaReadersLoaded = false
+	for slot := startSlot; slot <= endSlot; slot++ {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		if err := multi.processSlotTransactions(ctx, ser, slot, params.Filter, gsfaReader); err != nil {
+			return err
+		}
 	}
-
-	return multi.processSlotTransactions(ctx, ser, startSlot, endSlot, params.Filter, gsfaReader, gsfaReadersLoaded)
+	return nil
 }
 
 func (multi *MultiEpoch) processSlotTransactions(
 	ctx context.Context,
 	ser old_faithful_grpc.OldFaithful_StreamTransactionsServer,
-	startSlot uint64,
-	endSlot uint64,
-	filter *old_faithful_grpc.StreamTransactionsFilter,
+	slot uint64, filter *old_faithful_grpc.StreamTransactionsFilter,
 	gsfaReader *gsfa.GsfaReaderMultiepoch,
-	gsfaReadersLoaded bool,
 ) error {
-
-	filterOutTxn := func(tx solana.Transaction, meta any) bool {
+	filterOutTxn := func(tx solana.Transaction, meta *solanatxmetaparsers.TransactionStatusMetaContainer) bool {
 		if filter == nil {
 			return true
 		}
@@ -749,30 +750,12 @@ func (multi *MultiEpoch) processSlotTransactions(
 		}
 
 		if !(*filter.Failed) { // If failed is false, we should filter out failed transactions
-			err := getErr(meta)
-			if err != nil {
+			if meta != nil && meta.IsErr() {
 				return false
 			}
 		}
 
-		if !gsfaReadersLoaded { // Only needed if gsfaReaders not loaded, otherwise handled in the main branch
-			hasOne := false
-			for _, acc := range filter.AccountInclude {
-				pkey := solana.MustPublicKeyFromBase58(acc)
-				ok, err := tx.HasAccount(pkey)
-				if err != nil {
-					klog.Errorf("Failed to check if transaction %v has account %s", tx, acc)
-					return false
-				}
-				if ok {
-					hasOne = true
-					break // Found at least one included account, no need to check others
-				}
-			}
-			if !hasOne { // If none of the included accounts are present, filter out the transaction
-				return false
-			}
-		}
+		// AccountInclude is handled in the main function
 
 		for _, acc := range filter.AccountExclude {
 			pkey := solana.MustPublicKeyFromBase58(acc)
@@ -801,241 +784,139 @@ func (multi *MultiEpoch) processSlotTransactions(
 		return true
 	}
 
-	if filter == nil || len(filter.AccountInclude) == 0 || !gsfaReadersLoaded {
+	if filter == nil || len(filter.AccountInclude) == 0 {
 
-		for slot := startSlot; slot <= endSlot; slot++ {
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			default:
+		block, err := multi.GetBlock(ctx, &old_faithful_grpc.BlockRequest{Slot: slot})
+		if err != nil {
+			if status.Code(err) == codes.NotFound {
+				return nil
 			}
-
-			block, err := multi.GetBlock(ctx, &old_faithful_grpc.BlockRequest{Slot: slot})
-			if err != nil {
-				if status.Code(err) == codes.NotFound {
-					return nil
-				}
-				return err
-			}
-
-			for _, tx := range block.Transactions {
-				decoder := bin.NewBinDecoder(tx.GetTransaction())
-				txn, err := solana.TransactionFromDecoder(decoder)
-				if err != nil {
-					return status.Errorf(codes.Internal, "Failed to decode transaction: %v", err)
-				}
-
-				meta, err := solanatxmetaparsers.ParseAnyTransactionStatusMeta(tx.Meta)
-				if err != nil {
-					return status.Errorf(codes.Internal, "Failed to parse transaction meta: %v", err)
-				}
-
-				if !filterOutTxn(*txn, meta) {
-
-					txResp := new(old_faithful_grpc.TransactionResponse)
-					txResp.Transaction = new(old_faithful_grpc.Transaction)
-
-					{
-						txResp.Transaction.Transaction = tx.Transaction
-						txResp.Transaction.Meta = tx.Meta
-						txResp.Transaction.Index = tx.Index
-
-						epochNumber := slottools.CalcEpochForSlot(slot)
-						epochHandler, err := multi.GetEpoch(epochNumber)
-						if err != nil {
-							return status.Errorf(codes.NotFound, "Epoch %d is not available", epochNumber)
-						}
-						blocktimeIndex := epochHandler.GetBlocktimeIndex()
-						if blocktimeIndex != nil {
-							blocktime, err := blocktimeIndex.Get(uint64(slot))
-							if err != nil {
-								return status.Errorf(codes.Internal, "Failed to get blocktime: %v", err)
-							}
-							txResp.BlockTime = int64(blocktime)
-						} else {
-							return status.Errorf(codes.Internal, "Failed to get blocktime: blocktime index is nil")
-						}
-					}
-
-					if err := ser.Send(txResp); err != nil {
-						return err
-					}
-				}
-			}
-		}
-		return nil
-	} else {
-
-		const batchSize = 1000
-		buffer := newTxBuffer(uint64(startSlot), uint64(endSlot))
-		errChan := make(chan error, len(filter.AccountInclude))
-
-		var wg sync.WaitGroup
-
-		for _, account := range filter.AccountInclude {
-			wg.Add(1)
-
-			go func(acc string) {
-				defer wg.Done()
-
-				pKey := solana.MustPublicKeyFromBase58(acc)
-				epochToTxns, err := gsfaReader.GetBeforeUntilSlot(
-					ctx,
-					pKey,
-					batchSize,
-					endSlot+1, //  Before (exclusive)
-					startSlot, // Until (inclusive)
-					func(epochNum uint64, oas linkedlog.OffsetAndSizeAndSlot) (*ipldbindcode.Transaction, error) {
-						epoch, err := multi.GetEpoch(epochNum)
-						if err != nil {
-							return nil, fmt.Errorf("failed to get epoch %d: %w", epochNum, err)
-						}
-						raw, err := epoch.GetNodeByOffsetAndSize(ctx, nil, &indexes.OffsetAndSize{
-							Offset: oas.Offset,
-							Size:   oas.Size,
-						})
-						if err != nil {
-							return nil, fmt.Errorf("failed to get signature: %w", err)
-						}
-						decoded, err := iplddecoders.DecodeTransaction(raw)
-						if err != nil {
-							return nil, fmt.Errorf("error while decoding transaction from nodex at offset %d: %w", oas.Offset, err)
-						}
-						return decoded, nil
-					},
-				)
-				if err != nil {
-					errChan <- err
-					return
-				}
-
-				for epochNumber, txns := range epochToTxns {
-					epochHandler, err := multi.GetEpoch(epochNumber)
-					if err != nil {
-						errChan <- status.Errorf(codes.NotFound, "Epoch %d is not available", epochNumber)
-						return
-					}
-
-					for _, txn := range txns {
-						tx, meta, err := parseTransactionAndMetaFromNode(txn, epochHandler.GetDataFrameByCid)
-						if err != nil {
-							errChan <- status.Errorf(codes.Internal, "Failed to parse transaction from node: %v", err)
-							return
-						}
-
-						if !filterOutTxn(tx, meta) {
-							txResp := new(old_faithful_grpc.TransactionResponse)
-							txResp.Transaction = new(old_faithful_grpc.Transaction)
-							{
-								pos, ok := txn.GetPositionIndex()
-								if ok {
-									txResp.Index = ptrToUint64(uint64(pos))
-									txResp.Transaction.Index = ptrToUint64(uint64(pos))
-								}
-								txResp.Transaction.Transaction, txResp.Transaction.Meta, err = getTransactionAndMetaFromNode(txn, epochHandler.GetDataFrameByCid)
-								if err != nil {
-									errChan <- status.Errorf(codes.Internal, "Failed to get transaction: %v", err)
-									return
-								}
-								txResp.Slot = uint64(txn.Slot)
-
-								blocktimeIndex := epochHandler.GetBlocktimeIndex()
-								if blocktimeIndex != nil {
-									blocktime, err := blocktimeIndex.Get(uint64(txn.Slot))
-									if err != nil {
-										errChan <- status.Errorf(codes.Internal, "Failed to get blocktime: %v", err)
-										return
-									}
-									txResp.BlockTime = int64(blocktime)
-								} else {
-									errChan <- status.Errorf(codes.Internal, "Failed to get blocktime: blocktime index is nil")
-									return
-								}
-							}
-
-							buffer.add(txResp.Slot, *txResp.Index, txResp)
-						}
-					}
-				}
-			}(account)
-		}
-
-		// Wait for all processing to complete
-		wg.Wait()
-
-		// Flush after all processing is done
-		if err := buffer.flush(ser); err != nil {
 			return err
 		}
 
-		// Handle any errors
-		select {
-		case err := <-errChan:
+		for _, tx := range block.Transactions {
+			decoder := bin.NewBinDecoder(tx.GetTransaction())
+			txn, err := solana.TransactionFromDecoder(decoder)
 			if err != nil {
-				return err
+				return status.Errorf(codes.Internal, "Failed to decode transaction: %v", err)
 			}
-		case <-ctx.Done():
-			return ctx.Err()
-		}
 
-		return nil
-	}
-}
-
-type txBuffer struct {
-	items       map[uint64]map[uint64]*old_faithful_grpc.TransactionResponse // slot -> index -> tx
-	mu          sync.Mutex
-	startSlot   uint64
-	endSlot     uint64
-	currentSlot uint64
-}
-
-func newTxBuffer(startSlot, endSlot uint64) *txBuffer {
-	return &txBuffer{
-		items:       make(map[uint64]map[uint64]*old_faithful_grpc.TransactionResponse),
-		startSlot:   startSlot,
-		endSlot:     endSlot,
-		currentSlot: startSlot,
-	}
-}
-
-func (b *txBuffer) add(slot, idx uint64, tx *old_faithful_grpc.TransactionResponse) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
-	if _, exists := b.items[slot]; !exists {
-		b.items[slot] = make(map[uint64]*old_faithful_grpc.TransactionResponse)
-	}
-	b.items[slot][idx] = tx
-}
-
-func (b *txBuffer) flush(ser old_faithful_grpc.OldFaithful_StreamTransactionsServer) error {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
-	for b.currentSlot <= b.endSlot {
-		// Send all transactions for this slot in index order
-		if txMap, exists := b.items[b.currentSlot]; exists {
-			// Get all indices and sort them
-			indices := make([]uint64, 0, len(txMap))
-			for idx := range txMap {
-				indices = append(indices, idx)
+			meta, err := solanatxmetaparsers.ParseTransactionStatusMetaContainer(tx.Meta)
+			if err != nil {
+				return status.Errorf(codes.Internal, "Failed to parse transaction meta: %v", err)
 			}
-			sort.Slice(indices, func(i, j int) bool {
-				return indices[i] < indices[j]
-			})
 
-			// Send transactions in order
-			for _, idx := range indices {
-				if err := ser.Send(txMap[idx]); err != nil {
+			if !filterOutTxn(*txn, meta) {
+
+				txResp := new(old_faithful_grpc.TransactionResponse)
+				txResp.Transaction = new(old_faithful_grpc.Transaction)
+
+				{
+					txResp.Transaction.Transaction = tx.Transaction
+					txResp.Transaction.Meta = tx.Meta
+					txResp.Transaction.Index = tx.Index
+
+					epochNumber := slottools.CalcEpochForSlot(slot)
+					epochHandler, err := multi.GetEpoch(epochNumber)
+					if err != nil {
+						return status.Errorf(codes.NotFound, "Epoch %d is not available", epochNumber)
+					}
+					blocktimeIndex := epochHandler.GetBlocktimeIndex()
+					if blocktimeIndex != nil {
+						blocktime, err := blocktimeIndex.Get(uint64(slot))
+						if err != nil {
+							return status.Errorf(codes.Internal, "Failed to get blocktime: %v", err)
+						}
+						txResp.BlockTime = int64(blocktime)
+					} else {
+						return status.Errorf(codes.Internal, "Failed to get blocktime: blocktime index is nil")
+					}
+				}
+
+				if err := ser.Send(txResp); err != nil {
 					return err
 				}
 			}
 		}
+	} else {
+		for _, account := range filter.AccountInclude {
+			pKey := solana.MustPublicKeyFromBase58(account)
+			epochToTxns, err := gsfaReader.Get(
+				ctx,
+				pKey,
+				1000,
+				func(epochNum uint64, oas linkedlog.OffsetAndSizeAndSlot) (*ipldbindcode.Transaction, error) {
+					epoch, err := multi.GetEpoch(epochNum)
+					if err != nil {
+						return nil, fmt.Errorf("failed to get epoch %d: %w", epochNum, err)
+					}
+					raw, err := epoch.GetNodeByOffsetAndSize(ctx, nil, &indexes.OffsetAndSize{
+						Offset: oas.Offset,
+						Size:   oas.Size,
+					})
+					if err != nil {
+						return nil, fmt.Errorf("failed to get signature: %w", err)
+					}
+					decoded, err := iplddecoders.DecodeTransaction(raw)
+					if err != nil {
+						return nil, fmt.Errorf("error while decoding transaction from nodex at offset %d: %w", oas.Offset, err)
+					}
+					return decoded, nil
+				},
+			)
+			if err != nil {
+				return err
+			}
 
-		// Clean up processed slot
-		delete(b.items, b.currentSlot)
-		b.currentSlot++
+			for epochNumber, txns := range epochToTxns {
+				epochHandler, err := multi.GetEpoch(epochNumber)
+				if err != nil {
+					return status.Errorf(codes.NotFound, "Epoch %d is not available", epochNumber)
+				}
+				for _, txn := range txns {
+					if slot != uint64(txn.Slot) { // If the transaction is not in the requested slot, skip
+						continue
+					}
+					tx, meta, err := parseTransactionAndMetaFromNode(txn, epochHandler.GetDataFrameByCid)
+					if err != nil {
+						return status.Errorf(codes.Internal, "Failed to parse transaction from node: %v", err)
+					}
+
+					if !filterOutTxn(tx, meta) {
+
+						txResp := new(old_faithful_grpc.TransactionResponse)
+						txResp.Transaction = new(old_faithful_grpc.Transaction)
+						{
+							pos, ok := txn.GetPositionIndex()
+							if ok {
+								txResp.Index = ptrToUint64(uint64(pos))
+								txResp.Transaction.Index = ptrToUint64(uint64(pos))
+							}
+							txResp.Transaction.Transaction, txResp.Transaction.Meta, err = getTransactionAndMetaFromNode(txn, epochHandler.GetDataFrameByCid)
+							if err != nil {
+								return status.Errorf(codes.Internal, "Failed to get transaction: %v", err)
+							}
+							txResp.Slot = uint64(txn.Slot)
+
+							blocktimeIndex := epochHandler.GetBlocktimeIndex()
+							if blocktimeIndex != nil {
+								blocktime, err := blocktimeIndex.Get(uint64(txn.Slot))
+								if err != nil {
+									return status.Errorf(codes.Internal, "Failed to get blocktime: %v", err)
+								}
+								txResp.BlockTime = int64(blocktime)
+							} else {
+								return status.Errorf(codes.Internal, "Failed to get blocktime: blocktime index is nil")
+							}
+						}
+
+						if err := ser.Send(txResp); err != nil {
+							return err
+						}
+					}
+				}
+			}
+		}
 	}
 	return nil
 }
