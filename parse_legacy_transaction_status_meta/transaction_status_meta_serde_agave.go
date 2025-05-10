@@ -2753,8 +2753,29 @@ func DeserializeRewardType(deserializer serde.Deserializer) (RewardType, error) 
 	}
 
 	switch index {
+	case 0:
+		if val, err := load_RewardType__Fee(deserializer); err == nil {
+			return &val, nil
+		} else {
+			return nil, err
+		}
+
 	case 1:
 		if val, err := load_RewardType__Rent(deserializer); err == nil {
+			return &val, nil
+		} else {
+			return nil, err
+		}
+
+	case 2:
+		if val, err := load_RewardType__Staking(deserializer); err == nil {
+			return &val, nil
+		} else {
+			return nil, err
+		}
+
+	case 3:
+		if val, err := load_RewardType__Voting(deserializer); err == nil {
 			return &val, nil
 		} else {
 			return nil, err
@@ -2776,6 +2797,39 @@ func BincodeDeserializeRewardType(input []byte) (RewardType, error) {
 		return obj, fmt.Errorf("Some input bytes were not read")
 	}
 	return obj, err
+}
+
+type RewardType__Fee struct{}
+
+func (*RewardType__Fee) isRewardType() {}
+
+func (obj *RewardType__Fee) Serialize(serializer serde.Serializer) error {
+	if err := serializer.IncreaseContainerDepth(); err != nil {
+		return err
+	}
+	serializer.SerializeVariantIndex(0)
+	serializer.DecreaseContainerDepth()
+	return nil
+}
+
+func (obj *RewardType__Fee) BincodeSerialize() ([]byte, error) {
+	if obj == nil {
+		return nil, fmt.Errorf("Cannot serialize null object")
+	}
+	serializer := bincode.NewSerializer()
+	if err := obj.Serialize(serializer); err != nil {
+		return nil, err
+	}
+	return serializer.GetBytes(), nil
+}
+
+func load_RewardType__Fee(deserializer serde.Deserializer) (RewardType__Fee, error) {
+	var obj RewardType__Fee
+	if err := deserializer.IncreaseContainerDepth(); err != nil {
+		return obj, err
+	}
+	deserializer.DecreaseContainerDepth()
+	return obj, nil
 }
 
 type RewardType__Rent struct{}
@@ -2804,6 +2858,72 @@ func (obj *RewardType__Rent) BincodeSerialize() ([]byte, error) {
 
 func load_RewardType__Rent(deserializer serde.Deserializer) (RewardType__Rent, error) {
 	var obj RewardType__Rent
+	if err := deserializer.IncreaseContainerDepth(); err != nil {
+		return obj, err
+	}
+	deserializer.DecreaseContainerDepth()
+	return obj, nil
+}
+
+type RewardType__Staking struct{}
+
+func (*RewardType__Staking) isRewardType() {}
+
+func (obj *RewardType__Staking) Serialize(serializer serde.Serializer) error {
+	if err := serializer.IncreaseContainerDepth(); err != nil {
+		return err
+	}
+	serializer.SerializeVariantIndex(2)
+	serializer.DecreaseContainerDepth()
+	return nil
+}
+
+func (obj *RewardType__Staking) BincodeSerialize() ([]byte, error) {
+	if obj == nil {
+		return nil, fmt.Errorf("Cannot serialize null object")
+	}
+	serializer := bincode.NewSerializer()
+	if err := obj.Serialize(serializer); err != nil {
+		return nil, err
+	}
+	return serializer.GetBytes(), nil
+}
+
+func load_RewardType__Staking(deserializer serde.Deserializer) (RewardType__Staking, error) {
+	var obj RewardType__Staking
+	if err := deserializer.IncreaseContainerDepth(); err != nil {
+		return obj, err
+	}
+	deserializer.DecreaseContainerDepth()
+	return obj, nil
+}
+
+type RewardType__Voting struct{}
+
+func (*RewardType__Voting) isRewardType() {}
+
+func (obj *RewardType__Voting) Serialize(serializer serde.Serializer) error {
+	if err := serializer.IncreaseContainerDepth(); err != nil {
+		return err
+	}
+	serializer.SerializeVariantIndex(3)
+	serializer.DecreaseContainerDepth()
+	return nil
+}
+
+func (obj *RewardType__Voting) BincodeSerialize() ([]byte, error) {
+	if obj == nil {
+		return nil, fmt.Errorf("Cannot serialize null object")
+	}
+	serializer := bincode.NewSerializer()
+	if err := obj.Serialize(serializer); err != nil {
+		return nil, err
+	}
+	return serializer.GetBytes(), nil
+}
+
+func load_RewardType__Voting(deserializer serde.Deserializer) (RewardType__Voting, error) {
+	var obj RewardType__Voting
 	if err := deserializer.IncreaseContainerDepth(); err != nil {
 		return obj, err
 	}
