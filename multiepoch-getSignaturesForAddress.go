@@ -226,7 +226,14 @@ func (multi *MultiEpoch) handleGetSignaturesForAddress(ctx context.Context, conn
 					{
 						tx, meta, err := parseTransactionAndMetaFromNode(transactionNode, ser.GetDataFrameByCid)
 						if err == nil {
-							response[ii]["err"] = getErr(meta)
+							e, hasErr, err := meta.GetTxError()
+							if err != nil {
+								klog.Errorf("failed to get transaction error: %v", err)
+							} else if hasErr {
+								response[ii]["err"] = e
+							} else {
+								response[ii]["err"] = nil
+							}
 
 							memoData := getMemoInstructionDataFromTransaction(&tx)
 							if memoData != nil {

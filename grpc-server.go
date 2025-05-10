@@ -673,9 +673,9 @@ func (multi *MultiEpoch) StreamBlocks(params *old_faithful_grpc.StreamBlocksRequ
 }
 
 func blockContainsAccounts(block *old_faithful_grpc.BlockResponse, accounts []string) bool {
-	accountSet := make(map[string]struct{}, len(accounts))
-	for _, acc := range accounts {
-		accountSet[acc] = struct{}{}
+	accountSet := make(solana.PublicKeySlice, len(accounts))
+	for i, acc := range accounts {
+		accountSet[i] = solana.MustPublicKeyFromBase58(acc)
 	}
 
 	for _, tx := range block.Transactions {
@@ -687,7 +687,7 @@ func blockContainsAccounts(block *old_faithful_grpc.BlockResponse, accounts []st
 		}
 
 		for _, acc := range solTx.Message.AccountKeys {
-			if _, exists := accountSet[acc.String()]; exists {
+			if accountSet.Contains(acc) {
 				return true
 			}
 		}
@@ -697,10 +697,9 @@ func blockContainsAccounts(block *old_faithful_grpc.BlockResponse, accounts []st
 			klog.Errorf("Failed to parse transaction meta: %v", err)
 		}
 
-		loadedAccounts := meta.GetLoadedAccounts()
-		keys := byteSlicesToKeySlice(loadedAccounts)
-		for _, key := range keys {
-			if _, exists := accountSet[key.String()]; exists {
+		writable, readonly := meta.GetLoadedAccounts()
+		for _, acc := range accountSet {
+			if writable.Contains(acc) || readonly.Contains(acc) {
 				return true
 			}
 		}
@@ -740,8 +739,7 @@ func (multi *MultiEpoch) processSlotTransactions(
 	slot uint64, filter *old_faithful_grpc.StreamTransactionsFilter,
 	gsfaReader *gsfa.GsfaReaderMultiepoch,
 ) error {
-
-	filterOutTxn := func(tx solana.Transaction, meta any) bool {
+	filterOutTxn := func(tx solana.Transaction, meta *solanatxmetaparsers.TransactionStatusMetaContainer) bool {
 		if filter == nil {
 			return true
 		}
@@ -751,8 +749,7 @@ func (multi *MultiEpoch) processSlotTransactions(
 		}
 
 		if !(*filter.Failed) { // If failed is false, we should filter out failed transactions
-			err := getErr(meta)
-			if err != nil {
+			if meta != nil && meta.IsErr() {
 				return false
 			}
 		}
@@ -803,7 +800,7 @@ func (multi *MultiEpoch) processSlotTransactions(
 				return status.Errorf(codes.Internal, "Failed to decode transaction: %v", err)
 			}
 
-			meta, err := solanatxmetaparsers.ParseAnyTransactionStatusMeta(tx.Meta)
+			meta, err := solanatxmetaparsers.ParseTransactionStatusMetaContainer(tx.Meta)
 			if err != nil {
 				return status.Errorf(codes.Internal, "Failed to parse transaction meta: %v", err)
 			}
