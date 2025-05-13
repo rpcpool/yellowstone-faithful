@@ -50,7 +50,7 @@ def check_epoch(epoch):
 def main():
     # Get the current epoch
     current_epoch = get_current_epoch()
-    epochs = range(770, current_epoch)
+    epochs = range(0, current_epoch)
     all_results = []
     
     # Process epochs in parallel
