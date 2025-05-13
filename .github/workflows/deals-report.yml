@@ -2,11 +2,11 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-name: Data Report Generator
+name: Filecoin Deals Report Generator
 on:
   push:
   schedule:
-    - cron: '3 */4 * * *'  # Run every 4 hours
+    - cron: '11 3 * * *'  # Run once a day at 03:11 UTC
   workflow_dispatch:  # Allow manual trigger
 
 jobs:
@@ -28,13 +28,13 @@ jobs:
         run: |
           mkdir -p docs
           python3 -m pip install aiohttp
-          python3 .github/faithful-data-report.py > docs/CAR-REPORT.md
+          python3 .github/faithful-deals-report.py > docs/DEALS-REPORT.md
           
       # Commit changed files back to the repository
       - uses: EndBug/add-and-commit@v9
         with:
-          message: Old Faithful CAR data report update
-          add: 'docs/CAR-REPORT.md'  # Only add this specific file
+          message: Old Faithful Filecoin Deals report update
+          add: 'docs/DEALS-REPORT.md'  # Only add this specific file
           author_name: github-actions[bot]
           author_email: 41898282+github-actions[bot]@users.noreply.github.com
           push: origin gha-report
