@@ -71,89 +71,97 @@ func SerdeTransactionStatusMetaToUi(meta *transaction_status_meta_serde_agave.Tr
 		//     skip_serializing_if = "OptionSerializer::should_skip"
 		// )]
 		// pub inner_instructions: OptionSerializer<Vec<UiInnerInstructions>>,
-		resp.ArrayFunc(
-			"innerInstructions",
-			func(arr *jsonbuilder.ArrayBuilder) {
-				// #[serde(rename_all = "camelCase")]
-				// pub struct UiInnerInstructions {
-				//     /// Transaction instruction index
-				//     pub index: u8,
-				//     /// List of inner instructions
-				//     pub instructions: Vec<UiInstruction>,
-				// }
-				// 	impl From<InnerInstructions> for UiInnerInstructions {
-				//     fn from(inner_instructions: InnerInstructions) -> Self {
-				//         Self {
-				//             index: inner_instructions.index,
-				//             instructions: inner_instructions
-				//                 .instructions
-				//                 .iter()
-				//                 .map(
-				//                     |InnerInstruction {
-				//                          instruction: ix,
-				//                          stack_height,
-				//                      }| {
-				//                         UiInstruction::Compiled(UiCompiledInstruction::from(ix, *stack_height))
-				//                     },
-				//                 )
-				//                 .collect(),
-				//         }
-				//     }
-				// }
+		if meta.InnerInstructions != nil && len(*meta.InnerInstructions) > 0 {
+			resp.ArrayFunc(
+				"innerInstructions",
+				func(innerIxArray *jsonbuilder.ArrayBuilder) {
+					// #[serde(rename_all = "camelCase")]
+					// pub struct UiInnerInstructions {
+					//     /// Transaction instruction index
+					//     pub index: u8,
+					//     /// List of inner instructions
+					//     pub instructions: Vec<UiInstruction>,
+					// }
+					// 	impl From<InnerInstructions> for UiInnerInstructions {
+					//     fn from(inner_instructions: InnerInstructions) -> Self {
+					//         Self {
+					//             index: inner_instructions.index,
+					//             instructions: inner_instructions
+					//                 .instructions
+					//                 .iter()
+					//                 .map(
+					//                     |InnerInstruction {
+					//                          instruction: ix,
+					//                          stack_height,
+					//                      }| {
+					//                         UiInstruction::Compiled(UiCompiledInstruction::from(ix, *stack_height))
+					//                     },
+					//                 )
+					//                 .collect(),
+					//         }
+					//     }
+					// }
 
-				// #[serde(rename_all = "camelCase", untagged)]
-				// pub enum UiInstruction {
-				//     Compiled(UiCompiledInstruction),
-				//     Parsed(UiParsedInstruction),
-				// }
+					// #[serde(rename_all = "camelCase", untagged)]
+					// pub enum UiInstruction {
+					//     Compiled(UiCompiledInstruction),
+					//     Parsed(UiParsedInstruction),
+					// }
 
-				// #[serde(rename_all = "camelCase")]
-				// pub struct UiCompiledInstruction {
-				//     pub program_id_index: u8,
-				//     pub accounts: Vec<u8>,
-				//     pub data: String,
-				//     pub stack_height: Option<u32>,
-				// }
+					// #[serde(rename_all = "camelCase")]
+					// pub struct UiCompiledInstruction {
+					//     pub program_id_index: u8,
+					//     pub accounts: Vec<u8>,
+					//     pub data: String,
+					//     pub stack_height: Option<u32>,
+					// }
 
-				// impl UiCompiledInstruction {
-				//     pub fn from(instruction: &CompiledInstruction, stack_height: Option<u32>) -> Self {
-				//         Self {
-				//             program_id_index: instruction.program_id_index,
-				//             accounts: instruction.accounts.clone(),
-				//             data: bs58::encode(&instruction.data).into_string(),
-				//             stack_height,
-				//         }
-				//     }
-				// }
+					// impl UiCompiledInstruction {
+					//     pub fn from(instruction: &CompiledInstruction, stack_height: Option<u32>) -> Self {
+					//         Self {
+					//             program_id_index: instruction.program_id_index,
+					//             accounts: instruction.accounts.clone(),
+					//             data: bs58::encode(&instruction.data).into_string(),
+					//             stack_height,
+					//         }
+					//     }
+					// }
 
-				if meta.InnerInstructions == nil {
-					return
-				}
-				for _, innerInstruction := range *meta.InnerInstructions {
-					uiInnerInstruction := jsonbuilder.NewObject()
-					uiInnerInstruction.Uint8("index", innerInstruction.Index)
-					uiInnerInstruction.ArrayFunc(
-						"instructions",
-						func(arr *jsonbuilder.ArrayBuilder) {
-							for _, instruction := range innerInstruction.Instructions {
-								uiCompiledInstruction := jsonbuilder.NewObject()
-								uiCompiledInstruction.Uint8("programIdIndex", instruction.Instruction.ProgramIdIndex)
-								uiCompiledInstruction.ArrayFunc("accounts", func(arr *jsonbuilder.ArrayBuilder) {
-									for _, account := range instruction.Instruction.Accounts {
-										arr.AddUint8(account) // TODO: check if this marshals to array of numbers
-									}
-								})
-								uiCompiledInstruction.String("data", base58.Encode(instruction.Instruction.Data[:]))
-								// NOTE: stackHeight is only present in protobuf encoding.
-								// if instruction.Instruction.StackHeight != nil {
-								// 	uiCompiledInstruction.Uint("stackHeight", uint64(*instruction.Instruction.StackHeight))
-								// }
-							}
-						})
-					arr.AddObject(uiInnerInstruction)
-				}
-			},
-		)
+					if meta.InnerInstructions == nil {
+						return
+					}
+					for _, innerInstruction := range *meta.InnerInstructions {
+						if len(innerInstruction.Instructions) == 0 {
+							continue
+						}
+						uiInnerInstruction := jsonbuilder.NewObject()
+						uiInnerInstruction.Uint8("index", innerInstruction.Index)
+						uiInnerInstruction.ArrayFunc(
+							"instructions",
+							func(arr *jsonbuilder.ArrayBuilder) {
+								for _, instruction := range innerInstruction.Instructions {
+									uiCompiledInstruction := jsonbuilder.NewObject()
+									uiCompiledInstruction.Uint8("programIdIndex", instruction.Instruction.ProgramIdIndex)
+									uiCompiledInstruction.ArrayFunc("accounts", func(accounts *jsonbuilder.ArrayBuilder) {
+										for _, account := range instruction.Instruction.Accounts {
+											accounts.AddUint8(account) // TODO: check if this marshals to array of numbers
+										}
+									})
+									uiCompiledInstruction.String("data", base58.Encode(instruction.Instruction.Data[:]))
+									// NOTE: stackHeight is only present in protobuf encoding.
+									// if instruction.Instruction.StackHeight != nil {
+									// 	uiCompiledInstruction.Uint("stackHeight", uint64(*instruction.Instruction.StackHeight))
+									// }
+									uiCompiledInstruction.Null("stackHeight")
+								}
+							})
+						innerIxArray.AddObject(uiInnerInstruction)
+					}
+				},
+			)
+		} else {
+			resp.Null("innerInstructions")
+		}
 	}
 	{
 		// .logMessages
@@ -164,7 +172,7 @@ func SerdeTransactionStatusMetaToUi(meta *transaction_status_meta_serde_agave.Tr
 		// pub log_messages: OptionSerializer<Vec<String>>,
 		resp.Apply("logMessages", func() any {
 			if meta.LogMessages == nil {
-				return make([]string, 0)
+				return nil
 			}
 			return *meta.LogMessages
 		})
@@ -282,6 +290,9 @@ func SerdeTransactionStatusMetaToUi(meta *transaction_status_meta_serde_agave.Tr
 						}
 					})
 			})
+		if meta.Rewards == nil || len(*meta.Rewards) == 0 {
+			resp.Value("rewards", make([]any, 0))
+		}
 	}
 	{
 		// .loadedAddresses

@@ -102,9 +102,13 @@ func (final *EncodedTransactionWithStatusMeta) ToUi(encoding solana.EncodingType
 					"base58",
 				})
 		case solana.EncodingJSON:
-			resp.Value(
+			txAs, err := TransactionToUi(final.Transaction, encoding)
+			if err != nil {
+				return nil, fmt.Errorf("failed to serialize transaction: %w", err)
+			}
+			resp.Object(
 				"transaction",
-				final.Transaction,
+				txAs,
 			)
 		case solana.EncodingJSONParsed:
 			{
@@ -197,14 +201,14 @@ func (final *EncodedTransactionWithStatusMeta) ToUi(encoding solana.EncodingType
 		}
 	}
 
-	{
-		version := final.Transaction.Message.GetVersion()
-		if version == solana.MessageVersionLegacy {
-			resp.String("version", "legacy")
-		} else {
-			resp.Uint8("version", 0)
-		}
-	}
+	// {
+	// 	version := final.Transaction.Message.GetVersion()
+	// 	if version == solana.MessageVersionLegacy {
+	// 		resp.String("version", "legacy")
+	// 	} else {
+	// 		resp.Uint8("version", 0)
+	// 	}
+	// }
 	return resp, nil
 }
 
