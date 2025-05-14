@@ -428,7 +428,11 @@ func _protobuf_TransactionTokenBalanceToUiTransactionTokenBalance(
 		uiPostTokenBalance.Uint("accountIndex", uint64(tokenBalance.AccountIndex))
 		uiPostTokenBalance.String("mint", tokenBalance.Mint)
 		uiPostTokenBalance.ObjectFunc("uiTokenAmount", func(o *jsonbuilder.OrderedJSONObject) {
-			o.Float("uiAmount", tokenBalance.UiTokenAmount.UiAmount)
+			if tokenBalance.UiTokenAmount.Amount == "0" && tokenBalance.UiTokenAmount.UiAmountString == "0" {
+				o.Null("uiAmount")
+			} else {
+				o.Float("uiAmount", tokenBalance.UiTokenAmount.UiAmount)
+			}
 			o.Uint("decimals", uint64(tokenBalance.UiTokenAmount.Decimals))
 			o.String("amount", tokenBalance.UiTokenAmount.Amount)
 			o.String("uiAmountString", tokenBalance.UiTokenAmount.UiAmountString)
