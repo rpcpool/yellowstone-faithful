@@ -101,10 +101,7 @@ func main() {
 			iplddecoders.KindBlock,
 			func(parent *accum.ObjectWithMetadata, children []accum.ObjectWithMetadata) error {
 				numSlotsSeen.Add(1)
-				if limit > 0 && numSlotsSeen.Load() > uint64(limit) {
-					fmt.Printf("Limit of %d slots per epoch %d reached\n", limit, epoch)
-					return accum.ErrStop
-				}
+
 				// Process the objects here
 				// For example, you can print the number of objects
 				fmt.Printf("Number of objects: %d\n", len(children))
@@ -251,6 +248,11 @@ func main() {
 						}
 					}
 				}
+
+				if limit > 0 && numSlotsSeen.Load() >= uint64(limit) && len(children) > 0 {
+					fmt.Printf("Limit of %d slots per epoch %d reached\n", limit, epoch)
+					return accum.ErrStop
+				}
 				return nil
 			},
 			iplddecoders.KindEntry,
@@ -282,6 +284,27 @@ func NewHTTP(
 		rpcURL:     rpcURL,
 		httpClient: client,
 	}
+}
+
+func IntoBatchesOf[T any](
+	batchSize int,
+	items []T,
+) [][]T {
+	if batchSize <= 0 {
+		panic("batch size must be greater than 0")
+	}
+	if len(items) == 0 {
+		return nil
+	}
+	batches := make([][]T, 0, (len(items)+batchSize-1)/batchSize)
+	for i := 0; i < len(items); i += batchSize {
+		end := i + batchSize
+		if end > len(items) {
+			end = len(items)
+		}
+		batches = append(batches, items[i:end])
+	}
+	return batches
 }
 
 func (c *RawJsonClient) Do(ctx context.Context, req *http.Request) (*http.Response, error) {
