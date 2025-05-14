@@ -82,6 +82,11 @@ func newCmd_Index_gsfa() *cli.Command {
 				Name:  "index-dir",
 				Usage: "Destination directory for the output files",
 			},
+			&cli.BoolFlag{
+				Name:  "require-tx-metadata",
+				Usage: "Require transaction metadata to be present in the CAR file",
+				Value: true,
+			},
 		},
 		Action: func(c *cli.Context) error {
 			carPaths := c.StringSlice("car")
@@ -185,6 +190,11 @@ func newCmd_Index_gsfa() *cli.Command {
 			var eta time.Duration
 			etaSampleSlots := uint64(2_000)
 			var tookToDo1kSlots time.Duration
+
+			numMissingMetadata := new(atomic.Int64)
+			numMissingMetadata.Store(0)
+
+			requireTxMetadata := c.Bool("require-tx-metadata")
 			accum := accum.NewObjectAccumulator(
 				rd,
 				iplddecoders.KindBlock,
@@ -238,6 +248,15 @@ func newCmd_Index_gsfa() *cli.Command {
 							accountKeys = append(accountKeys, byteSlicesToKeySlice(meta.LoadedWritableAddresses)...)
 						}
 						hasMeta := txWithInfo.Metadata != nil // We include this to know whether isSuccess is valid.
+						if txWithInfo.Metadata == nil || !txWithInfo.Metadata.HasMeta() {
+							numMissingMetadata.Add(1)
+							if requireTxMetadata {
+								klog.Errorf("Transaction %s has no metadata", txWithInfo.Transaction.Signatures[0])
+								spew.Dump(txWithInfo.Error, txWithInfo.IsMetaParseError())
+								spew.Dump(txWithInfo)
+								panic("metadata error")
+							}
+						}
 						isSuccess := func() bool {
 							// check if the transaction is a success:
 							if txWithInfo.Metadata == nil {
