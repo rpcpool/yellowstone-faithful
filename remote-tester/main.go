@@ -95,6 +95,7 @@ func main() {
 		}
 
 		numSlotsSeen := new(atomic.Uint64)
+		startMetaAtEpoch := 10
 
 		accum := accum.NewObjectAccumulator(
 			rao,
@@ -117,14 +118,164 @@ func main() {
 				}
 				defer accum.PutTransactionWithSlotSlice(transactions)
 
-				startMetaAtEpoch := 10
+				batches := IntoBatchesOf(100, transactions)
+				fmt.Printf("Slot %d: Split %d tx into %d batches\n", block.Slot, len(transactions), len(batches))
+
+				for _, batch := range batches {
+					txIDs := make([]solana.Signature, len(batch))
+					for i, tx := range batch {
+						txIDs[i] = tx.Transaction.Signatures[0]
+					}
+					txJsons, err := client.GetTransactionBatch(
+						context.Background(),
+						format,
+						txIDs,
+					)
+					if err != nil {
+						panic(fmt.Errorf("failed to get transaction batch: %w", err))
+					}
+					for i, txJson := range txJsons {
+						txWithInfo := batch[i]
+						if len(txJson) == 0 || bytes.Equal(txJson, []byte("null")) {
+							fmt.Printf("Transaction %s not found\n", txWithInfo.Transaction.Signatures[0])
+							continue
+						}
+					}
+					for ii := range batch {
+						txWithInfo := batch[ii]
+						rpcJson := txJsons[ii]
+						sig := txWithInfo.Transaction.Signatures[0]
+						hasMeta := txWithInfo.Metadata != nil // We include this to know whether isSuccess is valid.
+						if !hasMeta && epoch > startMetaAtEpoch {
+							fmt.Printf("Transaction %s has no metadata\n", sig)
+							spew.Dump(txWithInfo.Error, txWithInfo.IsMetaParseError())
+							spew.Dump(txWithInfo)
+							panic(fmt.Errorf("transaction %s has no metadata", sig))
+						}
+
+						{
+							uiBoth := solanatxmetaparsers.NewEncodedTransactionWithStatusMeta(
+								txWithInfo.Transaction,
+								txWithInfo.Metadata,
+							)
+							gotUi, err := uiBoth.ToUi(format)
+							if err != nil {
+								panic(fmt.Errorf("tx %s : failed to convert to UI: %w", sig, err))
+							}
+							gotUi.Value("slot", txWithInfo.Slot)
+							if block.Meta.Blocktime == 0 {
+								gotUi.Value("blockTime", nil)
+							} else {
+								gotUi.Value("blockTime", block.Meta.Blocktime)
+							}
+							{
+								carJson, err := gotUi.MarshalJSON()
+								if err != nil {
+									panic(fmt.Errorf("tx %s : failed to marshal JSON: %w", sig, err))
+								}
+								if numSlotsSeen.Load()%100 == 0 {
+									fmt.Println(string(carJson))
+								}
+
+								{
+									differ := diff.New()
+									d, err := differ.Compare(rpcJson, (carJson))
+									if err != nil {
+										panic(fmt.Errorf("tx %s : failed to compare JSON: %w", sig, err))
+									}
+									fmt.Print(".")
+									if d.Modified() {
+										{
+											// Skip known differences:
+											if len(d.Deltas()) == 1 && fmt.Sprint(d.Deltas()[0]) == "blockTime" {
+												continue
+											}
+											// if second delta is *gojsondiff.Object
+											if len(d.Deltas()) > 1 {
+												if o, ok := d.Deltas()[1].(*gojsondiff.Object); ok {
+													if fmt.Sprint(o.Deltas[0]) == "innerInstructions" {
+														continue
+													}
+													if fmt.Sprint(o.Deltas[0]) == "logMessages" {
+														continue
+													}
+												}
+											}
+											if len(d.Deltas()) == 1 {
+												if o, ok := d.Deltas()[0].(*gojsondiff.Object); ok {
+													if fmt.Sprint(o.Deltas[0]) == "innerInstructions" {
+														continue
+													}
+													if fmt.Sprint(o.Deltas[0]) == "logMessages" {
+														continue
+													}
+												}
+											}
+											if len(d.Deltas()) == 1 && fmt.Sprint(d.Deltas()[0]) == "version" {
+												continue
+											}
+											for _, delta := range d.Deltas() {
+												spew.Dump(delta)
+											}
+										}
+										if txWithInfo.Metadata.IsSerde() {
+											fmt.Printf("Transaction %s has meta encoded in serde\n", sig)
+										}
+										if txWithInfo.Metadata.IsProtobuf() {
+											fmt.Printf("Transaction %s has meta encoded in protobuf\n", sig)
+										}
+										if txWithInfo.IsMetaParseError() {
+											fmt.Printf("Transaction %s has meta parse error\n", sig)
+										}
+										fmt.Println("CAR:", string(carJson))
+										fmt.Println("RPC:", string(rpcJson))
+										format := "ascii"
+										var diffString string
+										if format == "ascii" {
+											var aJson map[string]interface{}
+											json.Unmarshal(rpcJson, &aJson)
+
+											config := formatter.AsciiFormatterConfig{
+												ShowArrayIndex: true,
+												Coloring:       true,
+											}
+
+											formatter := formatter.NewAsciiFormatter(aJson, config)
+											diffString, err = formatter.Format(d)
+											if err != nil {
+												// No error can occur
+											}
+										} else if format == "delta" {
+											formatter := formatter.NewDeltaFormatter()
+											diffString, err = formatter.Format(d)
+											if err != nil {
+												// No error can occur
+											}
+										} else {
+											fmt.Printf("Unknown Foramt %s\n", format)
+											os.Exit(4)
+										}
+
+										fmt.Print(diffString)
+										if stopOnDiff {
+											fmt.Printf("Stopping on diff for transaction %s\n", sig)
+											os.Exit(1)
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+
 				// spew.Dump(parent, transactions, len(children))
 				for ii := range transactions {
+					continue
 					txWithInfo := transactions[ii]
 					sig := txWithInfo.Transaction.Signatures[0]
 					hasMeta := txWithInfo.Metadata != nil // We include this to know whether isSuccess is valid.
 					if !hasMeta && epoch > startMetaAtEpoch {
-						fmt.Printf("Transaction %d has no metadata\n", ii)
+						fmt.Printf("Transaction %s has no metadata\n", sig)
 						spew.Dump(txWithInfo.Error, txWithInfo.IsMetaParseError())
 						spew.Dump(txWithInfo)
 						panic(fmt.Errorf("transaction %s has no metadata", sig))
@@ -249,7 +400,7 @@ func main() {
 					}
 				}
 
-				if limit > 0 && numSlotsSeen.Load() >= uint64(limit) && len(children) > 0 {
+				if limit > 0 && numSlotsSeen.Load() >= uint64(limit) && len(transactions) > 0 {
 					fmt.Printf("Limit of %d slots per epoch %d reached\n", limit, epoch)
 					return accum.ErrStop
 				}
@@ -390,7 +541,7 @@ func (c *RawJsonClient) _getTransaction(
 	reqBody := map[string]interface{}{
 		"jsonrpc": "2.0",
 		"method":  "getTransaction",
-		"params":  []interface{}{txID, map[string]interface{}{"encoding": format}},
+		"params":  []interface{}{txID, map[string]interface{}{"encoding": format, "maxSupportedTransactionVersion": 0}},
 		"id":      1,
 	}
 	body, err := json.Marshal(reqBody)
@@ -456,7 +607,7 @@ func (c *RawJsonClient) _getTransaction_batch(
 		reqBody = append(reqBody, map[string]interface{}{
 			"jsonrpc": "2.0",
 			"method":  "getTransaction",
-			"params":  []interface{}{txID, map[string]interface{}{"encoding": format}},
+			"params":  []interface{}{txID, map[string]interface{}{"encoding": format, "maxSupportedTransactionVersion": 0}},
 			"id":      1,
 		})
 	}
