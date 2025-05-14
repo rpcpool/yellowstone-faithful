@@ -24,9 +24,9 @@ func SerdeTransactionStatusMetaToUi(meta *transaction_status_meta_serde_agave.Tr
 	{
 		// .err
 		// pub err: Option<TransactionError>,
-		if _, ok := meta.Status.(*transaction_status_meta_serde_agave.Result__Err); ok {
+		if statusErr, ok := meta.Status.(*transaction_status_meta_serde_agave.Result__Err); ok {
 			status, err := ErrorToUi(
-				meta.Status,
+				statusErr.Value,
 			)
 			if err != nil {
 				return nil, fmt.Errorf("failed to serialize error: %w", err)

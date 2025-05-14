@@ -26,7 +26,7 @@ func ProtobufTransactionStatusMetaToUi(meta *confirmed_block.TransactionStatusMe
 		// pub err: Option<TransactionError>,
 		storedErr := meta.Err
 		if storedErr != nil && storedErr.Err != nil && len(storedErr.Err) > 0 {
-			unmarshaledErr, err := transaction_status_meta_serde_agave.BincodeDeserializeResult(storedErr.Err)
+			unmarshaledErr, err := transaction_status_meta_serde_agave.BincodeDeserializeTransactionError(storedErr.Err)
 			if err != nil {
 				return nil, fmt.Errorf("failed to unmarshal error: %w", err)
 			}
