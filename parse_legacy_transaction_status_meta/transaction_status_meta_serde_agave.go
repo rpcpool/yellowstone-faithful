@@ -4,10 +4,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/novifinancial/serde-reflection/serde-generate/runtime/golang/bincode"
 	"github.com/novifinancial/serde-reflection/serde-generate/runtime/golang/serde"
 )
+
+var ErrSomeBytesNotRead = errors.New("Some input bytes were not read")
 
 type CompiledInstruction struct {
 	ProgramIdIndex uint8
@@ -46,22 +49,22 @@ func (obj *CompiledInstruction) BincodeSerialize() ([]byte, error) {
 func DeserializeCompiledInstruction(deserializer serde.Deserializer) (CompiledInstruction, error) {
 	var obj CompiledInstruction
 	if err := deserializer.IncreaseContainerDepth(); err != nil {
-		return obj, err
+		return obj, fmt.Errorf("Failed to increase container depth: %w", err)
 	}
 	if val, err := deserializer.DeserializeU8(); err == nil {
 		obj.ProgramIdIndex = val
 	} else {
-		return obj, err
+		return obj, fmt.Errorf("Failed to deserialize ProgramIdIndex (as u8): %w", err)
 	}
-	if val, err := deserialize_vector_u8(deserializer); err == nil {
+	if val, err := deserialize_accounts_vector_u8(deserializer); err == nil {
 		obj.Accounts = val
 	} else {
-		return obj, err
+		return obj, fmt.Errorf("Failed to deserialize Accounts (as []u8): %w", err)
 	}
-	if val, err := deserialize_vector_u8(deserializer); err == nil {
+	if val, err := deserialize_accounts_vector_u8(deserializer); err == nil {
 		obj.Data = val
 	} else {
-		return obj, err
+		return obj, fmt.Errorf("Failed to deserialize Data (as []u8): %w", err)
 	}
 	deserializer.DecreaseContainerDepth()
 	return obj, nil
@@ -75,7 +78,7 @@ func BincodeDeserializeCompiledInstruction(input []byte) (CompiledInstruction, e
 	deserializer := bincode.NewDeserializer(input)
 	obj, err := DeserializeCompiledInstruction(deserializer)
 	if err == nil && deserializer.GetBufferOffset() < uint64(len(input)) {
-		return obj, fmt.Errorf("Some input bytes were not read")
+		return obj, ErrSomeBytesNotRead
 	}
 	return obj, err
 }
@@ -113,18 +116,23 @@ func (obj *InnerInstruction) BincodeSerialize() ([]byte, error) {
 func DeserializeInnerInstruction(deserializer serde.Deserializer) (InnerInstruction, error) {
 	var obj InnerInstruction
 	if err := deserializer.IncreaseContainerDepth(); err != nil {
-		return obj, err
+		return obj, fmt.Errorf("Failed to increase container depth: %w", err)
 	}
 	if val, err := DeserializeCompiledInstruction(deserializer); err == nil {
 		obj.Instruction = val
 	} else {
-		return obj, err
+		return obj, fmt.Errorf("Failed to deserialize Instruction (as CompiledInstruction): %w", err)
 	}
-	if val, err := deserialize_option_u32(deserializer); err == nil {
-		obj.StackHeight = val
-	} else {
-		return obj, err
-	}
+	// if val, err := deserialize_option_u32(deserializer); err == nil {
+	// 	obj.StackHeight = val
+	// } else {
+	// 	// TODO: remove StackHeight because it doesn't exist in the legacy format.
+	// 	if strings.Contains(err.Error(), "invalid bool byte") {
+	// 		obj.StackHeight = nil
+	// 		return obj, nil
+	// 	}
+	// 	return obj, fmt.Errorf("Failed to deserialize StackHeight (as *uint32): %w", err)
+	// }
 	deserializer.DecreaseContainerDepth()
 	return obj, nil
 }
@@ -137,7 +145,7 @@ func BincodeDeserializeInnerInstruction(input []byte) (InnerInstruction, error) 
 	deserializer := bincode.NewDeserializer(input)
 	obj, err := DeserializeInnerInstruction(deserializer)
 	if err == nil && deserializer.GetBufferOffset() < uint64(len(input)) {
-		return obj, fmt.Errorf("Some input bytes were not read")
+		return obj, ErrSomeBytesNotRead
 	}
 	return obj, err
 }
@@ -175,17 +183,17 @@ func (obj *InnerInstructions) BincodeSerialize() ([]byte, error) {
 func DeserializeInnerInstructions(deserializer serde.Deserializer) (InnerInstructions, error) {
 	var obj InnerInstructions
 	if err := deserializer.IncreaseContainerDepth(); err != nil {
-		return obj, err
+		return obj, fmt.Errorf("Failed to increase container depth: %w", err)
 	}
 	if val, err := deserializer.DeserializeU8(); err == nil {
 		obj.Index = val
 	} else {
-		return obj, err
+		return obj, fmt.Errorf("Failed to deserialize Index (as u8): %w", err)
 	}
 	if val, err := deserialize_vector_InnerInstruction(deserializer); err == nil {
 		obj.Instructions = val
 	} else {
-		return obj, err
+		return obj, fmt.Errorf("Failed to deserialize Instructions (as []InnerInstruction): %w", err)
 	}
 	deserializer.DecreaseContainerDepth()
 	return obj, nil
@@ -199,7 +207,7 @@ func BincodeDeserializeInnerInstructions(input []byte) (InnerInstructions, error
 	deserializer := bincode.NewDeserializer(input)
 	obj, err := DeserializeInnerInstructions(deserializer)
 	if err == nil && deserializer.GetBufferOffset() < uint64(len(input)) {
-		return obj, fmt.Errorf("Some input bytes were not read")
+		return obj, ErrSomeBytesNotRead
 	}
 	return obj, err
 }
@@ -610,7 +618,7 @@ func BincodeDeserializeInstructionError(input []byte) (InstructionError, error) 
 	deserializer := bincode.NewDeserializer(input)
 	obj, err := DeserializeInstructionError(deserializer)
 	if err == nil && deserializer.GetBufferOffset() < uint64(len(input)) {
-		return obj, fmt.Errorf("Some input bytes were not read")
+		return obj, ErrSomeBytesNotRead
 	}
 	return obj, err
 }
@@ -2470,7 +2478,7 @@ func BincodeDeserializeLoadedAddresses(input []byte) (LoadedAddresses, error) {
 	deserializer := bincode.NewDeserializer(input)
 	obj, err := DeserializeLoadedAddresses(deserializer)
 	if err == nil && deserializer.GetBufferOffset() < uint64(len(input)) {
-		return obj, fmt.Errorf("Some input bytes were not read")
+		return obj, ErrSomeBytesNotRead
 	}
 	return obj, err
 }
@@ -2521,7 +2529,7 @@ func BincodeDeserializePubkey(input []byte) (Pubkey, error) {
 	deserializer := bincode.NewDeserializer(input)
 	obj, err := DeserializePubkey(deserializer)
 	if err == nil && deserializer.GetBufferOffset() < uint64(len(input)) {
-		return obj, fmt.Errorf("Some input bytes were not read")
+		return obj, ErrSomeBytesNotRead
 	}
 	return obj, err
 }
@@ -2566,7 +2574,7 @@ func BincodeDeserializeResult(input []byte) (Result, error) {
 	deserializer := bincode.NewDeserializer(input)
 	obj, err := DeserializeResult(deserializer)
 	if err == nil && deserializer.GetBufferOffset() < uint64(len(input)) {
-		return obj, fmt.Errorf("Some input bytes were not read")
+		return obj, ErrSomeBytesNotRead
 	}
 	return obj, err
 }
@@ -2739,7 +2747,7 @@ func BincodeDeserializeReward(input []byte) (Reward, error) {
 	deserializer := bincode.NewDeserializer(input)
 	obj, err := DeserializeReward(deserializer)
 	if err == nil && deserializer.GetBufferOffset() < uint64(len(input)) {
-		return obj, fmt.Errorf("Some input bytes were not read")
+		return obj, ErrSomeBytesNotRead
 	}
 	return obj, err
 }
@@ -2798,7 +2806,7 @@ func BincodeDeserializeRewardType(input []byte) (RewardType, error) {
 	deserializer := bincode.NewDeserializer(input)
 	obj, err := DeserializeRewardType(deserializer)
 	if err == nil && deserializer.GetBufferOffset() < uint64(len(input)) {
-		return obj, fmt.Errorf("Some input bytes were not read")
+		return obj, ErrSomeBytesNotRead
 	}
 	return obj, err
 }
@@ -3236,7 +3244,7 @@ func BincodeDeserializeTransactionError(input []byte) (TransactionError, error) 
 	deserializer := bincode.NewDeserializer(input)
 	obj, err := DeserializeTransactionError(deserializer)
 	if err == nil && deserializer.GetBufferOffset() < uint64(len(input)) {
-		return obj, fmt.Errorf("Some input bytes were not read")
+		return obj, ErrSomeBytesNotRead
 	}
 	return obj, err
 }
@@ -4632,7 +4640,7 @@ func BincodeDeserializeTransactionReturnData(input []byte) (TransactionReturnDat
 	deserializer := bincode.NewDeserializer(input)
 	obj, err := DeserializeTransactionReturnData(deserializer)
 	if err == nil && deserializer.GetBufferOffset() < uint64(len(input)) {
-		return obj, fmt.Errorf("Some input bytes were not read")
+		return obj, ErrSomeBytesNotRead
 	}
 	return obj, err
 }
@@ -4710,94 +4718,103 @@ func (obj *TransactionStatusMeta) BincodeSerialize() ([]byte, error) {
 func DeserializeTransactionStatusMeta(deserializer serde.Deserializer) (TransactionStatusMeta, error) {
 	var obj TransactionStatusMeta
 	if err := deserializer.IncreaseContainerDepth(); err != nil {
-		return obj, err
+		return obj, fmt.Errorf("failed to increase container depth at TransactionStatusMeta: %w", err)
 	}
 	if val, err := DeserializeResult(deserializer); err == nil {
 		obj.Status = val
 	} else {
-		return obj, err
+		return obj, fmt.Errorf("Failed to deserialize Status: %w", err)
 	}
 	if val, err := deserializer.DeserializeU64(); err == nil {
 		obj.Fee = val
 	} else {
-		return obj, err
+		return obj, fmt.Errorf("Failed to deserialize Fee: %w", err)
 	}
 	if val, err := deserialize_vector_u64(deserializer); err == nil {
 		obj.PreBalances = val
 	} else {
-		return obj, err
+		return obj, fmt.Errorf("Failed to deserialize PreBalances: %w", err)
 	}
 	if val, err := deserialize_vector_u64(deserializer); err == nil {
 		obj.PostBalances = val
 	} else {
 		if errors.Is(err, io.EOF) {
+			deserializer.DecreaseContainerDepth()
 			return obj, nil
 		}
-		return obj, err
+		return obj, fmt.Errorf("Failed to deserialize PostBalances: %w", err)
 	}
 	if val, err := deserialize_option_vector_InnerInstructions(deserializer); err == nil {
 		obj.InnerInstructions = val
 	} else {
 		if errors.Is(err, io.EOF) {
+			deserializer.DecreaseContainerDepth()
 			return obj, nil
 		}
-		return obj, err
+		return obj, fmt.Errorf("Failed to deserialize InnerInstructions: %w", err)
 	}
 	if val, err := deserialize_option_vector_str(deserializer); err == nil {
 		obj.LogMessages = val
 	} else {
 		if errors.Is(err, io.EOF) {
+			deserializer.DecreaseContainerDepth()
 			return obj, nil
 		}
-		return obj, fmt.Errorf("Failed to deserialize LogMessages: %v", err)
+		return obj, fmt.Errorf("Failed to deserialize LogMessages: %w", err)
 	}
 	if val, err := deserialize_option_vector_TransactionTokenBalance(deserializer); err == nil {
 		obj.PreTokenBalances = val
 	} else {
-		if errors.Is(err, io.EOF) {
+		if errors.Is(err, io.EOF) || strings.Contains(err.Error(), "length is too large") {
+			deserializer.DecreaseContainerDepth()
 			return obj, nil
 		}
-		return obj, fmt.Errorf("Failed to deserialize PreTokenBalances: %v", err)
+		return obj, fmt.Errorf("Failed to deserialize PreTokenBalances: %w", err)
 	}
 	if val, err := deserialize_option_vector_TransactionTokenBalance(deserializer); err == nil {
 		obj.PostTokenBalances = val
 	} else {
 		if errors.Is(err, io.EOF) {
+			deserializer.DecreaseContainerDepth()
 			return obj, nil
 		}
-		return obj, fmt.Errorf("Failed to deserialize PostTokenBalances: %v", err)
+		return obj, fmt.Errorf("Failed to deserialize PostTokenBalances: %w", err)
 	}
 	if val, err := deserialize_option_vector_Reward(deserializer); err == nil {
 		obj.Rewards = val
 	} else {
 		if errors.Is(err, io.EOF) {
+			deserializer.DecreaseContainerDepth()
 			return obj, nil
 		}
-		return obj, fmt.Errorf("Failed to deserialize Rewards: %v", err)
+		return obj, fmt.Errorf("Failed to deserialize Rewards: %w", err)
 	}
 	if val, err := DeserializeLoadedAddresses(deserializer); err == nil {
 		obj.LoadedAddresses = val
 	} else {
 		if errors.Is(err, io.EOF) {
+			deserializer.DecreaseContainerDepth()
 			return obj, nil
 		}
-		return obj, fmt.Errorf("Failed to deserialize LoadedAddresses: %v", err)
+		return obj, fmt.Errorf("Failed to deserialize LoadedAddresses: %w", err)
 	}
 	if val, err := deserialize_option_TransactionReturnData(deserializer); err == nil {
 		obj.ReturnData = val
 	} else {
 		if errors.Is(err, io.EOF) {
+			deserializer.DecreaseContainerDepth()
 			return obj, nil
 		}
-		return obj, fmt.Errorf("Failed to deserialize ReturnData: %v", err)
+		return obj, fmt.Errorf("Failed to deserialize ReturnData: %w", err)
 	}
 	if val, err := deserialize_option_u64(deserializer); err == nil {
 		obj.ComputeUnitsConsumed = val
 	} else {
 		if errors.Is(err, io.EOF) {
+			deserializer.DecreaseContainerDepth()
 			return obj, nil
 		}
-		return obj, fmt.Errorf("Failed to deserialize ComputeUnitsConsumed: %v", err)
+		return obj, fmt.Errorf("Failed to deserialize ComputeUnitsConsumed: %w", err)
 	}
 	deserializer.DecreaseContainerDepth()
 	return obj, nil
@@ -4811,7 +4828,7 @@ func BincodeDeserializeTransactionStatusMeta(input []byte) (TransactionStatusMet
 	deserializer := bincode.NewDeserializer(input)
 	obj, err := DeserializeTransactionStatusMeta(deserializer)
 	if err == nil && deserializer.GetBufferOffset() < uint64(len(input)) {
-		return obj, fmt.Errorf("Some input bytes were not read")
+		return obj, ErrSomeBytesNotRead
 	}
 	return obj, err
 }
@@ -4900,7 +4917,7 @@ func BincodeDeserializeTransactionTokenBalance(input []byte) (TransactionTokenBa
 	deserializer := bincode.NewDeserializer(input)
 	obj, err := DeserializeTransactionTokenBalance(deserializer)
 	if err == nil && deserializer.GetBufferOffset() < uint64(len(input)) {
-		return obj, fmt.Errorf("Some input bytes were not read")
+		return obj, ErrSomeBytesNotRead
 	}
 	return obj, err
 }
@@ -4980,7 +4997,7 @@ func BincodeDeserializeUiTokenAmount(input []byte) (UiTokenAmount, error) {
 	deserializer := bincode.NewDeserializer(input)
 	obj, err := DeserializeUiTokenAmount(deserializer)
 	if err == nil && deserializer.GetBufferOffset() < uint64(len(input)) {
-		return obj, fmt.Errorf("Some input bytes were not read")
+		return obj, ErrSomeBytesNotRead
 	}
 	return obj, err
 }
@@ -5304,7 +5321,7 @@ func deserialize_option_vector_TransactionTokenBalance(deserializer serde.Deseri
 		if val, err := deserialize_vector_TransactionTokenBalance(deserializer); err == nil {
 			*value = val
 		} else {
-			return nil, err
+			return nil, fmt.Errorf("failed to deserialize TransactionTokenBalance: %w", err)
 		}
 		return value, nil
 	} else {
@@ -5368,7 +5385,7 @@ func deserialize_vector_InnerInstruction(deserializer serde.Deserializer) ([]Inn
 		if val, err := DeserializeInnerInstruction(deserializer); err == nil {
 			obj[i] = val
 		} else {
-			return nil, err
+			return nil, fmt.Errorf("Failed to deserialize InnerInstruction[%d]: %w", i, err)
 		}
 	}
 	return obj, nil
@@ -5396,7 +5413,7 @@ func deserialize_vector_InnerInstructions(deserializer serde.Deserializer) ([]In
 		if val, err := DeserializeInnerInstructions(deserializer); err == nil {
 			obj[i] = val
 		} else {
-			return nil, err
+			return nil, fmt.Errorf("Failed to deserialize InnerInstructions[%d]: %w", i, err)
 		}
 	}
 	return obj, nil
@@ -5473,14 +5490,14 @@ func serialize_vector_TransactionTokenBalance(value []TransactionTokenBalance, s
 func deserialize_vector_TransactionTokenBalance(deserializer serde.Deserializer) ([]TransactionTokenBalance, error) {
 	length, err := deserializer.DeserializeLen()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to deserialize length: %w", err)
 	}
 	obj := make([]TransactionTokenBalance, length)
 	for i := range obj {
 		if val, err := DeserializeTransactionTokenBalance(deserializer); err == nil {
 			obj[i] = val
 		} else {
-			return nil, err
+			return nil, fmt.Errorf("Failed to deserialize TransactionTokenBalance[%d]: %w", i, err)
 		}
 	}
 	return obj, nil
@@ -5557,7 +5574,23 @@ func serialize_vector_u8(value []uint8, serializer serde.Serializer) error {
 func deserialize_vector_u8(deserializer serde.Deserializer) ([]uint8, error) {
 	length, err := deserializer.DeserializeLen()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Failed to deserialize length: %w", err)
+	}
+	obj := make([]uint8, length)
+	for i := range obj {
+		if val, err := deserializer.DeserializeU8(); err == nil {
+			obj[i] = val
+		} else {
+			return nil, err
+		}
+	}
+	return obj, nil
+}
+
+func deserialize_accounts_vector_u8(deserializer serde.Deserializer) ([]uint8, error) {
+	length, err := deserializer.DeserializeU8()
+	if err != nil {
+		return nil, fmt.Errorf("Failed to deserialize length: %w", err)
 	}
 	obj := make([]uint8, length)
 	for i := range obj {
