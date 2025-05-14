@@ -153,6 +153,7 @@ func SerdeTransactionStatusMetaToUi(meta *transaction_status_meta_serde_agave.Tr
 									// 	uiCompiledInstruction.Uint("stackHeight", uint64(*instruction.Instruction.StackHeight))
 									// }
 									uiCompiledInstruction.Null("stackHeight")
+									arr.AddObject(uiCompiledInstruction)
 								}
 							})
 						innerIxArray.AddObject(uiInnerInstruction)
@@ -249,7 +250,7 @@ func SerdeTransactionStatusMetaToUi(meta *transaction_status_meta_serde_agave.Tr
 			func(o *jsonbuilder.OrderedJSONObject) {
 				o.ArrayFunc(
 					"rewards",
-					func(arr *jsonbuilder.ArrayBuilder) {
+					func(arrRewards *jsonbuilder.ArrayBuilder) {
 						// pub type Rewards = Vec<Reward>;
 						// #[serde(rename_all = "camelCase")]
 						// pub struct Reward {
@@ -286,7 +287,7 @@ func SerdeTransactionStatusMetaToUi(meta *transaction_status_meta_serde_agave.Tr
 									uiReward.Null("commission")
 								}
 							}
-							arr.AddObject(uiReward)
+							arrRewards.AddObject(uiReward)
 						}
 					})
 			})

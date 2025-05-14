@@ -13,21 +13,43 @@ func TransactionToUi(
 	obj := jsonbuilder.NewObject()
 	{
 		// .message
-		obj.ObjectFunc("message", func(obj *jsonbuilder.OrderedJSONObject) {
+		obj.ObjectFunc("message", func(objMessage *jsonbuilder.OrderedJSONObject) {
 			//.accountKeys
-			obj.ArrayFunc("accountKeys", func(arr *jsonbuilder.ArrayBuilder) {
+			objMessage.ArrayFunc("accountKeys", func(arr *jsonbuilder.ArrayBuilder) {
 				for _, key := range tx.Message.AccountKeys {
 					arr.AddString(key.String())
 				}
 			})
+			// .addressTableLookups
+			if tx.Message.IsVersioned() {
+				objMessage.ArrayFunc("addressTableLookups", func(arr *jsonbuilder.ArrayBuilder) {
+					for _, lookup := range tx.Message.AddressTableLookups {
+						objLookup := jsonbuilder.NewObject()
+						{
+							objLookup.String("accountKey", lookup.AccountKey.String())
+							objLookup.ArrayFunc("writableIndexes", func(arr *jsonbuilder.ArrayBuilder) {
+								for _, index := range lookup.WritableIndexes {
+									arr.AddUint(uint64(index))
+								}
+							})
+							objLookup.ArrayFunc("readonlyIndexes", func(arr *jsonbuilder.ArrayBuilder) {
+								for _, index := range lookup.ReadonlyIndexes {
+									arr.AddUint(uint64(index))
+								}
+							})
+						}
+						arr.AddObject(objLookup)
+					}
+				})
+			}
 			// .header
-			obj.ObjectFunc("header", func(obj *jsonbuilder.OrderedJSONObject) {
+			objMessage.ObjectFunc("header", func(obj *jsonbuilder.OrderedJSONObject) {
 				obj.Uint("numRequiredSignatures", uint64(tx.Message.Header.NumRequiredSignatures))
 				obj.Uint("numReadonlySignedAccounts", uint64(tx.Message.Header.NumReadonlySignedAccounts))
 				obj.Uint("numReadonlyUnsignedAccounts", uint64(tx.Message.Header.NumReadonlyUnsignedAccounts))
 			})
 			// .instructions
-			obj.ArrayFunc("instructions", func(arr *jsonbuilder.ArrayBuilder) {
+			objMessage.ArrayFunc("instructions", func(arr *jsonbuilder.ArrayBuilder) {
 				for _, instruction := range tx.Message.Instructions {
 					ins := jsonbuilder.NewObject()
 					{
@@ -44,7 +66,7 @@ func TransactionToUi(
 				}
 			})
 			// .recentBlockhash
-			obj.String("recentBlockhash", tx.Message.RecentBlockhash.String())
+			objMessage.String("recentBlockhash", tx.Message.RecentBlockhash.String())
 		})
 		// .signatures
 		obj.ArrayFunc("signatures", func(arr *jsonbuilder.ArrayBuilder) {

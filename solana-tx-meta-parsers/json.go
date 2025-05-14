@@ -201,14 +201,14 @@ func (final *EncodedTransactionWithStatusMeta) ToUi(encoding solana.EncodingType
 		}
 	}
 
-	// {
-	// 	version := final.Transaction.Message.GetVersion()
-	// 	if version == solana.MessageVersionLegacy {
-	// 		resp.String("version", "legacy")
-	// 	} else {
-	// 		resp.Uint8("version", 0)
-	// 	}
-	// }
+	{
+		version := final.Transaction.Message.GetVersion()
+		if version == solana.MessageVersionLegacy {
+			resp.String("version", "legacy")
+		} else {
+			resp.Uint8("version", 0)
+		}
+	}
 	return resp, nil
 }
 
