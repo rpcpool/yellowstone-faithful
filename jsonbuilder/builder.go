@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+
+	jsoniter "github.com/json-iterator/go"
 )
 
 // OrderedJSONObject represents a JSON object that maintains field insertion order
@@ -26,6 +28,8 @@ func NewObject() *OrderedJSONObject {
 	return &OrderedJSONObject{}
 }
 
+var jsonCustom = jsoniter.ConfigCompatibleWithStandardLibrary
+
 // MarshalJSON implements custom JSON marshaling with order preservation
 func (o *OrderedJSONObject) MarshalJSON() ([]byte, error) {
 	var buf bytes.Buffer
@@ -36,14 +40,14 @@ func (o *OrderedJSONObject) MarshalJSON() ([]byte, error) {
 			buf.WriteByte(',')
 		}
 
-		key, err := json.Marshal(f.key)
+		key, err := jsonCustom.Marshal(f.key)
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal key %q: %w", f.key, err)
 		}
 		buf.Write(key)
 		buf.WriteByte(':')
 
-		val, err := json.Marshal(f.value)
+		val, err := jsonCustom.Marshal(f.value)
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal value for key %q: %w", f.key, err)
 		}
@@ -56,7 +60,7 @@ func (o *OrderedJSONObject) MarshalJSON() ([]byte, error) {
 
 // MarshalJSON implements JSON marshaling for arrays
 func (a *ArrayBuilder) MarshalJSON() ([]byte, error) {
-	return json.Marshal(a.elements)
+	return jsonCustom.Marshal(a.elements)
 }
 
 // Value adds a generic JSON value to the object
