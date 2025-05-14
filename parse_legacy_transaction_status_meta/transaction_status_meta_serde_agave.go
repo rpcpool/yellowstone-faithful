@@ -4765,7 +4765,7 @@ func DeserializeTransactionStatusMeta(deserializer serde.Deserializer) (Transact
 	if val, err := deserialize_option_vector_TransactionTokenBalance(deserializer); err == nil {
 		obj.PreTokenBalances = val
 	} else {
-		if errors.Is(err, io.EOF) || strings.Contains(err.Error(), "length is too large") {
+		if errors.Is(err, io.EOF) || strings.Contains(err.Error(), "invalid bool byte") || strings.Contains(err.Error(), "length is too large") {
 			deserializer.DecreaseContainerDepth()
 			return obj, nil
 		}
@@ -4774,7 +4774,7 @@ func DeserializeTransactionStatusMeta(deserializer serde.Deserializer) (Transact
 	if val, err := deserialize_option_vector_TransactionTokenBalance(deserializer); err == nil {
 		obj.PostTokenBalances = val
 	} else {
-		if errors.Is(err, io.EOF) {
+		if errors.Is(err, io.EOF) || strings.Contains(err.Error(), "invalid bool byte") || strings.Contains(err.Error(), "length is too large") {
 			deserializer.DecreaseContainerDepth()
 			return obj, nil
 		}
@@ -5321,7 +5321,7 @@ func deserialize_option_vector_TransactionTokenBalance(deserializer serde.Deseri
 		if val, err := deserialize_vector_TransactionTokenBalance(deserializer); err == nil {
 			*value = val
 		} else {
-			return nil, fmt.Errorf("failed to deserialize TransactionTokenBalance: %w", err)
+			return nil, fmt.Errorf("failed to deserialize option TransactionTokenBalance: %w", err)
 		}
 		return value, nil
 	} else {
