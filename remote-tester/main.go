@@ -49,7 +49,9 @@ func main() {
 
 	client := NewHTTP(
 		rpcURL,
-		&http.Client{},
+		&http.Client{
+			Timeout: 10 * time.Second,
+		},
 	)
 
 	format := solana.EncodingJSON
@@ -122,6 +124,7 @@ func main() {
 				fmt.Printf("Slot %d: Split %d tx into %d batches\n", block.Slot, len(transactions), len(batches))
 
 				for _, batch := range batches {
+					fmt.Print("*")
 					txIDs := make([]solana.Signature, len(batch))
 					for i, tx := range batch {
 						txIDs[i] = tx.Transaction.Signatures[0]
@@ -134,6 +137,7 @@ func main() {
 					if err != nil {
 						panic(fmt.Errorf("failed to get transaction batch: %w", err))
 					}
+					fmt.Print("/")
 					for i, txJson := range txJsons {
 						txWithInfo := batch[i]
 						if len(txJson) == 0 || bytes.Equal(txJson, []byte("null")) {
@@ -534,6 +538,7 @@ func retry[T any](
 		}
 		time.Sleep(sleep)
 		sleep *= 2
+		fmt.Printf("Retrying... %d/%d\n", i+1, retries)
 	}
 	return result, err
 }
