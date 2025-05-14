@@ -63,7 +63,7 @@ func (final *EncodedTransactionWithStatusMeta) ToUi(encoding solana.EncodingType
 			metaSerde := final.Meta.GetSerde()
 			rawJsonMeta, err := SerdeTransactionStatusMetaToUi(metaSerde)
 			if err != nil {
-				return nil, fmt.Errorf("failed to serialize transaction status meta: %w", err)
+				return nil, fmt.Errorf("failed to serialize (serde) transaction status meta: %w", err)
 			}
 			resp.Raw("meta", rawJsonMeta)
 		}
@@ -71,7 +71,7 @@ func (final *EncodedTransactionWithStatusMeta) ToUi(encoding solana.EncodingType
 			metaProtobuf := final.Meta.GetProtobuf()
 			rawJsonMeta, err := ProtobufTransactionStatusMetaToUi(metaProtobuf)
 			if err != nil {
-				return nil, fmt.Errorf("failed to serialize transaction status meta: %w", err)
+				return nil, fmt.Errorf("failed to serialize (protobuf) transaction status meta: %w", err)
 			}
 			resp.Raw("meta", rawJsonMeta)
 		}
