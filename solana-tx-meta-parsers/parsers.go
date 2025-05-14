@@ -16,14 +16,14 @@ type TransactionStatusMetaContainer struct {
 	vSerde    *serde_agave.TransactionStatusMeta
 }
 
-// Ok returns true if the container holds a value.
-func (c *TransactionStatusMetaContainer) Ok() bool {
+// HasMeta returns true if the container holds a value.
+func (c *TransactionStatusMetaContainer) HasMeta() bool {
 	return c.vProtobuf != nil || c.vSerde != nil
 }
 
 // IsEmpty returns true if the container holds no value.
 func (c *TransactionStatusMetaContainer) IsEmpty() bool {
-	return !c.Ok()
+	return !c.HasMeta()
 }
 
 // IsProtobuf returns true if the contained value is a protobuf.
@@ -52,7 +52,11 @@ func (c *TransactionStatusMetaContainer) IsErr() bool {
 		return c.vProtobuf.Err != nil
 	}
 	if c.vSerde != nil {
-		return c.vSerde.Status != nil && c.vSerde.Status.(*serde_agave.Result__Err) != nil
+		if c.vSerde.Status == nil {
+			return false
+		}
+		_, ok := c.vSerde.Status.(*serde_agave.Result__Err)
+		return ok
 	}
 	return false
 }
@@ -120,6 +124,9 @@ func ParseTransactionStatusMeta(buf []byte) (*confirmed_block.TransactionStatusM
 func ParseTransactionStatusMeta_Serde(buf []byte) (*serde_agave.TransactionStatusMeta, error) {
 	legacyStatus, err := serde_agave.BincodeDeserializeTransactionStatusMeta(buf)
 	if err != nil {
+		if errors.Is(err, serde_agave.ErrSomeBytesNotRead) {
+			return &legacyStatus, nil
+		}
 		return nil, err
 	}
 	return &legacyStatus, nil
