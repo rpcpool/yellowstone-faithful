@@ -139,20 +139,25 @@ func ProtobufTransactionStatusMetaToUi(meta *confirmed_block.TransactionStatusMe
 					uiInnerInstruction.Uint("index", uint64(innerInstruction.Index))
 					uiInnerInstruction.ArrayFunc(
 						"instructions",
-						func(arr *jsonbuilder.ArrayBuilder) {
+						func(ixArr *jsonbuilder.ArrayBuilder) {
 							for _, instruction := range innerInstruction.Instructions {
 								uiCompiledInstruction := jsonbuilder.NewObject()
-								uiCompiledInstruction.Uint("programIdIndex", uint64(instruction.ProgramIdIndex))
-								uiCompiledInstruction.ArrayFunc("accounts", func(arr *jsonbuilder.ArrayBuilder) {
-									for _, account := range instruction.Accounts {
-										arr.AddUint8(account) // TODO: check if this marshals to array of numbers
+								{
+									uiCompiledInstruction.Uint("programIdIndex", uint64(instruction.ProgramIdIndex))
+									uiCompiledInstruction.ArrayFunc("accounts", func(arr *jsonbuilder.ArrayBuilder) {
+										for _, account := range instruction.Accounts {
+											arr.AddUint8(account) // TODO: check if this marshals to array of numbers
+										}
+									})
+									uiCompiledInstruction.String("data", base58.Encode(instruction.Data[:]))
+									// NOTE: stackHeight is only present in protobuf encoding.
+									if instruction.StackHeight != nil {
+										uiCompiledInstruction.Uint("stackHeight", uint64(*instruction.StackHeight))
+									} else {
+										uiCompiledInstruction.Null("stackHeight")
 									}
-								})
-								uiCompiledInstruction.String("data", base58.Encode(instruction.Data[:]))
-								// NOTE: stackHeight is only present in protobuf encoding.
-								if instruction.StackHeight != nil {
-									uiCompiledInstruction.Uint("stackHeight", uint64(*instruction.StackHeight))
 								}
+								ixArr.AddObject(uiCompiledInstruction)
 							}
 						})
 					arr.AddObject(uiInnerInstruction)
@@ -369,6 +374,12 @@ func ProtobufTransactionStatusMetaToUi(meta *confirmed_block.TransactionStatusMe
 		// )]
 		// pub cost_units: OptionSerializer<u64>,
 		// NOTE: this field is present only in protobuf encoding.
+		resp.ApplyIf(
+			meta.CostUnits != nil,
+			func(o *jsonbuilder.OrderedJSONObject) {
+				o.Uint("costUnits", *meta.CostUnits)
+			},
+		)
 	}
 	return resp.MarshalJSON()
 }
