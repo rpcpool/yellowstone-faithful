@@ -361,7 +361,7 @@ func ProtobufTransactionStatusMetaToUi(meta *confirmed_block.TransactionStatusMe
 		// )]
 		// pub compute_units_consumed: OptionSerializer<u64>,
 		resp.ApplyIf(
-			meta.ComputeUnitsConsumed != nil,
+			meta.ComputeUnitsConsumed != nil && *meta.ComputeUnitsConsumed > 0,
 			func(o *jsonbuilder.OrderedJSONObject) {
 				o.Uint("computeUnitsConsumed", *meta.ComputeUnitsConsumed)
 			})

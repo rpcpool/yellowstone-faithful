@@ -359,7 +359,7 @@ func SerdeTransactionStatusMetaToUi(meta *transaction_status_meta_serde_agave.Tr
 		// )]
 		// pub compute_units_consumed: OptionSerializer<u64>,
 		resp.ApplyIf(
-			meta.ComputeUnitsConsumed != nil,
+			meta.ComputeUnitsConsumed != nil && *meta.ComputeUnitsConsumed > 0,
 			func(o *jsonbuilder.OrderedJSONObject) {
 				o.Uint("computeUnitsConsumed", *meta.ComputeUnitsConsumed)
 			})
