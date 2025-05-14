@@ -198,7 +198,11 @@ func (multi *MultiEpoch) handleGetTransaction(ctx context.Context, conn *request
 			if err != nil {
 				return nil, status.Errorf(codes.Internal, "Failed to get block: %v", err)
 			}
-			response.Value("blockTime", blocktime)
+			if blocktime == 0 {
+				response.Value("blockTime", nil)
+			} else {
+				response.Value("blockTime", blocktime)
+			}
 		} else {
 			return &jsonrpc2.Error{
 				Code:    jsonrpc2.CodeInternalError,
