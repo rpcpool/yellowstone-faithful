@@ -55,6 +55,23 @@ func NewMultiReader(files ...string) (*MultiReader, error) {
 	}, nil
 }
 
+func NewMultiReaderFromContainers(readers []*Container) (*MultiReader, error) {
+	if len(readers) == 0 {
+		return nil, fmt.Errorf("no files provided")
+	}
+	// check that each file exists
+	for ri, r := range readers {
+		if r == nil {
+			return nil, fmt.Errorf("reader %d is nil", ri)
+		}
+	}
+	return &MultiReader{
+		globalOffset: readers[0].HeaderSize,
+		currentIndex: 0,
+		readers:      readers,
+	}, nil
+}
+
 type Container struct {
 	Path       string
 	Size       uint64 // is the whole file size
