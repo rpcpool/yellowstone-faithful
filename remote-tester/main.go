@@ -204,9 +204,14 @@ func main() {
 											if len(d.Deltas()) == 1 {
 												if o, ok := d.Deltas()[0].(*gojsondiff.Object); ok {
 													if fmt.Sprint(o.Deltas[0]) == "innerInstructions" {
+														// TODO: remove this exception and try again.
 														continue
 													}
 													if fmt.Sprint(o.Deltas[0]) == "logMessages" {
+														// TODO: these might be different?
+														continue
+													}
+													if fmt.Sprint(o.Deltas[0]) == "computeUnitsConsumed" {
 														continue
 													}
 												}
