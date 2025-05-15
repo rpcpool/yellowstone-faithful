@@ -29,7 +29,7 @@ FROM ubuntu:22.04 AS runner
 WORKDIR /app
 
 COPY --from=build /app/bin/faithful-cli_jsonParsed /app/bin/faithful-cli
-COPY --from=build /app/tools/epoch-*.yml /app/tools/
+COPY --from=build /app/epoch-*.yml /app/tools/
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates && \
