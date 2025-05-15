@@ -24,7 +24,7 @@ RUN for epoch in $(seq 0 786); do \
       bash tools/generate-config-http.sh $epoch;\
     done
 
-FROM ubuntu:22.04-slim as runner
+FROM ubuntu:22.04-minimal AS runner
 
 WORKDIR /app
 
