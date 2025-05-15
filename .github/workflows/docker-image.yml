@@ -1,0 +1,30 @@
+name: Build and Push Docker image to GHCR
+
+on:
+  push:
+    tags:
+      - 'v*'      # 可改为 main 等分支名实现每次push也自动发布
+
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/faithful-cli:${{ github.ref_name }}
+
