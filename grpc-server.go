@@ -27,7 +27,9 @@ import (
 	old_faithful_grpc "github.com/rpcpool/yellowstone-faithful/old-faithful-proto/old-faithful-grpc"
 	"github.com/rpcpool/yellowstone-faithful/slottools"
 	solanatxmetaparsers "github.com/rpcpool/yellowstone-faithful/solana-tx-meta-parsers"
+	"github.com/rpcpool/yellowstone-faithful/telemetry"
 	"github.com/rpcpool/yellowstone-faithful/tooling"
+	"go.opentelemetry.io/otel/attribute"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -40,14 +42,27 @@ const maxSlotsToStream uint64 = 100
 
 // ListeAndServe starts listening on the configured address and serves the RPC API.
 func (me *MultiEpoch) ListenAndServeGRPC(ctx context.Context, listenOn string) error {
+	// Initialize telemetry
+	cleanup, err := telemetry.InitTelemetry(ctx, "yellowstone-faithful")
+	if err != nil {
+		klog.Warningf("Failed to initialize telemetry: %v", err)
+	} else {
+		defer cleanup()
+	}
+
 	lis, err := net.Listen("tcp", listenOn)
 	if err != nil {
 		return fmt.Errorf("failed to create listener for gRPC server: %w", err)
 	}
 
-	grpcServer := grpc.NewServer()
+	// Create gRPC server with telemetry interceptors
+	grpcServer := grpc.NewServer(
+		grpc.UnaryInterceptor(telemetry.TracingUnaryInterceptor),
+		grpc.StreamInterceptor(telemetry.TracingStreamInterceptor),
+	)
 	old_faithful_grpc.RegisterOldFaithfulServer(grpcServer, me)
 
+	klog.Infof("gRPC server starting with telemetry enabled on %s", listenOn)
 	if err := grpcServer.Serve(lis); err != nil {
 		return fmt.Errorf("failed to serve gRPC server: %w", err)
 	}
@@ -70,16 +85,33 @@ func (me *MultiEpoch) GetVersion(context.Context, *old_faithful_grpc.VersionRequ
 }
 
 func (multi *MultiEpoch) GetBlock(ctx context.Context, params *old_faithful_grpc.BlockRequest) (*old_faithful_grpc.BlockResponse, error) {
+	// Create a span for this operation
+	ctx, span := telemetry.StartSpan(ctx, "GetBlock")
+	defer span.End()
+	span.SetAttributes(attribute.Int64("slot", int64(params.Slot)))
+
 	// find the epoch that contains the requested slot
 	slot := params.Slot
 	epochNumber := slottools.CalcEpochForSlot(slot)
+	span.SetAttributes(attribute.Int64("epoch_number", int64(epochNumber)))
+	
+	// Get epoch handler
+	epochCtx, epochSpan := telemetry.StartSpan(ctx, "GetEpoch")
 	epochHandler, err := multi.GetEpoch(epochNumber)
+	epochSpan.End()
+	
 	if err != nil {
+		telemetry.RecordError(span, err, "Epoch not available")
 		return nil, status.Errorf(codes.NotFound, "Epoch %d is not available", epochNumber)
 	}
 
-	block, _, err := epochHandler.GetBlock(WithSubrapghPrefetch(ctx, true), slot)
+	// Get block from epoch handler
+	blockCtx, blockSpan := telemetry.StartSpan(ctx, "GetBlockFromEpoch")
+	block, _, err := epochHandler.GetBlock(WithSubrapghPrefetch(blockCtx, true), slot)
+	blockSpan.End()
+	
 	if err != nil {
+		telemetry.RecordError(span, err, "Failed to get block")
 		if errors.Is(err, compactindexsized.ErrNotFound) {
 			return nil, status.Errorf(codes.NotFound, "Slot %d was skipped, or missing in long-term storage", slot)
 		} else {
@@ -87,10 +119,17 @@ func (multi *MultiEpoch) GetBlock(ctx context.Context, params *old_faithful_grpc
 		}
 	}
 
+	// Keep existing timer for backward compatibility
 	tim := newTimer(getRequestIDFromContext(ctx))
 	tim.time("GetBlock")
 	{
 		prefetcherFromCar := func() error {
+			// Create a span for the CAR prefetching operation
+			prefetchCtx, prefetchSpan := telemetry.StartDiskIOSpan(ctx, "prefetch_car", map[string]string{
+				"slot": fmt.Sprintf("%d", slot),
+			})
+			defer prefetchSpan.End()
+			
 			parentIsInPreviousEpoch := slottools.CalcEpochForSlot(uint64(block.Meta.Parent_slot)) != slottools.CalcEpochForSlot(slot)
 			if slot == 0 {
 				parentIsInPreviousEpoch = true
@@ -101,9 +140,21 @@ func (multi *MultiEpoch) GetBlock(ctx context.Context, params *old_faithful_grpc
 
 			var blockCid, parentBlockCid cid.Cid
 			wg := new(errgroup.Group)
+			
+			// Finding CIDs - often a source of seek time
+			_, findCidsSpan := telemetry.StartDiskIOSpan(prefetchCtx, "find_cids", map[string]string{
+				"parent_is_in_previous_epoch": fmt.Sprintf("%v", parentIsInPreviousEpoch),
+			})
+			
 			wg.Go(func() (err error) {
-				blockCid, err = epochHandler.FindCidFromSlot(ctx, slot)
+				ctxBlock, blockCidSpan := telemetry.StartDiskIOSpan(prefetchCtx, "find_block_cid", map[string]string{
+					"slot": fmt.Sprintf("%d", slot),
+				})
+				defer blockCidSpan.End()
+				
+				blockCid, err = epochHandler.FindCidFromSlot(ctxBlock, slot)
 				if err != nil {
+					telemetry.RecordError(blockCidSpan, err, "Failed to find CID from slot")
 					return err
 				}
 				return nil
@@ -112,14 +163,23 @@ func (multi *MultiEpoch) GetBlock(ctx context.Context, params *old_faithful_grpc
 				if parentIsInPreviousEpoch {
 					return nil
 				}
-				parentBlockCid, err = epochHandler.FindCidFromSlot(ctx, uint64(block.Meta.Parent_slot))
+				ctxParent, parentCidSpan := telemetry.StartDiskIOSpan(prefetchCtx, "find_parent_cid", map[string]string{
+					"parent_slot": fmt.Sprintf("%d", block.Meta.Parent_slot),
+				})
+				defer parentCidSpan.End()
+				
+				parentBlockCid, err = epochHandler.FindCidFromSlot(ctxParent, uint64(block.Meta.Parent_slot))
 				if err != nil {
+					telemetry.RecordError(parentCidSpan, err, "Failed to find parent CID from slot")
 					return err
 				}
 				return nil
 			})
 			err = wg.Wait()
+			findCidsSpan.End()
+			
 			if err != nil {
+				telemetry.RecordError(prefetchSpan, err, "Failed to find CIDs")
 				return err
 			}
 			if slot == 0 {
@@ -136,12 +196,25 @@ func (multi *MultiEpoch) GetBlock(ctx context.Context, params *old_faithful_grpc
 			{
 				var blockOffset, parentOffset uint64
 				wg := new(errgroup.Group)
+				
+				// Find offsets - this can involve disk seeking
+				_, findOffsetsSpan := telemetry.StartDiskIOSpan(prefetchCtx, "find_offsets", map[string]string{
+					"parent_is_in_previous_epoch": fmt.Sprintf("%v", parentIsInPreviousEpoch),
+				})
+				
 				wg.Go(func() (err error) {
-					offsetAndSize, err := epochHandler.FindOffsetAndSizeFromCid(ctx, blockCid)
+					ctxOffset, blockOffsetSpan := telemetry.StartDiskIOSpan(prefetchCtx, "find_block_offset", map[string]string{
+						"block_cid": blockCid.String(),
+					})
+					defer blockOffsetSpan.End()
+					
+					offsetAndSize, err := epochHandler.FindOffsetAndSizeFromCid(ctxOffset, blockCid)
 					if err != nil {
+						telemetry.RecordError(blockOffsetSpan, err, "Failed to find offset and size from CID")
 						return err
 					}
 					blockOffset = offsetAndSize.Offset
+					blockOffsetSpan.SetAttributes(attribute.Int64("offset", int64(blockOffset)))
 					return nil
 				})
 				wg.Go(func() (err error) {
@@ -150,15 +223,25 @@ func (multi *MultiEpoch) GetBlock(ctx context.Context, params *old_faithful_grpc
 						parentOffset = epochHandler.carHeaderSize
 						return nil
 					}
-					offsetAndSize, err := epochHandler.FindOffsetAndSizeFromCid(ctx, parentBlockCid)
+					ctxParentOffset, parentOffsetSpan := telemetry.StartDiskIOSpan(prefetchCtx, "find_parent_offset", map[string]string{
+						"parent_cid": parentBlockCid.String(),
+					})
+					defer parentOffsetSpan.End()
+					
+					offsetAndSize, err := epochHandler.FindOffsetAndSizeFromCid(ctxParentOffset, parentBlockCid)
 					if err != nil {
+						telemetry.RecordError(parentOffsetSpan, err, "Failed to find parent offset and size from CID")
 						return err
 					}
 					parentOffset = offsetAndSize.Offset
+					parentOffsetSpan.SetAttributes(attribute.Int64("offset", int64(parentOffset)))
 					return nil
 				})
 				err = wg.Wait()
+				findOffsetsSpan.End()
+				
 				if err != nil {
+					telemetry.RecordError(prefetchSpan, err, "Failed to find offsets")
 					return err
 				}
 
@@ -170,37 +253,61 @@ func (multi *MultiEpoch) GetBlock(ctx context.Context, params *old_faithful_grpc
 				}
 
 				start := parentOffset
+				prefetchSpan.SetAttributes(
+					attribute.Int64("read_start", int64(start)),
+					attribute.Int64("read_length", int64(length)),
+				)
 
 				klog.V(4).Infof("prefetching CAR: start=%d length=%d (parent_offset=%d)", start, length, parentOffset)
-				carSection, err := epochHandler.ReadAtFromCar(ctx, start, length)
+				
+				// This is the actual disk read operation - likely significant seek time here
+				readCtx, readSpan := telemetry.StartDiskIOSpan(prefetchCtx, "read_car_section", map[string]string{
+					"start": fmt.Sprintf("%d", start),
+					"length": fmt.Sprintf("%d", length),
+				})
+				carSection, err := epochHandler.ReadAtFromCar(readCtx, start, length)
+				readSpan.End()
+				
 				if err != nil {
+					telemetry.RecordError(prefetchSpan, err, "Failed to read CAR section")
 					return err
 				}
 				dr := bytes.NewReader(carSection)
 				br := bufio.NewReader(dr)
 
+				// Processing the read data - deserializing and caching
+				processCtx, processSpan := telemetry.StartSpan(prefetchCtx, "process_car_data")
+				defer processSpan.End()
+				
 				gotCid, data, err := util.ReadNode(br)
 				if err != nil {
+					telemetry.RecordError(processSpan, err, "Failed to read first node")
 					return fmt.Errorf("failed to read first node: %w", err)
 				}
 				if !parentIsInPreviousEpoch && !gotCid.Equals(parentBlockCid) {
-					return fmt.Errorf("CID mismatch: expected %s, got %s", parentBlockCid, gotCid)
+					err := fmt.Errorf("CID mismatch: expected %s, got %s", parentBlockCid, gotCid)
+					telemetry.RecordError(processSpan, err, "CID mismatch")
+					return err
 				}
 				epochHandler.GetCache().PutRawCarObject(gotCid, data)
 
+				nodesProcessed := 1
 				for {
 					gotCid, data, err = util.ReadNode(br)
 					if err != nil {
 						if errors.Is(err, io.EOF) {
 							break
 						}
+						telemetry.RecordError(processSpan, err, "Failed to read node")
 						return fmt.Errorf("failed to read node: %w", err)
 					}
+					nodesProcessed++
 					if gotCid.Equals(blockCid) {
 						break
 					}
 					epochHandler.GetCache().PutRawCarObject(gotCid, data)
 				}
+				processSpan.SetAttributes(attribute.Int64("nodes_processed", int64(nodesProcessed)))
 			}
 			return nil
 		}
@@ -212,9 +319,11 @@ func (multi *MultiEpoch) GetBlock(ctx context.Context, params *old_faithful_grpc
 		}
 	}
 
+	_, entriesSpan := telemetry.StartSpan(ctx, "ProcessEntries")
 	allTransactionNodes := make([][]*ipldbindcode.Transaction, len(block.Entries))
 	mu := &sync.Mutex{}
 	var lastEntryHash solana.Hash
+	entriesSpan.SetAttributes(attribute.Int64("entry_count", int64(len(block.Entries))))
 	{
 		wg := new(errgroup.Group)
 		wg.SetLimit(runtime.NumCPU() * 2)
@@ -223,10 +332,21 @@ func (multi *MultiEpoch) GetBlock(ctx context.Context, params *old_faithful_grpc
 			entryIndex := entryIndex
 			entryCid := entry.(cidlink.Link).Cid
 			wg.Go(func() error {
+				// Create a span for entry processing
+				entryCtx, entrySpan := telemetry.StartSpan(ctx, "ProcessEntry")
+				entrySpan.SetAttributes(
+					attribute.Int64("entry_index", int64(entryIndex)),
+					attribute.String("entry_cid", entryCid.String()),
+				)
+				defer entrySpan.End()
+				
 				// get the entry by CID
-				entryNode, err := epochHandler.GetEntryByCid(ctx, entryCid)
+				entryFetchStart := time.Now()
+				entryNode, err := epochHandler.GetEntryByCid(entryCtx, entryCid)
+				entrySpan.SetAttributes(attribute.Int64("entry_fetch_ms", time.Since(entryFetchStart).Milliseconds()))
 				if err != nil {
 					klog.Errorf("failed to decode Entry: %v", err)
+					telemetry.RecordError(entrySpan, err, "Failed to decode entry")
 					return err
 				}
 
@@ -234,19 +354,37 @@ func (multi *MultiEpoch) GetBlock(ctx context.Context, params *old_faithful_grpc
 					lastEntryHash = solana.HashFromBytes(entryNode.Hash)
 				}
 
+				entrySpan.SetAttributes(attribute.Int64("transaction_count", int64(len(entryNode.Transactions))))
 				twg := new(errgroup.Group)
 				twg.SetLimit(runtime.NumCPU())
 				// get the transactions from the entry
 				allTransactionNodes[entryIndex] = make([]*ipldbindcode.Transaction, len(entryNode.Transactions))
+				
+				// Create a span for transaction processing within this entry
+				txsCtx, txsSpan := telemetry.StartSpan(entryCtx, "ProcessEntryTransactions")
+				txsSpan.SetAttributes(attribute.Int64("transaction_count", int64(len(entryNode.Transactions))))
+				defer txsSpan.End()
+				
 				for txI := range entryNode.Transactions {
 					txI := txI
 					tx := entryNode.Transactions[txI]
 					twg.Go(func() error {
+						// Create a span for individual transaction processing
+						txCtx, txSpan := telemetry.StartSpan(txsCtx, "ProcessTransaction")
+						txSpan.SetAttributes(attribute.Int64("tx_index", int64(txI)))
+						defer txSpan.End()
+						
 						// get the transaction by CID
 						tcid := tx.(cidlink.Link).Cid
-						txNode, err := epochHandler.GetTransactionByCid(ctx, tcid)
+						txSpan.SetAttributes(attribute.String("tx_cid", tcid.String()))
+						
+						txFetchStart := time.Now()
+						txNode, err := epochHandler.GetTransactionByCid(txCtx, tcid)
+						txSpan.SetAttributes(attribute.Int64("tx_fetch_ms", time.Since(txFetchStart).Milliseconds()))
+						
 						if err != nil {
 							klog.Errorf("failed to decode Transaction %s: %v", tcid, err)
+							telemetry.RecordError(txSpan, err, "Failed to decode transaction")
 							return nil
 						}
 						mu.Lock()
@@ -260,9 +398,11 @@ func (multi *MultiEpoch) GetBlock(ctx context.Context, params *old_faithful_grpc
 		}
 		err = wg.Wait()
 		if err != nil {
+			telemetry.RecordError(entriesSpan, err, "Failed to get entries")
 			return nil, status.Errorf(codes.Internal, "Failed to get entries: %v", err)
 		}
 	}
+	entriesSpan.End()
 	tim.time("get entries")
 
 	resp := &old_faithful_grpc.BlockResponse{
@@ -380,30 +520,53 @@ func (multi *MultiEpoch) GetBlock(ctx context.Context, params *old_faithful_grpc
 }
 
 func (multi *MultiEpoch) GetTransaction(ctx context.Context, params *old_faithful_grpc.TransactionRequest) (*old_faithful_grpc.TransactionResponse, error) {
+	// Create a span for this operation
+	ctx, span := telemetry.StartSpan(ctx, "GetTransaction")
+	defer span.End()
+
 	if multi.CountEpochs() == 0 {
+		telemetry.RecordError(span, status.Error(codes.Internal, "no epochs available"), "No epochs available")
 		return nil, status.Errorf(codes.Internal, "no epochs available")
 	}
 
 	sig := solana.SignatureFromBytes(params.Signature)
+	span.SetAttributes(attribute.String("signature", sig.String()))
 
 	startedEpochLookupAt := time.Now()
+	_, findEpochSpan := telemetry.StartSpan(ctx, "FindEpochFromSignature")
 	epochNumber, err := multi.findEpochNumberFromSignature(ctx, sig)
+	findEpochSpan.SetAttributes(
+		attribute.Int64("lookup_duration_ms", time.Since(startedEpochLookupAt).Milliseconds()),
+	)
+	findEpochSpan.End()
+
 	if err != nil {
+		telemetry.RecordError(span, err, "Failed to find epoch for signature")
 		if errors.Is(err, ErrNotFound) {
 			// solana just returns null here in case of transaction not found: {"jsonrpc":"2.0","result":null,"id":1}
 			return nil, status.Errorf(codes.NotFound, "Transaction not found")
 		}
 		return nil, status.Errorf(codes.Internal, "Failed to get epoch for signature %s: %v", sig, err)
 	}
+
+	span.SetAttributes(attribute.Int64("epoch_number", int64(epochNumber)))
 	klog.V(4).Infof("Found signature %s in epoch %d in %s", sig, epochNumber, time.Since(startedEpochLookupAt))
 
+	_, getEpochSpan := telemetry.StartSpan(ctx, "GetEpochHandler")
 	epochHandler, err := multi.GetEpoch(uint64(epochNumber))
+	getEpochSpan.End()
+
 	if err != nil {
+		telemetry.RecordError(span, err, "Epoch not available")
 		return nil, status.Errorf(codes.NotFound, "Epoch %d is not available from this RPC", epochNumber)
 	}
 
+	_, getTxSpan := telemetry.StartSpan(ctx, "GetTransactionFromEpoch")
 	transactionNode, _, err := epochHandler.GetTransaction(WithSubrapghPrefetch(ctx, true), sig)
+	getTxSpan.End()
+
 	if err != nil {
+		telemetry.RecordError(span, err, "Failed to get transaction")
 		if errors.Is(err, compactindexsized.ErrNotFound) {
 			// NOTE: solana just returns null here in case of transaction not found: {"jsonrpc":"2.0","result":null,"id":1}
 			return nil, status.Errorf(codes.NotFound, "Transaction not found")
