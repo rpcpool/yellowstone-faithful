@@ -3,7 +3,7 @@
 |787|epoch is|ongoing||||||||
 | 786 | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | 785 | [epoch-785.car](https://files.old-faithful.net/785/epoch-785.car) | [46561c7](https://files.old-faithful.net/785/epoch-785.sha256) | 811 GB | [✓](https://files.old-faithful.net/785/tx-metadata-check.log) | [✓](https://files.old-faithful.net/785/poh-check.log) | ✓ | 85 GB | ✗ | [785.slots.txt](https://files.old-faithful.net/785/785.slots.txt) |
-| 784 | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| 784 | [epoch-784.car](https://files.old-faithful.net/784/epoch-784.car) | [604fb1f](https://files.old-faithful.net/784/epoch-784.sha256) | 821 GB | [✓](https://files.old-faithful.net/784/tx-metadata-check.log) | [✓](https://files.old-faithful.net/784/poh-check.log) | ✓ | 85 GB | ✗ | [784.slots.txt](https://files.old-faithful.net/784/784.slots.txt) |
 | 783 | [epoch-783.car](https://files.old-faithful.net/783/epoch-783.car) | [a49e829](https://files.old-faithful.net/783/epoch-783.sha256) | 837 GB | [✓](https://files.old-faithful.net/783/tx-metadata-check.log) | [✓](https://files.old-faithful.net/783/poh-check.log) | ✓ | 87 GB | [✓](https://filecoin-car-storage-cdn.b-cdn.net/783/deals-metadata.csv) | [783.slots.txt](https://files.old-faithful.net/783/783.slots.txt) |
 | 782 | [epoch-782.car](https://files.old-faithful.net/782/epoch-782.car) | [b47ff18](https://files.old-faithful.net/782/epoch-782.sha256) | 811 GB | [✓](https://files.old-faithful.net/782/tx-metadata-check.log) | [✓](https://files.old-faithful.net/782/poh-check.log) | ✓ | 85 GB | [✓](https://filecoin-car-storage-cdn.b-cdn.net/782/deals-metadata.csv) | [782.slots.txt](https://files.old-faithful.net/782/782.slots.txt) |
 | 781 | [epoch-781.car](https://files.old-faithful.net/781/epoch-781.car) | [6ebf850](https://files.old-faithful.net/781/epoch-781.sha256) | 813 GB | [✓](https://files.old-faithful.net/781/tx-metadata-check.log) | [✓](https://files.old-faithful.net/781/poh-check.log) | ✓ | 86 GB | [✓](https://filecoin-car-storage-cdn.b-cdn.net/781/deals-metadata.csv) | [781.slots.txt](https://files.old-faithful.net/781/781.slots.txt) |
@@ -810,5 +810,4 @@
 - Epoch 155: failed tx meta check
 - Epoch 156: failed tx meta check
 - Epoch 208: failed POH check, failed tx meta check
-- Epoch 784: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size
 - Epoch 786: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size
