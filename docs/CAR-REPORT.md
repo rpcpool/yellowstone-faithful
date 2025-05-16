@@ -2,7 +2,7 @@
 |---|---|---|---|---|---|---|---|---|---|
 |787|epoch is|ongoing||||||||
 | 786 | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| 785 | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| 785 | [epoch-785.car](https://files.old-faithful.net/785/epoch-785.car) | [46561c7](https://files.old-faithful.net/785/epoch-785.sha256) | 811 GB | [✓](https://files.old-faithful.net/785/tx-metadata-check.log) | [✓](https://files.old-faithful.net/785/poh-check.log) | ✓ | 85 GB | ✗ | [785.slots.txt](https://files.old-faithful.net/785/785.slots.txt) |
 | 784 | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | 783 | [epoch-783.car](https://files.old-faithful.net/783/epoch-783.car) | [a49e829](https://files.old-faithful.net/783/epoch-783.sha256) | 837 GB | [✓](https://files.old-faithful.net/783/tx-metadata-check.log) | [✓](https://files.old-faithful.net/783/poh-check.log) | ✓ | 87 GB | [✓](https://filecoin-car-storage-cdn.b-cdn.net/783/deals-metadata.csv) | [783.slots.txt](https://files.old-faithful.net/783/783.slots.txt) |
 | 782 | [epoch-782.car](https://files.old-faithful.net/782/epoch-782.car) | [b47ff18](https://files.old-faithful.net/782/epoch-782.sha256) | 811 GB | [✓](https://files.old-faithful.net/782/tx-metadata-check.log) | [✓](https://files.old-faithful.net/782/poh-check.log) | ✓ | 85 GB | [✓](https://filecoin-car-storage-cdn.b-cdn.net/782/deals-metadata.csv) | [782.slots.txt](https://files.old-faithful.net/782/782.slots.txt) |
@@ -811,5 +811,4 @@
 - Epoch 156: failed tx meta check
 - Epoch 208: failed POH check, failed tx meta check
 - Epoch 784: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size
-- Epoch 785: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size
 - Epoch 786: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size
