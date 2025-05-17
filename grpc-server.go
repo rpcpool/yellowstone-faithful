@@ -96,7 +96,7 @@ func (multi *MultiEpoch) GetBlock(ctx context.Context, params *old_faithful_grpc
 	span.SetAttributes(attribute.Int64("epoch_number", int64(epochNumber)))
 	
 	// Get epoch handler
-	epochCtx, epochSpan := telemetry.StartSpan(ctx, "GetEpoch")
+	_, epochSpan := telemetry.StartSpan(ctx, "GetEpoch")
 	epochHandler, err := multi.GetEpoch(epochNumber)
 	epochSpan.End()
 	
@@ -276,7 +276,7 @@ func (multi *MultiEpoch) GetBlock(ctx context.Context, params *old_faithful_grpc
 				br := bufio.NewReader(dr)
 
 				// Processing the read data - deserializing and caching
-				processCtx, processSpan := telemetry.StartSpan(prefetchCtx, "process_car_data")
+				_, processSpan := telemetry.StartSpan(prefetchCtx, "process_car_data")
 				defer processSpan.End()
 				
 				gotCid, data, err := util.ReadNode(br)
