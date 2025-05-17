@@ -100,6 +100,32 @@ func (w *wrappedServerStream) Context() context.Context {
 	return w.ctx
 }
 
+// metadataCarrier is an implementation of propagation.TextMapCarrier for gRPC metadata
+type metadataCarrier metadata.MD
+
+// Get returns the value associated with the passed key.
+func (mc metadataCarrier) Get(key string) string {
+	vals := metadata.MD(mc).Get(key)
+	if len(vals) > 0 {
+		return vals[0]
+	}
+	return ""
+}
+
+// Set stores the key-value pair.
+func (mc metadataCarrier) Set(key string, value string) {
+	metadata.MD(mc).Set(key, value)
+}
+
+// Keys lists the keys stored in this carrier.
+func (mc metadataCarrier) Keys() []string {
+	keys := make([]string, 0, len(mc))
+	for k := range mc {
+		keys = append(keys, k)
+	}
+	return keys
+}
+
 // ExtractTraceInfoFromMetadata extracts trace context from gRPC metadata
 func ExtractTraceInfoFromMetadata(ctx context.Context) context.Context {
 	md, ok := metadata.FromIncomingContext(ctx)
@@ -108,5 +134,5 @@ func ExtractTraceInfoFromMetadata(ctx context.Context) context.Context {
 	}
 
 	propagator := otel.GetTextMapPropagator()
-	return propagator.Extract(ctx, metadata.MD(md))
+	return propagator.Extract(ctx, metadataCarrier(md))
 }
