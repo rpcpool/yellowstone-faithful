@@ -12,7 +12,8 @@ import (
 	"go.opentelemetry.io/otel/exporters/stdout/stdouttrace"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
-	"go.opentelemetry.io/otel/sdk/trace"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/semconv/v1.7.0"
 	"google.golang.org/grpc"
 	"k8s.io/klog/v2"
@@ -38,7 +39,7 @@ func InitTelemetry(ctx context.Context, serviceName string) (func(), error) {
 	}
 
 	// Set up the exporter
-	var exporter trace.SpanExporter
+	var exporter sdktrace.SpanExporter
 	otlpEndpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
 	
 	if otlpEndpoint != "" {
@@ -71,10 +72,10 @@ func InitTelemetry(ctx context.Context, serviceName string) (func(), error) {
 	}
 
 	// Create trace provider with the exporter
-	tp := trace.NewTracerProvider(
-		trace.WithSampler(trace.AlwaysSample()),
-		trace.WithBatcher(exporter),
-		trace.WithResource(res),
+	tp := sdktrace.NewTracerProvider(
+		sdktrace.WithSampler(sdktrace.AlwaysSample()),
+		sdktrace.WithBatcher(exporter),
+		sdktrace.WithResource(res),
 	)
 	otel.SetTracerProvider(tp)
 
