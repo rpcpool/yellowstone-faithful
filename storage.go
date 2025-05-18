@@ -17,6 +17,10 @@ import (
 	"k8s.io/klog/v2"
 )
 
+func isHTTP(where string) bool {
+	return strings.HasPrefix(where, "http://") || strings.HasPrefix(where, "https://")
+}
+
 // openIndexStorage open a compactindex from a local file, or from a remote URL.
 // Supported protocols are:
 // - http://
@@ -26,7 +30,7 @@ func openIndexStorage(
 	where string,
 ) (ReaderAtCloser, error) {
 	where = strings.TrimSpace(where)
-	if strings.HasPrefix(where, "http://") || strings.HasPrefix(where, "https://") {
+	if isHTTP(where) {
 		klog.Infof("opening index file from %q as HTTP remote file", where)
 		rac, size, err := splitcarfetcher.NewRemoteHTTPFileAsIoReaderAt(ctx, where)
 		if err != nil {
@@ -60,7 +64,7 @@ func openIndexStorage(
 
 func openCarStorage(ctx context.Context, where string) (*carv2.Reader, ReaderAtCloser, error) {
 	where = strings.TrimSpace(where)
-	if strings.HasPrefix(where, "http://") || strings.HasPrefix(where, "https://") {
+	if isHTTP(where) {
 		klog.Infof("opening CAR file from %q as HTTP remote file", where)
 		rem, size, err := splitcarfetcher.NewRemoteHTTPFileAsIoReaderAt(ctx, where)
 		if err != nil {
