@@ -83,38 +83,6 @@ func toLowerCamelCase(v string) string {
 	return strings.ToLower(pascal[:1]) + pascal[1:]
 }
 
-// Reply sends a response to the client with the given result.
-// The result fields keys are converted to camelCase.
-// If remapCallback is not nil, it is called with the result map[string]interface{}.
-func (c *requestContext) Reply(
-	ctx context.Context,
-	id jsonrpc2.ID,
-	result interface{},
-	remapCallback func(map[string]any) map[string]any,
-) error {
-	mm, err := toMapAny(result)
-	if err != nil {
-		return err
-	}
-	result = MapToCamelCaseAny(mm)
-	if remapCallback != nil {
-		if mp, ok := result.(map[string]any); ok {
-			result = remapCallback(mp)
-		}
-	}
-	resRaw, err := jsoniter.ConfigCompatibleWithStandardLibrary.Marshal(result)
-	if err != nil {
-		return err
-	}
-	raw := json.RawMessage(resRaw)
-	resp := &jsonrpc2.Response{
-		ID:     id,
-		Result: &raw,
-	}
-	replyJSON(c.ctx, http.StatusOK, resp)
-	return err
-}
-
 // ReplyRaw sends a raw response without any processing (no camelCase conversion, etc).
 func (c *requestContext) ReplyRaw(
 	ctx context.Context,
