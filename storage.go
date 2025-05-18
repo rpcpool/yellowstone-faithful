@@ -101,27 +101,6 @@ func readNodeFromReaderAtWithOffsetAndSize(reader ReaderAtCloser, wantedCid *cid
 	return parseNodeFromSection(section, wantedCid)
 }
 
-type GetBlockResponse struct {
-	BlockHeight       *uint64                  `json:"blockHeight"`
-	BlockTime         *uint64                  `json:"blockTime"`
-	Blockhash         string                   `json:"blockhash"`
-	ParentSlot        uint64                   `json:"parentSlot"`
-	PreviousBlockhash *string                  `json:"previousBlockhash"`
-	Rewards           any                      `json:"rewards"` // TODO: use same format as solana
-	Transactions      []GetTransactionResponse `json:"transactions"`
-}
-
-type GetTransactionResponse struct {
-	// TODO: use same format as solana
-	Blocktime   *int64             `json:"blockTime,omitempty"`
-	Meta        any                `json:"meta"`
-	Slot        *uint64            `json:"slot,omitempty"`
-	Transaction any                `json:"transaction"`
-	Version     any                `json:"version"`
-	Position    uint64             `json:"-"` // TODO: enable this
-	Signatures  []solana.Signature `json:"-"` // TODO: enable this
-}
-
 func parseTransactionAndMetaFromNode(
 	transactionNode *ipldbindcode.Transaction,
 	dataFrameGetter func(ctx context.Context, wantedCid cid.Cid) (*ipldbindcode.DataFrame, error),
