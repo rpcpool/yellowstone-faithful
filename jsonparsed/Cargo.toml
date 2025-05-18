@@ -13,8 +13,10 @@ crate-type = ["staticlib", "cdylib"]
 [dependencies]
 serde_json = { workspace = true }
 solana-transaction-status = { workspace = true }
-solana-pubkey = { workspace = true }
+solana-sdk = { workspace = true }
 solana-message = { workspace = true }
+solana-pubkey = { workspace = true }
+solana-program = { workspace = true }
 
 [package.metadata.docs.rs]
 targets = ["x86_64-unknown-linux-gnu"]
