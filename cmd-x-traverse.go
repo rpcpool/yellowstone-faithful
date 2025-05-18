@@ -10,6 +10,7 @@ import (
 	"github.com/gagliardetto/solana-go"
 	"github.com/ipfs/go-cid"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	"github.com/rpcpool/yellowstone-faithful/dummycid"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	solanablockrewards "github.com/rpcpool/yellowstone-faithful/solana-block-rewards"
 	solanatxmetaparsers "github.com/rpcpool/yellowstone-faithful/solana-tx-meta-parsers"
@@ -80,7 +81,7 @@ func newCmd_XTraverse() *cli.Command {
 								rewardsCid := block.Rewards.(cidlink.Link).Cid
 								// klog.Infof("Block %d rewards CID: %v", block.Slot, rewardsCid)
 
-								if !rewardsCid.Equals(DummyCID) {
+								if !rewardsCid.Equals(dummycid.DummyCID) {
 									klog.Infof("Found block %d with non-dummy rewards!", block.Slot)
 									klog.Info("Getting rewards node...")
 									rewards, err := simpleIter.GetRewards(context.Background(), block.Rewards.(cidlink.Link).Cid)

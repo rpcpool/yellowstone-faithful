@@ -13,6 +13,7 @@ import (
 	"github.com/gagliardetto/solana-go"
 	"github.com/ipfs/go-cid"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	"github.com/rpcpool/yellowstone-faithful/dummycid"
 )
 
 // DataFrame.HasHash returns whether the 'Hash' field is present.
@@ -334,4 +335,10 @@ func (n SlotMeta) Equivalent(other SlotMeta) bool {
 		return false
 	}
 	return true
+}
+
+// Block.HasRewards
+func (n Block) HasRewards() bool {
+	hasRewards := !n.Rewards.(cidlink.Link).Cid.Equals(dummycid.DummyCID)
+	return hasRewards
 }

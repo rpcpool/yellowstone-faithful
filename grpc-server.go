@@ -19,6 +19,7 @@ import (
 	"github.com/ipld/go-car/util"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/rpcpool/yellowstone-faithful/compactindexsized"
+	"github.com/rpcpool/yellowstone-faithful/dummycid"
 	"github.com/rpcpool/yellowstone-faithful/gsfa"
 	"github.com/rpcpool/yellowstone-faithful/gsfa/linkedlog"
 	"github.com/rpcpool/yellowstone-faithful/indexes"
@@ -270,7 +271,7 @@ func (multi *MultiEpoch) GetBlock(ctx context.Context, params *old_faithful_grpc
 	}
 
 	var allTransactions []*old_faithful_grpc.Transaction
-	hasRewards := !block.Rewards.(cidlink.Link).Cid.Equals(DummyCID)
+	hasRewards := !block.Rewards.(cidlink.Link).Cid.Equals(dummycid.DummyCID)
 	if hasRewards {
 		rewardsNode, err := epochHandler.GetRewardsByCid(ctx, block.Rewards.(cidlink.Link).Cid)
 		if err != nil {

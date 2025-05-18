@@ -276,7 +276,7 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 	var allTransactions []*jsonbuilder.OrderedJSONObject
 	var rewardsUi *jsonbuilder.ArrayBuilder
 	rewardsCid := block.Rewards.(cidlink.Link).Cid
-	hasRewards := !rewardsCid.Equals(DummyCID)
+	hasRewards := block.HasRewards()
 	if *params.Options.Rewards && hasRewards {
 		rewardsNode, err := epochHandler.GetRewardsByCid(ctx, rewardsCid)
 		if err != nil {
