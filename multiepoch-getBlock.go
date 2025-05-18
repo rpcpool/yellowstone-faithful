@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"runtime"
-	"sort"
 	"sync"
 
 	"github.com/gagliardetto/solana-go"
@@ -18,8 +17,10 @@ import (
 	jsoniter "github.com/json-iterator/go"
 	"github.com/rpcpool/yellowstone-faithful/compactindexsized"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
+	"github.com/rpcpool/yellowstone-faithful/jsonbuilder"
 	"github.com/rpcpool/yellowstone-faithful/slottools"
 	solanablockrewards "github.com/rpcpool/yellowstone-faithful/solana-block-rewards"
+	solanatxmetaparsers "github.com/rpcpool/yellowstone-faithful/solana-tx-meta-parsers"
 	"github.com/rpcpool/yellowstone-faithful/telemetry"
 	"github.com/rpcpool/yellowstone-faithful/tooling"
 	"github.com/sourcegraph/jsonrpc2"
@@ -287,8 +288,8 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 	}
 	tim.time("get entries")
 
-	var allTransactions []GetTransactionResponse
-	var rewards any
+	var allTransactions []*jsonbuilder.OrderedJSONObject
+	var rewardsUi *jsonbuilder.ArrayBuilder
 	rewardsCid := block.Rewards.(cidlink.Link).Cid
 	hasRewards := !rewardsCid.Equals(DummyCID)
 	if *params.Options.Rewards && hasRewards {
@@ -333,7 +334,7 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 		} else {
 			{
 				// encode rewards as JSON, then decode it as a map
-				buf, err := fasterJson.Marshal(actualRewards)
+				rewards, _, err := solanablockrewards.RewardsToUi(actualRewards)
 				if err != nil {
 					telemetry.RecordError(rewardsSpan, err, "Failed to encode rewards to JSON")
 					rewardsSpan.End()
@@ -342,155 +343,84 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 						Message: "Internal error",
 					}, fmt.Errorf("failed to encode rewards: %v", err)
 				}
-				var m map[string]any
-				err = fasterJson.Unmarshal(buf, &m)
-				if err != nil {
-					telemetry.RecordError(rewardsSpan, err, "Failed to unmarshal JSON rewards")
-					rewardsSpan.End()
-					return &jsonrpc2.Error{
-						Code:    jsonrpc2.CodeInternalError,
-						Message: "Internal error",
-					}, fmt.Errorf("failed to decode rewards: %v", err)
-				}
-				if _, ok := m["rewards"]; ok {
-					// iter over rewards as an array of maps, and add a "commission" field to each = nil
-					rewardsAsArray := m["rewards"].([]any)
-					for _, reward := range rewardsAsArray {
-						rewardAsMap := reward.(map[string]any)
-						if _, ok := rewardAsMap["commission"]; !ok {
-							rewardAsMap["commission"] = nil
-						}
-						// if the commission field is a string, convert it to a float
-						if asString, ok := rewardAsMap["commission"].(string); ok {
-							rewardAsMap["commission"] = asFloat(asString)
-						}
-						// if no lamports field, add it and set it to 0
-						if _, ok := rewardAsMap["lamports"]; !ok {
-							rewardAsMap["lamports"] = uint64(0)
-						}
-
-						// if it has a post_balance field, convert it to postBalance
-						if _, ok := rewardAsMap["post_balance"]; ok {
-							rewardAsMap["postBalance"] = rewardAsMap["post_balance"]
-							delete(rewardAsMap, "post_balance")
-						}
-						// if it has a reward_type field, convert it to rewardType
-						if _, ok := rewardAsMap["reward_type"]; ok {
-							rewardAsMap["rewardType"] = rewardAsMap["reward_type"]
-							delete(rewardAsMap, "reward_type")
-
-							// if it's a float, convert to int and use rentTypeToString
-							if asFloat, ok := rewardAsMap["rewardType"].(float64); ok {
-								rewardAsMap["rewardType"] = rewardTypeToString(int(asFloat))
-							}
-						}
-					}
-					rewards = rewardsAsArray
-					// sort.Slice(rewardsAsArray, func(i, j int) bool {
-					// 	// sort by rewardType, then by pubkey
-					// 	if rewardTypeStringToInt(rewardsAsArray[i].(map[string]any)["rewardType"].(string)) != rewardTypeStringToInt(rewardsAsArray[j].(map[string]any)["rewardType"].(string)) {
-					// 		return rewardTypeStringToInt(rewardsAsArray[i].(map[string]any)["rewardType"].(string)) > rewardTypeStringToInt(rewardsAsArray[j].(map[string]any)["rewardType"].(string))
-					// 	}
-					// 	return bytes.Compare(solana.MPK(rewardsAsArray[i].(map[string]any)["pubkey"].(string)).Bytes(), solana.MPK(rewardsAsArray[j].(map[string]any)["pubkey"].(string)).Bytes()) < 0
-					// })
-				} else {
-					klog.Errorf("did not find rewards field in rewards")
-					rewards = make([]any, 0)
-				}
+				rewardsUi = rewards
 			}
 		}
-		rewardsSpan.End()
-	} else {
-		rewards = make([]any, 0)
 	}
 	tim.time("get rewards")
 	{
 		_, buildTxSpan := telemetry.StartSpan(rpcSpanCtx, "GetBlock_BuildTransactions")
 		for _, transactionNode := range mergeTxNodeSlices(allTransactionNodes) {
-			_, txBuildSpan := telemetry.StartSpan(rpcSpanCtx, "GetBlock_TransactionNodeToResponse")
-			var txResp GetTransactionResponse
-
-			{
-				pos, ok := transactionNode.GetPositionIndex()
-				if ok {
-					txResp.Position = uint64(pos)
-					txBuildSpan.SetAttributes(attribute.Int64("index", int64(pos)))
-				}
-				tx, meta, err := parseTransactionAndMetaFromNode(transactionNode, epochHandler.GetDataFrameByCid)
-				if err != nil {
-					telemetry.RecordError(txBuildSpan, err, "Failed to parse transaction/meta from node")
-					txBuildSpan.End()
-					buildTxSpan.End()
-					return &jsonrpc2.Error{
-						Code:    jsonrpc2.CodeInternalError,
-						Message: "Internal error",
-					}, fmt.Errorf("failed to decode transaction: %v", err)
-				}
-				txResp.Signatures = tx.Signatures
-				if tx.Message.IsVersioned() {
-					txResp.Version = tx.Message.GetVersion() - 1
-				} else {
-					txResp.Version = "legacy"
-				}
-
-				encodedTx, encodedMeta, err := encodeTransactionResponseBasedOnWantedEncoding(*params.Options.Encoding, tx, meta)
-				if err != nil {
-					telemetry.RecordError(txBuildSpan, err, "Failed to encode tx/meta for response")
-					txBuildSpan.End()
-					buildTxSpan.End()
-					return &jsonrpc2.Error{
-						Code:    jsonrpc2.CodeInternalError,
-						Message: "Internal error",
-					}, fmt.Errorf("failed to encode transaction: %v", err)
-				}
-				txResp.Transaction = encodedTx
-				txResp.Meta = encodedMeta
+			tx, meta, err := parseTransactionAndMetaFromNode(transactionNode, epochHandler.GetDataFrameByCid)
+			if err != nil {
+				return &jsonrpc2.Error{
+					Code:    jsonrpc2.CodeInternalError,
+					Message: "Internal error",
+				}, fmt.Errorf("failed to decode transaction: %v", err)
 			}
 
-			allTransactions = append(allTransactions, txResp)
-			txBuildSpan.End()
+			out := solanatxmetaparsers.NewEncodedTransactionWithStatusMeta(
+				tx,
+				meta,
+			)
+
+			txUI, err := out.ToUi(*params.Options.Encoding)
+			if err != nil {
+				return &jsonrpc2.Error{
+					Code:    jsonrpc2.CodeInternalError,
+					Message: "Internal error",
+				}, fmt.Errorf("failed to encode transaction: %v", err)
+			}
+			// TODO: include position index in the UI output.
+			// pos, ok := transactionNode.GetPositionIndex()
+			// if ok {
+			// 	txUI.Value("position", pos)
+			// }
+
+			allTransactions = append(allTransactions, txUI)
 		}
 		buildTxSpan.SetAttributes(attribute.Int("num_transactions", len(allTransactions)))
 		buildTxSpan.End()
 	}
 
-	_, sortSpan := telemetry.StartSpan(rpcSpanCtx, "GetBlock_SortTransactions")
-	sort.Slice(allTransactions, func(i, j int) bool {
-		return allTransactions[i].Position < allTransactions[j].Position
-	})
-	sortSpan.SetAttributes(attribute.Int("num_sorted_transactions", len(allTransactions)))
-	sortSpan.End()
+	// sort.Slice(allTransactions, func(i, j int) bool {
+	// 	return allTransactions[i].Position < allTransactions[j].Position
+	// })
 	tim.time("get transactions")
 
-	var blockResp GetBlockResponse
-	blockResp.Transactions = allTransactions
-	if blocktime != 0 {
-		blockResp.BlockTime = &blocktime
-	}
-	blockResp.Blockhash = lastEntryHash.String()
-	blockResp.ParentSlot = uint64(block.Meta.Parent_slot)
-	blockResp.Rewards = rewards
+	response := jsonbuilder.NewObject()
 
 	if slot == 0 {
+		response.Uint("blockHeight", 0)
+
 		genesis := epochHandler.GetGenesis()
 		if genesis != nil {
 			blockZeroBlocktime := uint64(genesis.Config.CreationTime.Unix())
-			blockResp.BlockTime = &blockZeroBlocktime
+			response.Value("blockTime", blockZeroBlocktime)
 		}
-		blockResp.ParentSlot = uint64(0)
-
-		zeroBlockHeight := uint64(0)
-		blockResp.BlockHeight = &zeroBlockHeight
+		response.Uint("parentSlot", uint64(0))
 
 		blockZeroBlockHash := lastEntryHash.String()
-		blockResp.PreviousBlockhash = &blockZeroBlockHash // NOTE: this is what solana RPC does. Should it be nil instead? Or should it be the genesis hash?
-	}
-
-	{
-		blockHeight, ok := block.GetBlockHeight()
-		if ok {
-			blockResp.BlockHeight = &blockHeight
+		response.Value("previousBlockhash", blockZeroBlockHash) // NOTE: this is what solana RPC does. Should it be nil instead? Or should it be the genesis hash?
+	} else {
+		response.Uint("parentSlot", uint64(block.Meta.Parent_slot))
+		{
+			blockHeight, ok := block.GetBlockHeight()
+			if ok {
+				response.Uint("blockHeight", blockHeight)
+			} else {
+				response.Null("blockHeight")
+			}
 		}
+	}
+	if blocktime != 0 {
+		response.Value("blockTime", blocktime)
+	}
+	response.Value("blockhash", lastEntryHash.String())
+	if rewardsUi != nil {
+		response.Array("rewards", rewardsUi)
+	} else {
+		response.Value("rewards", make([]any, 0))
 	}
 	{
 		parentSpanCtx, parentSpan := telemetry.StartSpan(rpcSpanCtx, "GetBlock_GetParentBlockForHash")
@@ -519,7 +449,7 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 					}, fmt.Errorf("failed to decode Entry: %v", err)
 				}
 				parentEntryHash := solana.HashFromBytes(parentEntryNode.Hash).String()
-				blockResp.PreviousBlockhash = &parentEntryHash
+				response.Value("previousBlockhash", parentEntryHash)
 			}
 		} else {
 			if slot != 0 {
@@ -529,52 +459,18 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 		parentSpan.End()
 	}
 	tim.time("get parent block")
+	response.Value("transactions", allTransactions)
 
-	{
-		if len(blockResp.Transactions) == 0 {
-			blockResp.Transactions = make([]GetTransactionResponse, 0)
-		}
-		if blockResp.Rewards == nil || len(blockResp.Rewards.([]any)) == 0 {
-			blockResp.Rewards = make([]any, 0)
-		}
-	}
-
-	replyCtx, replySpan := telemetry.StartSpan(rpcSpanCtx, "GetBlock_Reply")
-	err = conn.Reply(
-		replyCtx,
+	err = conn.ReplyRaw(
+		ctx,
 		req.ID,
-		blockResp,
-		func(m map[string]any) map[string]any {
-			transactions, ok := m["transactions"].([]any)
-			if !ok {
-				return m
-			}
-			for i := range transactions {
-				transaction, ok := transactions[i].(map[string]any)
-				if !ok {
-					continue
-				}
-				transactions[i] = adaptTransactionMetaToExpectedOutput(transaction)
-			}
-
-			return m
-		},
+		response,
 	)
-	replySpan.End()
 	tim.time("reply")
 	if err != nil {
 		return nil, fmt.Errorf("failed to reply: %w", err)
 	}
 	return nil, nil
-}
-
-func asFloat(s string) float64 {
-	var f float64
-	_, err := fmt.Sscanf(s, "%f", &f)
-	if err != nil {
-		panic(err)
-	}
-	return f
 }
 
 func mergeTxNodeSlices(slices [][]*ipldbindcode.Transaction) []*ipldbindcode.Transaction {
