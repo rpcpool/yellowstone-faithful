@@ -39,6 +39,10 @@ tonic = "0.12.3"
 tonic-build = "0.12.3"
 tracing = "0.1.40"
 zstd = "0.13.0"
+reqwest = { version = "0.12.15", default-features = false, features = ["blocking", "gzip", "native-tls", "json"] }
+solana-transaction = "2.2.2"
+agave-transaction-view = "2.2.13"
+solana-sdk-ids = "2.2"
 
 [workspace.lints.clippy]
 clone_on_ref_ptr = "deny"
