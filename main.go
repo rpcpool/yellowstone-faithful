@@ -8,7 +8,6 @@ import (
 	"sort"
 	"syscall"
 
-	"github.com/ipfs/go-cid"
 	"github.com/urfave/cli/v2"
 	"k8s.io/klog/v2"
 )
@@ -71,8 +70,3 @@ func main() {
 		klog.Fatal(err)
 	}
 }
-
-// DummyCID is the "zero-length "identity" multihash with "raw" codec".
-//
-// This is the best-practices placeholder value to refer to a non-existent or unknown object.
-var DummyCID = cid.MustParse("bafkqaaa")
