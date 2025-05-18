@@ -1372,6 +1372,7 @@ dependencies = [
  "agave-geyser-plugin-interface",
  "colored",
  "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
