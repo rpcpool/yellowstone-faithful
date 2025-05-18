@@ -61,7 +61,7 @@ func (c *TransactionStatusMetaContainer) IsErr() bool {
 	return false
 }
 
-func (c *TransactionStatusMetaContainer) GetTxError() (transaction_status_meta_serde_agave.Result, bool, error) {
+func (c *TransactionStatusMetaContainer) GetTxError() (transaction_status_meta_serde_agave.TransactionError, bool, error) {
 	if c.vProtobuf != nil {
 		if c.vProtobuf.Err == nil {
 			return nil, false, nil
@@ -70,13 +70,27 @@ func (c *TransactionStatusMetaContainer) GetTxError() (transaction_status_meta_s
 		if err != nil {
 			return nil, false, fmt.Errorf("failed to unmarshal error: %w", err)
 		}
-		return unmarshaledErr, true, nil
+		if _, ok := unmarshaledErr.(*transaction_status_meta_serde_agave.Result__Ok); ok {
+			return nil, false, nil
+		}
+		if e, ok := unmarshaledErr.(*transaction_status_meta_serde_agave.Result__Err); !ok {
+			return nil, false, fmt.Errorf("unexpected error type: %T", unmarshaledErr)
+		} else {
+			return e.Value, true, nil
+		}
 	}
 	if c.vSerde != nil {
 		if c.vSerde.Status == nil {
 			return nil, false, nil
 		}
-		return c.vSerde.Status, true, nil
+		if _, ok := c.vSerde.Status.(*transaction_status_meta_serde_agave.Result__Ok); ok {
+			return nil, false, nil
+		}
+		if e, ok := c.vSerde.Status.(*transaction_status_meta_serde_agave.Result__Err); !ok {
+			return nil, false, fmt.Errorf("unexpected error type: %T", c.vSerde.Status)
+		} else {
+			return e.Value, true, nil
+		}
 	}
 	return nil, false, fmt.Errorf("no error found")
 }
