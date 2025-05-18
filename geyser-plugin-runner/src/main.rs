@@ -3,7 +3,7 @@ use {
     demo_rust_ipld_car::{node, utils},
     solana_rpc::optimistically_confirmed_bank_tracker::SlotNotification,
     solana_runtime::bank::KeyedRewardsAndNumPartitions,
-    solana_sdk::{reward_info::RewardInfo, reward_type::RewardType},
+    solana_sdk::{reward_info::RewardInfo, reward_type::RewardType, signature::Signature},
     std::{
         collections::HashSet,
         convert::{TryFrom, TryInto},
@@ -15,9 +15,9 @@ use {
 };
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let file_path = args().nth(1).expect("no file given");
+    let file_path = args().nth(1).expect("no file or url given");
     let _started_at = std::time::Instant::now();
-    let file = std::fs::File::open(file_path)?;
+    let file = open_reader(&file_path)?;
     let reader = BufReader::with_capacity(8 * 1024 * 1024, file);
     let mut item_index = 0;
     {
@@ -89,6 +89,8 @@ fn main() -> Result<(), Box<dyn Error>> {
                             let as_native_metadata: solana_transaction_status::TransactionStatusMeta =
                                 metadata.try_into()?;
 
+                            let is_vote = is_simple_vote_transaction(&parsed);
+
                            {
                                 // TODO: test address loading.
                                 let dummy_address_loader = MessageAddressLoaderFromTxMeta::new(as_native_metadata.clone());
@@ -105,8 +107,13 @@ fn main() -> Result<(), Box<dyn Error>> {
                                         )
                                     },
                                     solana_sdk::transaction::TransactionVersion::Legacy(_legacy)=> {
-                                        solana_sdk::transaction::SanitizedTransaction::try_from_legacy_transaction(
-                                            parsed.into_legacy_transaction().unwrap(),
+                                        let message_hash = parsed.verify_and_hash_message()?;
+                                        let versioned_sanitized_tx= solana_sdk::transaction::SanitizedVersionedTransaction::try_from(parsed)?;
+                                        solana_sdk::transaction::SanitizedTransaction::try_new(
+                                            versioned_sanitized_tx,
+                                            message_hash,
+                                            is_vote,
+                                            dummy_address_loader,
                                             &HashSet::default(),
                                         )
                                     },
@@ -271,5 +278,69 @@ impl Clone for MessageAddressLoaderFromTxMeta {
         MessageAddressLoaderFromTxMeta {
             tx_meta: self.tx_meta.clone(),
         }
+    }
+}
+
+pub fn get_program_ids(
+    tx: &solana_sdk::transaction::VersionedTransaction,
+) -> impl Iterator<Item = &solana_sdk::pubkey::Pubkey> + '_ {
+    let message = &tx.message;
+    let account_keys = message.static_account_keys();
+
+    message
+        .instructions()
+        .iter()
+        .map(|ix| ix.program_id(account_keys))
+}
+
+fn is_simple_vote_transaction(transaction: &solana_sdk::transaction::VersionedTransaction) -> bool {
+    let signatures = transaction.signatures.clone();
+    let is_legacy_message = matches!(
+        transaction.version(),
+        solana_sdk::transaction::TransactionVersion::Legacy(_)
+    );
+
+    let program_ids = get_program_ids(transaction);
+    let instruction_programs = program_ids.map(|program_id| program_id);
+    let is_simple_vote_transaction =
+        is_simple_vote_transaction_impl(&signatures, is_legacy_message, instruction_programs);
+
+    is_simple_vote_transaction
+}
+
+/// Simple vote transaction meets these conditions:
+/// 1. has 1 or 2 signatures;
+/// 2. is legacy message;
+/// 3. has only one instruction;
+/// 4. which must be Vote instruction;
+#[inline]
+pub fn is_simple_vote_transaction_impl<'a>(
+    signatures: &[Signature],
+    is_legacy_message: bool,
+    mut instruction_programs: impl Iterator<Item = &'a solana_sdk::pubkey::Pubkey>,
+) -> bool {
+    signatures.len() < 3
+        && is_legacy_message
+        && instruction_programs
+            .next()
+            .xor(instruction_programs.next())
+            .map(|program_id| program_id.to_string() == solana_sdk_ids::vote::ID.to_string())
+            .unwrap_or(false)
+}
+
+use std::io::Read;
+
+/// Opens either a local file or a streaming HTTP reader.
+/// • For local files we return the `File` directly.
+/// • For HTTP(S) URLs we issue a single GET and stream the body.
+pub fn open_reader(path: &str) -> Result<Box<dyn Read + Send>, Box<dyn Error>> {
+    if path.starts_with("http://") || path.starts_with("https://") {
+        println!("Opening URL: {}", path);
+        let resp = reqwest::blocking::get(path)?.error_for_status()?; // turn non-2xx into an error
+        Ok(Box::new(resp))
+    } else {
+        println!("Opening file: {}", path);
+        let file = std::fs::File::open(path)?;
+        Ok(Box::new(file))
     }
 }

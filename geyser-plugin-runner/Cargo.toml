@@ -25,3 +25,7 @@ solana-sdk = { workspace = true }
 solana-storage-proto = { workspace = true }
 solana-transaction-status = { workspace = true }
 zstd = { workspace = true }
+reqwest = { workspace = true }
+solana-transaction = { workspace = true }
+agave-transaction-view = { workspace = true }
+solana-sdk-ids = { workspace = true }
