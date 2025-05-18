@@ -1,3 +1,4 @@
+use tracing_subscriber::{fmt, EnvFilter};
 use {
     crossbeam_channel::unbounded,
     demo_rust_ipld_car::{node, utils},
@@ -15,6 +16,10 @@ use {
 };
 
 fn main() -> Result<(), Box<dyn Error>> {
+    use tracing_subscriber::{fmt, EnvFilter};
+    // Build a subscriber that prints to stderr and obeys RUST_LOG.
+    fmt().with_env_filter(EnvFilter::from_default_env()).init();
+
     let file_path = args().nth(1).expect("no file or url given");
     let _started_at = std::time::Instant::now();
     let file = open_reader(&file_path)?;

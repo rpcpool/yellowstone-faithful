@@ -37,7 +37,8 @@ solana-storage-proto = "~2.1.11"
 solana-transaction-status = "~2.1.11"
 tonic = "0.12.3"
 tonic-build = "0.12.3"
-tracing = "0.1.40"
+tracing = "0.1.41"
+tracing-subscriber = { version ="0.3.19", features = ["fmt", "env-filter"] }
 zstd = "0.13.0"
 reqwest = { version = "0.12.15", default-features = false, features = ["blocking", "gzip", "native-tls", "json"] }
 solana-transaction = "2.2.2"

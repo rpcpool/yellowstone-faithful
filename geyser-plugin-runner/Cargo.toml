@@ -29,3 +29,4 @@ reqwest = { workspace = true }
 solana-transaction = { workspace = true }
 agave-transaction-view = { workspace = true }
 solana-sdk-ids = { workspace = true }
+tracing-subscriber  = { workspace = true }
