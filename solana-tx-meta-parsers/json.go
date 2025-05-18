@@ -293,8 +293,8 @@ func compiledInstructionsToJsonParsed(
 			"programId":   programId.String(),
 			"stackHeight": nil,
 		}
-		asRaw, _ := jsoniter.ConfigCompatibleWithStandardLibrary.Marshal(nonParseadInstructionJSON)
-		return asRaw, nil
+		asRaw, err := jsoniter.ConfigCompatibleWithStandardLibrary.Marshal(nonParseadInstructionJSON)
+		return asRaw, err
 	} else {
 		return parsedInstructionJSON, nil
 	}
