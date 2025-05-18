@@ -35,12 +35,15 @@ impl std::fmt::Debug for GeyserPluginDemo {
 
 const BANNER: &str = "::plugin::";
 
+use tracing_subscriber::{fmt, EnvFilter};
+
 impl GeyserPlugin for GeyserPluginDemo {
     fn name(&self) -> &'static str {
         "plugin::GeyserPluginDemo"
     }
 
     fn on_load(&mut self, config_file: &str, _is_reload: bool) -> Result<()> {
+        fmt().with_env_filter(EnvFilter::from_default_env()).init();
         info!(
             "{} Loading plugin: {:?} from config_file {:?}",
             BANNER.green().on_black(),
