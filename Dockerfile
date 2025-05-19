@@ -20,7 +20,7 @@ COPY . /app
 
 RUN make jsonParsed-linux
 
-RUN for epoch in $(seq 0 2786); do \
+RUN for epoch in $(seq 0 900); do \
       bash tools/generate-config-http.sh $epoch;\
     done
 
