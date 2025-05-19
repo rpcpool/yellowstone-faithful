@@ -5602,3 +5602,127 @@ func deserialize_accounts_vector_u8(deserializer serde.Deserializer) ([]uint8, e
 	}
 	return obj, nil
 }
+
+type StoredConfirmedBlockRewards []*StoredConfirmedBlockReward
+
+func (obj StoredConfirmedBlockRewards) Serialize(serializer serde.Serializer) error {
+	if err := serializer.IncreaseContainerDepth(); err != nil {
+		return err
+	}
+	if err := serializer.SerializeLen(uint64(len(obj))); err != nil {
+		return err
+	}
+	for _, item := range obj {
+		if err := item.Serialize(serializer); err != nil {
+			return err
+		}
+	}
+	serializer.DecreaseContainerDepth()
+	return nil
+}
+
+func (obj StoredConfirmedBlockRewards) BincodeSerialize() ([]byte, error) {
+	if obj == nil {
+		return nil, fmt.Errorf("Cannot serialize null object")
+	}
+	serializer := bincode.NewSerializer()
+	if err := obj.Serialize(serializer); err != nil {
+		return nil, err
+	}
+	return serializer.GetBytes(), nil
+}
+
+func DeserializeStoredConfirmedBlockRewards(deserializer serde.Deserializer) (*StoredConfirmedBlockRewards, error) {
+	var obj StoredConfirmedBlockRewards
+	if err := deserializer.IncreaseContainerDepth(); err != nil {
+		return nil, err
+	}
+	length, err := deserializer.DeserializeLen()
+	if err != nil {
+		return nil, err
+	}
+	obj = make([]*StoredConfirmedBlockReward, length)
+	for i := range obj {
+		if val, err := DeserializeStoredConfirmedBlockReward(deserializer); err == nil {
+			obj[i] = &val
+		} else {
+			return nil, fmt.Errorf("Failed to deserialize StoredConfirmedBlockReward[%d]: %w", i, err)
+		}
+	}
+	deserializer.DecreaseContainerDepth()
+	return &obj, nil
+}
+
+func BincodeDeserializeStoredConfirmedBlockRewards(input []byte) (*StoredConfirmedBlockRewards, error) {
+	if input == nil {
+		return nil, fmt.Errorf("Cannot deserialize null array")
+	}
+	deserializer := bincode.NewDeserializer(input)
+	obj, err := DeserializeStoredConfirmedBlockRewards(deserializer)
+	if err == nil && deserializer.GetBufferOffset() < uint64(len(input)) {
+		return obj, fmt.Errorf("Some input bytes were not read")
+	}
+	return obj, err
+}
+
+type StoredConfirmedBlockReward struct {
+	Pubkey   string
+	Lamports int64
+}
+
+func (obj *StoredConfirmedBlockReward) Serialize(serializer serde.Serializer) error {
+	if err := serializer.IncreaseContainerDepth(); err != nil {
+		return err
+	}
+	if err := serializer.SerializeStr(obj.Pubkey); err != nil {
+		return err
+	}
+	if err := serializer.SerializeI64(obj.Lamports); err != nil {
+		return err
+	}
+	serializer.DecreaseContainerDepth()
+	return nil
+}
+
+func (obj *StoredConfirmedBlockReward) BincodeSerialize() ([]byte, error) {
+	if obj == nil {
+		return nil, fmt.Errorf("Cannot serialize null object")
+	}
+	serializer := bincode.NewSerializer()
+	if err := obj.Serialize(serializer); err != nil {
+		return nil, err
+	}
+	return serializer.GetBytes(), nil
+}
+
+func DeserializeStoredConfirmedBlockReward(deserializer serde.Deserializer) (StoredConfirmedBlockReward, error) {
+	var obj StoredConfirmedBlockReward
+	if err := deserializer.IncreaseContainerDepth(); err != nil {
+		return obj, err
+	}
+	if val, err := deserializer.DeserializeStr(); err == nil {
+		obj.Pubkey = val
+	} else {
+		return obj, err
+	}
+	if val, err := deserializer.DeserializeI64(); err == nil {
+		obj.Lamports = val
+	} else {
+		return obj, err
+	}
+	deserializer.DecreaseContainerDepth()
+	return obj, nil
+}
+
+func BincodeDeserializeStoredConfirmedBlockReward(input []byte) (StoredConfirmedBlockReward, error) {
+	if input == nil {
+		var obj StoredConfirmedBlockReward
+		return obj, fmt.Errorf("Cannot deserialize null array")
+	}
+	deserializer := bincode.NewDeserializer(input)
+	obj, err := DeserializeStoredConfirmedBlockReward(deserializer)
+	if err == nil && deserializer.GetBufferOffset() < uint64(len(input)) {
+		return obj, fmt.Errorf("Some input bytes were not read")
+	}
+	return obj, err
+}
