@@ -4,7 +4,7 @@ concurrency:
 
 name: Filecoin Deals Report Generator
 on:
-  push:
+  #push:
   schedule:
     - cron: '11 3 * * *'  # Run once a day at 03:11 UTC
   workflow_dispatch:  # Allow manual trigger
