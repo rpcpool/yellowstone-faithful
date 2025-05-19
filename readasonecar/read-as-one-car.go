@@ -223,6 +223,14 @@ func (mr *MultiReader) SizeOfPreviousFiles(index int) (uint64, error) {
 	return size, nil
 }
 
+func (mr *MultiReader) TotalSize() uint64 {
+	var size uint64
+	for _, f := range mr.readers {
+		size += f.Size
+	}
+	return size
+}
+
 // GetGlobalOffsetForNextRead returns the global offset for the next read operation.
 // It also returns whether there is more data to read (if false, then it means that the returned offset is the end of the last file).
 func (mr *MultiReader) GetGlobalOffsetForNextRead() (uint64, bool) {

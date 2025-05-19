@@ -19,7 +19,11 @@ func RewardsToUi(
 			rewardJson.Int("lamports", reward.Lamports)
 			rewardJson.Uint("postBalance", reward.PostBalance)
 			rewardJson.String("rewardType", reward.RewardType.String())
-			rewardJson.Float("commission", asFloat(reward.Commission))
+			if reward.Commission != "" {
+				rewardJson.Float("commission", asFloat(reward.Commission))
+			} else {
+				rewardJson.Null("commission")
+			}
 		}
 		rewardsArray.AddObject(rewardJson)
 	}
@@ -34,7 +38,7 @@ func asFloat(s string) float64 {
 	var f float64
 	_, err := fmt.Sscanf(s, "%f", &f)
 	if err != nil {
-		panic(err)
+		return 0
 	}
 	return f
 }
