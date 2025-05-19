@@ -58,7 +58,6 @@ func CreateIndex_slot2cid(
 	if err != nil {
 		return "", fmt.Errorf("failed to open index store: %w", err)
 	}
-	defer sl2c.Close()
 
 	numItemsIndexed := uint64(0)
 	klog.Infof("Indexing...")
@@ -89,7 +88,7 @@ func CreateIndex_slot2cid(
 	// Use the car file name and root CID to name the index file:
 
 	klog.Infof("Sealing index...")
-	if err = sl2c.Seal(ctx, indexDir); err != nil {
+	if err = sl2c.SealAndClose(ctx, indexDir); err != nil {
 		return "", fmt.Errorf("failed to seal index: %w", err)
 	}
 	indexFilePath := sl2c.GetFilepath()

@@ -19,6 +19,7 @@ import (
 	"sort"
 	"syscall"
 
+	"github.com/rpcpool/yellowstone-faithful/continuity"
 	"github.com/rpcpool/yellowstone-faithful/indexmeta"
 )
 
@@ -217,17 +218,13 @@ func (b *Builder) Insert(key []byte, value []byte) error {
 	return b.buckets[b.Header.BucketHash(key)].writeTuple(key, value)
 }
 
-// Seal writes the final index to the provided file.
+// SealAndClose writes the final index to the provided file.
 // This process is CPU-intensive, use context to abort prematurely.
 //
 // The file should be opened with access mode os.O_RDWR.
 // Passing a non-empty file will result in a corrupted index.
-func (b *Builder) Seal(ctx context.Context, file *os.File) (err error) {
+func (b *Builder) SealAndClose(ctx context.Context, file *os.File) (err error) {
 	// TODO support in-place writing.
-
-	defer func() {
-		file.Sync()
-	}()
 
 	// Write header.
 	headerBuf := b.Header.Bytes()
@@ -259,7 +256,20 @@ func (b *Builder) Seal(ctx context.Context, file *os.File) (err error) {
 			return fmt.Errorf("failed to seal bucket %d: %w", i, err)
 		}
 	}
-	return nil
+	return continuity.New().
+		Thenf("sync", func() error {
+			if err := file.Sync(); err != nil {
+				return fmt.Errorf("failed to sync file: %w", err)
+			}
+			return nil
+		}).
+		Thenf("close", func() error {
+			if err := b.close(); err != nil {
+				return fmt.Errorf("failed to close index: %w", err)
+			}
+			return nil
+		}).
+		Err()
 }
 
 // sealBucket will mine a bucket hashtable, write entries to a file, a
@@ -318,7 +328,7 @@ func (b *Builder) getEntryStride() uint8 {
 	return uint8(HashSize) + uint8(offsetSize)
 }
 
-func (b *Builder) Close() error {
+func (b *Builder) close() error {
 	for _, c := range b.closers {
 		c.Close()
 	}

@@ -71,7 +71,6 @@ func CreateIndex_sig2cid(
 	if err != nil {
 		return "", fmt.Errorf("failed to open index store: %w", err)
 	}
-	defer sig2c.Close()
 
 	numItemsIndexed := uint64(0)
 	klog.Infof("Indexing...")
@@ -103,7 +102,7 @@ func CreateIndex_sig2cid(
 	}
 
 	klog.Infof("Sealing index...")
-	if err = sig2c.Seal(ctx, indexDir); err != nil {
+	if err = sig2c.SealAndClose(ctx, indexDir); err != nil {
 		return "", fmt.Errorf("failed to seal index: %w", err)
 	}
 	indexFilePath := sig2c.GetFilepath()
