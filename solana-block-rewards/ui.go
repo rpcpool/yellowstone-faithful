@@ -18,7 +18,11 @@ func RewardsToUi(
 			rewardJson.String("pubkey", reward.Pubkey)
 			rewardJson.Int("lamports", reward.Lamports)
 			rewardJson.Uint("postBalance", reward.PostBalance)
-			rewardJson.String("rewardType", reward.RewardType.String())
+			if reward.RewardType != 0 {
+				rewardJson.String("rewardType", reward.RewardType.String())
+			} else {
+				rewardJson.Null("rewardType")
+			}
 			if reward.Commission != "" {
 				rewardJson.Float("commission", asFloat(reward.Commission))
 			} else {
