@@ -42,7 +42,7 @@ type Builder struct {
 // All values must be of the same size.
 func NewBuilderSized(
 	tmpDir string,
-	numItems uint,
+	numItems uint, // NOTE: if `numItems` is not set correctly, either there will be collisions, or the buckets will be almost empty.
 	valueSizeBytes uint,
 ) (*Builder, error) {
 	if tmpDir == "" {

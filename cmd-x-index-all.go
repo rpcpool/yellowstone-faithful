@@ -161,7 +161,7 @@ func createAllIndexes(
 
 	klog.Infof("This CAR file is for epoch %d and cluster %s", epoch, network)
 
-	hardcodedNumTotalItems := uint64(1_000_000_000)
+	hardcodedNumTotalItems := uint64(3_000_000_000)
 	cid_to_offset_and_size, err := NewBuilder_CidToOffset(
 		epoch,
 		rootCID,
@@ -183,7 +183,7 @@ func createAllIndexes(
 		return nil, 0, fmt.Errorf("failed to create slot_to_cid index: %w", err)
 	}
 
-	hardcodedNumTransactions := uint64(1_000_000_000) // THis is used to determine the number of buckets in the index
+	hardcodedNumTransactions := uint64(2_000_000_000) // THis is used to determine the number of buckets in the index
 	sig_to_cid, err := NewBuilder_SignatureToCid(
 		epoch,
 		rootCID,
