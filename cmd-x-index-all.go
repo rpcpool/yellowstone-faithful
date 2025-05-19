@@ -208,10 +208,10 @@ func createAllIndexes(
 	numIndexedOffsets := uint64(0)
 	numIndexedBlocks := uint64(0)
 	numIndexedTransactions := uint64(0)
-	lastCheckpoint := time.Now()
 	klog.Infof("Indexing...")
 	var eta time.Duration
 	startedAt := time.Now()
+	totalSize := rd.TotalSize()
 	for {
 		totalOffset, ok := rd.GetGlobalOffsetForNextRead()
 		if !ok {
@@ -277,11 +277,14 @@ func createAllIndexes(
 			}
 		}
 
-		if numIndexedOffsets%1_000_000 == 0 && numIndexedOffsets > 0 {
-			timeForChunk := time.Since(lastCheckpoint)
-			numChunksLeft := ((hardcodedNumTotalItems - numIndexedOffsets) / 1_000_000) + 1
-			eta = timeForChunk * time.Duration(numChunksLeft)
-			lastCheckpoint = time.Now()
+		percentDone := calcPercentDone(
+			totalSize,
+			totalOffset,
+		)
+		if percentDone > 0 {
+			tookSoFar := time.Since(startedAt)
+			msPerOnePercent := float64(tookSoFar.Milliseconds()) / (percentDone)
+			eta = time.Duration(int64(msPerOnePercent)*int64(100-percentDone)) * time.Millisecond
 		}
 		if numIndexedOffsets%100_000 == 0 {
 			var etaString string
@@ -291,10 +294,9 @@ func createAllIndexes(
 				etaString = ", ETA: ---   "
 			}
 			printToStderr(
-				fmt.Sprintf("\rIndexing: %s/%s items [%s%%] %s",
+				fmt.Sprintf("\rIndexing: %s items [%s%%] %s",
 					humanize.Comma(int64(numIndexedOffsets)),
-					humanize.Comma(int64(hardcodedNumTotalItems)),
-					humanize.CommafWithDigits(float64(numIndexedOffsets)/float64(hardcodedNumTotalItems)*100, 2),
+					humanize.CommafWithDigits(float64(percentDone), 2),
 					etaString,
 				),
 			)
@@ -399,6 +401,19 @@ func createAllIndexes(
 	}
 
 	return paths, hardcodedNumTotalItems, nil
+}
+
+func calcPercentDone(
+	total uint64,
+	done uint64,
+) float64 {
+	if total == 0 {
+		return 0
+	}
+	if done == 0 {
+		return 0
+	}
+	return float64(done) / float64(total) * 100
 }
 
 func greenBackground(s string) string {
