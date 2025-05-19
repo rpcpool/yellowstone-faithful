@@ -242,6 +242,7 @@ func (a *GsfaWriter) Close() error {
 		{
 			keys := solana.PublicKeySlice(a.offsets.Keys())
 			keys.Sort()
+			keys = keys.Dedupe()
 			klog.Infof("Writing %d starting offsets for as many pubkeys ...", len(keys))
 			for _, key := range keys {
 				offSize, _ := a.offsets.Get(key)
@@ -260,7 +261,6 @@ func (a *GsfaWriter) Close() error {
 	}
 
 	return errors.Join(
-		a.offsetsWriter.Close(),
 		a.ll.Close(),
 		a.man.Close(),
 	)

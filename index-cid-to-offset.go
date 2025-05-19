@@ -68,7 +68,6 @@ func CreateIndex_cid2offset(
 	if err != nil {
 		return "", fmt.Errorf("failed to open index store: %w", err)
 	}
-	defer c2o.Close()
 
 	numItemsIndexed := uint64(0)
 	klog.Infof("Indexing...")
@@ -99,7 +98,7 @@ func CreateIndex_cid2offset(
 	}
 
 	klog.Infof("Sealing index...")
-	if err = c2o.Seal(ctx, indexDir); err != nil {
+	if err = c2o.SealAndClose(ctx, indexDir); err != nil {
 		return "", fmt.Errorf("failed to seal index: %w", err)
 	}
 	indexFilePath := c2o.GetFilepath()

@@ -10,6 +10,7 @@ import (
 	"sort"
 
 	bin "github.com/gagliardetto/binary"
+	"github.com/rpcpool/yellowstone-faithful/continuity"
 	"github.com/rpcpool/yellowstone-faithful/indexmeta"
 	"k8s.io/klog/v2"
 )
@@ -76,7 +77,7 @@ func (b *Writer) Has(sig [64]byte) bool {
 	return false
 }
 
-func (b *Writer) Close() error {
+func (b *Writer) close() error {
 	if b.writer != nil {
 		if err := b.writer.Flush(); err != nil {
 			return fmt.Errorf("failed to flush writer: %w", err)
@@ -91,8 +92,8 @@ func (b *Writer) Close() error {
 	return b.destination.Close()
 }
 
-// Seal writes the Bucketteer's state to the given writer.
-func (b *Writer) Seal(meta indexmeta.Meta) (int64, error) {
+// SealAndClose writes the Bucketteer's state to the given writer.
+func (b *Writer) SealAndClose(meta indexmeta.Meta) (int64, error) {
 	file, err := os.Create(b.path)
 	if err != nil {
 		return 0, fmt.Errorf("failed to create file: %w", err)
@@ -121,7 +122,18 @@ func (b *Writer) Seal(meta indexmeta.Meta) (int64, error) {
 			return 0, fmt.Errorf("failed to sync file: %w", err)
 		}
 	}
-	return size, overwriteFileContentAt(b.destination, 0, newHeader)
+	return size,
+		continuity.New().
+			Thenf("overwriteHeader", func() error {
+				return overwriteFileContentAt(b.destination, 0, newHeader)
+			}).
+			Thenf("close", func() error {
+				if err := b.close(); err != nil {
+					return fmt.Errorf("failed to close index: %w", err)
+				}
+				return nil
+			}).
+			Err()
 }
 
 func createHeader(

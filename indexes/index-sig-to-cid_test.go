@@ -56,13 +56,9 @@ func TestSigToCid(t *testing.T) {
 			require.NoError(t, writer.Put(sig_, cid_))
 		}
 	}
-	{
-		// if try to close the index before sealing it, it should fail
-		require.Error(t, writer.Close())
-	}
 
 	// seal the index
-	require.NoError(t, writer.Seal(context.TODO(), dstDir))
+	require.NoError(t, writer.SealAndClose(context.TODO(), dstDir))
 	t.Log(writer.GetFilepath())
 	{
 		files, err := os.ReadDir(dstDir)
@@ -86,9 +82,6 @@ func TestSigToCid(t *testing.T) {
 
 	finalFilepath := writer.GetFilepath()
 	require.NotEmpty(t, finalFilepath)
-
-	// close the index
-	require.NoError(t, writer.Close())
 
 	// open the index
 	reader, err := indexes.Open_SigToCid(finalFilepath)

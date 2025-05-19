@@ -141,11 +141,6 @@ func newCmd_Index_sigExists() *cli.Command {
 			if err != nil {
 				return fmt.Errorf("error while opening sig-exists index writer: %w", err)
 			}
-			defer func() {
-				if err := index.Close(); err != nil {
-					klog.Fatalf("Error while closing: %s", err)
-				}
-			}()
 
 			startedAt := time.Now()
 			numTransactionsSeen := 0
@@ -249,7 +244,7 @@ func newCmd_Index_sigExists() *cli.Command {
 			if err := meta.AddString(indexmeta.MetadataKey_Network, string(network)); err != nil {
 				return fmt.Errorf("failed to add network to sig_exists index metadata: %w", err)
 			}
-			_, err = index.Seal(meta)
+			_, err = index.SealAndClose(meta)
 			if err != nil {
 				return fmt.Errorf("error while sealing index: %w", err)
 			}

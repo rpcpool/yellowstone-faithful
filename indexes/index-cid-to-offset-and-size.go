@@ -9,6 +9,7 @@ import (
 
 	"github.com/ipfs/go-cid"
 	"github.com/rpcpool/yellowstone-faithful/compactindexsized"
+	"github.com/rpcpool/yellowstone-faithful/continuity"
 )
 
 type CidToOffsetAndSize_Writer struct {
@@ -89,7 +90,7 @@ func (w *CidToOffsetAndSize_Writer) Put(cid_ cid.Cid, offset uint64, size uint64
 	return w.index.Insert(key, value)
 }
 
-func (w *CidToOffsetAndSize_Writer) Seal(ctx context.Context, dstDir string) error {
+func (w *CidToOffsetAndSize_Writer) SealAndClose(ctx context.Context, dstDir string) error {
 	if w.sealed {
 		return fmt.Errorf("already sealed")
 	}
@@ -97,27 +98,32 @@ func (w *CidToOffsetAndSize_Writer) Seal(ctx context.Context, dstDir string) err
 	filepath := filepath.Join(dstDir, formatFilename_CidToOffsetAndSize(w.meta.Epoch, w.meta.RootCid, w.meta.Network))
 	w.finalPath = filepath
 
-	defer os.Rename(filepath+".tmp", filepath)
-
 	file, err := os.Create(filepath + ".tmp")
 	if err != nil {
 		return fmt.Errorf("failed to create file: %w", err)
 	}
-	defer file.Close()
 
-	if err := w.index.Seal(ctx, file); err != nil {
-		return fmt.Errorf("failed to seal index: %w", err)
-	}
-	w.sealed = true
-
-	return nil
-}
-
-func (w *CidToOffsetAndSize_Writer) Close() error {
-	if !w.sealed {
-		return fmt.Errorf("attempted to close a cid-to-offset-and-size index that was not sealed")
-	}
-	return w.index.Close()
+	return continuity.New().
+		Thenf("seal", func() error {
+			if err := w.index.SealAndClose(ctx, file); err != nil {
+				return fmt.Errorf("failed to seal index: %w", err)
+			}
+			w.sealed = true
+			return nil
+		}).
+		Thenf("close", func() error {
+			if err := file.Close(); err != nil {
+				return fmt.Errorf("failed to close file: %w", err)
+			}
+			return nil
+		}).
+		Thenf("rename", func() error {
+			if err := os.Rename(filepath+".tmp", filepath); err != nil {
+				return fmt.Errorf("failed to rename temporary file: %w", err)
+			}
+			return nil
+		}).
+		Err()
 }
 
 // GetFilepath returns the path to the sealed index file.

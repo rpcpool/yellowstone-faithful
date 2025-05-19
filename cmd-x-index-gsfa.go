@@ -186,10 +186,6 @@ func newCmd_Index_gsfa() *cli.Command {
 			numMaxObjects := uint64(0)
 
 			lastPrintedAt := time.Now()
-			lastTimeDid1kSlots := time.Now()
-			var eta time.Duration
-			etaSampleSlots := uint64(2_000)
-			var tookToDo1kSlots time.Duration
 
 			numMissingMetadata := new(atomic.Int64)
 			numMissingMetadata.Store(0)
@@ -224,13 +220,6 @@ func newCmd_Index_gsfa() *cli.Command {
 					block, err := iplddecoders.DecodeBlock(parent.ObjectData)
 					if err != nil {
 						return fmt.Errorf("error while decoding block: %w", err)
-					}
-					if numSlots%etaSampleSlots == 0 {
-						tookToDo1kSlots = time.Since(lastTimeDid1kSlots)
-						lastTimeDid1kSlots = time.Now()
-					}
-					if tookToDo1kSlots > 0 {
-						eta = time.Duration(float64(tookToDo1kSlots) / float64(etaSampleSlots) * float64(epochEnd-epochStart-numSlots))
 					}
 					transactions, err := accum.ObjectsToTransactionsAndMetadata(block, children)
 					if err != nil {
@@ -294,7 +283,7 @@ func newCmd_Index_gsfa() *cli.Command {
 							klog.Exitf("Error while pushing to gsfa index: %s", err)
 						}
 
-						if time.Since(lastPrintedAt) > time.Millisecond*500 {
+						if time.Since(lastPrintedAt) > time.Second {
 							percentDone := float64(txWithInfo.Slot-epochStart) / float64(epochEnd-epochStart) * 100
 							// clear line, then print progress
 							msg := fmt.Sprintf(
@@ -306,6 +295,15 @@ func newCmd_Index_gsfa() *cli.Command {
 								humanize.Comma(int64(txWithInfo.Slot)),
 								humanize.Comma(int64(numProcessedTransactions.Load())),
 							)
+							var eta time.Duration
+							timePast := time.Since(startedAt).Truncate(time.Second).Round(time.Second)
+							if percentDone > 0 && timePast > 0 {
+								// it took timePast to get percentDone done
+								remainingPercent := 100 - percentDone
+								msForOnePercent := float64(timePast.Milliseconds()) / percentDone
+								eta = time.Millisecond * time.Duration(msForOnePercent*remainingPercent)
+								eta = eta.Truncate(time.Second).Round(time.Second)
+							}
 							if eta > 0 {
 								msg += fmt.Sprintf(" | ETA %s", eta.Truncate(time.Second))
 							}

@@ -50,7 +50,6 @@ func TestBucketteer(t *testing.T) {
 			"epoch": "test",
 		})
 		require.NoError(t, err)
-		require.NoError(t, wr.Close())
 		realSize, err := getFizeSize(path)
 		require.NoError(t, err)
 		require.Equal(t, realSize, gotSize)
