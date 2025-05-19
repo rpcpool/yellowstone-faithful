@@ -76,7 +76,7 @@ func (db *DB) GetBucket(i uint) (*Bucket, error) {
 	if db.prefetch {
 		// TODO: find good value for numEntriesToPrefetch
 		numEntriesToPrefetch := minInt64(3_000, int64(bucket.NumEntries))
-		prefetchSize := (4 + 3) * numEntriesToPrefetch
+		prefetchSize := int64(db.entryStride()) * numEntriesToPrefetch
 		buf := make([]byte, prefetchSize)
 		_, err := bucket.Entries.ReadAt(buf, 0)
 		if err != nil && !errors.Is(err, io.EOF) {

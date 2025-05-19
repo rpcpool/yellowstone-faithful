@@ -325,40 +325,34 @@ func createAllIndexes(
 		// seal the indexes
 		wg.Go(func() error {
 			klog.Infof("Sealing cid_to_offset_and_size index...")
-			err = cid_to_offset_and_size.Seal(ctx, indexDir)
+			err = cid_to_offset_and_size.SealAndClose(ctx, indexDir)
 			if err != nil {
 				return fmt.Errorf("failed to seal cid_to_offset_and_size index: %w", err)
 			}
 			paths.CidToOffsetAndSize = cid_to_offset_and_size.GetFilepath()
 			klog.Infof("Successfully sealed cid_to_offset_and_size index: %s", paths.CidToOffsetAndSize)
-			cid_to_offset_and_size.Close()
-			klog.Info("Closed cid_to_offset_and_size index")
 			return nil
 		})
 
 		wg.Go(func() error {
 			klog.Infof("Sealing slot_to_cid index...")
-			err = slot_to_cid.Seal(ctx, indexDir)
+			err = slot_to_cid.SealAndClose(ctx, indexDir)
 			if err != nil {
 				return fmt.Errorf("failed to seal slot_to_cid index: %w", err)
 			}
 			paths.SlotToCid = slot_to_cid.GetFilepath()
 			klog.Infof("Successfully sealed slot_to_cid index: %s", paths.SlotToCid)
-			slot_to_cid.Close()
-			klog.Info("Closed slot_to_cid index")
 			return nil
 		})
 
 		wg.Go(func() error {
 			klog.Infof("Sealing sig_to_cid index...")
-			err = sig_to_cid.Seal(ctx, indexDir)
+			err = sig_to_cid.SealAndClose(ctx, indexDir)
 			if err != nil {
 				return fmt.Errorf("failed to seal sig_to_cid index: %w", err)
 			}
 			paths.SignatureToCid = sig_to_cid.GetFilepath()
 			klog.Infof("Successfully sealed sig_to_cid index: %s", paths.SignatureToCid)
-			sig_to_cid.Close()
-			klog.Info("Closed sig_to_cid index")
 			return nil
 		})
 
@@ -374,12 +368,10 @@ func createAllIndexes(
 			if err := meta.AddString(indexmeta.MetadataKey_Network, string(network)); err != nil {
 				return fmt.Errorf("failed to add network to sig_exists index metadata: %w", err)
 			}
-			if _, err = sig_exists.Seal(meta); err != nil {
+			if _, err = sig_exists.SealAndClose(meta); err != nil {
 				return fmt.Errorf("failed to seal sig_exists index: %w", err)
 			}
 			klog.Infof("Successfully sealed sig_exists index: %s", paths.SignatureExists)
-			sig_exists.Close()
-			klog.Info("Closed sig_exists index")
 			return nil
 		})
 

@@ -161,7 +161,6 @@ func TestBuilder36(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, builder)
 	assert.Len(t, builder.buckets, 3)
-	defer builder.Close()
 
 	kindSomething := []byte("something")
 	require.NoError(t, builder.SetKind(kindSomething))
@@ -186,7 +185,7 @@ func TestBuilder36(t *testing.T) {
 	defer targetFile.Close()
 
 	// Seal index.
-	require.NoError(t, builder.Seal(context.TODO(), targetFile))
+	require.NoError(t, builder.SealAndClose(context.TODO(), targetFile))
 
 	// Assert binary content.
 	buf, err := os.ReadFile(targetFile.Name())
@@ -420,7 +419,6 @@ func TestBuilder36_Random(t *testing.T) {
 		_, statErr := os.Stat(builder.tmpDir)
 		assert.Truef(t, errors.Is(statErr, fs.ErrNotExist), "Delete failed: %v", statErr)
 	}()
-	defer builder.Close()
 
 	// Insert items to temp buckets.
 	preInsert := time.Now()
@@ -440,7 +438,7 @@ func TestBuilder36_Random(t *testing.T) {
 
 	// Seal to final index.
 	preSeal := time.Now()
-	sealErr := builder.Seal(context.TODO(), targetFile)
+	sealErr := builder.SealAndClose(context.TODO(), targetFile)
 	require.NoError(t, sealErr, "Seal failed")
 	t.Logf("Sealed in %s", time.Since(preSeal))
 
