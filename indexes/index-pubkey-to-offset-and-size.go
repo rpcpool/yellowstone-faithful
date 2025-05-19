@@ -44,6 +44,7 @@ func NewWriter_PubkeyToOffsetAndSize(
 	rootCid cid.Cid,
 	network Network,
 	tmpDir string, // Where to put the temporary index files; WILL BE DELETED.
+	numItems uint,
 ) (*PubkeyToOffsetAndSize_Writer, error) {
 	if !IsValidNetwork(network) {
 		return nil, ErrInvalidNetwork
@@ -53,7 +54,7 @@ func NewWriter_PubkeyToOffsetAndSize(
 	}
 	index, err := compactindexsized.NewBuilderSized(
 		tmpDir,
-		uint(1000000), // TODO: can this be not precise?
+		numItems, // NOTE: if this is not set correctly, either there will be collisions, or the buckets will be almost empty.
 		IndexValueSize_PubkeyToOffsetAndSize,
 	)
 	if err != nil {

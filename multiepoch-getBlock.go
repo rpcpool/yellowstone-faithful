@@ -332,20 +332,18 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 			// TODO: add support for legacy rewards format
 			fmt.Println("Rewards are not protobuf: " + err.Error())
 		} else {
-			{
-				// encode rewards as JSON, then decode it as a map
-				rewards, _, err := solanablockrewards.RewardsToUi(actualRewards)
-				if err != nil {
-					telemetry.RecordError(rewardsSpan, err, "Failed to encode rewards to JSON")
-					rewardsSpan.End()
-					return &jsonrpc2.Error{
-						Code:    jsonrpc2.CodeInternalError,
-						Message: "Internal error",
-					}, fmt.Errorf("failed to encode rewards: %v", err)
-				}
-				rewardsUi = rewards
+			// encode rewards as JSON, then decode it as a map
+			rewards, _, err := solanablockrewards.RewardsToUi(actualRewards)
+			if err != nil {
+				return &jsonrpc2.Error{
+					Code:    jsonrpc2.CodeInternalError,
+					Message: "Internal error",
+				}, fmt.Errorf("failed to encode rewards: %v", err)
 			}
+			rewardsUi = rewards
 		}
+	} else {
+		klog.V(4).Infof("rewards not requested or not available")
 	}
 	tim.time("get rewards")
 	{
