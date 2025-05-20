@@ -2,7 +2,7 @@
 |---|---|---|---|---|---|---|---|---|---|
 |789|epoch is|ongoing||||||||
 | 788 | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| 787 | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| 787 | [epoch-787.car](https://files.old-faithful.net/787/epoch-787.car) | [0aa411f](https://files.old-faithful.net/787/epoch-787.sha256) | 783 GB | [✓](https://files.old-faithful.net/787/tx-metadata-check.log) | [✓](https://files.old-faithful.net/787/poh-check.log) | ✓ | 81 GB | ✗ | [787.slots.txt](https://files.old-faithful.net/787/787.slots.txt) |
 | 786 | [epoch-786.car](https://files.old-faithful.net/786/epoch-786.car) | [56dead1](https://files.old-faithful.net/786/epoch-786.sha256) | 801 GB | [✓](https://files.old-faithful.net/786/tx-metadata-check.log) | [✓](https://files.old-faithful.net/786/poh-check.log) | ✓ | 83 GB | [✓](https://filecoin-car-storage-cdn.b-cdn.net/786/deals-metadata.csv) | [786.slots.txt](https://files.old-faithful.net/786/786.slots.txt) |
 | 785 | [epoch-785.car](https://files.old-faithful.net/785/epoch-785.car) | [46561c7](https://files.old-faithful.net/785/epoch-785.sha256) | 811 GB | [✓](https://files.old-faithful.net/785/tx-metadata-check.log) | [✓](https://files.old-faithful.net/785/poh-check.log) | ✓ | 85 GB | [✓](https://filecoin-car-storage-cdn.b-cdn.net/785/deals-metadata.csv) | [785.slots.txt](https://files.old-faithful.net/785/785.slots.txt) |
 | 784 | [epoch-784.car](https://files.old-faithful.net/784/epoch-784.car) | [604fb1f](https://files.old-faithful.net/784/epoch-784.sha256) | 821 GB | [✓](https://files.old-faithful.net/784/tx-metadata-check.log) | [✓](https://files.old-faithful.net/784/poh-check.log) | ✓ | 85 GB | [✓](https://filecoin-car-storage-cdn.b-cdn.net/784/deals-metadata.csv) | [784.slots.txt](https://files.old-faithful.net/784/784.slots.txt) |
@@ -812,5 +812,4 @@
 - Epoch 155: failed tx meta check
 - Epoch 156: failed tx meta check
 - Epoch 208: failed POH check, failed tx meta check
-- Epoch 787: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size
 - Epoch 788: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size
