@@ -296,7 +296,7 @@ func newMultiEpochHandler(handler *MultiEpoch, lsConf *ListenerConfig) func(ctx 
 		reqCtx.Request.Header.VisitAll(func(k, v []byte) {
 			headerCarrier.Set(string(k), string(v))
 		})
-		ctx := propagator.Extract(context.Background(), headerCarrier)
+		ctx := propagator.Extract(reqCtx, headerCarrier)
 
 		defer func() {
 			if method == "/metrics" || method == "/health" {
