@@ -22,6 +22,12 @@ import (
 	"github.com/valyala/fasthttp"
 	"github.com/valyala/fasthttp/fasthttpadaptor"
 	"k8s.io/klog/v2"
+
+	"github.com/rpcpool/yellowstone-faithful/telemetry"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type Options struct {
@@ -283,6 +289,15 @@ func newMultiEpochHandler(handler *MultiEpoch, lsConf *ListenerConfig) func(ctx 
 		startedAt := time.Now()
 		reqID := randomRequestID()
 		var method string = "<unknown>"
+
+		// Extract OpenTelemetry context from request headers
+		propagator := otel.GetTextMapPropagator()
+		headerCarrier := propagation.MapCarrier{}
+		reqCtx.Request.Header.VisitAll(func(k, v []byte) {
+			headerCarrier.Set(string(k), string(v))
+		})
+		ctx := propagator.Extract(context.Background(), headerCarrier)
+
 		defer func() {
 			if method == "/metrics" || method == "/health" {
 				return
@@ -361,6 +376,16 @@ func newMultiEpochHandler(handler *MultiEpoch, lsConf *ListenerConfig) func(ctx 
 			metrics.MethodToCode.WithLabelValues(sanitizeMethod(method), fmt.Sprint(reqCtx.Response.StatusCode())).Inc()
 		}()
 
+		// OpenTelemetry: Start a server span with the observed method
+		ctx, span := telemetry.StartSpan(ctx, "jsonrpc."+method, 
+			trace.WithAttributes(
+				attribute.String("rpc.method", method),
+				attribute.String("rpc.request_id", reqID),
+				attribute.String("client.address", reqCtx.RemoteAddr().String()),
+			),
+		)
+		defer span.End()
+
 		klog.V(2).Infof("[%s] method=%q", reqID, sanitizeMethod(method))
 		klog.V(3).Infof("[%s] received request with body: %q", reqID, strings.TrimSpace(string(body)))
 
@@ -398,6 +423,7 @@ func newMultiEpochHandler(handler *MultiEpoch, lsConf *ListenerConfig) func(ctx 
 				versionInfo,
 			)
 			if err != nil {
+				telemetry.RecordError(span, err, "Failed to reply to getVersion")
 				klog.Errorf("[%s] failed to reply to getVersion: %v", reqID, err)
 			}
 			return
@@ -406,6 +432,7 @@ func newMultiEpochHandler(handler *MultiEpoch, lsConf *ListenerConfig) func(ctx 
 		// errorResp is the error response to be sent to the client.
 		errorResp, err := handler.handleRequest(setRequestIDToContext(reqCtx, reqID), rqCtx, &rpcRequest)
 		if err != nil {
+			telemetry.RecordError(span, err, "Failed to handle JSON-RPC request")
 			klog.Errorf("[%s] failed to handle %q: %v", reqID, sanitizeMethod(method), err)
 		}
 		if errorResp != nil {
