@@ -376,6 +376,8 @@ func newMultiEpochHandler(handler *MultiEpoch, lsConf *ListenerConfig) func(ctx 
 			metrics.MethodToCode.WithLabelValues(sanitizeMethod(method), fmt.Sprint(reqCtx.Response.StatusCode())).Inc()
 		}()
 
+		klog.V(2).Infof("[%s] method=%q", reqID, sanitizeMethod(method))
+		klog.V(3).Infof("[%s] received request with body: %q", reqID, strings.TrimSpace(string(body)))
 		// OpenTelemetry: Start a server span with the observed method
 		ctx, span := telemetry.StartSpan(ctx, "jsonrpc."+method, 
 			trace.WithAttributes(
