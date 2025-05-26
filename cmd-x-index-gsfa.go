@@ -166,16 +166,6 @@ func newCmd_Index_gsfa() *cli.Command {
 			}
 			numProcessedTransactions := new(atomic.Int64)
 			startedAt := time.Now()
-			defer func() {
-				klog.Infof("Indexed %s transactions", humanize.Comma(int64(numProcessedTransactions.Load())))
-				klog.Info("Finalizing index -- this may take a while, DO NOT EXIT")
-				klog.Info("Closing index")
-				if err := indexW.Close(); err != nil {
-					klog.Fatalf("Error while closing: %s", err)
-				}
-				klog.Infof("Success: gSFA index created at %s with %d transactions", gsfaIndexDir, numProcessedTransactions.Load())
-				klog.Infof("Finished in %s", time.Since(startedAt))
-			}()
 
 			verifyHash := c.Bool("verify-hash")
 			sigverify := c.Bool("sigverify")
@@ -331,6 +321,17 @@ func newCmd_Index_gsfa() *cli.Command {
 
 			if err := accum.Run(context.Background()); err != nil {
 				return fmt.Errorf("error while accumulating objects: %w", err)
+			}
+
+			{
+				klog.Infof("Indexed %s transactions", humanize.Comma(int64(numProcessedTransactions.Load())))
+				klog.Info("Finalizing index -- this may take a while, DO NOT EXIT")
+				klog.Info("Closing index")
+				if err := indexW.Close(); err != nil {
+					klog.Fatalf("Error while closing: %s", err)
+				}
+				klog.Infof("Success: gSFA index created at %s with %d transactions", gsfaIndexDir, numProcessedTransactions.Load())
+				klog.Infof("Finished in %s", time.Since(startedAt))
 			}
 
 			return nil
