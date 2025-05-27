@@ -74,6 +74,8 @@ indexes:
     uri: https://files.old-faithful.net/${EPOCH}/epoch-${EPOCH}-${EPOCH_CID}-mainnet-cid-to-offset-and-size.index
   sig_to_cid:
     uri: https://files.old-faithful.net/${EPOCH}/epoch-${EPOCH}-${EPOCH_CID}-mainnet-sig-to-cid.index
+  slot_to_blocktime:
+    uri: https://files.old-faithful.net/${EPOCH}/epoch-${EPOCH}-${EPOCH_CID}-mainnet-slot-to-blocktime.index
   slot_to_cid:
     uri: https://files.old-faithful.net/${EPOCH}/epoch-${EPOCH}-${EPOCH_CID}-mainnet-slot-to-cid.index
   sig_exists:
