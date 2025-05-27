@@ -96,9 +96,9 @@ func (multi *MultiEpoch) GetBlock(ctx context.Context, params *old_faithful_grpc
 	span.SetAttributes(attribute.Int64("epoch_number", int64(epochNumber)))
 	
 	// Get epoch handler
-	_, epochSpan := telemetry.StartSpan(ctx, "GetEpoch")
+	_, epochLookupSpan := telemetry.StartSpan(ctx, "EpochLookup")
 	epochHandler, err := multi.GetEpoch(epochNumber)
-	epochSpan.End()
+	epochLookupSpan.End()
 	
 	if err != nil {
 		telemetry.RecordError(span, err, "Epoch not available")
@@ -123,6 +123,10 @@ func (multi *MultiEpoch) GetBlock(ctx context.Context, params *old_faithful_grpc
 	tim := newTimer(getRequestIDFromContext(ctx))
 	tim.time("GetBlock")
 	{
+		// Wrapper span for all CAR prefetch operations
+		_, carPrefetchWrapperSpan := telemetry.StartSpan(ctx, "CarPrefetchOperations")
+		defer carPrefetchWrapperSpan.End()
+		
 		prefetcherFromCar := func() error {
 			// Create a span for the CAR prefetching operation
 			prefetchCtx, prefetchSpan := telemetry.StartDiskIOSpan(ctx, "prefetch_car", map[string]string{
@@ -441,9 +445,9 @@ func (multi *MultiEpoch) GetBlock(ctx context.Context, params *old_faithful_grpc
 	}
 	tim.time("get rewards")
 	{
-		buildTxCtx, buildTxSpan := telemetry.StartSpan(ctx, "BuildTransactionsResponse")
+		_, buildTxSpan := telemetry.StartSpan(ctx, "BuildTransactionsResponse")
 		for _, transactionNode := range mergeTxNodeSlices(allTransactionNodes) {
-			txBuildCtx, txBuildSpan := telemetry.StartSpan(buildTxCtx, "TransactionNodeToGRPC")
+			_, txBuildSpan := telemetry.StartSpan(ctx, "TransactionNodeToGRPC")
 			txResp := new(old_faithful_grpc.Transaction)
 
 			// response.Slot = uint64(transactionNode.Slot)
@@ -474,7 +478,7 @@ func (multi *MultiEpoch) GetBlock(ctx context.Context, params *old_faithful_grpc
 		buildTxSpan.End()
 	}
 
-	sortCtx, sortSpan := telemetry.StartSpan(ctx, "SortTransactions")
+	_, sortSpan := telemetry.StartSpan(ctx, "SortTransactions")
 	sort.Slice(allTransactions, func(i, j int) bool {
 		if allTransactions[i].Index == nil || allTransactions[j].Index == nil {
 			return false
@@ -492,6 +496,8 @@ func (multi *MultiEpoch) GetBlock(ctx context.Context, params *old_faithful_grpc
 	resp.Blockhash = lastEntryHash[:]
 	resp.ParentSlot = uint64(block.Meta.Parent_slot)
 
+	// Span for block metadata processing
+	_, blockMetaSpan := telemetry.StartSpan(ctx, "ProcessBlockMetadata")
 	if slot == 0 {
 		genesis := epochHandler.GetGenesis()
 		if genesis != nil {
@@ -513,6 +519,7 @@ func (multi *MultiEpoch) GetBlock(ctx context.Context, params *old_faithful_grpc
 			resp.BlockHeight = blockHeight
 		}
 	}
+	blockMetaSpan.End()
 	{
 		// get parent slot
 		parentSlot := uint64(block.Meta.Parent_slot)
@@ -547,6 +554,14 @@ func (multi *MultiEpoch) GetBlock(ctx context.Context, params *old_faithful_grpc
 		parentSpan.End()
 	}
 	tim.time("get parent block")
+
+	// Final response preparation span
+	_, responseSpan := telemetry.StartSpan(ctx, "PrepareResponse")
+	responseSpan.SetAttributes(
+		attribute.Int("total_transactions", len(resp.Transactions)),
+		attribute.Int64("block_slot", int64(resp.Slot)),
+	)
+	responseSpan.End()
 
 	return resp, nil
 }

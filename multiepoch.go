@@ -554,19 +554,33 @@ func isValidLocalMethod(method string) bool {
 func (ser *MultiEpoch) handleRequest(ctx context.Context, conn *requestContext, req *jsonrpc2.Request) (*jsonrpc2.Error, error) {
 	switch req.Method {
 	case "getBlock":
-		return ser.handleGetBlock(ctx, conn, req)
+		spanCtx, span := telemetry.StartSpan(ctx, "jsonrpc.handleGetBlock")
+		defer span.End()
+		return ser.handleGetBlock(spanCtx, conn, req)
 	case "getTransaction":
-		return ser.handleGetTransaction(ctx, conn, req)
+		spanCtx, span := telemetry.StartSpan(ctx, "jsonrpc.handleGetTransaction")
+		defer span.End()
+		return ser.handleGetTransaction(spanCtx, conn, req)
 	case "getSignaturesForAddress":
-		return ser.handleGetSignaturesForAddress(ctx, conn, req)
+		spanCtx, span := telemetry.StartSpan(ctx, "jsonrpc.handleGetSignaturesForAddress")
+		defer span.End()
+		return ser.handleGetSignaturesForAddress(spanCtx, conn, req)
 	case "getBlockTime":
-		return ser.handleGetBlockTime(ctx, conn, req)
+		spanCtx, span := telemetry.StartSpan(ctx, "jsonrpc.handleGetBlockTime")
+		defer span.End()
+		return ser.handleGetBlockTime(spanCtx, conn, req)
 	case "getGenesisHash":
-		return ser.handleGetGenesisHash(ctx, conn, req)
+		spanCtx, span := telemetry.StartSpan(ctx, "jsonrpc.handleGetGenesisHash")
+		defer span.End()
+		return ser.handleGetGenesisHash(spanCtx, conn, req)
 	case "getFirstAvailableBlock":
-		return ser.handleGetFirstAvailableBlock(ctx, conn, req)
+		spanCtx, span := telemetry.StartSpan(ctx, "jsonrpc.handleGetFirstAvailableBlock")
+		defer span.End()
+		return ser.handleGetFirstAvailableBlock(spanCtx, conn, req)
 	case "getSlot":
-		return ser.handleGetSlot(ctx, conn, req)
+		spanCtx, span := telemetry.StartSpan(ctx, "jsonrpc.handleGetSlot")
+		defer span.End()
+		return ser.handleGetSlot(spanCtx, conn, req)
 	default:
 		return &jsonrpc2.Error{
 			Code:    jsonrpc2.CodeMethodNotFound,
