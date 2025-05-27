@@ -412,24 +412,38 @@ func (multi *MultiEpoch) GetBlock(ctx context.Context, params *old_faithful_grpc
 	var allTransactions []*old_faithful_grpc.Transaction
 	hasRewards := !block.Rewards.(cidlink.Link).Cid.Equals(DummyCID)
 	if hasRewards {
-		rewardsNode, err := epochHandler.GetRewardsByCid(ctx, block.Rewards.(cidlink.Link).Cid)
+		rewardsSpanCtx, rewardsSpan := telemetry.StartSpan(ctx, "RewardsProcessing")
+		rewardsNode, err := epochHandler.GetRewardsByCid(rewardsSpanCtx, block.Rewards.(cidlink.Link).Cid)
 		if err != nil {
+			telemetry.RecordError(rewardsSpan, err, "Failed to get RewardsByCid")
+			rewardsSpan.End()
 			return nil, status.Errorf(codes.Internal, "Failed to get Rewards: %v", err)
 		}
 		rewardsBuf, err := tooling.LoadDataFromDataFrames(&rewardsNode.Data, epochHandler.GetDataFrameByCid)
 		if err != nil {
+			telemetry.RecordError(rewardsSpan, err, "Failed to load Rewards dataFrames")
+			rewardsSpan.End()
 			return nil, status.Errorf(codes.Internal, "Failed to load Rewards dataFrames: %v", err)
 		}
 
 		uncompressedRawRewards, err := tooling.DecompressZstd(rewardsBuf)
 		if err != nil {
+			telemetry.RecordError(rewardsSpan, err, "Failed to decompress Rewards")
+			rewardsSpan.End()
 			return nil, status.Errorf(codes.Internal, "Failed to decompress Rewards: %v", err)
 		}
+		rewardsSpan.SetAttributes(
+			attribute.Int("rewards_compressed_size", len(rewardsBuf)),
+			attribute.Int("rewards_uncompressed_size", len(uncompressedRawRewards)),
+		)
 		resp.Rewards = uncompressedRawRewards
+		rewardsSpan.End()
 	}
 	tim.time("get rewards")
 	{
+		buildTxCtx, buildTxSpan := telemetry.StartSpan(ctx, "BuildTransactionsResponse")
 		for _, transactionNode := range mergeTxNodeSlices(allTransactionNodes) {
+			txBuildCtx, txBuildSpan := telemetry.StartSpan(buildTxCtx, "TransactionNodeToGRPC")
 			txResp := new(old_faithful_grpc.Transaction)
 
 			// response.Slot = uint64(transactionNode.Slot)
@@ -441,23 +455,34 @@ func (multi *MultiEpoch) GetBlock(ctx context.Context, params *old_faithful_grpc
 				pos, ok := transactionNode.GetPositionIndex()
 				if ok {
 					txResp.Index = ptrToUint64(uint64(pos))
+					txBuildSpan.SetAttributes(attribute.Int64("index", int64(pos)))
 				}
+				var err error
 				txResp.Transaction, txResp.Meta, err = getTransactionAndMetaFromNode(transactionNode, epochHandler.GetDataFrameByCid)
 				if err != nil {
+					telemetry.RecordError(txBuildSpan, err, "Failed to getTransactionAndMetaFromNode")
+					txBuildSpan.End()
+					buildTxSpan.End()
 					return nil, status.Errorf(codes.Internal, "Failed to get transaction: %v", err)
 				}
 			}
 
 			allTransactions = append(allTransactions, txResp)
+			txBuildSpan.End()
 		}
+		buildTxSpan.SetAttributes(attribute.Int("num_transactions", len(allTransactions)))
+		buildTxSpan.End()
 	}
 
+	sortCtx, sortSpan := telemetry.StartSpan(ctx, "SortTransactions")
 	sort.Slice(allTransactions, func(i, j int) bool {
 		if allTransactions[i].Index == nil || allTransactions[j].Index == nil {
 			return false
 		}
 		return *allTransactions[i].Index < *allTransactions[j].Index
 	})
+	sortSpan.SetAttributes(attribute.Int("num_sorted_transactions", len(allTransactions)))
+	sortSpan.End()
 	tim.time("get transactions")
 	resp.Transactions = allTransactions
 	blocktime := uint64(block.Meta.Blocktime)
@@ -491,18 +516,24 @@ func (multi *MultiEpoch) GetBlock(ctx context.Context, params *old_faithful_grpc
 	{
 		// get parent slot
 		parentSlot := uint64(block.Meta.Parent_slot)
+		parentSpanCtx, parentSpan := telemetry.StartSpan(ctx, "GetParentBlockForHash")
+		parentSpan.SetAttributes(attribute.Int64("parent_slot", int64(parentSlot)))
 		if (parentSlot != 0 || slot == 1) && slottools.CalcEpochForSlot(parentSlot) == epochNumber {
 			// NOTE: if the parent is in the same epoch, we can get it from the same epoch handler as the block;
 			// otherwise, we need to get it from the previous epoch (TODO: implement this)
-			parentBlock, _, err := epochHandler.GetBlock(WithSubrapghPrefetch(ctx, false), parentSlot)
+			parentBlock, _, err := epochHandler.GetBlock(WithSubrapghPrefetch(parentSpanCtx, false), parentSlot)
 			if err != nil {
+				telemetry.RecordError(parentSpan, err, "Failed to get parent block")
+				parentSpan.End()
 				return nil, status.Errorf(codes.Internal, "Failed to get parent block: %v", err)
 			}
 
 			if len(parentBlock.Entries) > 0 {
 				lastEntryCidOfParent := parentBlock.Entries[len(parentBlock.Entries)-1]
-				parentEntryNode, err := epochHandler.GetEntryByCid(ctx, lastEntryCidOfParent.(cidlink.Link).Cid)
+				parentEntryNode, err := epochHandler.GetEntryByCid(parentSpanCtx, lastEntryCidOfParent.(cidlink.Link).Cid)
 				if err != nil {
+					telemetry.RecordError(parentSpan, err, "Failed to get parent entry")
+					parentSpan.End()
 					return nil, status.Errorf(codes.Internal, "Failed to get parent entry: %v", err)
 				}
 				parentEntryHash := solana.HashFromBytes(parentEntryNode.Hash)
@@ -513,6 +544,7 @@ func (multi *MultiEpoch) GetBlock(ctx context.Context, params *old_faithful_grpc
 				klog.V(4).Infof("parent slot is in a different epoch, not implemented yet (can't get previousBlockhash)")
 			}
 		}
+		parentSpan.End()
 	}
 	tim.time("get parent block")
 
