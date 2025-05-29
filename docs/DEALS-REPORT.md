@@ -4,6 +4,7 @@
 
 | Epoch | Metadata Entries | Deals in CSV | Deals to Metadata Ratio | Deals Active | Percent Active | Pieces Not Found |
 |-------|------------------|--------------|-------------------------|--------------|----------------|------------------|
+| 793 | pending cargen | 0 | 0.0% | 0 | 0.0% | 0 |
 | 792 | pending cargen | 0 | 0.0% | 0 | 0.0% | 0 |
 | 791 | pending cargen | 0 | 0.0% | 0 | 0.0% | 0 |
 | 790 | 204 | 0 | 0.0% | 0 | 0.0% | 0 |
