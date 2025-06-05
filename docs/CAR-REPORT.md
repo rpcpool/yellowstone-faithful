@@ -1,6 +1,7 @@
 | Epoch #  | CAR  | CAR SHA256  | CAR filesize | tx meta check | poh check | Indices | Indices Size | Filecoin Deals | Slots
 |---|---|---|---|---|---|---|---|---|---|
-|797|epoch is|ongoing||||||||
+|798|epoch is|ongoing||||||||
+| 797 | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | 796 | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | 795 | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | 794 | [epoch-794.car](https://files.old-faithful.net/794/epoch-794.car) | [869cdc0](https://files.old-faithful.net/794/epoch-794.sha256) | 763 GB | [✓](https://files.old-faithful.net/794/tx-metadata-check.log) | [✓](https://files.old-faithful.net/794/poh-check.log) | ✓ | 79 GB | ✗ | [794.slots.txt](https://files.old-faithful.net/794/794.slots.txt) |
@@ -822,3 +823,4 @@
 - Epoch 208: failed tx meta check
 - Epoch 795: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size
 - Epoch 796: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size
+- Epoch 797: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size
