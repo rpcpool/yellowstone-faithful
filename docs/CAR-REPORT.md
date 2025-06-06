@@ -3,7 +3,7 @@
 |798|epoch is|ongoing||||||||
 | 797 | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | 796 | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| 795 | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| 795 | [epoch-795.car](https://files.old-faithful.net/795/epoch-795.car) | [f8893e9](https://files.old-faithful.net/795/epoch-795.sha256) | 767 GB | [✓](https://files.old-faithful.net/795/tx-metadata-check.log) | [✓](https://files.old-faithful.net/795/poh-check.log) | ✓ | 80 GB | ✗ | [795.slots.txt](https://files.old-faithful.net/795/795.slots.txt) |
 | 794 | [epoch-794.car](https://files.old-faithful.net/794/epoch-794.car) | [869cdc0](https://files.old-faithful.net/794/epoch-794.sha256) | 763 GB | [✓](https://files.old-faithful.net/794/tx-metadata-check.log) | [✓](https://files.old-faithful.net/794/poh-check.log) | ✓ | 79 GB | ✗ | [794.slots.txt](https://files.old-faithful.net/794/794.slots.txt) |
 | 793 | [epoch-793.car](https://files.old-faithful.net/793/epoch-793.car) | [ffded90](https://files.old-faithful.net/793/epoch-793.sha256) | 775 GB | [✓](https://files.old-faithful.net/793/tx-metadata-check.log) | [✓](https://files.old-faithful.net/793/poh-check.log) | ✓ | 80 GB | ✗ | [793.slots.txt](https://files.old-faithful.net/793/793.slots.txt) |
 | 792 | [epoch-792.car](https://files.old-faithful.net/792/epoch-792.car) | [d0d5aa7](https://files.old-faithful.net/792/epoch-792.sha256) | 761 GB | [✓](https://files.old-faithful.net/792/tx-metadata-check.log) | [✓](https://files.old-faithful.net/792/poh-check.log) | ✓ | 80 GB | ✗ | [792.slots.txt](https://files.old-faithful.net/792/792.slots.txt) |
@@ -821,6 +821,5 @@
 - Epoch 155: failed tx meta check
 - Epoch 156: failed tx meta check
 - Epoch 208: failed tx meta check
-- Epoch 795: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size
 - Epoch 796: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size
 - Epoch 797: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size
