@@ -1,10 +1,7 @@
 use {
     reader::Decoder,
-    solana_sdk::{
-        instruction::CompiledInstruction,
-        message::{v0::LoadedAddresses, AccountKeys},
-        pubkey::Pubkey,
-    },
+    solana_message::{compiled_instruction::CompiledInstruction, v0::LoadedAddresses, AccountKeys},
+    solana_pubkey::Pubkey,
     solana_transaction_status::parse_instruction::parse,
 };
 
@@ -29,7 +26,7 @@ pub unsafe extern "C" fn parse_instruction(bytes: *const u8, len: usize) -> Resp
         // read program ID:
         let program_id_bytes = decoder.read_bytes(32).unwrap();
         let program_id =
-            solana_sdk::pubkey::Pubkey::try_from(program_id_bytes).expect("invalid program id");
+            solana_pubkey::Pubkey::try_from(program_id_bytes).expect("invalid program id");
         let mut instruction = CompiledInstruction {
             program_id_index: 0,
             accounts: vec![],
@@ -57,7 +54,7 @@ pub unsafe extern "C" fn parse_instruction(bytes: *const u8, len: usize) -> Resp
         let mut static_account_keys_vec = vec![];
         for _ in 0..static_account_keys_len {
             let account_key_bytes = decoder.read_bytes(32).unwrap();
-            let account_key = solana_sdk::pubkey::Pubkey::try_from(account_key_bytes)
+            let account_key = solana_pubkey::Pubkey::try_from(account_key_bytes)
                 .expect("invalid account key in static account keys");
             static_account_keys_vec.push(account_key);
         }
@@ -92,7 +89,7 @@ pub unsafe extern "C" fn parse_instruction(bytes: *const u8, len: usize) -> Resp
                     };
                 }
                 let account_key_bytes = account_key_bytes.unwrap();
-                let account_key = solana_sdk::pubkey::Pubkey::try_from(account_key_bytes)
+                let account_key = solana_pubkey::Pubkey::try_from(account_key_bytes)
                     .expect("invalid account key in writable accounts");
                 loaded_addresses.writable.push(account_key);
             }
@@ -100,7 +97,7 @@ pub unsafe extern "C" fn parse_instruction(bytes: *const u8, len: usize) -> Resp
             // read 32 bytes for each readonly account:
             for _ in 0..num_readonly_accounts {
                 let account_key_bytes = decoder.read_bytes(32).unwrap();
-                let account_key = solana_sdk::pubkey::Pubkey::try_from(account_key_bytes)
+                let account_key = solana_pubkey::Pubkey::try_from(account_key_bytes)
                     .expect("invalid account key in readonly accounts");
                 loaded_addresses.readonly.push(account_key);
             }

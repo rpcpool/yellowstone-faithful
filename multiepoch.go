@@ -22,6 +22,12 @@ import (
 	"github.com/valyala/fasthttp"
 	"github.com/valyala/fasthttp/fasthttpadaptor"
 	"k8s.io/klog/v2"
+
+	"github.com/rpcpool/yellowstone-faithful/telemetry"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type Options struct {
@@ -283,6 +289,15 @@ func newMultiEpochHandler(handler *MultiEpoch, lsConf *ListenerConfig) func(ctx 
 		startedAt := time.Now()
 		reqID := randomRequestID()
 		var method string = "<unknown>"
+
+		// Extract OpenTelemetry context from request headers
+		propagator := otel.GetTextMapPropagator()
+		headerCarrier := propagation.MapCarrier{}
+		reqCtx.Request.Header.VisitAll(func(k, v []byte) {
+			headerCarrier.Set(string(k), string(v))
+		})
+		ctx := propagator.Extract(reqCtx, headerCarrier)
+
 		defer func() {
 			if method == "/metrics" || method == "/health" {
 				return
@@ -363,6 +378,18 @@ func newMultiEpochHandler(handler *MultiEpoch, lsConf *ListenerConfig) func(ctx 
 
 		klog.V(2).Infof("[%s] method=%q", reqID, sanitizeMethod(method))
 		klog.V(3).Infof("[%s] received request with body: %q", reqID, strings.TrimSpace(string(body)))
+		// OpenTelemetry: Start a server span with the observed method
+		ctx, span := telemetry.StartSpan(ctx, "jsonrpc."+method, 
+			trace.WithAttributes(
+				attribute.String("rpc.method", method),
+				attribute.String("rpc.request_id", reqID),
+				attribute.String("client.address", reqCtx.RemoteAddr().String()),
+			),
+		)
+		defer span.End()
+
+		klog.V(2).Infof("[%s] method=%q", reqID, sanitizeMethod(method))
+		klog.V(3).Infof("[%s] received request with body: %q", reqID, strings.TrimSpace(string(body)))
 
 		if proxy != nil && !isValidLocalMethod(rpcRequest.Method) {
 			klog.V(2).Infof("[%s] Unhandled method %q, proxying to %q", reqID, rpcRequest.Method, proxy.Addr)
@@ -398,6 +425,7 @@ func newMultiEpochHandler(handler *MultiEpoch, lsConf *ListenerConfig) func(ctx 
 				versionInfo,
 			)
 			if err != nil {
+				telemetry.RecordError(span, err, "Failed to reply to getVersion")
 				klog.Errorf("[%s] failed to reply to getVersion: %v", reqID, err)
 			}
 			return
@@ -406,6 +434,7 @@ func newMultiEpochHandler(handler *MultiEpoch, lsConf *ListenerConfig) func(ctx 
 		// errorResp is the error response to be sent to the client.
 		errorResp, err := handler.handleRequest(setRequestIDToContext(reqCtx, reqID), rqCtx, &rpcRequest)
 		if err != nil {
+			telemetry.RecordError(span, err, "Failed to handle JSON-RPC request")
 			klog.Errorf("[%s] failed to handle %q: %v", reqID, sanitizeMethod(method), err)
 		}
 		if errorResp != nil {
@@ -525,19 +554,33 @@ func isValidLocalMethod(method string) bool {
 func (ser *MultiEpoch) handleRequest(ctx context.Context, conn *requestContext, req *jsonrpc2.Request) (*jsonrpc2.Error, error) {
 	switch req.Method {
 	case "getBlock":
-		return ser.handleGetBlock(ctx, conn, req)
+		spanCtx, span := telemetry.StartSpan(ctx, "jsonrpc.handleGetBlock")
+		defer span.End()
+		return ser.handleGetBlock(spanCtx, conn, req)
 	case "getTransaction":
-		return ser.handleGetTransaction(ctx, conn, req)
+		spanCtx, span := telemetry.StartSpan(ctx, "jsonrpc.handleGetTransaction")
+		defer span.End()
+		return ser.handleGetTransaction(spanCtx, conn, req)
 	case "getSignaturesForAddress":
-		return ser.handleGetSignaturesForAddress(ctx, conn, req)
+		spanCtx, span := telemetry.StartSpan(ctx, "jsonrpc.handleGetSignaturesForAddress")
+		defer span.End()
+		return ser.handleGetSignaturesForAddress(spanCtx, conn, req)
 	case "getBlockTime":
-		return ser.handleGetBlockTime(ctx, conn, req)
+		spanCtx, span := telemetry.StartSpan(ctx, "jsonrpc.handleGetBlockTime")
+		defer span.End()
+		return ser.handleGetBlockTime(spanCtx, conn, req)
 	case "getGenesisHash":
-		return ser.handleGetGenesisHash(ctx, conn, req)
+		spanCtx, span := telemetry.StartSpan(ctx, "jsonrpc.handleGetGenesisHash")
+		defer span.End()
+		return ser.handleGetGenesisHash(spanCtx, conn, req)
 	case "getFirstAvailableBlock":
-		return ser.handleGetFirstAvailableBlock(ctx, conn, req)
+		spanCtx, span := telemetry.StartSpan(ctx, "jsonrpc.handleGetFirstAvailableBlock")
+		defer span.End()
+		return ser.handleGetFirstAvailableBlock(spanCtx, conn, req)
 	case "getSlot":
-		return ser.handleGetSlot(ctx, conn, req)
+		spanCtx, span := telemetry.StartSpan(ctx, "jsonrpc.handleGetSlot")
+		defer span.End()
+		return ser.handleGetSlot(spanCtx, conn, req)
 	default:
 		return &jsonrpc2.Error{
 			Code:    jsonrpc2.CodeMethodNotFound,
