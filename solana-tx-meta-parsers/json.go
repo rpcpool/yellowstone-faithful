@@ -197,7 +197,7 @@ func (final *EncodedTransactionWithStatusMeta) ToUi(encoding solana.EncodingType
 				// TODO: must parse also inner instructions?????
 			}
 		default:
-			return nil, fmt.Errorf("unknown encoding: %d", encoding)
+			return nil, fmt.Errorf("unknown encoding: %s", encoding)
 		}
 	}
 

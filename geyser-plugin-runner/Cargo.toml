@@ -1,5 +1,5 @@
 [package]
-name = "demo-rust-ipld-car"
+name = "oldfaithful-geyser-runner"
 version = "0.1.0"
 edition = "2021"
 publish = false
@@ -30,3 +30,7 @@ solana-transaction = { workspace = true }
 agave-transaction-view = { workspace = true }
 solana-sdk-ids = { workspace = true }
 tracing-subscriber  = { workspace = true }
+solana-hash = { workspace = true }
+solana-pubkey = { workspace = true }
+solana-message = { workspace = true }
+solana-program = { workspace = true }

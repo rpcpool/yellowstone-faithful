@@ -1376,37 +1376,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "demo-rust-ipld-car"
-version = "0.1.0"
-dependencies = [
- "agave-transaction-view",
- "base64 0.22.1",
- "bincode",
- "cid",
- "crc",
- "crossbeam-channel",
- "fnv",
- "multihash",
- "prost 0.11.9",
- "reqwest 0.12.15",
- "serde",
- "serde_cbor",
- "serde_json",
- "solana-accounts-db",
- "solana-entry",
- "solana-geyser-plugin-manager",
- "solana-rpc",
- "solana-runtime",
- "solana-sdk",
- "solana-sdk-ids",
- "solana-storage-proto",
- "solana-transaction",
- "solana-transaction-status",
- "tracing-subscriber",
- "zstd 0.13.2",
-]
-
-[[package]]
 name = "der-parser"
 version = "8.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3379,12 +3348,48 @@ dependencies = [
  "protobuf-src",
  "serde",
  "serde_json",
+ "solana-hash",
  "solana-message",
  "solana-sdk",
  "solana-storage-proto",
  "solana-transaction-status",
  "tonic 0.12.3",
  "tonic-build 0.12.3",
+]
+
+[[package]]
+name = "oldfaithful-geyser-runner"
+version = "0.1.0"
+dependencies = [
+ "agave-transaction-view",
+ "base64 0.22.1",
+ "bincode",
+ "cid",
+ "crc",
+ "crossbeam-channel",
+ "fnv",
+ "multihash",
+ "prost 0.11.9",
+ "reqwest 0.12.15",
+ "serde",
+ "serde_cbor",
+ "serde_json",
+ "solana-accounts-db",
+ "solana-entry",
+ "solana-geyser-plugin-manager",
+ "solana-hash",
+ "solana-message",
+ "solana-program",
+ "solana-pubkey",
+ "solana-rpc",
+ "solana-runtime",
+ "solana-sdk",
+ "solana-sdk-ids",
+ "solana-storage-proto",
+ "solana-transaction",
+ "solana-transaction-status",
+ "tracing-subscriber",
+ "zstd 0.13.2",
 ]
 
 [[package]]

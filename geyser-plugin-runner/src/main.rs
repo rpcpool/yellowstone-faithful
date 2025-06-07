@@ -1,8 +1,7 @@
 use tracing_subscriber::{fmt, EnvFilter};
 use {
     crossbeam_channel::unbounded,
-    demo_rust_ipld_car::{node, utils},
-    solana_reward_info::{RewardInfo, RewardType},
+    oldfaithful_geyser_runner::{node, utils},
     solana_rpc::optimistically_confirmed_bank_tracker::SlotNotification,
     solana_runtime::bank::KeyedRewardsAndNumPartitions,
     solana_sdk::{reward_info::RewardInfo, reward_type::RewardType, signature::Signature},
@@ -38,9 +37,6 @@ fn main() -> Result<(), Box<dyn Error>> {
         let service =
             solana_geyser_plugin_manager::geyser_plugin_service::GeyserPluginService::new(
                 confirmed_bank_receiver,
-                // new parameter `geyser_plugin_always_enabled`
-                // Subscribe on all types of notifiactions, even if no config files are passed
-                false,
                 geyser_config_files,
             )
             .unwrap_or_else(|err| panic!("Failed to create GeyserPluginService, error: {:?}", err));
@@ -59,8 +55,8 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         let block_meta_notifier_maybe = service.get_block_metadata_notifier();
 
-        let mut todo_previous_blockhash = solana_hash::Hash::default();
-        let mut todo_latest_entry_blockhash = solana_hash::Hash::default();
+        let mut todo_previous_blockhash = solana_sdk::hash::Hash::default();
+        let mut todo_latest_entry_blockhash = solana_sdk::hash::Hash::default();
         loop {
             let nodes = reader.read_until_block()?;
             // println!("Nodes: {:?}", nodes.get_cids());
@@ -104,10 +100,10 @@ fn main() -> Result<(), Box<dyn Error>> {
                                 // TODO: test address loading.
                                 let dummy_address_loader = MessageAddressLoaderFromTxMeta::new(as_native_metadata.clone());
                                 let sanitized_tx = match  parsed.version() {
-                                    solana_transaction::versioned::TransactionVersion::Number(_)=> {
+                                    solana_sdk::transaction::TransactionVersion::Number(_)=> {
                                         let message_hash = parsed.verify_and_hash_message()?;
-                                        let versioned_sanitized_tx= solana_transaction::versioned::sanitized::SanitizedVersionedTransaction::try_from(parsed)?;
-                                        solana_transaction::sanitized::SanitizedTransaction::try_new(
+                                        let versioned_sanitized_tx= solana_sdk::transaction::SanitizedVersionedTransaction::try_from(parsed)?;
+                                        solana_sdk::transaction::SanitizedTransaction::try_new(
                                             versioned_sanitized_tx,
                                             message_hash,
                                             false,
@@ -147,13 +143,13 @@ fn main() -> Result<(), Box<dyn Error>> {
                         }
 
                         // if parsed.version()
-                        //     == solana_transaction::versioned::TransactionVersion::Number(0)
+                        //     == solana_sdk::transaction::TransactionVersion::Number(0)
                         // {
                         //     return Ok(());
                         // }
                     }
                     node::Node::Entry(_entry) => {
-                        todo_latest_entry_blockhash = solana_hash::Hash::from(_entry.hash.to_bytes());
+                        todo_latest_entry_blockhash = solana_sdk::hash::Hash::from(_entry.hash.to_bytes());
                         this_block_executed_transaction_count += _entry.transactions.len() as u64;
                         this_block_entry_count += 1;
                         if entry_notifier_maybe.is_none() {
@@ -163,7 +159,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                         // println!("___ Entry: {:?}", entry);
                         let entry_summary=solana_entry::entry::EntrySummary {
                             num_hashes: _entry.num_hashes,
-                            hash: solana_hash::Hash::from(_entry.hash.to_bytes()),
+                            hash: solana_sdk::hash::Hash::from(_entry.hash.to_bytes()),
                             num_transactions: _entry.transactions.len() as u64,
                         };
 
@@ -201,7 +197,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                                             Err(_err) => None,
                                         },
                                     };
-                                    keyed_rewards.push((solana_pubkey::Pubkey::from_str(&this_block_reward.pubkey)?, reward));
+                                    keyed_rewards.push((solana_sdk::pubkey::Pubkey::from_str(&this_block_reward.pubkey)?, reward));
                                 }
                             }
                             // if keyed_rewards.read().unwrap().len() > 0 {
@@ -271,11 +267,12 @@ impl MessageAddressLoaderFromTxMeta {
     }
 }
 
-impl solana_message::AddressLoader for MessageAddressLoaderFromTxMeta {
+impl solana_sdk::message::AddressLoader for MessageAddressLoaderFromTxMeta {
     fn load_addresses(
         self,
-        _lookups: &[solana_message::v0::MessageAddressTableLookup],
-    ) -> Result<solana_message::v0::LoadedAddresses, solana_message::AddressLoaderError> {
+        _lookups: &[solana_sdk::message::v0::MessageAddressTableLookup],
+    ) -> Result<solana_sdk::message::v0::LoadedAddresses, solana_sdk::message::AddressLoaderError>
+    {
         Ok(self.tx_meta.loaded_addresses.clone())
     }
 }

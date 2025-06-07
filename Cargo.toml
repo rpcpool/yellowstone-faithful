@@ -48,6 +48,7 @@ solana-sdk-ids = "2.2"
 solana-message = "2.2.1"
 solana-pubkey = "2.2.1"
 solana-program = "2.0.13"
+solana-hash = "2.0.13"
 
 [workspace.lints.clippy]
 clone_on_ref_ptr = "deny"

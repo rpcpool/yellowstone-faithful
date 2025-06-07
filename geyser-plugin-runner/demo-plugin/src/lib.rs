@@ -145,7 +145,7 @@ impl GeyserPlugin for GeyserPluginDemo {
         &self,
         slot: u64,
         _parent: Option<u64>,
-        status: &SlotStatus,
+        status: SlotStatus,
     ) -> Result<()> {
         info!(
             "{} Updating slot {:?} with status {:?}",
