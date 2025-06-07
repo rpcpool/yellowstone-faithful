@@ -1,4 +1,3 @@
-use tracing_subscriber::{fmt, EnvFilter};
 use {
     crossbeam_channel::unbounded,
     oldfaithful_geyser_runner::{node, utils},
