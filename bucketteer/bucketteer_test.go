@@ -50,9 +50,8 @@ func TestBucketteer(t *testing.T) {
 	{
 		meta := indexmeta.Meta{}
 		meta.Add([]byte("epoch"), []byte("test"))
-		gotSize, err := wr.Seal(meta)
+		gotSize, err := wr.SealAndClose(meta)
 		require.NoError(t, err)
-		require.NoError(t, wr.Close())
 		realSize, err := getFizeSize(path)
 		require.NoError(t, err)
 		require.Equal(t, realSize, gotSize)

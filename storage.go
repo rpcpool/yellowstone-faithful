@@ -17,6 +17,10 @@ import (
 	"k8s.io/klog/v2"
 )
 
+func isHTTP(where string) bool {
+	return strings.HasPrefix(where, "http://") || strings.HasPrefix(where, "https://")
+}
+
 // openIndexStorage open a compactindex from a local file, or from a remote URL.
 // Supported protocols are:
 // - http://
@@ -26,7 +30,7 @@ func openIndexStorage(
 	where string,
 ) (ReaderAtCloser, error) {
 	where = strings.TrimSpace(where)
-	if strings.HasPrefix(where, "http://") || strings.HasPrefix(where, "https://") {
+	if isHTTP(where) {
 		klog.Infof("opening index file from %q as HTTP remote file", where)
 		rac, size, err := splitcarfetcher.NewRemoteHTTPFileAsIoReaderAt(ctx, where)
 		if err != nil {
@@ -60,7 +64,7 @@ func openIndexStorage(
 
 func openCarStorage(ctx context.Context, where string) (*carv2.Reader, ReaderAtCloser, error) {
 	where = strings.TrimSpace(where)
-	if strings.HasPrefix(where, "http://") || strings.HasPrefix(where, "https://") {
+	if isHTTP(where) {
 		klog.Infof("opening CAR file from %q as HTTP remote file", where)
 		rem, size, err := splitcarfetcher.NewRemoteHTTPFileAsIoReaderAt(ctx, where)
 		if err != nil {
@@ -101,31 +105,10 @@ func readNodeFromReaderAtWithOffsetAndSize(reader ReaderAtCloser, wantedCid *cid
 	return parseNodeFromSection(section, wantedCid)
 }
 
-type GetBlockResponse struct {
-	BlockHeight       *uint64                  `json:"blockHeight"`
-	BlockTime         *uint64                  `json:"blockTime"`
-	Blockhash         string                   `json:"blockhash"`
-	ParentSlot        uint64                   `json:"parentSlot"`
-	PreviousBlockhash *string                  `json:"previousBlockhash"`
-	Rewards           any                      `json:"rewards"` // TODO: use same format as solana
-	Transactions      []GetTransactionResponse `json:"transactions"`
-}
-
-type GetTransactionResponse struct {
-	// TODO: use same format as solana
-	Blocktime   *int64             `json:"blockTime,omitempty"`
-	Meta        any                `json:"meta"`
-	Slot        *uint64            `json:"slot,omitempty"`
-	Transaction any                `json:"transaction"`
-	Version     any                `json:"version"`
-	Position    uint64             `json:"-"` // TODO: enable this
-	Signatures  []solana.Signature `json:"-"` // TODO: enable this
-}
-
 func parseTransactionAndMetaFromNode(
 	transactionNode *ipldbindcode.Transaction,
 	dataFrameGetter func(ctx context.Context, wantedCid cid.Cid) (*ipldbindcode.DataFrame, error),
-) (tx solana.Transaction, meta any, _ error) {
+) (tx solana.Transaction, meta *solanatxmetaparsers.TransactionStatusMetaContainer, _ error) {
 	{
 		transactionBuffer, err := tooling.LoadDataFromDataFrames(&transactionNode.Data, dataFrameGetter)
 		if err != nil {
@@ -151,7 +134,7 @@ func parseTransactionAndMetaFromNode(
 				klog.Errorf("failed to decompress metadata: %v", err)
 				return
 			}
-			status, err := solanatxmetaparsers.ParseAnyTransactionStatusMeta(uncompressedMeta)
+			status, err := solanatxmetaparsers.ParseTransactionStatusMetaContainer(uncompressedMeta)
 			if err != nil {
 				klog.Errorf("failed to parse metadata: %v", err)
 				return

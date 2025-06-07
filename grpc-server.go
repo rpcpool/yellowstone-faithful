@@ -19,6 +19,7 @@ import (
 	"github.com/ipld/go-car/util"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/rpcpool/yellowstone-faithful/compactindexsized"
+	"github.com/rpcpool/yellowstone-faithful/dummycid"
 	"github.com/rpcpool/yellowstone-faithful/gsfa"
 	"github.com/rpcpool/yellowstone-faithful/gsfa/linkedlog"
 	"github.com/rpcpool/yellowstone-faithful/indexes"
@@ -94,12 +95,12 @@ func (multi *MultiEpoch) GetBlock(ctx context.Context, params *old_faithful_grpc
 	slot := params.Slot
 	epochNumber := slottools.CalcEpochForSlot(slot)
 	span.SetAttributes(attribute.Int64("epoch_number", int64(epochNumber)))
-	
+
 	// Get epoch handler
 	_, epochLookupSpan := telemetry.StartSpan(ctx, "EpochLookup")
 	epochHandler, err := multi.GetEpoch(epochNumber)
 	epochLookupSpan.End()
-	
+
 	if err != nil {
 		telemetry.RecordError(span, err, "Epoch not available")
 		return nil, status.Errorf(codes.NotFound, "Epoch %d is not available", epochNumber)
@@ -109,7 +110,7 @@ func (multi *MultiEpoch) GetBlock(ctx context.Context, params *old_faithful_grpc
 	blockCtx, blockSpan := telemetry.StartSpan(ctx, "GetBlockFromEpoch")
 	block, _, err := epochHandler.GetBlock(WithSubrapghPrefetch(blockCtx, true), slot)
 	blockSpan.End()
-	
+
 	if err != nil {
 		telemetry.RecordError(span, err, "Failed to get block")
 		if errors.Is(err, compactindexsized.ErrNotFound) {
@@ -126,14 +127,14 @@ func (multi *MultiEpoch) GetBlock(ctx context.Context, params *old_faithful_grpc
 		// Wrapper span for all CAR prefetch operations
 		_, carPrefetchWrapperSpan := telemetry.StartSpan(ctx, "CarPrefetchOperations")
 		defer carPrefetchWrapperSpan.End()
-		
+
 		prefetcherFromCar := func() error {
 			// Create a span for the CAR prefetching operation
 			prefetchCtx, prefetchSpan := telemetry.StartDiskIOSpan(ctx, "prefetch_car", map[string]string{
 				"slot": fmt.Sprintf("%d", slot),
 			})
 			defer prefetchSpan.End()
-			
+
 			parentIsInPreviousEpoch := slottools.CalcEpochForSlot(uint64(block.Meta.Parent_slot)) != slottools.CalcEpochForSlot(slot)
 			if slot == 0 {
 				parentIsInPreviousEpoch = true
@@ -144,18 +145,18 @@ func (multi *MultiEpoch) GetBlock(ctx context.Context, params *old_faithful_grpc
 
 			var blockCid, parentBlockCid cid.Cid
 			wg := new(errgroup.Group)
-			
+
 			// Finding CIDs - often a source of seek time
 			_, findCidsSpan := telemetry.StartDiskIOSpan(prefetchCtx, "find_cids", map[string]string{
 				"parent_is_in_previous_epoch": fmt.Sprintf("%v", parentIsInPreviousEpoch),
 			})
-			
+
 			wg.Go(func() (err error) {
 				ctxBlock, blockCidSpan := telemetry.StartDiskIOSpan(prefetchCtx, "find_block_cid", map[string]string{
 					"slot": fmt.Sprintf("%d", slot),
 				})
 				defer blockCidSpan.End()
-				
+
 				blockCid, err = epochHandler.FindCidFromSlot(ctxBlock, slot)
 				if err != nil {
 					telemetry.RecordError(blockCidSpan, err, "Failed to find CID from slot")
@@ -171,7 +172,7 @@ func (multi *MultiEpoch) GetBlock(ctx context.Context, params *old_faithful_grpc
 					"parent_slot": fmt.Sprintf("%d", block.Meta.Parent_slot),
 				})
 				defer parentCidSpan.End()
-				
+
 				parentBlockCid, err = epochHandler.FindCidFromSlot(ctxParent, uint64(block.Meta.Parent_slot))
 				if err != nil {
 					telemetry.RecordError(parentCidSpan, err, "Failed to find parent CID from slot")
@@ -181,7 +182,7 @@ func (multi *MultiEpoch) GetBlock(ctx context.Context, params *old_faithful_grpc
 			})
 			err = wg.Wait()
 			findCidsSpan.End()
-			
+
 			if err != nil {
 				telemetry.RecordError(prefetchSpan, err, "Failed to find CIDs")
 				return err
@@ -200,18 +201,18 @@ func (multi *MultiEpoch) GetBlock(ctx context.Context, params *old_faithful_grpc
 			{
 				var blockOffset, parentOffset uint64
 				wg := new(errgroup.Group)
-				
+
 				// Find offsets - this can involve disk seeking
 				_, findOffsetsSpan := telemetry.StartDiskIOSpan(prefetchCtx, "find_offsets", map[string]string{
 					"parent_is_in_previous_epoch": fmt.Sprintf("%v", parentIsInPreviousEpoch),
 				})
-				
+
 				wg.Go(func() (err error) {
 					ctxOffset, blockOffsetSpan := telemetry.StartDiskIOSpan(prefetchCtx, "find_block_offset", map[string]string{
 						"block_cid": blockCid.String(),
 					})
 					defer blockOffsetSpan.End()
-					
+
 					offsetAndSize, err := epochHandler.FindOffsetAndSizeFromCid(ctxOffset, blockCid)
 					if err != nil {
 						telemetry.RecordError(blockOffsetSpan, err, "Failed to find offset and size from CID")
@@ -231,7 +232,7 @@ func (multi *MultiEpoch) GetBlock(ctx context.Context, params *old_faithful_grpc
 						"parent_cid": parentBlockCid.String(),
 					})
 					defer parentOffsetSpan.End()
-					
+
 					offsetAndSize, err := epochHandler.FindOffsetAndSizeFromCid(ctxParentOffset, parentBlockCid)
 					if err != nil {
 						telemetry.RecordError(parentOffsetSpan, err, "Failed to find parent offset and size from CID")
@@ -243,7 +244,7 @@ func (multi *MultiEpoch) GetBlock(ctx context.Context, params *old_faithful_grpc
 				})
 				err = wg.Wait()
 				findOffsetsSpan.End()
-				
+
 				if err != nil {
 					telemetry.RecordError(prefetchSpan, err, "Failed to find offsets")
 					return err
@@ -263,15 +264,15 @@ func (multi *MultiEpoch) GetBlock(ctx context.Context, params *old_faithful_grpc
 				)
 
 				klog.V(4).Infof("prefetching CAR: start=%d length=%d (parent_offset=%d)", start, length, parentOffset)
-				
+
 				// This is the actual disk read operation - likely significant seek time here
 				readCtx, readSpan := telemetry.StartDiskIOSpan(prefetchCtx, "read_car_section", map[string]string{
-					"start": fmt.Sprintf("%d", start),
+					"start":  fmt.Sprintf("%d", start),
 					"length": fmt.Sprintf("%d", length),
 				})
 				carSection, err := epochHandler.ReadAtFromCar(readCtx, start, length)
 				readSpan.End()
-				
+
 				if err != nil {
 					telemetry.RecordError(prefetchSpan, err, "Failed to read CAR section")
 					return err
@@ -282,7 +283,7 @@ func (multi *MultiEpoch) GetBlock(ctx context.Context, params *old_faithful_grpc
 				// Processing the read data - deserializing and caching
 				_, processSpan := telemetry.StartSpan(prefetchCtx, "process_car_data")
 				defer processSpan.End()
-				
+
 				gotCid, data, err := util.ReadNode(br)
 				if err != nil {
 					telemetry.RecordError(processSpan, err, "Failed to read first node")
@@ -343,7 +344,7 @@ func (multi *MultiEpoch) GetBlock(ctx context.Context, params *old_faithful_grpc
 					attribute.String("entry_cid", entryCid.String()),
 				)
 				defer entrySpan.End()
-				
+
 				// get the entry by CID
 				entryFetchStart := time.Now()
 				entryNode, err := epochHandler.GetEntryByCid(entryCtx, entryCid)
@@ -363,12 +364,12 @@ func (multi *MultiEpoch) GetBlock(ctx context.Context, params *old_faithful_grpc
 				twg.SetLimit(runtime.NumCPU())
 				// get the transactions from the entry
 				allTransactionNodes[entryIndex] = make([]*ipldbindcode.Transaction, len(entryNode.Transactions))
-				
+
 				// Create a span for transaction processing within this entry
 				txsCtx, txsSpan := telemetry.StartSpan(entryCtx, "ProcessEntryTransactions")
 				txsSpan.SetAttributes(attribute.Int64("transaction_count", int64(len(entryNode.Transactions))))
 				defer txsSpan.End()
-				
+
 				for txI := range entryNode.Transactions {
 					txI := txI
 					tx := entryNode.Transactions[txI]
@@ -377,15 +378,15 @@ func (multi *MultiEpoch) GetBlock(ctx context.Context, params *old_faithful_grpc
 						txCtx, txSpan := telemetry.StartSpan(txsCtx, "ProcessTransaction")
 						txSpan.SetAttributes(attribute.Int64("tx_index", int64(txI)))
 						defer txSpan.End()
-						
+
 						// get the transaction by CID
 						tcid := tx.(cidlink.Link).Cid
 						txSpan.SetAttributes(attribute.String("tx_cid", tcid.String()))
-						
+
 						txFetchStart := time.Now()
 						txNode, err := epochHandler.GetTransactionByCid(txCtx, tcid)
 						txSpan.SetAttributes(attribute.Int64("tx_fetch_ms", time.Since(txFetchStart).Milliseconds()))
-						
+
 						if err != nil {
 							klog.Errorf("failed to decode Transaction %s: %v", tcid, err)
 							telemetry.RecordError(txSpan, err, "Failed to decode transaction")
@@ -414,7 +415,7 @@ func (multi *MultiEpoch) GetBlock(ctx context.Context, params *old_faithful_grpc
 	}
 
 	var allTransactions []*old_faithful_grpc.Transaction
-	hasRewards := !block.Rewards.(cidlink.Link).Cid.Equals(DummyCID)
+	hasRewards := !block.Rewards.(cidlink.Link).Cid.Equals(dummycid.DummyCID)
 	if hasRewards {
 		rewardsSpanCtx, rewardsSpan := telemetry.StartSpan(ctx, "RewardsProcessing")
 		rewardsNode, err := epochHandler.GetRewardsByCid(rewardsSpanCtx, block.Rewards.(cidlink.Link).Cid)
@@ -839,6 +840,22 @@ func (multi *MultiEpoch) GetBlockTime(ctx context.Context, params *old_faithful_
 	}
 }
 
+func stringSliceToPublicKeySlice(accounts []string) (solana.PublicKeySlice, error) {
+	if len(accounts) == 0 {
+		return nil, nil
+	}
+
+	publicKeys := make(solana.PublicKeySlice, len(accounts))
+	for i, acc := range accounts {
+		pk, err := solana.PublicKeyFromBase58(acc)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse account %s: %w", acc, err)
+		}
+		publicKeys[i] = pk
+	}
+	return publicKeys, nil
+}
+
 func (multi *MultiEpoch) StreamBlocks(params *old_faithful_grpc.StreamBlocksRequest, ser old_faithful_grpc.OldFaithful_StreamBlocksServer) error {
 	ctx := ser.Context()
 
@@ -848,13 +865,17 @@ func (multi *MultiEpoch) StreamBlocks(params *old_faithful_grpc.StreamBlocksRequ
 	if params.EndSlot != nil {
 		endSlot = *params.EndSlot
 	}
+	accountInclude, err := stringSliceToPublicKeySlice(params.Filter.AccountInclude)
+	if err != nil {
+		return status.Errorf(codes.InvalidArgument, "Failed to parse accountInclude: %v", err)
+	}
 
 	filterFunc := func(block *old_faithful_grpc.BlockResponse) bool {
 		if params.Filter == nil || len(params.Filter.AccountInclude) == 0 {
 			return true
 		}
 
-		return blockContainsAccounts(block, params.Filter.AccountInclude)
+		return blockContainsAccounts(block, accountInclude)
 	}
 
 	for slot := startSlot; slot <= endSlot; slot++ {
@@ -882,12 +903,7 @@ func (multi *MultiEpoch) StreamBlocks(params *old_faithful_grpc.StreamBlocksRequ
 	return nil
 }
 
-func blockContainsAccounts(block *old_faithful_grpc.BlockResponse, accounts []string) bool {
-	accountSet := make(map[string]struct{}, len(accounts))
-	for _, acc := range accounts {
-		accountSet[acc] = struct{}{}
-	}
-
+func blockContainsAccounts(block *old_faithful_grpc.BlockResponse, accounts solana.PublicKeySlice) bool {
 	for _, tx := range block.Transactions {
 		decoder := bin.NewBinDecoder(tx.GetTransaction())
 		solTx, err := solana.TransactionFromDecoder(decoder)
@@ -896,10 +912,8 @@ func blockContainsAccounts(block *old_faithful_grpc.BlockResponse, accounts []st
 			continue
 		}
 
-		for _, acc := range solTx.Message.AccountKeys {
-			if _, exists := accountSet[acc.String()]; exists {
-				return true
-			}
+		if accounts.ContainsAny(solTx.Message.AccountKeys) {
+			return true
 		}
 
 		meta, err := solanatxmetaparsers.ParseTransactionStatusMetaContainer(tx.Meta)
@@ -907,12 +921,9 @@ func blockContainsAccounts(block *old_faithful_grpc.BlockResponse, accounts []st
 			klog.Errorf("Failed to parse transaction meta: %v", err)
 		}
 
-		loadedAccounts := meta.GetLoadedAccounts()
-		keys := byteSlicesToKeySlice(loadedAccounts)
-		for _, key := range keys {
-			if _, exists := accountSet[key.String()]; exists {
-				return true
-			}
+		writable, readonly := meta.GetLoadedAccounts()
+		if writable.ContainsAny(accounts) || readonly.ContainsAny(accounts) {
+			return true
 		}
 	}
 
@@ -951,8 +962,7 @@ func (multi *MultiEpoch) processSlotTransactions(
 	gsfaReader *gsfa.GsfaReaderMultiepoch,
 	gsfaReadersLoaded bool,
 ) error {
-
-	filterOutTxn := func(tx solana.Transaction, meta any) bool {
+	filterOutTxn := func(tx solana.Transaction, meta *solanatxmetaparsers.TransactionStatusMetaContainer) bool {
 		if filter == nil {
 			return true
 		}
@@ -962,8 +972,7 @@ func (multi *MultiEpoch) processSlotTransactions(
 		}
 
 		if filter.Failed != nil && !(*filter.Failed) { // If failed is false, we should filter out failed transactions
-			err := getErr(meta)
-			if err != nil {
+			if meta != nil && meta.IsErr() {
 				return false
 			}
 		}
@@ -1038,7 +1047,7 @@ func (multi *MultiEpoch) processSlotTransactions(
 					return status.Errorf(codes.Internal, "Failed to decode transaction: %v", err)
 				}
 
-				meta, err := solanatxmetaparsers.ParseAnyTransactionStatusMeta(tx.Meta)
+				meta, err := solanatxmetaparsers.ParseTransactionStatusMetaContainer(tx.Meta)
 				if err != nil {
 					return status.Errorf(codes.Internal, "Failed to parse transaction meta: %v", err)
 				}

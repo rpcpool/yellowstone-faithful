@@ -649,9 +649,10 @@ func (s *Epoch) prefetchSubgraph(ctx context.Context, wantedCid cid.Cid) error {
 }
 
 func (s *Epoch) GetNodeByCid(ctx context.Context, wantedCid cid.Cid) ([]byte, error) {
+	cache := s.GetCache()
 	{
 		// try from cache
-		data, err, has := s.GetCache().GetRawCarObject(wantedCid)
+		data, err, has := cache.GetRawCarObject(wantedCid)
 		if err != nil {
 			return nil, err
 		}
@@ -664,7 +665,7 @@ func (s *Epoch) GetNodeByCid(ctx context.Context, wantedCid cid.Cid) ([]byte, er
 		data, err := s.lassieFetcher.GetNodeByCid(ctx, wantedCid)
 		if err == nil {
 			// put in cache
-			s.GetCache().PutRawCarObject(wantedCid, data)
+			cache.PutRawCarObject(wantedCid, data)
 			return data, nil
 		}
 		return nil, fmt.Errorf("failed to get node from lassie for CID %s: %w", wantedCid, err)
@@ -795,8 +796,9 @@ func (ser *Epoch) FindCidFromSlot(ctx context.Context, slot uint64) (o cid.Cid, 
 		klog.V(4).Infof("Found CID for slot %d in %s: %s", slot, time.Since(startedAt), o)
 	}()
 
+	cache := ser.GetCache()
 	// try from cache
-	if c, err, has := ser.GetCache().GetSlotToCid(slot); err != nil {
+	if c, err, has := cache.GetSlotToCid(slot); err != nil {
 		return cid.Undef, err
 	} else if has {
 		return c, nil
@@ -805,7 +807,7 @@ func (ser *Epoch) FindCidFromSlot(ctx context.Context, slot uint64) (o cid.Cid, 
 	if err != nil {
 		return cid.Undef, err
 	}
-	ser.GetCache().PutSlotToCid(slot, found)
+	cache.PutSlotToCid(slot, found)
 	return found, nil
 }
 
@@ -828,7 +830,8 @@ func (ser *Epoch) FindOffsetAndSizeFromCid(ctx context.Context, cid cid.Cid) (os
 	}()
 
 	// try from cache
-	if osi, err, has := ser.GetCache().GetCidToOffsetAndSize(cid); err != nil {
+	cache := ser.GetCache()
+	if osi, err, has := cache.GetCidToOffsetAndSize(cid); err != nil {
 		return nil, err
 	} else if has {
 		return osi, nil
@@ -853,7 +856,7 @@ func (ser *Epoch) FindOffsetAndSizeFromCid(ctx context.Context, cid cid.Cid) (os
 			Offset: offset,
 			Size:   size,
 		}
-		ser.GetCache().PutCidToOffsetAndSize(cid, found)
+		cache.PutCidToOffsetAndSize(cid, found)
 		return found, nil
 	}
 
@@ -861,7 +864,7 @@ func (ser *Epoch) FindOffsetAndSizeFromCid(ctx context.Context, cid cid.Cid) (os
 	if err != nil {
 		return nil, err
 	}
-	ser.GetCache().PutCidToOffsetAndSize(cid, found)
+	cache.PutCidToOffsetAndSize(cid, found)
 	return found, nil
 }
 
