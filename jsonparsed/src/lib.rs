@@ -1,6 +1,9 @@
 use {
-    reader::Decoder, solana_program::instruction::CompiledInstruction,
-    solana_program::message::v0::LoadedAddresses, solana_program::message::AccountKeys,
+    reader::Decoder,
+    solana_program::{
+        instruction::CompiledInstruction,
+        message::{v0::LoadedAddresses, AccountKeys},
+    },
     solana_transaction_status::parse_instruction::parse,
 };
 
