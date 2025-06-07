@@ -305,11 +305,7 @@ fn is_simple_vote_transaction(transaction: &solana_sdk::transaction::VersionedTr
     );
 
     let program_ids = get_program_ids(transaction);
-    let instruction_programs = program_ids.map(|program_id| program_id);
-    let is_simple_vote_transaction =
-        is_simple_vote_transaction_impl(&signatures, is_legacy_message, instruction_programs);
-
-    is_simple_vote_transaction
+    is_simple_vote_transaction_impl(&signatures, is_legacy_message, program_ids)
 }
 
 /// Simple vote transaction meets these conditions:
