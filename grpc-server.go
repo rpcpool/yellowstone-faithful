@@ -840,6 +840,22 @@ func (multi *MultiEpoch) GetBlockTime(ctx context.Context, params *old_faithful_
 	}
 }
 
+func stringSliceToPublicKeySlice(accounts []string) (solana.PublicKeySlice, error) {
+	if len(accounts) == 0 {
+		return nil, nil
+	}
+
+	publicKeys := make(solana.PublicKeySlice, len(accounts))
+	for i, acc := range accounts {
+		pk, err := solana.PublicKeyFromBase58(acc)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse account %s: %w", acc, err)
+		}
+		publicKeys[i] = pk
+	}
+	return publicKeys, nil
+}
+
 func (multi *MultiEpoch) StreamBlocks(params *old_faithful_grpc.StreamBlocksRequest, ser old_faithful_grpc.OldFaithful_StreamBlocksServer) error {
 	ctx := ser.Context()
 
@@ -849,13 +865,17 @@ func (multi *MultiEpoch) StreamBlocks(params *old_faithful_grpc.StreamBlocksRequ
 	if params.EndSlot != nil {
 		endSlot = *params.EndSlot
 	}
+	accountInclude, err := stringSliceToPublicKeySlice(params.Filter.AccountInclude)
+	if err != nil {
+		return status.Errorf(codes.InvalidArgument, "Failed to parse accountInclude: %v", err)
+	}
 
 	filterFunc := func(block *old_faithful_grpc.BlockResponse) bool {
 		if params.Filter == nil || len(params.Filter.AccountInclude) == 0 {
 			return true
 		}
 
-		return blockContainsAccounts(block, params.Filter.AccountInclude)
+		return blockContainsAccounts(block, accountInclude)
 	}
 
 	for slot := startSlot; slot <= endSlot; slot++ {
@@ -883,12 +903,7 @@ func (multi *MultiEpoch) StreamBlocks(params *old_faithful_grpc.StreamBlocksRequ
 	return nil
 }
 
-func blockContainsAccounts(block *old_faithful_grpc.BlockResponse, accounts []string) bool {
-	accountSet := make(solana.PublicKeySlice, len(accounts))
-	for i, acc := range accounts {
-		accountSet[i] = solana.MustPublicKeyFromBase58(acc)
-	}
-
+func blockContainsAccounts(block *old_faithful_grpc.BlockResponse, accounts solana.PublicKeySlice) bool {
 	for _, tx := range block.Transactions {
 		decoder := bin.NewBinDecoder(tx.GetTransaction())
 		solTx, err := solana.TransactionFromDecoder(decoder)
@@ -897,10 +912,8 @@ func blockContainsAccounts(block *old_faithful_grpc.BlockResponse, accounts []st
 			continue
 		}
 
-		for _, acc := range solTx.Message.AccountKeys {
-			if accountSet.Contains(acc) {
-				return true
-			}
+		if accounts.ContainsAny(solTx.Message.AccountKeys) {
+			return true
 		}
 
 		meta, err := solanatxmetaparsers.ParseTransactionStatusMetaContainer(tx.Meta)
@@ -909,10 +922,8 @@ func blockContainsAccounts(block *old_faithful_grpc.BlockResponse, accounts []st
 		}
 
 		writable, readonly := meta.GetLoadedAccounts()
-		for _, acc := range accountSet {
-			if writable.Contains(acc) || readonly.Contains(acc) {
-				return true
-			}
+		if writable.ContainsAny(accounts) || readonly.ContainsAny(accounts) {
+			return true
 		}
 	}
 

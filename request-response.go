@@ -15,7 +15,7 @@ import (
 	jsoniter "github.com/json-iterator/go"
 	"github.com/mostynb/zstdpool-freelist"
 	"github.com/mr-tron/base58"
-	jsonparsed "github.com/rpcpool/yellowstone-faithful/jsonparsed"
+	"github.com/rpcpool/yellowstone-faithful/jsonparsed"
 	"github.com/rpcpool/yellowstone-faithful/third_party/solana_proto/confirmed_block"
 	"github.com/sourcegraph/jsonrpc2"
 	"github.com/valyala/fasthttp"
