@@ -34,6 +34,10 @@ class FaithfulDataReport:
             "mainnet-slot-to-blocktime.index",
             "gsfa.index.tar.zstd"
         ]
+        # Add tracking variables for totals
+        self.total_car_count = 0
+        self.total_car_size = 0
+        self.total_indices_size = 0
         
     async def check_url(self, session: aiohttp.ClientSession, url: str) -> bool:
         try:
@@ -191,6 +195,11 @@ class FaithfulDataReport:
         # Construct slots.txt URL
         slots_url = f"{self.host}/{epoch}/{epoch}.slots.txt"
 
+        # Update totals
+        if size != "n/a":
+            self.total_car_size += int(size)
+        if indices_size != "n/a":
+            self.total_indices_size += int(indices_size)
 
         return EpochData(
             epoch=epoch,
@@ -213,6 +222,14 @@ class FaithfulDataReport:
         sha_cell = f"[{data.sha[:7]}]({data.sha_url})" if data.sha != "n/a" else "✗"
         size_cell = f"{data.size} GB" if data.size != "n/a" else "✗"
         
+        # Update totals
+        if data.car != "n/a":
+            self.total_car_count += 1
+        if data.size != "n/a":
+            self.total_car_size += int(data.size)
+        if data.indices_size != "n/a":
+            self.total_indices_size += int(data.indices_size)
+
         # Special handling for earlier epochs txmeta validation
         if 0 <= data.epoch < self.txmeta_first_epoch and data.txmeta != "n/a":
             txmeta_cell = f"[★]({data.txmeta_url})"
@@ -272,7 +289,7 @@ class FaithfulDataReport:
         print("|%s|epoch is|ongoing||||||||" % current_epoch)
 
         # concurrency levels
-        chunk_size = 20  
+        chunk_size = 50  
         
         async with aiohttp.ClientSession() as session:
             for i in range(0, len(epochs), chunk_size):
@@ -284,6 +301,13 @@ class FaithfulDataReport:
                 # Print results in order
                 for result in results:
                     print(self.format_row(result))
+
+        # Print totals row
+        car_size_tb = int(round(self.total_car_size / 1024, 0))
+        indices_size_tb = int(round(self.total_indices_size / 1024, 0))
+        total_epochs = len(epochs)
+        missing_cars = total_epochs - self.total_car_count
+        print(f"| **Total** | {self.total_car_count} | ({missing_cars} behind) | {car_size_tb:,} TB | - | - | - | {indices_size_tb:,} TB | - | - |")
 
         print("\n★ = tx meta validation skipped (epochs 0-%s where tx meta wasn't enabled yet)" % self.txmeta_first_epoch)
         print("\n★★ = epoch 208 POH validation is handled differently, see more in https://docs.old-faithful.net/validation")
