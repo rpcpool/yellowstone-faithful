@@ -61,6 +61,7 @@ func main() {
 			newCmd_SplitCar(),
 			newCmd_find_missing_tx_metadata(),
 			newCmd_TestGRPC(),
+			testRetrievabilityCmd,
 		},
 	}
 
