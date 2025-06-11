@@ -13,33 +13,35 @@ import (
 	"k8s.io/klog/v2"
 )
 
-var testRetrievabilityCmd = &cli.Command{
-	Name:  "test-retrievability",
-	Usage: "Test retrievability of CIDs from Filecoin network",
-	Flags: append([]cli.Flag{
-		&cli.StringFlag{
-			Name:     "input",
-			Aliases:  []string{"i"},
-			Usage:    "Input file containing CIDs (one per line), use '-' for stdin",
-			Required: true,
-		},
-		&cli.StringFlag{
-			Name:    "output",
-			Aliases: []string{"o"},
-			Usage:   "Output file for results (CSV format), use '-' for stdout",
-			Value:   "-",
-		},
-		&cli.DurationFlag{
-			Name:  "timeout",
-			Usage: "Timeout per CID retrieval attempt",
-			Value: 60 * time.Second,
-		},
-		&cli.BoolFlag{
-			Name:  "verbose",
-			Usage: "Enable verbose output",
-		},
-	}, commonLassieFlags()...),
-	Action: testRetrievabilityAction,
+func newCmd_TestRetrievability() *cli.Command {
+	return &cli.Command{
+		Name:  "test-retrievability",
+		Usage: "Test retrievability of CIDs from Filecoin network",
+		Flags: append([]cli.Flag{
+			&cli.StringFlag{
+				Name:     "input",
+				Aliases:  []string{"i"},
+				Usage:    "Input file containing CIDs (one per line), use '-' for stdin",
+				Required: true,
+			},
+			&cli.StringFlag{
+				Name:    "output",
+				Aliases: []string{"o"},
+				Usage:   "Output file for results (CSV format), use '-' for stdout",
+				Value:   "-",
+			},
+			&cli.DurationFlag{
+				Name:  "timeout",
+				Usage: "Timeout per CID retrieval attempt",
+				Value: 60 * time.Second,
+			},
+			&cli.BoolFlag{
+				Name:  "verbose",
+				Usage: "Enable verbose output",
+			},
+		}, commonLassieFlags()...),
+		Action: testRetrievabilityAction,
+	}
 }
 
 func testRetrievabilityAction(cctx *cli.Context) error {
@@ -67,18 +69,39 @@ func testRetrievabilityAction(cctx *cli.Context) error {
 		return fmt.Errorf("failed to initialize lassie: %w", err)
 	}
 
-	// Open output file
-	var outputWriter *os.File
-	if outputFile == "-" {
-		outputWriter = os.Stdout
-	} else {
-		outputWriter, err = os.Create(outputFile)
-		if err != nil {
-			return fmt.Errorf("failed to create output file: %w", err)
-		}
+	// Setup output writer
+	outputWriter, err := setupOutputWriter(outputFile)
+	if err != nil {
+		return err
+	}
+	if outputWriter != os.Stdout {
 		defer outputWriter.Close()
 	}
 
+	// Process CIDs and write results
+	return processCIDs(ctx, lassieWrapper, cids, outputWriter, timeout, verbose)
+}
+
+type RetrievabilityResult struct {
+	CID         string
+	Retrievable bool
+	Duration    time.Duration
+	Error       string
+}
+
+func setupOutputWriter(outputFile string) (*os.File, error) {
+	if outputFile == "-" {
+		return os.Stdout, nil
+	}
+	
+	outputWriter, err := os.Create(outputFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create output file: %w", err)
+	}
+	return outputWriter, nil
+}
+
+func processCIDs(ctx context.Context, lassieWrapper *lassieWrapper, cids []string, outputWriter *os.File, timeout time.Duration, verbose bool) error {
 	// Write CSV header
 	fmt.Fprintln(outputWriter, "CID,Retrievable,Duration,Error")
 
@@ -97,20 +120,7 @@ func testRetrievabilityAction(cctx *cli.Context) error {
 			result.Duration.String(),
 			escapeCSV(result.Error))
 
-		if verbose {
-			if result.Retrievable {
-				klog.Infof("✓ %s - retrievable (%s)", result.CID, result.Duration)
-			} else {
-				klog.Infof("✗ %s - not retrievable: %s", result.CID, result.Error)
-			}
-		} else {
-			// Show progress
-			if result.Retrievable {
-				fmt.Fprint(os.Stderr, "✓")
-			} else {
-				fmt.Fprint(os.Stderr, "✗")
-			}
-		}
+		logResult(result, verbose)
 	}
 
 	if !verbose {
@@ -121,11 +131,21 @@ func testRetrievabilityAction(cctx *cli.Context) error {
 	return nil
 }
 
-type RetrievabilityResult struct {
-	CID         string
-	Retrievable bool
-	Duration    time.Duration
-	Error       string
+func logResult(result RetrievabilityResult, verbose bool) {
+	if verbose {
+		if result.Retrievable {
+			klog.Infof("✓ %s - retrievable (%s)", result.CID, result.Duration)
+		} else {
+			klog.Infof("✗ %s - not retrievable: %s", result.CID, result.Error)
+		}
+	} else {
+		// Show progress
+		if result.Retrievable {
+			fmt.Fprint(os.Stderr, "✓")
+		} else {
+			fmt.Fprint(os.Stderr, "✗")
+		}
+	}
 }
 
 func testCIDRetrievability(ctx context.Context, lassie *lassieWrapper, cidStr string, timeout time.Duration) RetrievabilityResult {
