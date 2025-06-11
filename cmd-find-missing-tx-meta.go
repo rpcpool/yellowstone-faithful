@@ -158,7 +158,7 @@ func newCmd_find_missing_tx_metadata() *cli.Command {
 			accum := accum.NewObjectAccumulator(
 				rd,
 				iplddecoders.KindBlock,
-				func(parent *accum.ObjectWithMetadata, children []accum.ObjectWithMetadata) error {
+				func(parent *accum.ObjectWithMetadata, children accum.ObjectsWithMetadata) error {
 					slotCounter++
 					numObjects := len(children) + 1
 					if numObjects > int(numMaxObjects) {

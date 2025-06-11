@@ -185,7 +185,7 @@ func newCmd_Index_gsfa() *cli.Command {
 			accum := accum.NewObjectAccumulator(
 				rd,
 				iplddecoders.KindBlock,
-				func(parent *accum.ObjectWithMetadata, children []accum.ObjectWithMetadata) error {
+				func(parent *accum.ObjectWithMetadata, children accum.ObjectsWithMetadata) error {
 					numSlots++
 					numObjects := len(children) + 1
 					if numObjects > int(numMaxObjects) {

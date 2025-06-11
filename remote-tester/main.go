@@ -102,7 +102,7 @@ func main() {
 		accum := accum.NewObjectAccumulator(
 			rao,
 			iplddecoders.KindBlock,
-			func(parent *accum.ObjectWithMetadata, children []accum.ObjectWithMetadata) error {
+			func(parent *accum.ObjectWithMetadata, children accum.ObjectsWithMetadata) error {
 				numSlotsSeen.Add(1)
 
 				// Process the objects here

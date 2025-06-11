@@ -8,6 +8,7 @@ import (
 
 	"github.com/filecoin-project/go-leb128"
 	"github.com/ipfs/go-cid"
+	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
 	"github.com/rpcpool/yellowstone-faithful/readasonecar"
 )
@@ -17,7 +18,7 @@ type ObjectAccumulator struct {
 	flushOnKind iplddecoders.Kind
 	reader      readasonecar.CarReader
 	ignoreKinds iplddecoders.KindSlice
-	callback    func(*ObjectWithMetadata, []ObjectWithMetadata) error
+	callback    func(*ObjectWithMetadata, ObjectsWithMetadata) error
 }
 
 var ErrStop = errors.New("stop")
@@ -29,7 +30,7 @@ func isStop(err error) bool {
 func NewObjectAccumulator(
 	reader readasonecar.CarReader,
 	flushOnKind iplddecoders.Kind,
-	callback func(*ObjectWithMetadata, []ObjectWithMetadata) error,
+	callback func(*ObjectWithMetadata, ObjectsWithMetadata) error,
 	ignoreKinds ...iplddecoders.Kind,
 ) *ObjectAccumulator {
 	return &ObjectAccumulator{
@@ -76,6 +77,14 @@ type ObjectWithMetadata struct {
 	Offset        uint64
 	SectionLength uint64
 	ObjectData    []byte
+}
+
+type ObjectsWithMetadata []ObjectWithMetadata
+
+func (oa ObjectsWithMetadata) GetTransactionsAndMeta(
+	block *ipldbindcode.Block,
+) ([]*TransactionWithSlot, error) {
+	return ObjectsToTransactionsAndMetadata(block, oa)
 }
 
 func (oa *ObjectAccumulator) sendToFlusher(
