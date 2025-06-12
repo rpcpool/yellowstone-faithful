@@ -1,5 +1,6 @@
 package slotindex
 
+// TODO: this file is a work in progress, it is not yet functional.
 type Data struct {
 	Slot   uint64
 	Object struct {
