@@ -1,0 +1,92 @@
+import { NextResponse } from 'next/server';
+import { PrismaClient } from '../../../generated/prisma/index.js';
+
+const prisma = new PrismaClient();
+
+export async function GET() {
+  try {
+    // Get the sum of all index sizes using Prisma aggregation
+    const result = await prisma.epochIndex.aggregate({
+      _sum: {
+        size: true
+      },
+      _count: {
+        id: true
+      }
+    });
+
+    // Get status distribution across all epochs (not indexes)
+    const statusCounts = await prisma.epoch.groupBy({
+      by: ['status'],
+      _count: {
+        status: true
+      }
+    });
+
+    // Get type distribution across all indexes
+    const typeCounts = await prisma.epochIndex.groupBy({
+      by: ['type'],
+      _count: {
+        type: true
+      }
+    });
+
+    // Get type size distribution - sum of sizes by type
+    const typeSizes = await prisma.epochIndex.groupBy({
+      by: ['type'],
+      _sum: {
+        size: true
+      }
+    });
+
+    // Get source distribution across all indexes
+    const sourceCounts = await prisma.epochIndex.groupBy({
+      by: ['source'],
+      _count: {
+        source: true
+      }
+    });
+
+    // Get count of epochs with GSFA indexes
+    const gsfaEpochCount = await prisma.epochGsfa.count({
+      where: {
+        exists: true
+      }
+    });
+
+    // Convert the grouped results to a more convenient format
+    const statusDistribution = statusCounts.reduce((acc, item) => {
+      acc[item.status] = item._count.status;
+      return acc;
+    }, {} as Record<string, number>);
+
+    const typeDistribution = typeCounts.reduce((acc, item) => {
+      acc[item.type] = item._count.type;
+      return acc;
+    }, {} as Record<string, number>);
+
+    const typeSizeDistribution = typeSizes.reduce((acc, item) => {
+      // Convert BigInt to number for JSON serialization
+      acc[item.type] = Number(item._sum.size || 0);
+      return acc;
+    }, {} as Record<string, number>);
+
+    const sourceDistribution = sourceCounts.reduce((acc, item) => {
+      acc[item.source] = item._count.source;
+      return acc;
+    }, {} as Record<string, number>);
+
+    return NextResponse.json({
+      totalSize: result._sum.size?.toString() || '0', // Convert BigInt to string
+      totalIndexes: result._count.id,
+      gsfaEpochCount, // New field for epochs with GSFA indexes
+      statusDistribution,
+      typeDistribution,
+      typeSizeDistribution, // New field with storage sizes by type
+      sourceDistribution
+    });
+  } catch (error) {
+    console.error('Error fetching stats:', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+} 
