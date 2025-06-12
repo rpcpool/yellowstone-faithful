@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"sync/atomic"
@@ -67,19 +66,8 @@ func newCmd_find_missing_tx_metadata() *cli.Command {
 		},
 		Action: func(c *cli.Context) error {
 			carPaths := c.Args().Slice()
-			var file fs.File
-			var err error
 			if len(carPaths) == 0 {
 				klog.Exit("Please provide a CAR file")
-			}
-			if carPaths[0] == "-" {
-				file = os.Stdin
-			} else {
-				file, err = os.Open(carPaths[0])
-				if err != nil {
-					klog.Exit(err.Error())
-				}
-				defer file.Close()
 			}
 
 			silent := c.Bool("silent")
@@ -288,11 +276,14 @@ func newCmd_find_missing_tx_metadata() *cli.Command {
 			klog.Infof("Transactions with missing metadata: %d", numTransactionsWithMissingMetadata.Load())
 			klog.Infof("Transactions with metadata parsing error: %d", numTransactionsWithMetaParsingError.Load())
 
-			// NOTE: if there are parsing errors, THEY WILL BE IGNORED.
 			if numTransactionsWithMissingMetadata.Load() > 0 {
-				file.Close()
 				os.Exit(1)
 			}
+			if numTransactionsWithMetaParsingError.Load() > 0 {
+				klog.Warningf("There were %d transactions with metadata parsing errors", numTransactionsWithMetaParsingError.Load())
+				os.Exit(2)
+			}
+			klog.Infof("All transactions have metadata that could be parsed successfully.")
 			os.Exit(0)
 			return nil
 		},

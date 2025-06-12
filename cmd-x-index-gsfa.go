@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -90,19 +89,8 @@ func newCmd_Index_gsfa() *cli.Command {
 		},
 		Action: func(c *cli.Context) error {
 			carPaths := c.StringSlice("car")
-			var file fs.File
-			var err error
 			if len(carPaths) == 0 {
 				klog.Exit("Please provide a CAR file")
-			}
-			if carPaths[0] == "-" {
-				file = os.Stdin
-			} else {
-				file, err = os.Open(carPaths[0])
-				if err != nil {
-					klog.Exit(err.Error())
-				}
-				defer file.Close()
 			}
 
 			rd, err := readasonecar.NewMultiReader(carPaths...)

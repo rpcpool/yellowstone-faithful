@@ -5,8 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
-	"os"
 	"path/filepath"
 	"runtime"
 	"sync"
@@ -18,12 +16,11 @@ import (
 	"github.com/gagliardetto/solana-go"
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-libipfs/blocks"
-	"github.com/ipld/go-car"
 	"github.com/rpcpool/yellowstone-faithful/bucketteer"
 	"github.com/rpcpool/yellowstone-faithful/indexes"
 	"github.com/rpcpool/yellowstone-faithful/indexmeta"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
-	"github.com/rpcpool/yellowstone-faithful/readahead"
+	"github.com/rpcpool/yellowstone-faithful/readasonecar"
 	concurrently "github.com/tejzpr/ordered-concurrently/v3"
 	"github.com/urfave/cli/v2"
 	"k8s.io/klog/v2"
@@ -89,42 +86,20 @@ func newCmd_Index_sigExists() *cli.Command {
 		},
 		Action: func(c *cli.Context) error {
 			carPaths := c.StringSlice("car")
-			var file fs.File
-			var err error
 			if len(carPaths) == 0 {
 				klog.Exit("Please provide a CAR file")
 			}
-			if carPaths[0] == "-" {
-				file = os.Stdin
-			} else {
-				file, err = os.Open(carPaths[0])
-				if err != nil {
-					klog.Exit(err.Error())
-				}
-				defer file.Close()
-			}
 
-			cachingReader, err := readahead.NewCachingReaderFromReader(file, readahead.DefaultChunkSize)
-			if err != nil {
-				klog.Exitf("Failed to create caching reader: %s", err)
-			}
-			rd, err := car.NewCarReader(cachingReader)
+			rd, err := readasonecar.NewMultiReader(carPaths...)
 			if err != nil {
 				klog.Exitf("Failed to open CAR: %s", err)
 			}
-			rootCID := rd.Header.Roots[0]
-			{
-				roots := rd.Header.Roots
-				klog.Infof("Roots: %d", len(roots))
-				for i, root := range roots {
-					if i == 0 && len(roots) == 1 {
-						klog.Infof("- %s (Epoch CID)", root.String())
-					} else {
-						klog.Infof("- %s", root.String())
-					}
-				}
-			}
+			defer rd.Close()
 
+			rootCID, err := rd.FindRoot()
+			if err != nil {
+				return fmt.Errorf("failed to find root CID: %w", err)
+			}
 			indexDir := c.String("index-dir")
 
 			if ok, err := isDirectory(indexDir); err != nil {
