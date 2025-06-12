@@ -93,7 +93,7 @@ func newCmd_Index_slot2cid() *cli.Command {
 				}
 				klog.Info("Index created")
 				if verify {
-					klog.Infof("Verifying index for %s located at %v", carPaths, indexFilepath)
+					klog.Infof("Verifying index for %v located at %v", carPaths, indexFilepath)
 					startedAt := time.Now()
 					defer func() {
 						klog.Infof("Finished in %s", time.Since(startedAt))

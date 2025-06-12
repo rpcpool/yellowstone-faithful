@@ -253,7 +253,7 @@ func newCmd_Index_sigExists() *cli.Command {
 			klog.Infof("Success: sig-exists index created at %s", indexFilePath)
 
 			if verify {
-				klog.Infof("Verifying index for %s located at %v", carPaths, indexFilePath)
+				klog.Infof("Verifying index for %v located at %v", carPaths, indexFilePath)
 				startedAt := time.Now()
 				defer func() {
 					klog.Infof("Finished in %s", time.Since(startedAt))
