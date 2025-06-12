@@ -125,3 +125,8 @@ func (r *DealRegistry) GetMinerByPieceCID(pieceCID cid.Cid) (address.Address, bo
 	}
 	return deal.Provider, true
 }
+
+// GetAllDeals returns all deals in the registry as a map from piece CID to Deal.
+func (r *DealRegistry) GetAllDeals() map[cid.Cid]Deal {
+	return r.pieceToDeal
+}

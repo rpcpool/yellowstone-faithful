@@ -11,6 +11,7 @@ import (
 	"github.com/ipfs/go-cid"
 	"github.com/urfave/cli/v2"
 	"k8s.io/klog/v2"
+	splitcarfetcher "github.com/rpcpool/yellowstone-faithful/split-car-fetcher"
 )
 
 func newCmd_TestRetrievability() *cli.Command {
@@ -22,7 +23,15 @@ func newCmd_TestRetrievability() *cli.Command {
 				Name:     "input",
 				Aliases:  []string{"i"},
 				Usage:    "Input file containing CIDs (one per line), use '-' for stdin",
-				Required: true,
+			},
+			&cli.StringFlag{
+				Name:    "deals-csv",
+				Usage:   "Deals CSV file to extract CIDs from (alternative to --input)",
+			},
+			&cli.StringFlag{
+				Name:    "cid-type",
+				Usage:   "Which CIDs to test from deals.csv: 'piece', 'payload', or 'both' (default: both)",
+				Value:   "both",
 			},
 			&cli.StringFlag{
 				Name:    "output",
@@ -47,12 +56,31 @@ func newCmd_TestRetrievability() *cli.Command {
 func testRetrievabilityAction(cctx *cli.Context) error {
 	ctx := cctx.Context
 	inputFile := cctx.String("input")
+	dealsCSV := cctx.String("deals-csv")
+	cidType := cctx.String("cid-type")
 	outputFile := cctx.String("output")
 	timeout := cctx.Duration("timeout")
 	verbose := cctx.Bool("verbose")
 
+	// Validate input parameters
+	if inputFile == "" && dealsCSV == "" {
+		return fmt.Errorf("either --input or --deals-csv must be specified")
+	}
+	if inputFile != "" && dealsCSV != "" {
+		return fmt.Errorf("cannot specify both --input and --deals-csv")
+	}
+	if dealsCSV != "" && cidType != "piece" && cidType != "payload" && cidType != "both" {
+		return fmt.Errorf("invalid --cid-type: must be 'piece', 'payload', or 'both'")
+	}
+
 	// Read CIDs from input
-	cids, err := readCIDsFromInput(inputFile)
+	var cids []string
+	var err error
+	if dealsCSV != "" {
+		cids, err = readCIDsFromDealsCSV(dealsCSV, cidType)
+	} else {
+		cids, err = readCIDsFromInput(inputFile)
+	}
 	if err != nil {
 		return fmt.Errorf("failed to read CIDs: %w", err)
 	}
@@ -225,6 +253,60 @@ func readCIDsFromInput(inputFile string) ([]string, error) {
 		return nil, err
 	}
 
+	return cids, nil
+}
+
+func readCIDsFromDealsCSV(dealsFile string, cidType string) ([]string, error) {
+	// Load deals from CSV
+	registry, err := splitcarfetcher.DealsFromCSV(dealsFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load deals from CSV: %w", err)
+	}
+
+	cidMap := make(map[string]bool) // Use map to deduplicate CIDs
+	var cids []string
+
+	// Extract CIDs based on the specified type
+	for pieceCID, deal := range registry.GetAllDeals() {
+		switch cidType {
+		case "piece":
+			cidStr := pieceCID.String()
+			if !cidMap[cidStr] {
+				cids = append(cids, cidStr)
+				cidMap[cidStr] = true
+			}
+		case "payload":
+			if deal.PayloadCID != "" {
+				// Validate that the payload CID is a valid CID
+				if _, err := cid.Parse(deal.PayloadCID); err != nil {
+					klog.Warningf("Skipping invalid payload CID: %s (%v)", deal.PayloadCID, err)
+					continue
+				}
+				if !cidMap[deal.PayloadCID] {
+					cids = append(cids, deal.PayloadCID)
+					cidMap[deal.PayloadCID] = true
+				}
+			}
+		case "both":
+			// Add piece CID
+			pieceCIDStr := pieceCID.String()
+			if !cidMap[pieceCIDStr] {
+				cids = append(cids, pieceCIDStr)
+				cidMap[pieceCIDStr] = true
+			}
+			// Add payload CID if it exists and is valid
+			if deal.PayloadCID != "" {
+				if _, err := cid.Parse(deal.PayloadCID); err != nil {
+					klog.Warningf("Skipping invalid payload CID: %s (%v)", deal.PayloadCID, err)
+				} else if !cidMap[deal.PayloadCID] {
+					cids = append(cids, deal.PayloadCID)
+					cidMap[deal.PayloadCID] = true
+				}
+			}
+		}
+	}
+
+	klog.Infof("Extracted %d unique CIDs from deals.csv (type: %s)", len(cids), cidType)
 	return cids, nil
 }
 
