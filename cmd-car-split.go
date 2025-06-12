@@ -78,7 +78,7 @@ func newCmd_SplitCar() *cli.Command {
 			&cli.Int64Flag{
 				Name:     "size",
 				Aliases:  []string{"s"},
-				Value:    4*1024*1024*1024/256*254, // To account for FR32 padding. https://spec.filecoin.io/systems/filecoin_files/piece/
+				Value:    4 * 1024 * 1024 * 1024 / 256 * 254, // To account for FR32 padding. https://spec.filecoin.io/systems/filecoin_files/piece/
 				Usage:    "Target size in bytes to chunk CARs to.",
 				Required: false,
 			},
@@ -252,7 +252,11 @@ func newCmd_SplitCar() *cli.Command {
 			accum := accum.NewObjectAccumulator(
 				rd,
 				iplddecoders.KindBlock,
-				func(parent *accum.ObjectWithMetadata, children []accum.ObjectWithMetadata) error {
+				accum.IgnoreKinds(
+					iplddecoders.KindEpoch,
+					iplddecoders.KindSubset,
+				),
+				func(parent *accum.ObjectWithMetadata, children accum.ObjectsWithMetadata) error {
 					if parent == nil {
 						return nil
 					}
@@ -294,8 +298,6 @@ func newCmd_SplitCar() *cli.Command {
 
 					return nil
 				},
-				iplddecoders.KindEpoch,
-				iplddecoders.KindSubset,
 			)
 
 			if err := accum.Run((context.Background())); err != nil {
@@ -518,7 +520,6 @@ type carFileInfo struct {
 }
 
 func SortCarFiles(carFiles []string) ([]carFileInfo, error) {
-
 	var fileInfos []carFileInfo
 
 	for _, path := range carFiles {

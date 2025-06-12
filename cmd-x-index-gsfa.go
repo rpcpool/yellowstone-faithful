@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -14,14 +13,13 @@ import (
 	"github.com/dustin/go-humanize"
 	"github.com/ipfs/go-cid"
 	"github.com/rpcpool/yellowstone-faithful/accum"
-	"github.com/rpcpool/yellowstone-faithful/carreader"
 	"github.com/rpcpool/yellowstone-faithful/gsfa"
 	"github.com/rpcpool/yellowstone-faithful/indexes"
 	"github.com/rpcpool/yellowstone-faithful/indexmeta"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
-	metalatest "github.com/rpcpool/yellowstone-faithful/parse_legacy_transaction_status_meta/v-latest"
-	metaoldest "github.com/rpcpool/yellowstone-faithful/parse_legacy_transaction_status_meta/v-oldest"
+	serde_agave "github.com/rpcpool/yellowstone-faithful/parse_legacy_transaction_status_meta"
+	"github.com/rpcpool/yellowstone-faithful/readasonecar"
 	"github.com/rpcpool/yellowstone-faithful/slottools"
 	"github.com/urfave/cli/v2"
 	"k8s.io/klog/v2"
@@ -33,7 +31,7 @@ func newCmd_Index_gsfa() *cli.Command {
 	return &cli.Command{
 		Name:        "gsfa",
 		Description: "Create GSFA index from a CAR file",
-		ArgsUsage:   "<car-path> <index-dir>",
+		ArgsUsage:   "--index-dir=<index-dir> --car=<car-path>",
 		Before: func(c *cli.Context) error {
 			if network == "" {
 				network = indexes.NetworkMainnet
@@ -75,51 +73,46 @@ func newCmd_Index_gsfa() *cli.Command {
 				Usage: "temporary directory to use for storing intermediate files; WILL BE DELETED",
 				Value: os.TempDir(),
 			},
+			&cli.StringSliceFlag{
+				Name:  "car",
+				Usage: "Path to a CAR file containing a single Solana epoch, or multiple split CAR files (in order) containing a single Solana epoch",
+			},
+			&cli.StringFlag{
+				Name:  "index-dir",
+				Usage: "Destination directory for the output files",
+			},
 			&cli.BoolFlag{
-				Name:  "sigverify",
-				Usage: "verify signatures",
+				Name:  "require-tx-metadata",
+				Usage: "Require transaction metadata to be present in the CAR file",
 				Value: true,
 			},
 		},
 		Action: func(c *cli.Context) error {
-			carPath := c.Args().First()
-			var file fs.File
-			var err error
-			if carPath == "-" {
-				file = os.Stdin
-			} else {
-				file, err = os.Open(carPath)
-				if err != nil {
-					klog.Exit(err.Error())
-				}
-				defer file.Close()
+			carPaths := c.StringSlice("car")
+			if len(carPaths) == 0 {
+				klog.Exit("Please provide a CAR file")
 			}
 
-			rd, err := carreader.New(file)
+			rd, err := readasonecar.NewFromFilepaths(carPaths...)
 			if err != nil {
 				klog.Exitf("Failed to open CAR: %s", err)
 			}
-			{
-				// print roots:
-				roots := rd.Header.Roots
-				klog.Infof("Roots: %d", len(roots))
-				for i, root := range roots {
-					if i == 0 && len(roots) == 1 {
-						klog.Infof("- %s (Epoch CID)", root.String())
-					} else {
-						klog.Infof("- %s", root.String())
-					}
-				}
-			}
+			defer rd.Close()
 
-			indexDir := c.Args().Get(1)
+			indexDir := c.String("index-dir")
+			if indexDir == "" {
+				klog.Exit("Please provide an --index-dir=<dir to store the index>")
+			}
 			if ok, err := isDirectory(indexDir); err != nil {
-				return err
+				return fmt.Errorf("error checking index-dir %q: %w", indexDir, err)
 			} else if !ok {
 				return fmt.Errorf("index-dir is not a directory")
 			}
 
-			rootCID := rd.Header.Roots[0]
+			rootCID, err := rd.FindRoot()
+			if err != nil {
+				return fmt.Errorf("failed to find root CID: %w", err)
+			}
 
 			// Use the car file name and root CID to name the gsfa index dir:
 			gsfaIndexDir := filepath.Join(indexDir, formatIndexDirname_gsfa(
@@ -161,16 +154,6 @@ func newCmd_Index_gsfa() *cli.Command {
 			}
 			numProcessedTransactions := new(atomic.Int64)
 			startedAt := time.Now()
-			defer func() {
-				klog.Infof("Indexed %s transactions", humanize.Comma(int64(numProcessedTransactions.Load())))
-				klog.Info("Finalizing index -- this may take a while, DO NOT EXIT")
-				klog.Info("Closing index")
-				if err := indexW.Close(); err != nil {
-					klog.Errorf("Error while closing: %s", err)
-				}
-				klog.Infof("Success: gSFA index created at %s with %d transactions", gsfaIndexDir, numProcessedTransactions.Load())
-				klog.Infof("Finished in %s", time.Since(startedAt))
-			}()
 
 			verifyHash := c.Bool("verify-hash")
 			sigverify := c.Bool("sigverify")
@@ -182,14 +165,20 @@ func newCmd_Index_gsfa() *cli.Command {
 			numMaxObjects := uint64(0)
 
 			lastPrintedAt := time.Now()
-			lastTimeDid1kSlots := time.Now()
-			var eta time.Duration
-			etaSampleSlots := uint64(2_000)
-			var tookToDo1kSlots time.Duration
+
+			numMissingMetadata := new(atomic.Int64)
+			numMissingMetadata.Store(0)
+
+			requireTxMetadata := c.Bool("require-tx-metadata")
 			accum := accum.NewObjectAccumulator(
 				rd,
 				iplddecoders.KindBlock,
-				func(parent *accum.ObjectWithMetadata, children []accum.ObjectWithMetadata) error {
+				accum.IgnoreKinds(
+					// Ignore these kinds in the accumulator (only need Transactions and DataFrames):
+					iplddecoders.KindEntry,
+					iplddecoders.KindRewards,
+				),
+				func(parent *accum.ObjectWithMetadata, children accum.ObjectsWithMetadata) error {
 					numSlots++
 					numObjects := len(children) + 1
 					if numObjects > int(numMaxObjects) {
@@ -215,13 +204,6 @@ func newCmd_Index_gsfa() *cli.Command {
 					block, err := iplddecoders.DecodeBlock(parent.ObjectData)
 					if err != nil {
 						return fmt.Errorf("error while decoding block: %w", err)
-					}
-					if numSlots%etaSampleSlots == 0 {
-						tookToDo1kSlots = time.Since(lastTimeDid1kSlots)
-						lastTimeDid1kSlots = time.Now()
-					}
-					if tookToDo1kSlots > 0 {
-						eta = time.Duration(float64(tookToDo1kSlots) / float64(etaSampleSlots) * float64(epochEnd-epochStart-numSlots))
 					}
 					transactions, err := accum.ObjectsToTransactionsAndMetadata(block, children)
 					if err != nil {
@@ -249,6 +231,15 @@ func newCmd_Index_gsfa() *cli.Command {
 							accountKeys = append(accountKeys, byteSlicesToKeySlice(meta.LoadedWritableAddresses)...)
 						}
 						hasMeta := txWithInfo.Metadata != nil // We include this to know whether isSuccess is valid.
+						if txWithInfo.Metadata == nil || !txWithInfo.Metadata.HasMeta() {
+							numMissingMetadata.Add(1)
+							if requireTxMetadata {
+								klog.Errorf("Transaction %s has no metadata", txWithInfo.Transaction.Signatures[0])
+								spew.Dump(txWithInfo.Error, txWithInfo.IsMetaParseError())
+								spew.Dump(txWithInfo)
+								panic("metadata error")
+							}
+						}
 						isSuccess := func() bool {
 							// check if the transaction is a success:
 							if txWithInfo.Metadata == nil {
@@ -261,16 +252,9 @@ func newCmd_Index_gsfa() *cli.Command {
 									return true
 								}
 							}
-							if txWithInfo.Metadata.IsSerdeLatest() {
-								meta := txWithInfo.Metadata.GetSerdeLatest()
-								_, ok := meta.Status.(*metalatest.Result__Ok)
-								if ok {
-									return true
-								}
-							}
-							if txWithInfo.Metadata.IsSerdeOldest() {
-								meta := txWithInfo.Metadata.GetSerdeOldest()
-								_, ok := meta.Status.(*metaoldest.Result__Ok)
+							if txWithInfo.Metadata.IsSerde() {
+								meta := txWithInfo.Metadata.GetSerde()
+								_, ok := meta.Status.(*serde_agave.Result__Ok)
 								if ok {
 									return true
 								}
@@ -293,7 +277,7 @@ func newCmd_Index_gsfa() *cli.Command {
 							klog.Exitf("Error while pushing to gsfa index: %s", err)
 						}
 
-						if time.Since(lastPrintedAt) > time.Millisecond*500 {
+						if time.Since(lastPrintedAt) > time.Second {
 							percentDone := float64(txWithInfo.Slot-epochStart) / float64(epochEnd-epochStart) * 100
 							// clear line, then print progress
 							msg := fmt.Sprintf(
@@ -305,6 +289,15 @@ func newCmd_Index_gsfa() *cli.Command {
 								humanize.Comma(int64(txWithInfo.Slot)),
 								humanize.Comma(int64(numProcessedTransactions.Load())),
 							)
+							var eta time.Duration
+							timePast := time.Since(startedAt).Truncate(time.Second).Round(time.Second)
+							if percentDone > 0 && timePast > 0 {
+								// it took timePast to get percentDone done
+								remainingPercent := 100 - percentDone
+								msForOnePercent := float64(timePast.Milliseconds()) / percentDone
+								eta = time.Millisecond * time.Duration(msForOnePercent*remainingPercent)
+								eta = eta.Truncate(time.Second).Round(time.Second)
+							}
 							if eta > 0 {
 								msg += fmt.Sprintf(" | ETA %s", eta.Truncate(time.Second))
 							}
@@ -314,13 +307,21 @@ func newCmd_Index_gsfa() *cli.Command {
 					}
 					return nil
 				},
-				// Ignore these kinds in the accumulator (only need Transactions and DataFrames):
-				iplddecoders.KindEntry,
-				iplddecoders.KindRewards,
 			)
 
 			if err := accum.Run(context.Background()); err != nil {
 				return fmt.Errorf("error while accumulating objects: %w", err)
+			}
+
+			{
+				klog.Infof("Indexed %s transactions", humanize.Comma(int64(numProcessedTransactions.Load())))
+				klog.Info("Finalizing index -- this may take a while, DO NOT EXIT")
+				klog.Info("Closing index")
+				if err := indexW.Close(); err != nil {
+					klog.Fatalf("Error while closing: %s", err)
+				}
+				klog.Infof("Success: gSFA index created at %s with %d transactions", gsfaIndexDir, numProcessedTransactions.Load())
+				klog.Infof("Finished in %s", time.Since(startedAt))
 			}
 
 			return nil

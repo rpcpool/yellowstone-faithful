@@ -9,6 +9,7 @@ import (
 	"sort"
 
 	bin "github.com/gagliardetto/binary"
+	"github.com/rpcpool/yellowstone-faithful/continuity"
 	"k8s.io/klog/v2"
 )
 
@@ -66,10 +67,6 @@ func (b *Writer) Has(sig [64]byte) bool {
 	return false
 }
 
-func (b *Writer) Close() error {
-	return b.destination.Close()
-}
-
 // Seal writes the Bucketteer's state to the given writer.
 func (b *Writer) Seal(meta map[string]string) (int64, error) {
 	// truncate file and seek to beginning:
@@ -83,7 +80,18 @@ func (b *Writer) Seal(meta map[string]string) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	return size, overwriteFileContentAt(b.destination, 0, newHeader)
+	return size, continuity.New().
+		Thenf(
+			"overwriteHeader",
+			func() error {
+				return overwriteFileContentAt(b.destination, 0, newHeader)
+			}).
+		Thenf(
+			"close",
+			func() error {
+				return b.destination.Close()
+			}).
+		Err()
 }
 
 func createHeader(

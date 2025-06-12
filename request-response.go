@@ -2,21 +2,18 @@ package main
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"sort"
 	"strings"
 
-	bin "github.com/gagliardetto/binary"
 	"github.com/gagliardetto/solana-go"
 	"github.com/gagliardetto/solana-go/rpc"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/mostynb/zstdpool-freelist"
 	"github.com/mr-tron/base58"
+	"github.com/rpcpool/yellowstone-faithful/jsonparsed"
 	"github.com/rpcpool/yellowstone-faithful/third_party/solana_proto/confirmed_block"
-	"github.com/rpcpool/yellowstone-faithful/txstatus"
 	"github.com/sourcegraph/jsonrpc2"
 	"github.com/valyala/fasthttp"
 )
@@ -35,91 +32,11 @@ func (c *requestContext) ReplyWithError(ctx context.Context, id jsonrpc2.ID, res
 	return nil
 }
 
-func toMapAny(v any) (map[string]any, error) {
-	b, err := jsoniter.ConfigCompatibleWithStandardLibrary.Marshal(v)
-	if err != nil {
-		return nil, err
-	}
-	var m map[string]any
-	if err := jsoniter.ConfigCompatibleWithStandardLibrary.Unmarshal(b, &m); err != nil {
-		return nil, err
-	}
-	return m, nil
-}
-
-// MapToCamelCase converts a map[string]interface{} to a map[string]interface{} with camelCase keys
-func MapToCamelCase(m map[string]any) map[string]any {
-	newMap := make(map[string]any)
-	for k, v := range m {
-		newMap[toLowerCamelCase(k)] = MapToCamelCaseAny(v)
-	}
-	return newMap
-}
-
-func MapToCamelCaseAny(m any) any {
-	if m == nil {
-		return nil
-	}
-	if m, ok := m.(map[string]any); ok {
-		return MapToCamelCase(m)
-	}
-	// if array, convert each element
-	if m, ok := m.([]any); ok {
-		for i, v := range m {
-			m[i] = MapToCamelCaseAny(v)
-		}
-	}
-	return m
-}
-
-func toLowerCamelCase(v string) string {
-	pascal := bin.ToPascalCase(v)
-	if len(pascal) == 0 {
-		return ""
-	}
-	if len(pascal) == 1 {
-		return strings.ToLower(pascal)
-	}
-	return strings.ToLower(pascal[:1]) + pascal[1:]
-}
-
-// Reply sends a response to the client with the given result.
-// The result fields keys are converted to camelCase.
-// If remapCallback is not nil, it is called with the result map[string]interface{}.
+// Reply sends a raw response without any processing (no camelCase conversion, etc).
 func (c *requestContext) Reply(
 	ctx context.Context,
 	id jsonrpc2.ID,
-	result interface{},
-	remapCallback func(map[string]any) map[string]any,
-) error {
-	mm, err := toMapAny(result)
-	if err != nil {
-		return err
-	}
-	result = MapToCamelCaseAny(mm)
-	if remapCallback != nil {
-		if mp, ok := result.(map[string]any); ok {
-			result = remapCallback(mp)
-		}
-	}
-	resRaw, err := jsoniter.ConfigCompatibleWithStandardLibrary.Marshal(result)
-	if err != nil {
-		return err
-	}
-	raw := json.RawMessage(resRaw)
-	resp := &jsonrpc2.Response{
-		ID:     id,
-		Result: &raw,
-	}
-	replyJSON(c.ctx, http.StatusOK, resp)
-	return err
-}
-
-// ReplyRaw sends a raw response without any processing (no camelCase conversion, etc).
-func (c *requestContext) ReplyRaw(
-	ctx context.Context,
-	id jsonrpc2.ID,
-	result interface{},
+	result any,
 ) error {
 	resRaw, err := jsoniter.ConfigCompatibleWithStandardLibrary.Marshal(result)
 	if err != nil {
@@ -134,11 +51,11 @@ func (c *requestContext) ReplyRaw(
 	return err
 }
 
-func putValueIntoContext(ctx context.Context, key, value interface{}) context.Context {
+func putValueIntoContext(ctx context.Context, key, value any) context.Context {
 	return context.WithValue(ctx, key, value)
 }
 
-func getValueFromContext(ctx context.Context, key interface{}) interface{} {
+func getValueFromContext(ctx context.Context, key any) any {
 	return ctx.Value(key)
 }
 
@@ -171,7 +88,7 @@ func (req *GetBlockRequest) Validate() error {
 	) {
 		return fmt.Errorf("unsupported encoding")
 	}
-	if req.Options.Encoding != nil && *req.Options.Encoding == solana.EncodingJSONParsed && !txstatus.IsEnabled() {
+	if req.Options.Encoding != nil && *req.Options.Encoding == solana.EncodingJSONParsed && !jsonparsed.IsEnabled() {
 		return fmt.Errorf("encoding=jsonParsed is not enabled on this server")
 	}
 	return nil
@@ -305,7 +222,7 @@ func (req *GetTransactionRequest) Validate() error {
 	{
 		if req.Options.Encoding != nil &&
 			*req.Options.Encoding == solana.EncodingJSONParsed &&
-			!txstatus.IsEnabled() {
+			!jsonparsed.IsEnabled() {
 			return fmt.Errorf("encoding=jsonParsed is not enabled on this server")
 		}
 	}
@@ -397,9 +314,9 @@ func compiledInstructionsToJsonParsed(
 		return nil, fmt.Errorf("failed to resolve program ID index: %w", err)
 	}
 	keys := tx.Message.AccountKeys
-	instrParams := txstatus.Parameters{
+	instrParams := jsonparsed.Parameters{
 		ProgramID: programId,
-		Instruction: txstatus.CompiledInstruction{
+		Instruction: jsonparsed.CompiledInstruction{
 			ProgramIDIndex: uint8(inst.ProgramIDIndex),
 			Accounts: func() []uint8 {
 				out := make([]uint8, len(inst.Accounts))
@@ -410,15 +327,15 @@ func compiledInstructionsToJsonParsed(
 			}(),
 			Data: inst.Data,
 		},
-		AccountKeys: txstatus.AccountKeys{
+		AccountKeys: jsonparsed.AccountKeys{
 			StaticKeys: func() []solana.PublicKey {
 				return clone(keys)
 			}(),
 			// TODO: test this:
-			DynamicKeys: func() *txstatus.LoadedAddresses {
+			DynamicKeys: func() *jsonparsed.LoadedAddresses {
 				switch vv := meta.(type) {
 				case *confirmed_block.TransactionStatusMeta:
-					return &txstatus.LoadedAddresses{
+					return &jsonparsed.LoadedAddresses{
 						Writable: func() []solana.PublicKey {
 							return byteSlicesToKeySlice(vv.LoadedWritableAddresses)
 						}(),
@@ -458,164 +375,9 @@ func compiledInstructionsToJsonParsed(
 	}
 }
 
-func encodeTransactionResponseBasedOnWantedEncoding(
-	encoding solana.EncodingType,
-	tx solana.Transaction,
-	meta any,
-) (any, any, error) {
-	switch encoding {
-	case solana.EncodingBase58, solana.EncodingBase64, solana.EncodingBase64Zstd:
-		txBuf, err := tx.MarshalBinary()
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to marshal transaction: %w", err)
-		}
-		tOut, err := encodeBytesResponseBasedOnWantedEncoding(encoding, txBuf)
-		return tOut, meta, err
-	case solana.EncodingJSONParsed:
-		if !txstatus.IsEnabled() {
-			return nil, nil, fmt.Errorf("unsupported encoding")
-		}
-
-		{
-			unwrappedMeta, ok := meta.(*confirmed_block.TransactionStatusMeta)
-			if ok {
-				{
-					tables := map[solana.PublicKey]solana.PublicKeySlice{}
-					writable := byteSlicesToKeySlice(unwrappedMeta.LoadedWritableAddresses)
-					readonly := byteSlicesToKeySlice(unwrappedMeta.LoadedReadonlyAddresses)
-					for _, addr := range tx.Message.AddressTableLookups {
-						numTakeWritable := len(addr.WritableIndexes)
-						numTakeReadonly := len(addr.ReadonlyIndexes)
-						tableKey := addr.AccountKey
-						{
-							// now need to rebuild the address table taking into account the indexes, and put the keys into the tables
-							maxIndex := 0
-							for _, indexB := range addr.WritableIndexes {
-								index := int(indexB)
-								if index > maxIndex {
-									maxIndex = index
-								}
-							}
-							for _, indexB := range addr.ReadonlyIndexes {
-								index := int(indexB)
-								if index > maxIndex {
-									maxIndex = index
-								}
-							}
-							tables[tableKey] = make([]solana.PublicKey, maxIndex+1)
-						}
-						if numTakeWritable > 0 {
-							writableForTable := writable[:numTakeWritable]
-							for i, indexB := range addr.WritableIndexes {
-								index := int(indexB)
-								tables[tableKey][index] = writableForTable[i]
-							}
-							writable = writable[numTakeWritable:]
-						}
-						if numTakeReadonly > 0 {
-							readableForTable := readonly[:numTakeReadonly]
-							for i, indexB := range addr.ReadonlyIndexes {
-								index := int(indexB)
-								tables[tableKey][index] = readableForTable[i]
-							}
-							readonly = readonly[numTakeReadonly:]
-						}
-					}
-					err := tx.Message.SetAddressTables(tables)
-					if err != nil {
-						return nil, nil, fmt.Errorf("failed to set address tables: %w", err)
-					}
-				}
-				if tx.Message.IsVersioned() {
-					err := tx.Message.ResolveLookups()
-					if err != nil {
-						panic(err)
-					}
-				}
-			}
-		}
-
-		parsedInstructions := make([]json.RawMessage, 0)
-
-		for _, inst := range tx.Message.Instructions {
-			parsedInstructionJSON, err := compiledInstructionsToJsonParsed(tx, inst, meta)
-			if err != nil {
-				return nil, nil, fmt.Errorf("failed to compile instruction: %w", err)
-			}
-			parsedInstructions = append(parsedInstructions, parsedInstructionJSON)
-		}
-
-		resp, err := txstatus.FromTransaction(tx)
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to convert transaction to txstatus.Transaction: %w", err)
-		}
-		resp.Message.Instructions = parsedInstructions
-
-		{
-			// now try to encode unwrappedMeta:
-			unwrappedMeta, ok := meta.(*confirmed_block.TransactionStatusMeta)
-			if ok {
-				// convert meta to json:
-				metaJSON, err := toMapAny(unwrappedMeta)
-				if err != nil {
-					return nil, nil, fmt.Errorf("failed to marshal meta: %w", err)
-				}
-				for innerIndex, insts := range unwrappedMeta.InnerInstructions {
-					inner := make([]solana.CompiledInstruction, len(insts.Instructions))
-					for j, inst := range insts.Instructions {
-						inner[j] = solana.CompiledInstruction{
-							ProgramIDIndex: uint16(inst.ProgramIdIndex),
-							Accounts:       byeSliceToUint16Slice(inst.Accounts),
-							Data:           clone(inst.Data),
-						}
-					}
-					for instIndex, inst := range inner {
-						parsedInstructionJSON, err := compiledInstructionsToJsonParsed(tx, inst, unwrappedMeta)
-						if err != nil {
-							return nil, nil, fmt.Errorf("failed to compile instruction: %w", err)
-						}
-						// now replace the inner instruction with the parsed instruction:
-						{
-							if _, ok := metaJSON["inner_instructions"]; !ok {
-								metaJSON["inner_instructions"] = []any{}
-							} else {
-								innerInstructions, ok := metaJSON["inner_instructions"].([]any)
-								if ok && len(innerInstructions) > innerIndex {
-									relevantInner := innerInstructions[innerIndex].(map[string]any)
-									{
-										_, ok := relevantInner["instructions"].([]any)
-										if ok {
-											metaJSON["inner_instructions"].([]any)[innerIndex].(map[string]any)["instructions"].([]any)[instIndex] = parsedInstructionJSON
-										}
-									}
-								}
-							}
-						}
-					}
-				}
-				return resp, metaJSON, nil
-			}
-		}
-
-		return resp, meta, nil
-	case solana.EncodingJSON:
-		return tx, meta, nil
-	default:
-		return nil, nil, fmt.Errorf("unsupported encoding")
-	}
-}
-
 func clone[T any](in []T) []T {
 	out := make([]T, len(in))
 	copy(out, in)
-	return out
-}
-
-func byeSliceToUint16Slice(in []byte) []uint16 {
-	out := make([]uint16, len(in))
-	for i, v := range in {
-		out[i] = uint16(v)
-	}
 	return out
 }
 
@@ -627,43 +389,6 @@ func byteSlicesToKeySlice(keys [][]byte) []solana.PublicKey {
 		out = append(out, k)
 	}
 	return out
-}
-
-func toUniqueSorted(accountIndexes []uint16) []uint16 {
-	seen := make(map[uint16]struct{})
-	var out []uint16
-	for _, v := range accountIndexes {
-		if _, ok := seen[v]; ok {
-			continue
-		}
-		seen[v] = struct{}{}
-		out = append(out, v)
-	}
-	sort.Slice(out, func(i, j int) bool {
-		return out[i] < out[j]
-	})
-	return out
-}
-
-func encodeBytesResponseBasedOnWantedEncoding(
-	encoding solana.EncodingType,
-	buf []byte,
-) ([]any, error) {
-	switch encoding {
-	case solana.EncodingBase58:
-		return []any{base58.Encode(buf), encoding}, nil
-	case solana.EncodingBase64:
-		return []any{base64.StdEncoding.EncodeToString(buf), encoding}, nil
-	case solana.EncodingBase64Zstd:
-		enc, err := zstdEncoderPool.Get(nil)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get zstd encoder: %w", err)
-		}
-		defer zstdEncoderPool.Put(enc)
-		return []any{base64.StdEncoding.EncodeToString(enc.EncodeAll(buf, nil)), encoding}, nil
-	default:
-		return nil, fmt.Errorf("unsupported encoding %q", encoding)
-	}
 }
 
 func parseGetBlockTimeRequest(raw *json.RawMessage) (uint64, error) {

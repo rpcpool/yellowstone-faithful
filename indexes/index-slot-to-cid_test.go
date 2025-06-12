@@ -25,7 +25,6 @@ func TestSlotToCid(t *testing.T) {
 		rootCid,
 		indexes.NetworkMainnet,
 		"",
-		numItems,
 	)
 	require.NoError(t, err)
 	require.NotNil(t, writer)
@@ -50,13 +49,9 @@ func TestSlotToCid(t *testing.T) {
 			require.NoError(t, writer.Put(i*33, cid_))
 		}
 	}
-	{
-		// if try to close the index before sealing it, it should fail
-		require.Error(t, writer.Close())
-	}
 
 	// seal the index
-	require.NoError(t, writer.Seal(context.TODO(), dstDir))
+	require.NoError(t, writer.SealAndClose(context.TODO(), dstDir))
 	t.Log(writer.GetFilepath())
 	{
 		files, err := os.ReadDir(dstDir)
@@ -80,9 +75,6 @@ func TestSlotToCid(t *testing.T) {
 
 	finalFilepath := writer.GetFilepath()
 	require.NotEmpty(t, finalFilepath)
-
-	// close the index
-	require.NoError(t, writer.Close())
 
 	// open the index
 	reader, err := indexes.Open_SlotToCid(finalFilepath)

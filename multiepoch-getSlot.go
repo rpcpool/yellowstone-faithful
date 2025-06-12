@@ -18,7 +18,7 @@ func (multi *MultiEpoch) handleGetSlot(ctx context.Context, conn *requestContext
 	}
 
 	slotNumber := uint64(lastBlock.Slot)
-	err = conn.ReplyRaw(
+	err = conn.Reply(
 		ctx,
 		req.ID,
 		slotNumber,

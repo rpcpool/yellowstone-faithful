@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"sync/atomic"
@@ -13,9 +12,9 @@ import (
 	"github.com/dustin/go-humanize"
 	"github.com/gagliardetto/solana-go"
 	"github.com/rpcpool/yellowstone-faithful/accum"
-	"github.com/rpcpool/yellowstone-faithful/carreader"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
+	"github.com/rpcpool/yellowstone-faithful/readasonecar"
 	"github.com/rpcpool/yellowstone-faithful/slottools"
 	"github.com/rpcpool/yellowstone-faithful/tooling"
 	"github.com/urfave/cli/v2"
@@ -26,7 +25,7 @@ func newCmd_find_missing_tx_metadata() *cli.Command {
 	return &cli.Command{
 		Name:        "find-missing-tx-metadata",
 		Description: "Find missing transaction metadata in a CAR file.",
-		ArgsUsage:   "<car-path>",
+		ArgsUsage:   "<car-paths>",
 		Before: func(c *cli.Context) error {
 			return nil
 		},
@@ -66,17 +65,9 @@ func newCmd_find_missing_tx_metadata() *cli.Command {
 			},
 		},
 		Action: func(c *cli.Context) error {
-			carPath := c.Args().First()
-			var file fs.File
-			var err error
-			if carPath == "-" {
-				file = os.Stdin
-			} else {
-				file, err = os.Open(carPath)
-				if err != nil {
-					klog.Exit(err.Error())
-				}
-				defer file.Close()
+			carPaths := c.Args().Slice()
+			if len(carPaths) == 0 {
+				klog.Exit("Please provide a CAR file")
 			}
 
 			silent := c.Bool("silent")
@@ -95,14 +86,15 @@ func newCmd_find_missing_tx_metadata() *cli.Command {
 				klog.Infoln("Will not save metadata parsing errors")
 			}
 
-			rd, err := carreader.New(file)
+			rd, err := readasonecar.NewFromFilepaths(carPaths...)
 			if err != nil {
 				klog.Exitf("Failed to open CAR: %s", err)
 			}
+			defer rd.Close()
 
 			outputDir := c.String("output-dir")
 			if outputDir == "" {
-				outputDir = filepath.Dir(carPath)
+				outputDir = filepath.Dir(carPaths[0])
 			} else {
 				if err := os.MkdirAll(outputDir, os.ModePerm); err != nil {
 					klog.Exitf("Failed to create output directory: %s", err)
@@ -110,14 +102,14 @@ func newCmd_find_missing_tx_metadata() *cli.Command {
 			}
 
 			// In the same directory as the CAR file, create a file where we will write the signatures of the transactions that are missing metadata.
-			missingTxPath := filepath.Join(outputDir, filepath.Base(carPath)+".missing-tx-metadata.txt")
+			missingTxPath := filepath.Join(outputDir, filepath.Base(carPaths[0])+".missing-tx-metadata.txt")
 			fileMissingMetadata, err := tooling.NewBufferedWritableFile(missingTxPath)
 			if err != nil {
 				klog.Exitf("Failed to create file for missing metadata: %s", err)
 			}
 
 			// In the same directory as the CAR file, create a file where we will write the errors that occurred while parsing the metadata.
-			txMetaParseErrorPath := filepath.Join(outputDir, filepath.Base(carPath)+".tx-meta-parsing-error.txt")
+			txMetaParseErrorPath := filepath.Join(outputDir, filepath.Base(carPaths[0])+".tx-meta-parsing-error.txt")
 			fileTxMetaParsingError, err := tooling.NewBufferedWritableFile(txMetaParseErrorPath)
 			if err != nil {
 				klog.Exitf("Failed to create file for tx meta parsing error: %s", err)
@@ -154,7 +146,11 @@ func newCmd_find_missing_tx_metadata() *cli.Command {
 			accum := accum.NewObjectAccumulator(
 				rd,
 				iplddecoders.KindBlock,
-				func(parent *accum.ObjectWithMetadata, children []accum.ObjectWithMetadata) error {
+				accum.IgnoreKinds(
+					iplddecoders.KindEntry,
+					iplddecoders.KindRewards,
+				),
+				func(parent *accum.ObjectWithMetadata, children accum.ObjectsWithMetadata) error {
 					slotCounter++
 					numObjects := len(children) + 1
 					if numObjects > int(numMaxObjects) {
@@ -261,9 +257,6 @@ func newCmd_find_missing_tx_metadata() *cli.Command {
 					}
 					return nil
 				},
-				// Ignore these kinds in the accumulator:
-				iplddecoders.KindEntry,
-				iplddecoders.KindRewards,
 			)
 
 			if skip := c.Uint64("skip"); skip > 0 {
@@ -284,11 +277,14 @@ func newCmd_find_missing_tx_metadata() *cli.Command {
 			klog.Infof("Transactions with missing metadata: %d", numTransactionsWithMissingMetadata.Load())
 			klog.Infof("Transactions with metadata parsing error: %d", numTransactionsWithMetaParsingError.Load())
 
-			// NOTE: if there are parsing errors, THEY WILL BE IGNORED.
 			if numTransactionsWithMissingMetadata.Load() > 0 {
-				file.Close()
 				os.Exit(1)
 			}
+			if numTransactionsWithMetaParsingError.Load() > 0 {
+				klog.Warningf("There were %d transactions with metadata parsing errors", numTransactionsWithMetaParsingError.Load())
+				os.Exit(2)
+			}
+			klog.Infof("All transactions have metadata that could be parsed successfully.")
 			os.Exit(0)
 			return nil
 		},

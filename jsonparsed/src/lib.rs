@@ -1,7 +1,9 @@
 use {
     reader::Decoder,
-    solana_message::{compiled_instruction::CompiledInstruction, v0::LoadedAddresses, AccountKeys},
-    solana_pubkey::Pubkey,
+    solana_program::{
+        instruction::CompiledInstruction,
+        message::{v0::LoadedAddresses, AccountKeys},
+    },
     solana_transaction_status::parse_instruction::parse,
 };
 
@@ -54,7 +56,7 @@ pub unsafe extern "C" fn parse_instruction(bytes: *const u8, len: usize) -> Resp
         let mut static_account_keys_vec = vec![];
         for _ in 0..static_account_keys_len {
             let account_key_bytes = decoder.read_bytes(32).unwrap();
-            let account_key = solana_pubkey::Pubkey::try_from(account_key_bytes)
+            let account_key = solana_program::pubkey::Pubkey::try_from(account_key_bytes)
                 .expect("invalid account key in static account keys");
             static_account_keys_vec.push(account_key);
         }
@@ -89,7 +91,7 @@ pub unsafe extern "C" fn parse_instruction(bytes: *const u8, len: usize) -> Resp
                     };
                 }
                 let account_key_bytes = account_key_bytes.unwrap();
-                let account_key = solana_pubkey::Pubkey::try_from(account_key_bytes)
+                let account_key = solana_program::pubkey::Pubkey::try_from(account_key_bytes)
                     .expect("invalid account key in writable accounts");
                 loaded_addresses.writable.push(account_key);
             }
@@ -97,25 +99,25 @@ pub unsafe extern "C" fn parse_instruction(bytes: *const u8, len: usize) -> Resp
             // read 32 bytes for each readonly account:
             for _ in 0..num_readonly_accounts {
                 let account_key_bytes = decoder.read_bytes(32).unwrap();
-                let account_key = solana_pubkey::Pubkey::try_from(account_key_bytes)
+                let account_key = solana_program::pubkey::Pubkey::try_from(account_key_bytes)
                     .expect("invalid account key in readonly accounts");
                 loaded_addresses.readonly.push(account_key);
             }
 
             Combined {
-                parent: static_account_keys_vec,
+                parent: static_account_keys_vec.as_slice(),
                 child: Some(loaded_addresses),
             }
         } else {
             Combined {
-                parent: static_account_keys_vec,
+                parent: static_account_keys_vec.as_slice(),
                 child: None,
             }
         };
         let sommmm = &parsed_account_keys.child.unwrap_or_default();
 
         let account_keys = AccountKeys::new(
-            &parsed_account_keys.parent,
+            parsed_account_keys.parent,
             if has_dynamic_account_keys {
                 Some(sommmm)
             } else {
@@ -150,7 +152,7 @@ pub unsafe extern "C" fn parse_instruction(bytes: *const u8, len: usize) -> Resp
         // println!("[rust] stack_height: {:?}", stack_height);
 
         let parsed = parse(
-            &program_id, // program_id
+            &solana_program::pubkey::Pubkey::new_from_array(program_id.to_bytes()),
             &instruction,
             &account_keys,
             stack_height,
@@ -220,7 +222,7 @@ struct Buffer {
 }
 
 #[derive(Default)]
-struct Combined {
-    parent: Vec<Pubkey>,
+struct Combined<'a> {
+    parent: &'a [solana_program::pubkey::Pubkey],
     child: Option<LoadedAddresses>,
 }
