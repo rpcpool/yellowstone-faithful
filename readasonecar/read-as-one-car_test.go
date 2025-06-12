@@ -24,7 +24,7 @@ func TestReader(t *testing.T) {
 	file3 := writeDummyCar(t, 4, "file3.car")
 
 	// create a multi reader
-	mr, err := NewMultiReader(file1, file2, file3)
+	mr, err := NewFromFilepaths(file1, file2, file3)
 	if err != nil {
 		t.Fatal(err)
 	}

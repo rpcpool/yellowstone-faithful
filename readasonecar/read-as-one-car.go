@@ -30,7 +30,7 @@ type MultiReader struct {
 	readers      []*Container
 }
 
-func NewMultiReader(files ...string) (*MultiReader, error) {
+func NewFromFilepaths(files ...string) (*MultiReader, error) {
 	if len(files) == 0 {
 		return nil, fmt.Errorf("no files provided")
 	}

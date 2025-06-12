@@ -90,7 +90,7 @@ func newCmd_Index_sigExists() *cli.Command {
 				klog.Exit("Please provide a CAR file")
 			}
 
-			rd, err := readasonecar.NewMultiReader(carPaths...)
+			rd, err := readasonecar.NewFromFilepaths(carPaths...)
 			if err != nil {
 				klog.Exitf("Failed to open CAR: %s", err)
 			}

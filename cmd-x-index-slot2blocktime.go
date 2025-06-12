@@ -97,7 +97,7 @@ func CreateIndex_slot2blocktime(
 		return "", fmt.Errorf("failed to check if CAR file exists: %w", err)
 	}
 
-	rd, err := readasonecar.NewMultiReader(carPaths...)
+	rd, err := readasonecar.NewFromFilepaths(carPaths...)
 	if err != nil {
 		return "", fmt.Errorf("failed to create car reader: %w", err)
 	}

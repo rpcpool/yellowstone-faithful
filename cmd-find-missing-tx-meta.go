@@ -86,7 +86,7 @@ func newCmd_find_missing_tx_metadata() *cli.Command {
 				klog.Infoln("Will not save metadata parsing errors")
 			}
 
-			rd, err := readasonecar.NewMultiReader(carPaths...)
+			rd, err := readasonecar.NewFromFilepaths(carPaths...)
 			if err != nil {
 				klog.Exitf("Failed to open CAR: %s", err)
 			}
@@ -146,6 +146,10 @@ func newCmd_find_missing_tx_metadata() *cli.Command {
 			accum := accum.NewObjectAccumulator(
 				rd,
 				iplddecoders.KindBlock,
+				accum.IgnoreKinds(
+					iplddecoders.KindEntry,
+					iplddecoders.KindRewards,
+				),
 				func(parent *accum.ObjectWithMetadata, children accum.ObjectsWithMetadata) error {
 					slotCounter++
 					numObjects := len(children) + 1
@@ -253,9 +257,6 @@ func newCmd_find_missing_tx_metadata() *cli.Command {
 					}
 					return nil
 				},
-				// Ignore these kinds in the accumulator:
-				iplddecoders.KindEntry,
-				iplddecoders.KindRewards,
 			)
 
 			if skip := c.Uint64("skip"); skip > 0 {

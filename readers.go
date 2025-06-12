@@ -48,7 +48,7 @@ func carCountItems(carPath ...string) (uint64, error) {
 }
 
 func carCountItemsByFirstByte(carPath ...string) (map[byte]uint64, *ipldbindcode.Epoch, error) {
-	rd, err := readasonecar.NewMultiReader(carPath...)
+	rd, err := readasonecar.NewFromFilepaths(carPath...)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to open car file: %w", err)
 	}

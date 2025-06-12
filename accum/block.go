@@ -27,15 +27,21 @@ func isStop(err error) bool {
 	return errors.Is(err, ErrStop)
 }
 
+type IgnoreList iplddecoders.KindSlice
+
+func IgnoreKinds(kinds ...iplddecoders.Kind) IgnoreList {
+	return IgnoreList(kinds)
+}
+
 func NewObjectAccumulator(
 	reader readasonecar.CarReader,
 	flushOnKind iplddecoders.Kind,
+	ignoreKinds IgnoreList,
 	callback func(*ObjectWithMetadata, ObjectsWithMetadata) error,
-	ignoreKinds ...iplddecoders.Kind,
 ) *ObjectAccumulator {
 	return &ObjectAccumulator{
 		reader:      reader,
-		ignoreKinds: ignoreKinds,
+		ignoreKinds: iplddecoders.KindSlice(clone(ignoreKinds)),
 		flushOnKind: flushOnKind,
 		callback:    callback,
 	}

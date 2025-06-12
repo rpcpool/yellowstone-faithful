@@ -252,6 +252,10 @@ func newCmd_SplitCar() *cli.Command {
 			accum := accum.NewObjectAccumulator(
 				rd,
 				iplddecoders.KindBlock,
+				accum.IgnoreKinds(
+					iplddecoders.KindEpoch,
+					iplddecoders.KindSubset,
+				),
 				func(parent *accum.ObjectWithMetadata, children accum.ObjectsWithMetadata) error {
 					if parent == nil {
 						return nil
@@ -294,8 +298,6 @@ func newCmd_SplitCar() *cli.Command {
 
 					return nil
 				},
-				iplddecoders.KindEpoch,
-				iplddecoders.KindSubset,
 			)
 
 			if err := accum.Run((context.Background())); err != nil {

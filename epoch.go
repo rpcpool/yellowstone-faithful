@@ -154,7 +154,7 @@ func NewEpochFromConfig(
 			if err != nil {
 				return nil, fmt.Errorf("failed to open cid-to-offset index: %w", err)
 			}
-			if config.Indexes.CidToOffsetAndSize.URI.IsRemoteWeb() {
+			if config.Indexes.CidToOffsetAndSize.URI.IsWeb() {
 				cidToOffsetIndex.Prefetch(true)
 			}
 			ep.deprecated_cidToOffsetIndex = cidToOffsetIndex
@@ -173,7 +173,7 @@ func NewEpochFromConfig(
 			if err != nil {
 				return nil, fmt.Errorf("failed to open cid-to-offset index: %w", err)
 			}
-			if config.Indexes.CidToOffsetAndSize.URI.IsRemoteWeb() {
+			if config.Indexes.CidToOffsetAndSize.URI.IsWeb() {
 				cidToOffsetAndSizeIndex.Prefetch(true)
 			}
 			ep.cidToOffsetAndSizeIndex = cidToOffsetAndSizeIndex
@@ -199,7 +199,7 @@ func NewEpochFromConfig(
 		if err != nil {
 			return nil, fmt.Errorf("failed to open slot-to-cid index: %w", err)
 		}
-		if config.Indexes.SlotToCid.URI.IsRemoteWeb() {
+		if config.Indexes.SlotToCid.URI.IsWeb() {
 			slotToCidIndex.Prefetch(true)
 		}
 		ep.slotToCidIndex = slotToCidIndex
@@ -229,7 +229,7 @@ func NewEpochFromConfig(
 		if err != nil {
 			return nil, fmt.Errorf("failed to open sig-to-cid index: %w", err)
 		}
-		if config.Indexes.SigToCid.URI.IsRemoteWeb() {
+		if config.Indexes.SigToCid.URI.IsWeb() {
 			sigToCidIndex.Prefetch(true)
 		}
 		ep.sigToCidIndex = sigToCidIndex

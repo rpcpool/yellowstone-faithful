@@ -8,27 +8,86 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"sync/atomic"
+	"text/template"
 	"time"
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/gagliardetto/solana-go"
 	"github.com/rpcpool/yellowstone-faithful/accum"
-	"github.com/rpcpool/yellowstone-faithful/carreader"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
 	"github.com/rpcpool/yellowstone-faithful/readasonecar"
+	"github.com/rpcpool/yellowstone-faithful/slottools"
 	solanatxmetaparsers "github.com/rpcpool/yellowstone-faithful/solana-tx-meta-parsers"
-	splitcarfetcher "github.com/rpcpool/yellowstone-faithful/split-car-fetcher"
+	"github.com/rpcpool/yellowstone-faithful/uri"
 	"github.com/yudai/gojsondiff"
 	diff "github.com/yudai/gojsondiff"
 	"github.com/yudai/gojsondiff/formatter"
 )
 
-func formatRemoteCarFileURL(epoch int) string {
-	// https://files.old-faithful.net/600/epoch-600.car
-	return fmt.Sprintf("https://files.old-faithful.net/%d/epoch-%d.car", epoch, epoch)
+const defaultURLTemplate = "https://files.old-faithful.net/{{.epoch}}/epoch-{{.epoch}}.car"
+
+func renderTemplate(templateStr string, vars map[string]any) (string, error) {
+	tmpl, err := template.New("tpl").Parse(templateStr)
+	if err != nil {
+		return "", err
+	}
+
+	var buf bytes.Buffer
+	err = tmpl.Execute(&buf, vars)
+	if err != nil {
+		return "", err
+	}
+
+	return buf.String(), nil
+}
+
+func formatRemoteCarFileURL(epoch int, urlTemplate string) string {
+	data := map[string]any{
+		"epoch": epoch,
+	}
+	formatted, err := renderTemplate(urlTemplate, data)
+	if err != nil {
+		panic(fmt.Errorf("failed to render URL template %q with epoch %d: %w", urlTemplate, epoch, err))
+	}
+	if formatted == "" {
+		panic(fmt.Errorf("rendered URL template is empty for epoch %d", epoch))
+	}
+	return formatted
+}
+
+func generateListOfURIs(
+	// either the list is provided by the user or
+	uris uri.List,
+	// or we generate a list of URIs based on the epoch range and the URL template
+	startEpoch, endEpoch uint64,
+	urlTemplate string,
+) (uri.List, error) {
+	if len(uris) > 0 {
+		return uris, nil
+	}
+	if startEpoch == 0 || endEpoch == 0 {
+		return nil, fmt.Errorf("start and end epoch must be set")
+	}
+	if startEpoch > endEpoch {
+		return nil, fmt.Errorf("start epoch must be less than end epoch")
+	}
+	var list uri.List
+	rangeSlice := generateRange(int(startEpoch), int(endEpoch))
+	for _, epoch := range rangeSlice {
+		formattedURL := formatRemoteCarFileURL(epoch, urlTemplate)
+		if formattedURL == "" {
+			return nil, fmt.Errorf("formatted URL is empty for epoch %d", epoch)
+		}
+		list = append(list, uri.New(formattedURL))
+	}
+	if len(list) == 0 {
+		return nil, fmt.Errorf("no URIs generated for the given epoch range %d-%d", startEpoch, endEpoch)
+	}
+	return list, nil
 }
 
 func main() {
@@ -37,20 +96,15 @@ func main() {
 	flag.Uint64Var(&endEpoch, "end", 0, "End epoch")
 	var rpcURL string
 	flag.StringVar(&rpcURL, "rpc", "https://api.mainnet-beta.solana.com", "RPC URL")
-	var limit int
-	flag.IntVar(&limit, "limit", 0, "Limit")
+	var limitSlots int
+	flag.IntVar(&limitSlots, "slots", 0, "How many slots to process per epoch (0 means no limit)")
 	var stopOnDiff bool
 	flag.BoolVar(&stopOnDiff, "stop-on-diff", true, "Stop on diff")
+	var uris uri.List
+	flag.Var((*uri.List)(&uris), "uri", "URI to a CAR file or directory (can be specified multiple times)")
+	var urlTemplate string
+	flag.StringVar(&urlTemplate, "url-template", defaultURLTemplate, "URL template for remote CAR files (e.g. https://files.old-faithful.net/{{.epoch}}/epoch-{{.epoch}}.car)")
 	flag.Parse()
-
-	if startEpoch == 0 || endEpoch == 0 {
-		panic("start and end epoch must be set")
-	}
-	if startEpoch > endEpoch {
-		panic("start epoch must be less than end epoch")
-	}
-	// Generate the range of integers from startEpoch to endEpoch
-	rangeSlice := generateRange(int(startEpoch), int(endEpoch))
 
 	client := NewHTTP(
 		rpcURL,
@@ -61,65 +115,53 @@ func main() {
 
 	format := solana.EncodingJSON
 
-	for _, epoch := range rangeSlice {
-		formattedURL := formatRemoteCarFileURL(epoch)
-		fmt.Printf("Processing epoch %d from %q\n", epoch, formattedURL)
+	uris, err := generateListOfURIs(
+		uris,
+		startEpoch,
+		endEpoch,
+		urlTemplate,
+	)
+	if err != nil {
+		panic(fmt.Errorf("failed to generate list of URIs: %w", err))
+	}
+	firstEpochWithTxMetadata := uint64(10)
 
-		rfspc, byteLen, err := splitcarfetcher.NewRemoteHTTPFileAsIoReaderAt(
-			context.Background(),
-			formattedURL,
-		)
-		if err != nil {
-			panic(fmt.Errorf("failed to create remote file split car reader from %q: %w", formattedURL, err))
-		}
-		sr := io.NewSectionReader(rfspc, 0, byteLen) // *io.SectionReader
-		cr, err := carreader.New(io.NopCloser(sr))
-		if err != nil {
-			panic(fmt.Errorf("failed to create car reader from %q: %w", formattedURL, err))
-		}
+	for _, carURI := range uris {
+		fmt.Printf("Processing epoch from %q\n", carURI)
 
-		// Get the root CID
-		if len(cr.Header.Roots) != 1 {
-			panic(fmt.Errorf("expected 1 root CID, got %d in file %s", len(cr.Header.Roots), formattedURL))
-		}
-		rootCid := cr.Header.Roots[0]
-		fmt.Printf("Root CID: %s\n", rootCid.String())
-
-		headerSize, err := cr.HeaderSize()
+		rao, err := openURI(carURI.String())
 		if err != nil {
-			panic(fmt.Errorf("failed to get header size from %q: %w", formattedURL, err))
-		}
-		container := &readasonecar.Container{
-			Path:       formattedURL,
-			Size:       uint64(byteLen),
-			HeaderSize: headerSize,
-			CarReader:  cr,
-		}
-
-		rao, err := readasonecar.NewMultiReaderFromContainers([]*readasonecar.Container{container})
-		if err != nil {
-			panic(fmt.Errorf("failed to create multi reader from %q: %w", formattedURL, err))
+			panic(fmt.Errorf("failed to create multi reader from %q: %w", carURI, err))
 		}
 
 		numSlotsSeen := new(atomic.Uint64)
-		startMetaAtEpoch := 10
 
 		accum := accum.NewObjectAccumulator(
 			rao,
 			iplddecoders.KindBlock,
-			func(parent *accum.ObjectWithMetadata, children accum.ObjectsWithMetadata) error {
+			accum.IgnoreKinds(
+				// Ignore these kinds in the accumulator (only need Transactions and DataFrames):
+				iplddecoders.KindEntry,
+				iplddecoders.KindRewards,
+			),
+			func(blockObject *accum.ObjectWithMetadata, dagObjects accum.ObjectsWithMetadata) error {
 				numSlotsSeen.Add(1)
 
-				// Process the objects here
-				// For example, you can print the number of objects
-				fmt.Printf("Number of objects: %d\n", len(children))
-
-				block, err := iplddecoders.DecodeBlock(parent.ObjectData)
+				block, err := iplddecoders.DecodeBlock(blockObject.ObjectData)
 				if err != nil {
 					return fmt.Errorf("error while decoding block: %w", err)
 				}
+				epoch := slottools.CalcEpochForSlot(uint64(block.Slot))
+				// Process the objects here
+				// For example, you can print the number of objects
+				slog.Info(
+					"Processing block",
+					"slot", block.Slot,
+					"epoch", epoch,
+					"numDagChildren", len(dagObjects),
+				)
 
-				transactions, err := accum.ObjectsToTransactionsAndMetadata(block, children)
+				transactions, err := accum.ObjectsToTransactionsAndMetadata(block, dagObjects)
 				if err != nil {
 					return fmt.Errorf("error while converting objects to transactions: %w", err)
 				}
@@ -156,7 +198,7 @@ func main() {
 						rpcJson := txJsons[ii]
 						sig := txWithInfo.Transaction.Signatures[0]
 						hasMeta := txWithInfo.Metadata != nil // We include this to know whether isSuccess is valid.
-						if !hasMeta && epoch > startMetaAtEpoch {
+						if !hasMeta && epoch > firstEpochWithTxMetadata {
 							fmt.Printf("Transaction %s has no metadata\n", sig)
 							spew.Dump(txWithInfo.Error, txWithInfo.IsMetaParseError())
 							spew.Dump(txWithInfo)
@@ -291,14 +333,12 @@ func main() {
 					}
 				}
 
-				if limit > 0 && numSlotsSeen.Load() >= uint64(limit) && len(transactions) > 0 {
-					fmt.Printf("Limit of %d slots per epoch %d reached\n", limit, epoch)
+				if limitSlots > 0 && numSlotsSeen.Load() >= uint64(limitSlots) && len(transactions) > 0 {
+					fmt.Printf("Limit of %d slots per epoch %d reached\n", limitSlots, epoch)
 					return accum.ErrStop
 				}
 				return nil
 			},
-			iplddecoders.KindEntry,
-			iplddecoders.KindRewards,
 		)
 
 		if err := accum.Run(context.Background()); err != nil {
@@ -311,6 +351,17 @@ func main() {
 		}
 
 	}
+}
+
+func openURI(pathOrURL string) (*readasonecar.MultiReader, error) {
+	uri_ := uri.New(pathOrURL)
+	if uri_.IsZero() || !uri_.IsValid() || (!uri_.IsFile() && !uri_.IsWeb()) {
+		return nil, fmt.Errorf("invalid path or URL: %s", pathOrURL)
+	}
+	if uri_.IsFile() {
+		return readasonecar.NewFromFilepaths(pathOrURL)
+	}
+	return readasonecar.NewFromURLs(pathOrURL)
 }
 
 type RawJsonClient struct {

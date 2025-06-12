@@ -33,7 +33,7 @@ func CreateIndex_cid2offset(
 		return "", fmt.Errorf("failed to check if CAR file exists: %w", err)
 	}
 
-	rd, err := readasonecar.NewMultiReader(carPaths...)
+	rd, err := readasonecar.NewFromFilepaths(carPaths...)
 	if err != nil {
 		return "", fmt.Errorf("failed to create car reader: %w", err)
 	}
@@ -128,7 +128,7 @@ func VerifyIndex_cid2offset(ctx context.Context, carPaths []string, indexFilePat
 		return fmt.Errorf("failed to check if CAR file exists: %w", err)
 	}
 
-	rd, err := readasonecar.NewMultiReader(carPaths...)
+	rd, err := readasonecar.NewFromFilepaths(carPaths...)
 	if err != nil {
 		return fmt.Errorf("failed to create car reader: %w", err)
 	}

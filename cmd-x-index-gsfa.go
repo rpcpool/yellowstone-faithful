@@ -93,7 +93,7 @@ func newCmd_Index_gsfa() *cli.Command {
 				klog.Exit("Please provide a CAR file")
 			}
 
-			rd, err := readasonecar.NewMultiReader(carPaths...)
+			rd, err := readasonecar.NewFromFilepaths(carPaths...)
 			if err != nil {
 				klog.Exitf("Failed to open CAR: %s", err)
 			}
@@ -173,6 +173,11 @@ func newCmd_Index_gsfa() *cli.Command {
 			accum := accum.NewObjectAccumulator(
 				rd,
 				iplddecoders.KindBlock,
+				accum.IgnoreKinds(
+					// Ignore these kinds in the accumulator (only need Transactions and DataFrames):
+					iplddecoders.KindEntry,
+					iplddecoders.KindRewards,
+				),
 				func(parent *accum.ObjectWithMetadata, children accum.ObjectsWithMetadata) error {
 					numSlots++
 					numObjects := len(children) + 1
@@ -302,9 +307,6 @@ func newCmd_Index_gsfa() *cli.Command {
 					}
 					return nil
 				},
-				// Ignore these kinds in the accumulator (only need Transactions and DataFrames):
-				iplddecoders.KindEntry,
-				iplddecoders.KindRewards,
 			)
 
 			if err := accum.Run(context.Background()); err != nil {
