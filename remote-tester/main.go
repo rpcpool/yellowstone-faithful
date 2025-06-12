@@ -67,8 +67,10 @@ func generateListOfURIs(
 	urlTemplate string,
 ) (uri.List, error) {
 	if len(uris) > 0 {
+		fmt.Printf("Using provided URIs: %s\n", uris)
 		return uris, nil
 	}
+	fmt.Printf("Generating URIs for epochs %d to %d using template %q\n", startEpoch, endEpoch, urlTemplate)
 	if startEpoch == 0 || endEpoch == 0 {
 		return nil, fmt.Errorf("start and end epoch must be set")
 	}
