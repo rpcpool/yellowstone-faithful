@@ -379,7 +379,7 @@ func newMultiEpochHandler(handler *MultiEpoch, lsConf *ListenerConfig) func(ctx 
 		klog.V(2).Infof("[%s] method=%q", reqID, sanitizeMethod(method))
 		klog.V(3).Infof("[%s] received request with body: %q", reqID, strings.TrimSpace(string(body)))
 		// OpenTelemetry: Start a server span with the observed method
-		ctx, span := telemetry.StartSpan(ctx, "jsonrpc."+method, 
+		ctx, span := telemetry.StartSpan(ctx, "jsonrpc."+method,
 			trace.WithAttributes(
 				attribute.String("rpc.method", method),
 				attribute.String("rpc.request_id", reqID),
@@ -419,7 +419,7 @@ func newMultiEpochHandler(handler *MultiEpoch, lsConf *ListenerConfig) func(ctx 
 				versionInfo[k] = v
 			}
 
-			err := rqCtx.ReplyRaw(
+			err := rqCtx.Reply(
 				reqCtx,
 				rpcRequest.ID,
 				versionInfo,
@@ -456,7 +456,7 @@ func newMultiEpochHandler(handler *MultiEpoch, lsConf *ListenerConfig) func(ctx 
 			} else {
 				if errors.Is(err, ErrNotFound) {
 					// reply with null result
-					rqCtx.ReplyRaw(
+					rqCtx.Reply(
 						reqCtx,
 						rpcRequest.ID,
 						nil,

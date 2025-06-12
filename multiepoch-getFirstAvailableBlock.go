@@ -17,7 +17,7 @@ func (multi *MultiEpoch) handleGetFirstAvailableBlock(ctx context.Context, conn 
 	}
 
 	slotNumber := uint64(firstBlock.Slot)
-	err = conn.ReplyRaw(
+	err = conn.Reply(
 		ctx,
 		req.ID,
 		slotNumber,

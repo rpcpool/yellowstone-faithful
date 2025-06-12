@@ -459,7 +459,7 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 	tim.time("get parent block")
 	response.Value("transactions", allTransactions)
 
-	err = conn.ReplyRaw(
+	err = conn.Reply(
 		ctx,
 		req.ID,
 		response,

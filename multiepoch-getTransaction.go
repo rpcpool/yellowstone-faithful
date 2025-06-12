@@ -218,7 +218,7 @@ func (multi *MultiEpoch) handleGetTransaction(ctx context.Context, conn *request
 		}
 	}
 	// reply with the data
-	err = conn.ReplyRaw(
+	err = conn.Reply(
 		ctx,
 		req.ID,
 		response,

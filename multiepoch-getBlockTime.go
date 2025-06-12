@@ -36,7 +36,7 @@ func (multi *MultiEpoch) handleGetBlockTime(ctx context.Context, conn *requestCo
 					Message: fmt.Sprintf("Slot %d was skipped, or missing in long-term storage", blockNum),
 				}, fmt.Errorf("failed to get blocktime: %w", err)
 			}
-			err = conn.ReplyRaw(
+			err = conn.Reply(
 				ctx,
 				req.ID,
 				func() any {

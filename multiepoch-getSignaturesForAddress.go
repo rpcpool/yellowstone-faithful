@@ -181,7 +181,7 @@ func (multi *MultiEpoch) handleGetSignaturesForAddress(ctx context.Context, conn
 	}
 
 	if len(foundTransactions) == 0 {
-		err = conn.ReplyRaw(
+		err = conn.Reply(
 			ctx,
 			req.ID,
 			[]map[string]any{},
@@ -271,7 +271,7 @@ func (multi *MultiEpoch) handleGetSignaturesForAddress(ctx context.Context, conn
 		numBefore += len(sigs)
 	}
 	// reply with the data
-	err = conn.ReplyRaw(
+	err = conn.Reply(
 		ctx,
 		req.ID,
 		response,

@@ -26,6 +26,11 @@ import (
 	"github.com/yudai/gojsondiff/formatter"
 )
 
+func formatRemoteCarFileURL(epoch int) string {
+	// https://files.old-faithful.net/600/epoch-600.car
+	return fmt.Sprintf("https://files.old-faithful.net/%d/epoch-%d.car", epoch, epoch)
+}
+
 func main() {
 	var startEpoch, endEpoch uint64
 	flag.Uint64Var(&startEpoch, "start", 0, "Start epoch")
@@ -57,7 +62,7 @@ func main() {
 	format := solana.EncodingJSON
 
 	for _, epoch := range rangeSlice {
-		formattedURL := formatURL(epoch)
+		formattedURL := formatRemoteCarFileURL(epoch)
 		fmt.Printf("Processing epoch %d from %q\n", epoch, formattedURL)
 
 		rfspc, byteLen, err := splitcarfetcher.NewRemoteHTTPFileAsIoReaderAt(
@@ -533,11 +538,6 @@ func (c *RawJsonClient) _getTransaction_batch(
 		results = append(results, res.Result)
 	}
 	return results, nil
-}
-
-func formatURL(epoch int) string {
-	// https://files.old-faithful.net/600/epoch-600.car
-	return fmt.Sprintf("https://files.old-faithful.net/%d/epoch-%d.car", epoch, epoch)
 }
 
 func generateRange(start, end int) []int {
