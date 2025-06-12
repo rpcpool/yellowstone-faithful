@@ -1,6 +1,6 @@
 import { IndexType } from "@/generated/prisma";
 import { ListObjectsV2Command, S3Client } from "@aws-sdk/client-s3";
-import { S3Source } from "../lib/data-sources/s3-source";
+import { S3Source } from "@/lib/data-sources/s3-source";
 import { DataSourceType } from "../lib/interfaces/data-source";
 import { indexTypeToKebabCase } from "../lib/utils";
 

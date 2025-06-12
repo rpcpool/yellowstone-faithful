@@ -3,7 +3,7 @@
 import { FileSystemSource } from "@/lib/data-sources/filesystem-source";
 import { checkSource } from "@/lib/epochs";
 import { getDataSource } from "@/lib/epochs/data-sources";
-import { client, Job } from "@/lib/faktory";
+import { client } from "@/lib/infrastructure/faktory/faktory-client";
 import { Task } from "@/lib/interfaces/task";
 
 // import { createDecompressStream } from "@mongodb-js/zstd";
@@ -23,7 +23,7 @@ export const getGsfaIndexArgsSchema = z.object({
 
 type GetGsfaIndexArgs = z.infer<typeof getGsfaIndexArgsSchema>;
 
-export const getGsfaIndexTask: Task = {
+export const getGsfaIndexTask: Task<GetGsfaIndexArgs> = {
   name: "getGsfaIndex",
   description: "Fetches and extracts the GSFA index archive for a given epoch.",
   args: getGsfaIndexArgsSchema,
@@ -66,7 +66,7 @@ export const getGsfaIndexTask: Task = {
     const responseStream =
       typeof (response.body as unknown as { pipe?: unknown })?.pipe === "function"
         ? (response.body as unknown as NodeJS.ReadableStream)
-        : Readable.fromWeb(response.body as ReadableStream<Uint8Array>);
+        : Readable.fromWeb(response.body as Parameters<typeof Readable.fromWeb>[0]);
 
     // Pipe the compressed data through zstd and then into tar-stream
     const pumpResponse = pipeline(responseStream, zstd.stdin);
@@ -107,7 +107,7 @@ export const getGsfaIndexTask: Task = {
     return true;
   },
   schedule: async (args: GetGsfaIndexArgs): Promise<string> => {
-    const job: Job = client.job(getGsfaIndexTask.name, args);
+    const job = client.job(getGsfaIndexTask.name, args);
     job.queue = "local";
     job.reserveFor = 60 * 60 * 4; // 4 hours
     await job.push();

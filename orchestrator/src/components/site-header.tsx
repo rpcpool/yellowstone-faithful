@@ -2,6 +2,7 @@ import { DynamicBreadcrumb } from "@/components/dynamic-breadcrumb"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { Separator } from "@/components/ui/separator"
 import { SidebarTrigger } from "@/components/ui/sidebar"
+import { Suspense } from "react"
 
 export function SiteHeader() {
   return (
@@ -13,7 +14,9 @@ export function SiteHeader() {
           className="mx-2 data-[orientation=vertical]:h-4"
         />
         <div className="flex-1 min-w-0">
-          <DynamicBreadcrumb />
+          <Suspense fallback={<div className="text-base font-medium">Loading...</div>}>
+            <DynamicBreadcrumb />
+          </Suspense>
         </div>
         <div className="ml-auto">
           <ThemeToggle />

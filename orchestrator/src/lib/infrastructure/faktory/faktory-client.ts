@@ -1,4 +1,5 @@
-import faktory, { Job } from "faktory-worker";
+import faktory from "faktory-worker";
+import type { Job } from "faktory-worker";
 
 const client = new faktory.Client({
   host: process.env.FAKTORY_HOST,
@@ -6,5 +7,6 @@ const client = new faktory.Client({
   password: process.env.FAKTORY_PASSWORD,
 });
 
-export { client, faktory, type Job };
+export { client, faktory };
+export type { Job };
 

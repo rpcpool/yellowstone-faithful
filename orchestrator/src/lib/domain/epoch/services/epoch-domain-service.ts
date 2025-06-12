@@ -18,7 +18,7 @@ export class EpochDomainService {
     const existingSources: string[] = [];
 
     for (const source of sources) {
-      const exists = await source.epochExists(epochId.getValue());
+      const exists = await source.epochExists(epochId);
       if (exists) {
         existingSources.push(source.getName());
       }

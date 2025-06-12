@@ -39,7 +39,7 @@ export function buildRPCRequest(
             } else if (param.type === "boolean") {
               optionsObj[param.name] = finalValue === "true" || finalValue === true
             } else {
-              optionsObj[param.name] = finalValue
+              optionsObj[param.name] = finalValue as string | number | boolean
             }
             hasOptions = true
           }

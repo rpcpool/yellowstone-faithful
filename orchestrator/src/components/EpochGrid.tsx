@@ -256,8 +256,8 @@ export function EpochGrid({ epochs, onEpochClick }: EpochGridProps) {
                           ? 'bg-muted/30 text-muted-foreground opacity-30' 
                           : colorClass
                       } ${isFiltered ? '' : (status ? 'text-white' : 'text-primary-foreground')} font-bold text-sm hover:scale-105 transition-transform duration-200`}
-                      onMouseEnter={displayEpoch ? handleMouseEnter(i) : undefined}
-                      onMouseMove={displayEpoch ? handleMouseEnter(i) : undefined}
+                      onMouseEnter={displayEpoch ? handleMouseEnter() : undefined}
+                      onMouseMove={displayEpoch ? handleMouseEnter() : undefined}
                       onMouseLeave={displayEpoch ? handleMouseLeave : undefined}
                       onClick={epoch ? () => onEpochClick(i) : undefined}
                     >

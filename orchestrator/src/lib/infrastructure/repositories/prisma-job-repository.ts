@@ -2,7 +2,7 @@ import { JobRepository } from '@/lib/domain/job/repositories/job-repository';
 import { Job } from '@/lib/domain/job/entities/job';
 import { JobStatus } from '@/lib/domain/job/value-objects/job-status';
 import { EpochId } from '@/lib/domain/epoch/value-objects/epoch-id';
-import { PrismaClient, Job as PrismaJob, JobStatus as PrismaJobStatus } from '@/generated/prisma';
+import { PrismaClient, Job as PrismaJob, JobStatus as PrismaJobStatus, Prisma } from '@/generated/prisma';
 import { prisma } from '../persistence/prisma';
 
 export class PrismaJobRepository implements JobRepository {
@@ -71,7 +71,7 @@ export class PrismaJobRepository implements JobRepository {
       epochId: job.getEpochId().getValue(),
       jobType: job.getJobType(),
       status: this.toPrismaStatus(job.getStatus()),
-      metadata: job.getMetadata(),
+      metadata: job.getMetadata() as Prisma.InputJsonValue,
       createdAt: job.getCreatedAt(),
       updatedAt: job.getUpdatedAt()
     };
@@ -80,7 +80,7 @@ export class PrismaJobRepository implements JobRepository {
       where: { id: job.getId() },
       update: {
         status: data.status,
-        metadata: data.metadata,
+        metadata: data.metadata as Prisma.InputJsonValue,
         updatedAt: data.updatedAt
       },
       create: data

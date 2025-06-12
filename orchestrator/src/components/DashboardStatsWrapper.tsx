@@ -4,11 +4,7 @@ import { DashboardStats } from "@/components/DashboardStats";
 import { DashboardStatsSkeleton } from "@/components/skeletons";
 import { useQuery } from "@tanstack/react-query";
 
-interface DashboardStatsWrapperProps {
-  statusCounts: Record<string, number>;
-}
-
-export function DashboardStatsWrapper({ statusCounts }: DashboardStatsWrapperProps) {
+export function DashboardStatsWrapper() {
   const {
     data: stats,
     isLoading,
@@ -44,7 +40,6 @@ export function DashboardStatsWrapper({ statusCounts }: DashboardStatsWrapperPro
   return (
     <DashboardStats 
       stats={stats}
-      statusCounts={statusCounts}
     />
   );
 } 

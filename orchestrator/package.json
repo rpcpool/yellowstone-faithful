@@ -6,7 +6,9 @@
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "next lint && tsc --noEmit",
+    "lint:eslint": "next lint",
+    "typecheck": "tsc --noEmit",
     "seed": "tsx prisma/seed.ts",
     "task": "tsx scripts/run-task.ts",
     "worker": "tsx src/lib/worker.ts",
@@ -86,5 +88,5 @@
     "tw-animate-css": "^1.3.0",
     "typescript": "^5"
   },
-  "packageManager": "pnpm@8.15.5"
+  "packageManager": "pnpm@9.12.2"
 }

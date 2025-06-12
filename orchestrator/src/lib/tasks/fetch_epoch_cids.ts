@@ -1,5 +1,5 @@
 import { getEpochs, getLatestEpoch } from "@/lib/epochs";
-import { client, Job } from "@/lib/infrastructure/faktory/faktory-client";
+import { client } from "@/lib/infrastructure/faktory/faktory-client";
 import { Task } from "@/lib/interfaces/task";
 import { prisma } from "@/lib/infrastructure/persistence/prisma";
 import { z } from "zod";
@@ -7,7 +7,7 @@ import { z } from "zod";
 export const fetchEpochCidsArgsSchema = z.object({});
 type FetchEpochCidsArgs = z.infer<typeof fetchEpochCidsArgsSchema>;
 
-const fetchEpochCidsTask: Task = {
+const fetchEpochCidsTask: Task<FetchEpochCidsArgs> = {
 
   name: "fetchEpochCids",
   description: "Fetches CIDs for all epochs and updates the database.",
@@ -42,7 +42,7 @@ const fetchEpochCidsTask: Task = {
   },
 
   schedule: async (args: FetchEpochCidsArgs): Promise<string> => {
-    const job: Job = client.job(fetchEpochCidsTask.name, args);
+    const job = client.job(fetchEpochCidsTask.name, args);
     job.queue = "default";
     job.reserveFor = 1000;
     await job.push();

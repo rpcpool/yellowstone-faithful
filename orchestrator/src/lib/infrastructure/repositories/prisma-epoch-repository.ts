@@ -32,6 +32,10 @@ export class PrismaEpochRepository implements EpochRepository {
     return this.toDomain(epochData);
   }
 
+  async findByEpochId(epochId: EpochId): Promise<Epoch | null> {
+    return this.findById(epochId);
+  }
+
   async findByEpochNumber(epochNumber: number): Promise<Epoch | null> {
     const epochData = await this.prisma.epoch.findUnique({
       where: { id: epochNumber },
@@ -143,7 +147,7 @@ export class PrismaEpochRepository implements EpochRepository {
         await tx.epochIndex.createMany({
           data: indexes.map(index => ({
             epoch: index.getEpochId().toString(),
-            type: index.getType().getValue() as Prisma.$Enums.IndexType,
+            type: index.getType().getValue(),
             size: index.getSize(),
             status: index.getStatus(),
             location: index.getLocation(),
@@ -161,7 +165,7 @@ export class PrismaEpochRepository implements EpochRepository {
       if (gsfaIndexes.length > 0) {
         await tx.epochGsfa.createMany({
           data: gsfaIndexes.map(gsfa => ({
-            id: parseInt(gsfa.getId()),
+            id: gsfa.getId() || 0,
             epoch: gsfa.getEpochId().toString(),
             exists: gsfa.exists(),
             location: gsfa.getLocation()
@@ -196,6 +200,44 @@ export class PrismaEpochRepository implements EpochRepository {
     return this.toDomain(epochData);
   }
 
+  async findByStatus(status: EpochStatus): Promise<Epoch[]> {
+    const epochs = await this.prisma.epoch.findMany({
+      where: { status: status.getValue() },
+      include: {
+        epochIndexes: true,
+        epochGsfas: true
+      },
+      orderBy: { id: 'asc' }
+    });
+
+    return Promise.all(epochs.map(epoch => this.toDomain(epoch)));
+  }
+
+  async findByRange(start: EpochId, end: EpochId): Promise<Epoch[]> {
+    const epochs = await this.prisma.epoch.findMany({
+      where: {
+        id: {
+          gte: start.getValue(),
+          lte: end.getValue()
+        }
+      },
+      include: {
+        epochIndexes: true,
+        epochGsfas: true
+      },
+      orderBy: { id: 'asc' }
+    });
+
+    return Promise.all(epochs.map(epoch => this.toDomain(epoch)));
+  }
+
+  async exists(epochId: EpochId): Promise<boolean> {
+    const count = await this.prisma.epoch.count({
+      where: { id: epochId.getValue() }
+    });
+    return count > 0;
+  }
+
   private async toDomain(
     epochData: PrismaEpoch & {
       epochIndexes: PrismaEpochIndex[];
@@ -221,7 +263,7 @@ export class PrismaEpochRepository implements EpochRepository {
 
     const gsfaIndexes = epochData.epochGsfas.map(gsfaData =>
       new EpochGsfa({
-        id: gsfaData.id.toString(),
+        id: gsfaData.id,
         epochId,
         exists: gsfaData.exists || false,
         location: gsfaData.location,

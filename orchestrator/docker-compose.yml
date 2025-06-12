@@ -57,7 +57,7 @@ services:
       dockerfile: Dockerfile
     container_name: old-reliable-worker
     restart: unless-stopped
-    command: ["node", "src/lib/worker.js"]
+    command: ["pnpm", "tsx", "src/lib/worker.ts"]
     environment:
       DATABASE_URL: postgresql://old_reliable:old_reliable_pass@postgres:5432/old_reliable?schema=public
       FAKTORY_URL: tcp://faktory:7419

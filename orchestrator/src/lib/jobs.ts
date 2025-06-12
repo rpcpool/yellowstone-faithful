@@ -1,4 +1,4 @@
-import { JobStatus } from '@/generated/prisma/index.js';
+import { JobStatus, Prisma } from '@/generated/prisma/index.js';
 import { prisma } from '@/lib/infrastructure/persistence/prisma';
 
 export interface JobRecord {
@@ -17,7 +17,7 @@ export async function storeJobRecord(job: JobRecord): Promise<void> {
     where: { id: job.id },
     update: {
       status: job.status,
-      metadata: job.metadata,
+      metadata: job.metadata as Prisma.InputJsonValue,
       updatedAt: new Date(),
     },
     create: {
@@ -25,7 +25,7 @@ export async function storeJobRecord(job: JobRecord): Promise<void> {
       epochId: job.epochId,
       jobType: job.jobType,
       status: job.status,
-      metadata: job.metadata,
+      metadata: job.metadata as Prisma.InputJsonValue,
     },
   });
 }

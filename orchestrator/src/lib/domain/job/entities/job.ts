@@ -131,7 +131,7 @@ export class Job implements Entity<Job> {
     this.updateStatus(JobStatus.Queued());
     this.updateMetadata({
       retriedAt: new Date().toISOString(),
-      retryCount: (this.metadata.retryCount || 0) + 1
+      retryCount: ((this.metadata.retryCount as number) || 0) + 1
     });
   }
 

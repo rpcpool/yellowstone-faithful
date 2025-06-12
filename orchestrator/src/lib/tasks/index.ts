@@ -7,11 +7,11 @@ import { refreshSourceTask } from "./refresh_source";
 
 function allTasks(): Task[] {
   return [
-    fetchEpochCidsTask,
-    getGsfaIndexTask,
-    getStandardIndexesTask,
-    refreshSourceTask,
-    refreshEpochTask,
+    fetchEpochCidsTask as Task,
+    getGsfaIndexTask as Task,
+    getStandardIndexesTask as Task,
+    refreshSourceTask as Task,
+    refreshEpochTask as Task,
   ];
 }
 

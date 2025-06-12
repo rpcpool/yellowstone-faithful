@@ -4,7 +4,8 @@ import { FileSystemSource } from "@/lib/data-sources/filesystem-source";
 import { getDataSource } from "@/lib/epochs/data-sources";
 import { Task } from "@/lib/interfaces/task";
 
-import { client, Job } from "@/lib/faktory";
+import { client } from "@/lib/infrastructure/faktory/faktory-client";
+import type { Job } from "faktory-worker";
 import { createWriteStream, promises as fs } from "fs";
 import path from "path";
 import { pipeline } from "stream/promises";
@@ -31,7 +32,7 @@ export const getStandardIndexesArgsSchema = z.object({
 
 type GetStandardIndexesArgs = z.infer<typeof getStandardIndexesArgsSchema>;
 
-export const getStandardIndexesTask: Task = {
+export const getStandardIndexesTask: Task<GetStandardIndexesArgs> = {
   name: "getStandardIndexes",
   description: "Downloads and stores standard index files for a given epoch.",
   args: getStandardIndexesArgsSchema,

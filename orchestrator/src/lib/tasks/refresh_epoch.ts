@@ -2,7 +2,8 @@
 
 import { checkSource } from "@/lib/epochs";
 import { updateEpochStatus } from "@/lib/epochs/update-epoch-status";
-import { client, Job } from "@/lib/faktory";
+import { client } from "@/lib/infrastructure/faktory/faktory-client";
+import type { Job } from "faktory-worker";
 import { Task } from "@/lib/interfaces/task";
 import { z } from "zod";
 import { dataSources } from "../epochs/data-sources";
@@ -13,7 +14,7 @@ export const refreshEpochArgsSchema = z.object({
 
 type RefreshEpochArgs = z.infer<typeof refreshEpochArgsSchema>;
 
-export const refreshEpochTask: Task = {
+export const refreshEpochTask: Task<RefreshEpochArgs> = {
   name: "refreshEpoch",
   description: "Refreshes a single epoch and updates its status.",
   args: refreshEpochArgsSchema,
