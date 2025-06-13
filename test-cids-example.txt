@@ -1,0 +1,10 @@
+# Example CIDs for testing retrievability
+# These are common/well-known CIDs that should be retrievable from Filecoin
+
+# A small text file
+QmT78zSuBmuS4z925WZfrqQ1qHaJ56DQaTfyMUF7F8ff5o
+
+# Another common CID
+QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG
+
+# Add your own CIDs here, one per line

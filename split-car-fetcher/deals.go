@@ -125,3 +125,12 @@ func (r *DealRegistry) GetMinerByPieceCID(pieceCID cid.Cid) (address.Address, bo
 	}
 	return deal.Provider, true
 }
+
+// GetAllDeals returns a copy of all deals in the registry as a map from piece CID to Deal.
+func (r *DealRegistry) GetAllDeals() map[cid.Cid]Deal {
+	copyMap := make(map[cid.Cid]Deal, len(r.pieceToDeal))
+	for k, v := range r.pieceToDeal {
+		copyMap[k] = v
+	}
+	return copyMap
+}
