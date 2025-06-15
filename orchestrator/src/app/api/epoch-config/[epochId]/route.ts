@@ -34,7 +34,10 @@ export async function GET(
     // Get all indexes for this epoch
     const indexes = await prisma.epochIndex.findMany({
       where: { epoch: epoch.epoch },
-      orderBy: { type: 'asc' }
+      orderBy: { type: 'asc' },
+      include: {
+        source: true
+      }
     });
 
     // Return 404 if no indexes are available for this epoch
@@ -81,7 +84,7 @@ export async function GET(
 
       // Try to find index from sources in preference order
       for (const preferredSource of sourcePreferenceOrder) {
-        const indexFromSource = indexList.find(idx => idx.source === preferredSource);
+        const indexFromSource = indexList.find(idx => idx.source.name === preferredSource);
         if (indexFromSource) {
           selectedIndex = indexFromSource;
           console.log(`Using ${preferredSource} source for ${indexType}: ${indexFromSource.location}`);
@@ -92,7 +95,7 @@ export async function GET(
       // If no preferred source found, use the first available
       if (!selectedIndex && indexList.length > 0) {
         selectedIndex = indexList[0];
-        console.log(`Using fallback source ${selectedIndex.source} for ${indexType}: ${selectedIndex.location}`);
+        console.log(`Using fallback source ${selectedIndex.source.name} for ${indexType}: ${selectedIndex.location}`);
       }
 
       if (selectedIndex) {

@@ -51,7 +51,11 @@ export async function GET(req: NextRequest) {
     }
 
     const where: Prisma.EpochIndexWhereInput = {};
-    if (sourceParam) where.source = sourceParam;
+    if (sourceParam) {
+      where.source = {
+        name: sourceParam
+      };
+    }
     if (typeParam) where.type = typeParam as IndexType;
 
     if (searchParam) {
@@ -79,13 +83,22 @@ export async function GET(req: NextRequest) {
         orderBy,
         skip,
         take: pageSize,
+        include: {
+          source: true
+        }
       }),
       prisma.epochIndex.count({ where }),
-      prisma.epochIndex.groupBy({ by: ['source'], _count: { source: true } }),
+      prisma.epochIndex.groupBy({ by: ['sourceId'], _count: { sourceId: true } }),
       prisma.epochIndex.groupBy({ by: ['type'], _count: { type: true } }),
     ]);
 
-    const availableSources = sourceCounts.map((s) => s.source);
+    // Get source names for the source counts
+    const sourceIds = sourceCounts.map(s => s.sourceId);
+    const sources = await prisma.source.findMany({
+      where: { id: { in: sourceIds } }
+    });
+    const sourceNameMap = Object.fromEntries(sources.map(s => [s.id, s.name]));
+    const availableSources = sourceCounts.map((s) => sourceNameMap[s.sourceId] || s.sourceId);
     const availableTypes = typeCounts.map((t) => t.type);
 
     return NextResponse.json({

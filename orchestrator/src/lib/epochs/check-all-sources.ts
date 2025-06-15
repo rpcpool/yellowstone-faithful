@@ -1,5 +1,5 @@
 import { checkSource } from './check-source';
-import { dataSources } from './data-sources';
+import { getDataSourcesFromDB } from './data-sources-db';
 import { EpochStatus } from './types';
 import { updateEpochStatus } from './update-epoch-status';
 
@@ -7,6 +7,9 @@ import { updateEpochStatus } from './update-epoch-status';
 export async function checkAllSources(epochId: number): Promise<EpochStatus> {
   console.log(`[checkAllSources] Starting comprehensive check for epoch ${epochId}`);
 
+  // Get data sources from database
+  const dataSources = await getDataSourcesFromDB();
+  
   // Check each data source - this will update the database for each source
   const sourceResults = await Promise.all(
     dataSources.map(async (source) => {

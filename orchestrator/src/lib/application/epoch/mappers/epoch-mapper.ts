@@ -19,7 +19,7 @@ export class EpochMapper {
         size: index.getSize().toString(),
         status: index.getStatus(),
         location: index.getLocation(),
-        source: index.getSource(),
+        source: index.getSourceId(), // TODO: Map to source name
         createdAt: index.getCreatedAt(),
         updatedAt: index.getUpdatedAt()
       })),

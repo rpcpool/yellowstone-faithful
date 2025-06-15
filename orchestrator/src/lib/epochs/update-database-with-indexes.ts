@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/infrastructure/persistence/prisma';
-import { dataSources } from './data-sources';
+import { getDataSourcesFromDB } from './data-sources-db';
 import { IndexResult } from './types';
 
 // Update database with found indexes
@@ -10,11 +10,14 @@ export async function updateDatabaseWithIndexes(
 ): Promise<void> {
   console.log(`[updateDatabaseWithIndexes] Updating database for epoch string: ${epochStr}`);
   
+  // Get data sources from database
+  const dataSources = await getDataSourcesFromDB();
+  
   for (const indexResult of indexResults) {
     if (indexResult.availableIn.length > 0) {
       // Use the first available source for the location
       const firstSource = dataSources.find(ds => ds.name === indexResult.availableIn[0]);
-      if (firstSource) {
+      if (firstSource && firstSource.id) {
         const location = await firstSource.getEpochIndexUrl(epochId, indexResult.type);
         
         // Fetch size information from the data source
@@ -32,10 +35,10 @@ export async function updateDatabaseWithIndexes(
         
         await prisma.epochIndex.upsert({
           where: { 
-            epoch_type_source: { 
+            epoch_type_sourceId: { 
               epoch: epochStr, 
               type: indexResult.type,
-              source: firstSource.name
+              sourceId: firstSource.id
             } 
           },
           update: {
@@ -48,7 +51,7 @@ export async function updateDatabaseWithIndexes(
             type: indexResult.type,
             size,
             status: 'Indexed',
-            source: firstSource.name,
+            sourceId: firstSource.id,
             location,
           },
         });
@@ -57,4 +60,4 @@ export async function updateDatabaseWithIndexes(
       console.log(`[updateDatabaseWithIndexes] Index ${indexResult.type} not found in any source, skipping database update`);
     }
   }
-} 
+}

@@ -35,12 +35,16 @@ export async function checkSource(epochId: number, source: DataSource): Promise<
         console.log(`[checkSource] Upserting index ${indexType} with location: ${location}, size: ${size}`);
         
         // Update database with this specific epoch+index+source combination
+        if (!source.id) {
+          throw new Error(`Source ${source.name} does not have an ID`);
+        }
+        
         await prisma.epochIndex.upsert({
           where: { 
-            epoch_type_source: { 
+            epoch_type_sourceId: { 
               epoch: epochStr, 
               type: indexType,
-              source: source.name
+              sourceId: source.id
             } 
           },
           update: {
@@ -54,7 +58,7 @@ export async function checkSource(epochId: number, source: DataSource): Promise<
             type: indexType,
             size,
             status: 'Indexed',
-            source: source.name,
+            sourceId: source.id,
             location,
           },
         });

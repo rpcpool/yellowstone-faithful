@@ -9,7 +9,7 @@ export interface EpochIndexProps {
   size: bigint;
   status: string;
   location: string;
-  source: string;
+  sourceId: string;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -24,7 +24,7 @@ export class EpochIndex implements Entity<EpochIndex> {
   private readonly size: bigint;
   private readonly status: string;
   private readonly location: string;
-  private readonly source: string;
+  private readonly sourceId: string;
   private readonly createdAt: Date;
   private readonly updatedAt: Date;
 
@@ -35,7 +35,7 @@ export class EpochIndex implements Entity<EpochIndex> {
     this.size = props.size;
     this.status = props.status;
     this.location = props.location;
-    this.source = props.source;
+    this.sourceId = props.sourceId;
     this.createdAt = props.createdAt || new Date();
     this.updatedAt = props.updatedAt || new Date();
   }
@@ -68,8 +68,8 @@ export class EpochIndex implements Entity<EpochIndex> {
     return this.location;
   }
 
-  getSource(): string {
-    return this.source;
+  getSourceId(): string {
+    return this.sourceId;
   }
 
   getCreatedAt(): Date {
@@ -84,7 +84,7 @@ export class EpochIndex implements Entity<EpochIndex> {
     return (
       this.epochId.equals(other.epochId) &&
       this.type.equals(other.type) &&
-      this.source === other.source
+      this.sourceId === other.sourceId
     );
   }
 
@@ -92,6 +92,6 @@ export class EpochIndex implements Entity<EpochIndex> {
    * Creates a unique key for this index
    */
   getUniqueKey(): string {
-    return `${this.epochId.toString()}-${this.type.getValue()}-${this.source}`;
+    return `${this.epochId.toString()}-${this.type.getValue()}-${this.sourceId}`;
   }
 }

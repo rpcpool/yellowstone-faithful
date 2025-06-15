@@ -3,7 +3,6 @@ import { ValueObject } from '@/lib/domain/shared/interfaces/value-object';
 export enum DataSourceTypeValue {
   S3 = 's3',
   HTTP = 'http',
-  OF = 'of',
   FILESYSTEM = 'filesystem'
 }
 
@@ -35,10 +34,6 @@ export class DataSourceType implements ValueObject<DataSourceTypeValue> {
 
   static HTTP(): DataSourceType {
     return new DataSourceType(DataSourceTypeValue.HTTP);
-  }
-
-  static OF(): DataSourceType {
-    return new DataSourceType(DataSourceTypeValue.OF);
   }
 
   static FILESYSTEM(): DataSourceType {

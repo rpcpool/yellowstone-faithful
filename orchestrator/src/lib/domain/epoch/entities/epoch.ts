@@ -85,7 +85,7 @@ export class Epoch implements AggregateRoot<Epoch> {
       payload: {
         epochId: this.id.getValue(),
         indexType: index.getType().getValue(),
-        source: index.getSource(),
+        sourceId: index.getSourceId(),
         size: index.getSize().toString()
       }
     });

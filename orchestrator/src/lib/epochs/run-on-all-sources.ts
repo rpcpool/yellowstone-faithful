@@ -1,5 +1,5 @@
 import { DataSource } from '@/lib/interfaces/data-source';
-import { dataSources } from './data-sources';
+import { getDataSourcesFromDB } from './data-sources-db';
 import { DataSourceResult } from './types';
 
 // Generic function to check across all data sources
@@ -10,6 +10,7 @@ export async function runOnAllSources<T>(
 ): Promise<DataSourceResult<T>[]> {
   console.log(`[${operation}] Checking epoch ${epochId} across all data sources...`);
   
+  const dataSources = await getDataSourcesFromDB();
   const results = await Promise.allSettled(
     dataSources.map(async (source) => {
       console.log(`[${operation}] Checking ${source.name} for epoch ${epochId}...`);

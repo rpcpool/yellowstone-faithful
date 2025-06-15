@@ -3,11 +3,11 @@ import { IndexType } from "@/generated/prisma";
 export enum DataSourceType {
   S3 = "s3",
   HTTP = "http",
-  OF = "of",
   FILESYSTEM = "filesystem",
 }
 
 export interface DataSource {
+  id?: string; // Source ID from database
   name: string;
   type: DataSourceType;
 

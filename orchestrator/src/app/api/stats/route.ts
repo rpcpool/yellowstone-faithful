@@ -41,9 +41,9 @@ export async function GET() {
 
     // Get source distribution across all indexes
     const sourceCounts = await prisma.epochIndex.groupBy({
-      by: ['source'],
+      by: ['sourceId'],
       _count: {
-        source: true
+        sourceId: true
       }
     });
 
@@ -71,8 +71,16 @@ export async function GET() {
       return acc;
     }, {} as Record<string, number>);
 
+    // Get source names for the distribution
+    const sourceIds = sourceCounts.map(s => s.sourceId);
+    const sources = await prisma.source.findMany({
+      where: { id: { in: sourceIds } }
+    });
+    const sourceNameMap = Object.fromEntries(sources.map(s => [s.id, s.name]));
+    
     const sourceDistribution = sourceCounts.reduce((acc, item) => {
-      acc[item.source] = item._count.source;
+      const sourceName = sourceNameMap[item.sourceId] || item.sourceId;
+      acc[sourceName] = item._count.sourceId || 0;
       return acc;
     }, {} as Record<string, number>);
 

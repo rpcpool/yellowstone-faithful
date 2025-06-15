@@ -6,7 +6,7 @@ import { client } from "@/lib/infrastructure/faktory/faktory-client";
 import type { Job } from "faktory-worker";
 import { Task } from "@/lib/interfaces/task";
 import { z } from "zod";
-import { dataSources } from "../epochs/data-sources";
+import { getDataSourcesFromDB } from "../epochs/data-sources-db";
 
 export const refreshEpochArgsSchema = z.object({
   epochId: z.number(),
@@ -23,6 +23,7 @@ export const refreshEpochTask: Task<RefreshEpochArgs> = {
   },
   run: async (args: RefreshEpochArgs): Promise<boolean> => {
     const { epochId } = args;
+    const dataSources = await getDataSourcesFromDB();
     for (const source of dataSources) {
       await checkSource(epochId, source);
     }

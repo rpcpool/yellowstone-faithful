@@ -160,8 +160,6 @@ describe('DataSource Interface', () => {
       const fsSource = new MockDataSource('fs-test', DataSourceType.FILESYSTEM);
       expect(fsSource.type).toBe(DataSourceType.FILESYSTEM);
 
-      const ofSource = new MockDataSource('of-test', DataSourceType.OF);
-      expect(ofSource.type).toBe(DataSourceType.OF);
     });
   });
 });

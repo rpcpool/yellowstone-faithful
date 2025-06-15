@@ -13,6 +13,6 @@ export { updateDatabaseWithIndexes } from './update-database-with-indexes';
 
 // Types and constants
 export { prisma } from '@/lib/infrastructure/persistence/prisma';
-export { dataSources } from './data-sources';
+export { getDataSourcesFromDB, clearDataSourceCache } from './data-sources-db';
 export * from './types';
 

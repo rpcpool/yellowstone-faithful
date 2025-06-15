@@ -64,6 +64,10 @@ const data = {
       icon: Database,
       items: [
         {
+          title: "Sources",
+          url: "/sources",
+        },
+        {
           title: "Indexes",
           url: "/data/indexes",
         },

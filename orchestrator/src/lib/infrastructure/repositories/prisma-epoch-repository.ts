@@ -151,7 +151,7 @@ export class PrismaEpochRepository implements EpochRepository {
             size: index.getSize(),
             status: index.getStatus(),
             location: index.getLocation(),
-            source: index.getSource()
+            sourceId: index.getSourceId()
           }))
         });
       }
@@ -255,7 +255,7 @@ export class PrismaEpochRepository implements EpochRepository {
         size: indexData.size,
         status: indexData.status,
         location: indexData.location,
-        source: indexData.source,
+        sourceId: indexData.sourceId,
         createdAt: indexData.createdAt,
         updatedAt: indexData.updatedAt
       })
