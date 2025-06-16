@@ -75,9 +75,9 @@ func DealsFromCSV(path string) (*DealRegistry, error) {
 			return registry, fmt.Errorf("failed to read csv record line: %w", err)
 		}
 		
-		// Ensure we have at least 8 fields
-		if len(record) < 8 {
-			return registry, fmt.Errorf("record has insufficient fields: %d, expected at least 8", len(record))
+		// Ensure we have at least the required number of fields
+		if len(record) < requiredFields {
+			return registry, fmt.Errorf("record has insufficient fields: %d, expected at least %d", len(record), requiredFields)
 		}
 
 		maddr, err := address.NewFromString(record[0])
