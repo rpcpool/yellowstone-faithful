@@ -43,7 +43,7 @@ func DealsFromCSV(path string) (*DealRegistry, error) {
 	defer file.Close()
 
 	r := csv.NewReader(file)
-	r.FieldsPerRecord = 8
+	r.FieldsPerRecord = -1 // Allow variable number of fields
 	r.Comment = '#'
 	r.TrimLeadingSpace = true
 
@@ -53,8 +53,9 @@ func DealsFromCSV(path string) (*DealRegistry, error) {
 	if header, err := r.Read(); err != nil {
 		return registry, err
 	} else {
-		// check that the header is correct
-		if header[0] != "provider" ||
+		// check that the header has at least the required fields
+		if len(header) < 8 ||
+			header[0] != "provider" ||
 			header[1] != "deal_uuid" ||
 			header[2] != "file_name" ||
 			header[3] != "url" ||
@@ -72,6 +73,11 @@ func DealsFromCSV(path string) (*DealRegistry, error) {
 		}
 		if err != nil {
 			return registry, fmt.Errorf("failed to read csv record line: %w", err)
+		}
+		
+		// Ensure we have at least 8 fields
+		if len(record) < 8 {
+			return registry, fmt.Errorf("record has insufficient fields: %d, expected at least 8", len(record))
 		}
 
 		maddr, err := address.NewFromString(record[0])

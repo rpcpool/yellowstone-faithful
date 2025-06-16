@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -34,6 +35,11 @@ func newCmd_TestRetrievability() *cli.Command {
 				Value:   "both",
 			},
 			&cli.StringFlag{
+				Name:    "method",
+				Usage:   "Retrieval method: 'lassie', 'http', or 'both' (default: both)",
+				Value:   "both",
+			},
+			&cli.StringFlag{
 				Name:    "output",
 				Aliases: []string{"o"},
 				Usage:   "Output file for results (CSV format), use '-' for stdout",
@@ -58,6 +64,7 @@ func testRetrievabilityAction(cctx *cli.Context) error {
 	inputFile := cctx.String("input")
 	dealsCSV := cctx.String("deals-csv")
 	cidType := cctx.String("cid-type")
+	method := cctx.String("method")
 	outputFile := cctx.String("output")
 	timeout := cctx.Duration("timeout")
 	verbose := cctx.Bool("verbose")
@@ -71,6 +78,9 @@ func testRetrievabilityAction(cctx *cli.Context) error {
 	}
 	if dealsCSV != "" && cidType != "piece" && cidType != "payload" && cidType != "both" {
 		return fmt.Errorf("invalid --cid-type: must be 'piece', 'payload', or 'both'")
+	}
+	if method != "lassie" && method != "http" && method != "both" {
+		return fmt.Errorf("invalid --method: must be 'lassie', 'http', or 'both'")
 	}
 
 	// Read CIDs from input
@@ -91,10 +101,25 @@ func testRetrievabilityAction(cctx *cli.Context) error {
 
 	klog.Infof("Testing retrievability for %d CIDs", len(cids))
 
-	// Initialize Lassie wrapper
-	lassieWrapper, err := newLassieWrapper(cctx, globalFetchProviderAddrInfos)
-	if err != nil {
-		return fmt.Errorf("failed to initialize lassie: %w", err)
+	// Initialize Lassie wrapper if needed
+	var lassieWrapper *lassieWrapper
+	if method == "lassie" || method == "both" {
+		lassieWrapper, err = newLassieWrapper(cctx, globalFetchProviderAddrInfos)
+		if err != nil {
+			return fmt.Errorf("failed to initialize lassie: %w", err)
+		}
+	}
+
+	// Initialize deal registry if needed for HTTP method
+	var dealRegistry *splitcarfetcher.DealRegistry
+	if (method == "http" || method == "both") {
+		if dealsCSV == "" {
+			return fmt.Errorf("--deals-csv is required when using HTTP retrieval method")
+		}
+		dealRegistry, err = splitcarfetcher.DealsFromCSV(dealsCSV)
+		if err != nil {
+			return fmt.Errorf("failed to load deals registry: %w", err)
+		}
 	}
 
 	// Setup output writer
@@ -107,11 +132,12 @@ func testRetrievabilityAction(cctx *cli.Context) error {
 	}
 
 	// Process CIDs and write results
-	return processCIDs(ctx, lassieWrapper, cids, outputWriter, timeout, verbose)
+	return processCIDs(ctx, lassieWrapper, dealRegistry, cids, outputWriter, timeout, verbose, method, cidType)
 }
 
 type RetrievabilityResult struct {
 	CID         string
+	Method      string
 	Retrievable bool
 	Duration    time.Duration
 	Error       string
@@ -129,9 +155,9 @@ func setupOutputWriter(outputFile string) (*os.File, error) {
 	return outputWriter, nil
 }
 
-func processCIDs(ctx context.Context, lassieWrapper *lassieWrapper, cids []string, outputWriter *os.File, timeout time.Duration, verbose bool) error {
+func processCIDs(ctx context.Context, lassieWrapper *lassieWrapper, dealRegistry *splitcarfetcher.DealRegistry, cids []string, outputWriter *os.File, timeout time.Duration, verbose bool, method string, cidType string) error {
 	// Write CSV header
-	fmt.Fprintln(outputWriter, "CID,Retrievable,Duration,Error")
+	fmt.Fprintln(outputWriter, "CID,Method,Retrievable,Duration,Error")
 
 	// Test each CID
 	for i, cidStr := range cids {
@@ -139,16 +165,19 @@ func processCIDs(ctx context.Context, lassieWrapper *lassieWrapper, cids []strin
 			klog.Infof("Testing CID %d/%d: %s", i+1, len(cids), cidStr)
 		}
 
-		result := testCIDRetrievability(ctx, lassieWrapper, cidStr, timeout)
+		results := testCIDRetrievabilityWithMethods(ctx, lassieWrapper, dealRegistry, cidStr, timeout, method)
 		
-		// Write result to CSV
-		fmt.Fprintf(outputWriter, "%s,%t,%s,%s\n", 
-			result.CID, 
-			result.Retrievable, 
-			result.Duration.String(),
-			escapeCSV(result.Error))
+		// Write results to CSV
+		for _, result := range results {
+			fmt.Fprintf(outputWriter, "%s,%s,%t,%s,%s\n", 
+				result.CID, 
+				result.Method,
+				result.Retrievable, 
+				result.Duration.String(),
+				escapeCSV(result.Error))
+			logResult(result, verbose)
+		}
 
-		logResult(result, verbose)
 	}
 
 	if !verbose {
@@ -162,9 +191,9 @@ func processCIDs(ctx context.Context, lassieWrapper *lassieWrapper, cids []strin
 func logResult(result RetrievabilityResult, verbose bool) {
 	if verbose {
 		if result.Retrievable {
-			klog.Infof("✓ %s - retrievable (%s)", result.CID, result.Duration)
+			klog.Infof("✓ %s [%s] - retrievable (%s)", result.CID, result.Method, result.Duration)
 		} else {
-			klog.Infof("✗ %s - not retrievable: %s", result.CID, result.Error)
+			klog.Infof("✗ %s [%s] - not retrievable: %s", result.CID, result.Method, result.Error)
 		}
 	} else {
 		// Show progress
@@ -176,9 +205,26 @@ func logResult(result RetrievabilityResult, verbose bool) {
 	}
 }
 
-func testCIDRetrievability(ctx context.Context, lassie *lassieWrapper, cidStr string, timeout time.Duration) RetrievabilityResult {
+func testCIDRetrievabilityWithMethods(ctx context.Context, lassie *lassieWrapper, dealRegistry *splitcarfetcher.DealRegistry, cidStr string, timeout time.Duration, method string) []RetrievabilityResult {
+	var results []RetrievabilityResult
+
+	switch method {
+	case "lassie":
+		results = append(results, testCIDRetrievability(ctx, lassie, cidStr, timeout, "lassie"))
+	case "http":
+		results = append(results, testCIDRetrievabilityHTTP(ctx, dealRegistry, cidStr, timeout))
+	case "both":
+		results = append(results, testCIDRetrievability(ctx, lassie, cidStr, timeout, "lassie"))
+		results = append(results, testCIDRetrievabilityHTTP(ctx, dealRegistry, cidStr, timeout))
+	}
+
+	return results
+}
+
+func testCIDRetrievability(ctx context.Context, lassie *lassieWrapper, cidStr string, timeout time.Duration, method string) RetrievabilityResult {
 	result := RetrievabilityResult{
-		CID: cidStr,
+		CID:    cidStr,
+		Method: method,
 	}
 
 	// Parse CID
@@ -212,6 +258,83 @@ func testCIDRetrievability(ctx context.Context, lassie *lassieWrapper, cidStr st
 	}
 
 	return result
+}
+
+func testCIDRetrievabilityHTTP(ctx context.Context, dealRegistry *splitcarfetcher.DealRegistry, cidStr string, timeout time.Duration) RetrievabilityResult {
+	result := RetrievabilityResult{
+		CID:    cidStr,
+		Method: "http",
+	}
+
+	// Parse CID
+	parsedCID, err := cid.Parse(cidStr)
+	if err != nil {
+		result.Error = fmt.Sprintf("invalid CID: %v", err)
+		return result
+	}
+
+	// Check if we have deal information for this CID
+	if dealRegistry == nil {
+		result.Error = "no deal registry available for HTTP retrieval"
+		return result
+	}
+
+	deal, exists := dealRegistry.GetDeal(parsedCID)
+	if !exists {
+		result.Error = "CID not found in deals registry"
+		return result
+	}
+
+	// Create context with timeout
+	timeoutCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	// Measure retrieval time
+	start := time.Now()
+
+	// Attempt to fetch data via HTTP
+	err = testHTTPRetrievability(timeoutCtx, deal.URL)
+	
+	result.Duration = time.Since(start)
+
+	if err != nil {
+		if timeoutCtx.Err() == context.DeadlineExceeded {
+			result.Error = "timeout"
+		} else {
+			result.Error = err.Error()
+		}
+		result.Retrievable = false
+	} else {
+		result.Retrievable = true
+	}
+
+	return result
+}
+
+func testHTTPRetrievability(ctx context.Context, url string) error {
+	// Create HTTP client
+	client := splitcarfetcher.NewHTTPClient()
+	defer client.CloseIdleConnections()
+
+	// Create request with context
+	req, err := http.NewRequestWithContext(ctx, "HEAD", url, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// Make the request
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("HTTP request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Check if the resource is accessible
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, resp.Status)
+	}
+
+	return nil
 }
 
 func readCIDsFromInput(inputFile string) ([]string, error) {
