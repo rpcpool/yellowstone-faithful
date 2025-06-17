@@ -1,6 +1,7 @@
 | Epoch #  | CAR  | CAR SHA256  | CAR filesize | tx meta check | poh check | Indices | Indices Size | Filecoin Deals | Slots
 |---|---|---|---|---|---|---|---|---|---|
-|803|epoch is|ongoing||||||||
+|804|epoch is|ongoing||||||||
+| 803 | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | 802 | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | 801 | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | 800 | [epoch-800.car](https://files.old-faithful.net/800/epoch-800.car) | [5680b25](https://files.old-faithful.net/800/epoch-800.sha256) | 768 GB | [✓](https://files.old-faithful.net/800/tx-metadata-check.log) | [✓](https://files.old-faithful.net/800/poh-check.log) | ✓ | 80 GB | ✗ | [800.slots.txt](https://files.old-faithful.net/800/800.slots.txt) |
@@ -804,7 +805,7 @@
 | 2 | [epoch-2.car](https://files.old-faithful.net/2/epoch-2.car) | [54bba04](https://files.old-faithful.net/2/epoch-2.sha256) | 14 GB | [★](https://files.old-faithful.net/2/tx-metadata-check.log) | [✓](https://files.old-faithful.net/2/poh-check.log) | ✓ | 6 GB | [✓](https://filecoin-car-storage-cdn.b-cdn.net/2/deals.csv) | [2.slots.txt](https://files.old-faithful.net/2/2.slots.txt) |
 | 1 | [epoch-1.car](https://files.old-faithful.net/1/epoch-1.car) | [611ca99](https://files.old-faithful.net/1/epoch-1.sha256) | 8 GB | [★](https://files.old-faithful.net/1/tx-metadata-check.log) | [✓](https://files.old-faithful.net/1/poh-check.log) | ✓ | 6 GB | [✓](https://filecoin-car-storage-cdn.b-cdn.net/1/deals.csv) | [1.slots.txt](https://files.old-faithful.net/1/1.slots.txt) |
 | 0 | [epoch-0.car](https://files.old-faithful.net/0/epoch-0.car) | [3c6347f](https://files.old-faithful.net/0/epoch-0.sha256) | 4 GB | [★](https://files.old-faithful.net/0/tx-metadata-check.log) | [✓](https://files.old-faithful.net/0/poh-check.log) | ✓ | 6 GB | [✓](https://filecoin-car-storage-cdn.b-cdn.net/0/deals.csv) | [0.slots.txt](https://files.old-faithful.net/0/0.slots.txt) |
-| **Total** | 800 | (3 behind) | 643 TB | - | - | - | 77 TB | - | - |
+| **Total** | 800 | (4 behind) | 643 TB | - | - | - | 77 TB | - | - |
 
 ★ = tx meta validation skipped (epochs 0-92 where tx meta wasn't enabled yet)
 
@@ -817,3 +818,4 @@
 - Epoch 797: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size
 - Epoch 801: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size
 - Epoch 802: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size
+- Epoch 803: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size
