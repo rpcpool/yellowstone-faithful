@@ -29,7 +29,7 @@ func (multi *MultiEpoch) handleGetGenesisHash(ctx context.Context, conn *request
 
 	genesisHash := genesis.Hash
 
-	err = conn.ReplyRaw(
+	err = conn.Reply(
 		ctx,
 		req.ID,
 		genesisHash.String(),

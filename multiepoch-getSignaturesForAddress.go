@@ -181,7 +181,7 @@ func (multi *MultiEpoch) handleGetSignaturesForAddress(ctx context.Context, conn
 	}
 
 	if len(foundTransactions) == 0 {
-		err = conn.ReplyRaw(
+		err = conn.Reply(
 			ctx,
 			req.ID,
 			[]map[string]any{},
@@ -226,7 +226,14 @@ func (multi *MultiEpoch) handleGetSignaturesForAddress(ctx context.Context, conn
 					{
 						tx, meta, err := parseTransactionAndMetaFromNode(transactionNode, ser.GetDataFrameByCid)
 						if err == nil {
-							response[ii]["err"] = getErr(meta)
+							e, hasErr, err := meta.GetTxError()
+							if err != nil {
+								klog.Errorf("failed to get transaction error: %v", err)
+							} else if hasErr {
+								response[ii]["err"] = e
+							} else {
+								response[ii]["err"] = nil
+							}
 
 							memoData := getMemoInstructionDataFromTransaction(&tx)
 							if memoData != nil {
@@ -264,7 +271,7 @@ func (multi *MultiEpoch) handleGetSignaturesForAddress(ctx context.Context, conn
 		numBefore += len(sigs)
 	}
 	// reply with the data
-	err = conn.ReplyRaw(
+	err = conn.Reply(
 		ctx,
 		req.ID,
 		response,

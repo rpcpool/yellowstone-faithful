@@ -37,7 +37,6 @@ func main() {
 		if err != nil {
 			panic(err)
 		}
-		defer buWr.Close()
 		tookBatch := time.Duration(0)
 		for i := 1; i <= numItemsToInsert; i++ {
 			sig := newRandomSignature()
@@ -61,7 +60,7 @@ func main() {
 
 		fmt.Println("writing to file...")
 		writeStartedAt := time.Now()
-		_, err = buWr.Seal(indexmeta.Meta{})
+		_, err = buWr.SealAndClose(indexmeta.Meta{})
 		if err != nil {
 			panic(err)
 		}

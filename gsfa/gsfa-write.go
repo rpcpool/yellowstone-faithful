@@ -34,6 +34,12 @@ type GsfaWriter struct {
 	cancel               context.CancelFunc
 	exiting              *atomic.Bool
 	fullBufferWriterDone chan struct{}
+
+	// meta
+	epoch   uint64
+	rootCid cid.Cid
+	network indexes.Network
+	tmpDir  string
 }
 
 // NewGsfaWriter creates or opens an existing index in WRITE mode.
@@ -70,6 +76,12 @@ func NewGsfaWriter(
 		fullBufferWriterDone: make(chan struct{}),
 		indexRootDir:         indexRootDir,
 		exiting:              new(atomic.Bool),
+
+		tmpDir: tmpDir,
+		// meta
+		epoch:   epoch,
+		rootCid: rootCid,
+		network: network,
 	}
 	{
 		ll, err := linkedlog.NewLinkedLog(filepath.Join(indexRootDir, "linked-log"))
@@ -84,18 +96,6 @@ func NewGsfaWriter(
 			return nil, fmt.Errorf("error while opening manifest: %w", err)
 		}
 		index.man = man
-	}
-	{
-		offsetsWriter, err := indexes.NewWriter_PubkeyToOffsetAndSize(
-			epoch,
-			rootCid,
-			network,
-			tmpDir,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("error while opening pubkey-to-offset-and-size writer: %w", err)
-		}
-		index.offsetsWriter = offsetsWriter
 	}
 	go index.fullBufferWriter()
 	return index, nil
@@ -242,6 +242,20 @@ func (a *GsfaWriter) Close() error {
 		{
 			keys := solana.PublicKeySlice(a.offsets.Keys())
 			keys.Sort()
+			keys = keys.Dedupe()
+			{
+				offsetsWriter, err := indexes.NewWriter_PubkeyToOffsetAndSize(
+					a.epoch,
+					a.rootCid,
+					a.network,
+					a.tmpDir,
+					uint(len(keys)),
+				)
+				if err != nil {
+					return fmt.Errorf("error while opening pubkey-to-offset-and-size writer: %w", err)
+				}
+				a.offsetsWriter = offsetsWriter
+			}
 			klog.Infof("Writing %d starting offsets for as many pubkeys ...", len(keys))
 			for _, key := range keys {
 				offSize, _ := a.offsets.Get(key)
@@ -260,7 +274,6 @@ func (a *GsfaWriter) Close() error {
 	}
 
 	return errors.Join(
-		a.offsetsWriter.Close(),
 		a.ll.Close(),
 		a.man.Close(),
 	)

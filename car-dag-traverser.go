@@ -16,6 +16,7 @@ import (
 	"github.com/rpcpool/yellowstone-faithful/indexes"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
+	"github.com/rpcpool/yellowstone-faithful/readasonecar"
 	"k8s.io/klog/v2"
 )
 
@@ -31,6 +32,22 @@ func fileExists(path string) (bool, error) {
 		return false, fmt.Errorf("path %s is a directory", path)
 	}
 	return true, nil
+}
+
+func allFilesExist(paths ...string) error {
+	for _, path := range paths {
+		info, err := os.Stat(path)
+		if os.IsNotExist(err) {
+			return fmt.Errorf("path %s does not exist", path)
+		}
+		if err != nil {
+			return fmt.Errorf("failed to stat path %s: %w", path, err)
+		}
+		if info.IsDir() {
+			return fmt.Errorf("path %s is a directory", path)
+		}
+	}
+	return nil
 }
 
 func dirExists(path string) (bool, error) {
@@ -375,6 +392,39 @@ func FindBlocks(
 	return nil
 }
 
+func FindBlocksFromReader(
+	ctx context.Context,
+	reader readasonecar.CarReader,
+	callback func(cid.Cid, *ipldbindcode.Block) error,
+) error {
+	for {
+		block, err := reader.Next()
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			return err
+		}
+		{
+			if block.RawData()[1] != byte(iplddecoders.KindBlock) {
+				continue
+			}
+			decoded, err := iplddecoders.DecodeBlock(block.RawData())
+			if err != nil {
+				continue
+			}
+			err = callback(block.Cid(), decoded)
+			if err != nil {
+				if err == ErrStopIteration {
+					return nil
+				}
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 // FindEntries calls the callback for each solana Entry in the CAR file.
 // It stops iterating if the callback returns an error.
 // It works by iterating over all objects in the CAR file and
@@ -444,6 +494,36 @@ func FindTransactions(
 	}
 	for {
 		block, err := rd.Next()
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			return err
+		}
+		{
+			if block.RawData()[1] != byte(iplddecoders.KindTransaction) {
+				continue
+			}
+			decoded, err := iplddecoders.DecodeTransaction(block.RawData())
+			if err != nil {
+				continue
+			}
+			err = callback(block.Cid(), decoded)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func FindTransactionsFromReader(
+	ctx context.Context,
+	reader readasonecar.CarReader,
+	callback func(cid.Cid, *ipldbindcode.Transaction) error,
+) error {
+	for {
+		block, err := reader.Next()
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				break

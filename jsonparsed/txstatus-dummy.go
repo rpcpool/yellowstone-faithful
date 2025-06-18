@@ -1,7 +1,7 @@
 //go:build !ffi
 // +build !ffi
 
-package txstatus
+package jsonparsed
 
 import (
 	"encoding/json"

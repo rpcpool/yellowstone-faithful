@@ -10,59 +10,10 @@ import (
 
 	"github.com/ipfs/go-cid"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/rpcpool/yellowstone-faithful/uri"
 )
 
 const ConfigVersion = 1
-
-type URI string
-
-// String() returns the URI as a string.
-func (u URI) String() string {
-	return string(u)
-}
-
-// IsZero returns true if the URI is empty.
-func (u URI) IsZero() bool {
-	return u == ""
-}
-
-// IsValid returns true if the URI is not empty and is a valid URI.
-func (u URI) IsValid() bool {
-	if u.IsZero() {
-		return false
-	}
-	return u.IsLocal() || u.IsRemoteWeb() || u.IsCID() || u.IsIPFS() || u.IsFilecoin()
-}
-
-// IsLocal returns true if the URI is a local file or directory.
-func (u URI) IsLocal() bool {
-	return (len(u) > 7 && u[:7] == "file://") || (len(u) > 1 && u[0] == '/')
-}
-
-// IsRemoteWeb returns true if the URI is a remote web URI (HTTP or HTTPS).
-func (u URI) IsRemoteWeb() bool {
-	// http:// or https://
-	return len(u) > 7 && u[:7] == "http://" || len(u) > 8 && u[:8] == "https://"
-}
-
-// IsCID returns true if the URI is a CID.
-func (u URI) IsCID() bool {
-	if u.IsZero() {
-		return false
-	}
-	parsed, err := cid.Parse(string(u))
-	return err == nil && parsed.Defined()
-}
-
-// IsIPFS returns true if the URI is an IPFS URI.
-func (u URI) IsIPFS() bool {
-	return len(u) > 6 && u[:6] == "ipfs://"
-}
-
-// IsFilecoin returns true if the URI is a Filecoin URI.
-func (u URI) IsFilecoin() bool {
-	return len(u) > 10 && u[:10] == "filecoin://"
-}
 
 func LoadConfig(configFilepath string) (*Config, error) {
 	var config Config
@@ -101,7 +52,7 @@ func hashFileSha256(filePath string) (string, error) {
 }
 
 type PieceURLInfo struct {
-	URI URI `json:"uri" yaml:"uri"` // URL to the piece.
+	URI uri.URI `json:"uri" yaml:"uri"` // URL to the piece.
 }
 
 type Config struct {
@@ -111,13 +62,13 @@ type Config struct {
 	Version          *uint64 `json:"version" yaml:"version"`
 	Data             struct {
 		Car *struct {
-			URI        URI `json:"uri" yaml:"uri"`
+			URI        uri.URI `json:"uri" yaml:"uri"`
 			FromPieces *struct {
 				Metadata struct {
-					URI URI `json:"uri" yaml:"uri"` // Local path to the metadata file.
+					URI uri.URI `json:"uri" yaml:"uri"` // Local path to the metadata file.
 				} `json:"metadata" yaml:"metadata"`
 				Deals struct {
-					URI URI `json:"uri" yaml:"uri"` // Local path to the deals file.
+					URI uri.URI `json:"uri" yaml:"uri"` // Local path to the deals file.
 				} `json:"deals" yaml:"deals"`
 				PieceToURI map[cid.Cid]PieceURLInfo `json:"piece_to_uri" yaml:"piece_to_uri"` // Map of piece CID to URL.
 			} `json:"from_pieces" yaml:"from_pieces"`
@@ -131,29 +82,29 @@ type Config struct {
 	} `json:"data" yaml:"data"`
 	Indexes struct {
 		CidToOffsetAndSize struct {
-			URI URI `json:"uri" yaml:"uri"`
+			URI uri.URI `json:"uri" yaml:"uri"`
 		} `json:"cid_to_offset_and_size" yaml:"cid_to_offset_and_size"` // Latest index version. Includes offset and size.
 		CidToOffset struct {
-			URI URI `json:"uri" yaml:"uri"`
+			URI uri.URI `json:"uri" yaml:"uri"`
 		} `json:"cid_to_offset" yaml:"cid_to_offset"` // Legacy	index, deprecated. Only includes offset.
 		SlotToCid struct {
-			URI URI `json:"uri" yaml:"uri"`
+			URI uri.URI `json:"uri" yaml:"uri"`
 		} `json:"slot_to_cid" yaml:"slot_to_cid"`
 		SigToCid struct {
-			URI URI `json:"uri" yaml:"uri"`
+			URI uri.URI `json:"uri" yaml:"uri"`
 		} `json:"sig_to_cid" yaml:"sig_to_cid"`
 		Gsfa struct {
-			URI URI `json:"uri" yaml:"uri"`
+			URI uri.URI `json:"uri" yaml:"uri"`
 		} `json:"gsfa" yaml:"gsfa"`
 		SigExists struct {
-			URI URI `json:"uri" yaml:"uri"`
+			URI uri.URI `json:"uri" yaml:"uri"`
 		} `json:"sig_exists" yaml:"sig_exists"`
 		SlotToBlocktime struct {
-			URI URI `json:"uri" yaml:"uri"`
+			URI uri.URI `json:"uri" yaml:"uri"`
 		} `json:"slot_to_blocktime" yaml:"slot_to_blocktime"`
 	} `json:"indexes" yaml:"indexes"`
 	Genesis struct {
-		URI URI `json:"uri" yaml:"uri"`
+		URI uri.URI `json:"uri" yaml:"uri"`
 	} `json:"genesis" yaml:"genesis"`
 }
 
@@ -230,8 +181,8 @@ func (c ConfigSlice) SortByEpoch() {
 	})
 }
 
-func isSupportedURI(uri URI, path string) error {
-	isSupported := uri.IsLocal() || uri.IsRemoteWeb()
+func isSupportedURI(uri uri.URI, path string) error {
+	isSupported := uri.IsFile() || uri.IsWeb()
 	if !isSupported {
 		return fmt.Errorf("%s must be a local file or a remote web URI", path)
 	}
@@ -275,7 +226,7 @@ func (c *Config) Validate() error {
 				if c.Data.Car.FromPieces.Metadata.URI.IsZero() {
 					return fmt.Errorf("data.car.from_pieces.metadata.uri must be set")
 				}
-				if !c.Data.Car.FromPieces.Metadata.URI.IsLocal() {
+				if !c.Data.Car.FromPieces.Metadata.URI.IsFile() {
 					return fmt.Errorf("data.car.from_pieces.metadata.uri must be a local file")
 				}
 			}
@@ -286,7 +237,7 @@ func (c *Config) Validate() error {
 				if !c.Data.Car.FromPieces.Deals.URI.IsZero() && len(c.Data.Car.FromPieces.PieceToURI) > 0 {
 					return fmt.Errorf("data.car.from_pieces.deals.uri and data.car.from_pieces.piece_to_uri cannot both be set")
 				}
-				if !c.Data.Car.FromPieces.Deals.URI.IsZero() && !c.Data.Car.FromPieces.Deals.URI.IsLocal() {
+				if !c.Data.Car.FromPieces.Deals.URI.IsZero() && !c.Data.Car.FromPieces.Deals.URI.IsFile() {
 					return fmt.Errorf("data.car.from_pieces.deals.uri must be a local file")
 				}
 				if len(c.Data.Car.FromPieces.PieceToURI) > 0 {
@@ -297,7 +248,7 @@ func (c *Config) Validate() error {
 						if uri.URI.IsZero() {
 							return fmt.Errorf("data.car.from_pieces.piece_to_uri[%s].uri must be set", pieceCID)
 						}
-						if !uri.URI.IsRemoteWeb() {
+						if !uri.URI.IsWeb() {
 							return fmt.Errorf("data.car.from_pieces.piece_to_uri[%s].uri must be a remote web URI", pieceCID)
 						}
 					}
@@ -413,7 +364,7 @@ func (c *Config) Validate() error {
 				return fmt.Errorf("indexes.gsfa.uri is invalid")
 			}
 			// gsfa index (optional), if set, must be a local directory:
-			if !c.Indexes.Gsfa.URI.IsZero() && !c.Indexes.Gsfa.URI.IsLocal() {
+			if !c.Indexes.Gsfa.URI.IsZero() && !c.Indexes.Gsfa.URI.IsFile() {
 				return fmt.Errorf("indexes.gsfa.uri must be a local directory")
 			}
 		}
@@ -431,7 +382,7 @@ func (c *Config) Validate() error {
 				return fmt.Errorf("genesis.uri is invalid")
 			}
 			// only support local genesis files for now:
-			if !c.Genesis.URI.IsLocal() {
+			if !c.Genesis.URI.IsFile() {
 				return fmt.Errorf("genesis.uri must be a local file")
 			}
 		}
