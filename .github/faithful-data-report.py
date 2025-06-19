@@ -214,15 +214,13 @@ class FaithfulDataReport:
     def format_row(self, data: EpochData) -> str:
         car_cell = f"[epoch-{data.epoch}.car]({data.car})" if data.car != "n/a" else "✗"
         sha_cell = f"[{data.sha[:7]}]({data.sha_url})" if data.sha != "n/a" else "✗"
+        size_cell = f"{data.size} GB" if data.size != "n/a" else "✗"
         
         # Update totals
         if data.car != "n/a":
             self.total_car_count += 1
         if data.size != "n/a":
             self.total_car_size += int(data.size)
-            size_cell = f"{data.size} GB"
-        else:
-            size_cell = "✗"
         if data.indices_size != "n/a":
             self.total_indices_size += int(data.indices_size)
 
