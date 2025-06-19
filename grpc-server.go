@@ -946,8 +946,10 @@ func (multi *MultiEpoch) StreamTransactions(params *old_faithful_grpc.StreamTran
 
 	gsfaReadersLoaded := true
 	if len(epochNums) == 0 {
-		klog.V(2).Info("No gsfa readers were loaded")
+		klog.V(2).Infof("No gsfa readers were loaded for slots %d-%d, falling back to block-by-block scanning", startSlot, endSlot)
 		gsfaReadersLoaded = false
+	} else {
+		klog.V(2).Infof("Loaded %d gsfa readers for epochs %v", len(epochNums), epochNums)
 	}
 
 	return multi.processSlotTransactions(ctx, ser, startSlot, endSlot, params.Filter, gsfaReader, gsfaReadersLoaded)
@@ -1024,6 +1026,8 @@ func (multi *MultiEpoch) processSlotTransactions(
 	}
 
 	if filter == nil || len(filter.AccountInclude) == 0 || !gsfaReadersLoaded {
+		klog.V(2).Infof("Using block-by-block scanning for slots %d-%d (filter=%v, gsfaLoaded=%v)", 
+			startSlot, endSlot, filter != nil, gsfaReadersLoaded)
 
 		for slot := startSlot; slot <= endSlot; slot++ {
 			select {
@@ -1035,7 +1039,7 @@ func (multi *MultiEpoch) processSlotTransactions(
 			block, err := multi.GetBlock(ctx, &old_faithful_grpc.BlockRequest{Slot: slot})
 			if err != nil {
 				if status.Code(err) == codes.NotFound {
-					return nil
+					continue // Skip this slot and continue to next one
 				}
 				return err
 			}
