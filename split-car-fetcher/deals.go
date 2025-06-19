@@ -34,6 +34,8 @@ func NewDealRegistry() *DealRegistry {
 	}
 }
 
+var requiredFields = 8
+
 // DealsFromCSV reads a CSV file and returns a DealRegistry.
 func DealsFromCSV(path string) (*DealRegistry, error) {
 	file, err := os.Open(path)
@@ -54,7 +56,7 @@ func DealsFromCSV(path string) (*DealRegistry, error) {
 		return registry, err
 	} else {
 		// check that the header has at least the required fields
-		if len(header) < 8 ||
+		if len(header) < requiredFields ||
 			header[0] != "provider" ||
 			header[1] != "deal_uuid" ||
 			header[2] != "file_name" ||
