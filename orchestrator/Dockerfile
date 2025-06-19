@@ -41,16 +41,20 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 
-# Copy Prisma files
+# Copy Prisma schema and package files
 COPY --from=builder /app/prisma ./prisma
-COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
-COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
+COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/pnpm-lock.yaml ./pnpm-lock.yaml
+
+# Install production dependencies and Prisma CLI
+RUN pnpm install --prod --frozen-lockfile && \
+    pnpm add -D prisma && \
+    pnpm prisma generate && \
+    pnpm remove prisma
 
 # Copy source files for worker
 COPY --from=builder /app/src ./src
 COPY --from=builder /app/tsconfig.json ./tsconfig.json
-COPY --from=builder /app/package.json ./package.json
-COPY --from=builder /app/node_modules ./node_modules
 
 # Set correct permissions
 RUN chown -R nextjs:nodejs /app

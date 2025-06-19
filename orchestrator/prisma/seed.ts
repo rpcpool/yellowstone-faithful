@@ -1,11 +1,7 @@
-import { EpochStatus, PrismaClient } from '../src/generated/prisma/index.js';
-import { getEpochInfo } from '../src/lib/solana.js';
+import "dotenv/config";
 
-// Polyfill fetch for Node.js < 18
-if (typeof fetch === 'undefined') {
-  // @ts-ignore
-  global.fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
-}
+import { DataSourceType, EpochStatus, PrismaClient } from '../src/generated/prisma/index.js';
+import { getEpochInfo } from '../src/lib/solana.js';
 
 const prisma = new PrismaClient();
 
@@ -27,6 +23,27 @@ async function main() {
       create: row,
     });
   }
+
+  // Seed the HTTP source for the old-faithful.net archive
+  await prisma.source.upsert({
+    where: { name: 'old-faithful.net' },
+    update: {
+      configuration: {
+        host: 'https://files.old-faithful.net',
+        path: '',
+      },
+      enabled: true,
+    },
+    create: {
+      name: 'old-faithful.net',
+      type: DataSourceType.HTTP,
+      configuration: {
+        host: 'https://files.old-faithful.net',
+        path: '',
+      },
+      enabled: true,
+    },
+  });
 }
 
 main()
