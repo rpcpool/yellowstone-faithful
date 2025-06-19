@@ -1,0 +1,124 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum IndexType {
+  CidToOffsetAndSize
+  SigExists
+  SigToCid
+  SlotToBlocktime
+  SlotToCid
+}
+
+enum IndexStatus {
+  NotProcessed
+  Processing
+  Present
+}
+
+enum EpochStatus {
+  NotProcessed
+  Processing
+  Indexed
+  Complete
+}
+
+enum JobStatus {
+  queued
+  processing
+  completed
+  failed
+}
+
+enum DataSourceType {
+  S3
+  HTTP
+  FILESYSTEM
+}
+
+model Epoch {
+  id        Int      @id
+  epoch     String   @unique
+  status    EpochStatus
+  cid       String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  jobs        Job[]
+  epochIndexes EpochIndex[]
+  epochGsfas   EpochGsfa[]
+}
+
+model EpochIndex {
+  id        Int      @id @default(autoincrement())
+  epoch     String
+  type      IndexType
+  size      BigInt
+  status    String
+  location  String
+  sourceId  String   @map("source_id")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  epochRecord Epoch  @relation(fields: [epoch], references: [epoch])
+  source      Source @relation(fields: [sourceId], references: [id])
+
+  @@unique([epoch, type, sourceId])
+  @@index([sourceId])
+}
+
+model EpochGsfa {
+  id        Int      @id
+  epoch     String
+  exists    Boolean? @default(false)
+  location  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  epochRecord Epoch @relation(fields: [epoch], references: [epoch])
+}
+
+model Job {
+  id        String    @id
+  epochId   Int       @map("epoch_id")
+  jobType   String    @map("job_type")
+  status    JobStatus
+  metadata  Json?
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  epoch     Epoch     @relation(fields: [epochId], references: [id])
+
+  @@map("jobs")
+}
+
+model Source {
+  id            String         @id @default(cuid())
+  name          String         @unique
+  type          DataSourceType
+  configuration Json
+  enabled       Boolean        @default(true)
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedAt     DateTime       @updatedAt @map("updated_at")
+
+  // Relations
+  epochIndexes  EpochIndex[]
+
+  @@map("sources")
+}
