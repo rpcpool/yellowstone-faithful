@@ -1,9 +1,9 @@
 use {
     crossbeam_channel::unbounded,
-    demo_rust_ipld_car::{node, utils},
-    solana_reward_info::{RewardInfo, RewardType},
+    oldfaithful_geyser_runner::{node, utils},
     solana_rpc::optimistically_confirmed_bank_tracker::SlotNotification,
     solana_runtime::bank::KeyedRewardsAndNumPartitions,
+    solana_sdk::{reward_info::RewardInfo, reward_type::RewardType, signature::Signature},
     std::{
         collections::HashSet,
         convert::{TryFrom, TryInto},
@@ -15,9 +15,13 @@ use {
 };
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let file_path = args().nth(1).expect("no file given");
+    use tracing_subscriber::{fmt, EnvFilter};
+    // Build a subscriber that prints to stderr and obeys RUST_LOG.
+    fmt().with_env_filter(EnvFilter::from_default_env()).init();
+
+    let file_path = args().nth(1).expect("no file or url given");
     let _started_at = std::time::Instant::now();
-    let file = std::fs::File::open(file_path)?;
+    let file = open_reader(&file_path)?;
     let reader = BufReader::with_capacity(8 * 1024 * 1024, file);
     let mut item_index = 0;
     {
@@ -32,9 +36,6 @@ fn main() -> Result<(), Box<dyn Error>> {
         let service =
             solana_geyser_plugin_manager::geyser_plugin_service::GeyserPluginService::new(
                 confirmed_bank_receiver,
-                // new parameter `geyser_plugin_always_enabled`
-                // Subscribe on all types of notifiactions, even if no config files are passed
-                false,
                 geyser_config_files,
             )
             .unwrap_or_else(|err| panic!("Failed to create GeyserPluginService, error: {:?}", err));
@@ -53,8 +54,8 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         let block_meta_notifier_maybe = service.get_block_metadata_notifier();
 
-        let mut todo_previous_blockhash = solana_hash::Hash::default();
-        let mut todo_latest_entry_blockhash = solana_hash::Hash::default();
+        let mut todo_previous_blockhash = solana_sdk::hash::Hash::default();
+        let mut todo_latest_entry_blockhash = solana_sdk::hash::Hash::default();
         loop {
             let nodes = reader.read_until_block()?;
             // println!("Nodes: {:?}", nodes.get_cids());
@@ -92,14 +93,16 @@ fn main() -> Result<(), Box<dyn Error>> {
                             let as_native_metadata: solana_transaction_status::TransactionStatusMeta =
                                 metadata.try_into()?;
 
+                            let is_vote = is_simple_vote_transaction(&parsed);
+
                            {
                                 // TODO: test address loading.
                                 let dummy_address_loader = MessageAddressLoaderFromTxMeta::new(as_native_metadata.clone());
                                 let sanitized_tx = match  parsed.version() {
-                                    solana_transaction::versioned::TransactionVersion::Number(_)=> {
+                                    solana_sdk::transaction::TransactionVersion::Number(_)=> {
                                         let message_hash = parsed.verify_and_hash_message()?;
-                                        let versioned_sanitized_tx= solana_transaction::versioned::sanitized::SanitizedVersionedTransaction::try_from(parsed)?;
-                                        solana_transaction::sanitized::SanitizedTransaction::try_new(
+                                        let versioned_sanitized_tx= solana_sdk::transaction::SanitizedVersionedTransaction::try_from(parsed)?;
+                                        solana_sdk::transaction::SanitizedTransaction::try_new(
                                             versioned_sanitized_tx,
                                             message_hash,
                                             false,
@@ -107,9 +110,14 @@ fn main() -> Result<(), Box<dyn Error>> {
                                             &HashSet::default(),
                                         )
                                     },
-                                    solana_transaction::versioned::TransactionVersion::Legacy(_legacy)=> {
-                                        solana_transaction::sanitized::SanitizedTransaction::try_from_legacy_transaction(
-                                            parsed.into_legacy_transaction().unwrap(),
+                                    solana_sdk::transaction::TransactionVersion::Legacy(_legacy)=> {
+                                        let message_hash = parsed.verify_and_hash_message()?;
+                                        let versioned_sanitized_tx= solana_sdk::transaction::SanitizedVersionedTransaction::try_from(parsed)?;
+                                        solana_sdk::transaction::SanitizedTransaction::try_new(
+                                            versioned_sanitized_tx,
+                                            message_hash,
+                                            is_vote,
+                                            dummy_address_loader,
                                             &HashSet::default(),
                                         )
                                     },
@@ -134,13 +142,13 @@ fn main() -> Result<(), Box<dyn Error>> {
                         }
 
                         // if parsed.version()
-                        //     == solana_transaction::versioned::TransactionVersion::Number(0)
+                        //     == solana_sdk::transaction::TransactionVersion::Number(0)
                         // {
                         //     return Ok(());
                         // }
                     }
                     node::Node::Entry(_entry) => {
-                        todo_latest_entry_blockhash = solana_hash::Hash::from(_entry.hash.to_bytes());
+                        todo_latest_entry_blockhash = solana_sdk::hash::Hash::from(_entry.hash.to_bytes());
                         this_block_executed_transaction_count += _entry.transactions.len() as u64;
                         this_block_entry_count += 1;
                         if entry_notifier_maybe.is_none() {
@@ -150,7 +158,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                         // println!("___ Entry: {:?}", entry);
                         let entry_summary=solana_entry::entry::EntrySummary {
                             num_hashes: _entry.num_hashes,
-                            hash: solana_hash::Hash::from(_entry.hash.to_bytes()),
+                            hash: solana_sdk::hash::Hash::from(_entry.hash.to_bytes()),
                             num_transactions: _entry.transactions.len() as u64,
                         };
 
@@ -188,7 +196,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                                             Err(_err) => None,
                                         },
                                     };
-                                    keyed_rewards.push((solana_pubkey::Pubkey::from_str(&this_block_reward.pubkey)?, reward));
+                                    keyed_rewards.push((solana_sdk::pubkey::Pubkey::from_str(&this_block_reward.pubkey)?, reward));
                                 }
                             }
                             // if keyed_rewards.read().unwrap().len() > 0 {
@@ -258,11 +266,12 @@ impl MessageAddressLoaderFromTxMeta {
     }
 }
 
-impl solana_message::AddressLoader for MessageAddressLoaderFromTxMeta {
+impl solana_sdk::message::AddressLoader for MessageAddressLoaderFromTxMeta {
     fn load_addresses(
         self,
-        _lookups: &[solana_message::v0::MessageAddressTableLookup],
-    ) -> Result<solana_message::v0::LoadedAddresses, solana_message::AddressLoaderError> {
+        _lookups: &[solana_sdk::message::v0::MessageAddressTableLookup],
+    ) -> Result<solana_sdk::message::v0::LoadedAddresses, solana_sdk::message::AddressLoaderError>
+    {
         Ok(self.tx_meta.loaded_addresses.clone())
     }
 }
@@ -273,5 +282,65 @@ impl Clone for MessageAddressLoaderFromTxMeta {
         MessageAddressLoaderFromTxMeta {
             tx_meta: self.tx_meta.clone(),
         }
+    }
+}
+
+pub fn get_program_ids(
+    tx: &solana_sdk::transaction::VersionedTransaction,
+) -> impl Iterator<Item = &solana_sdk::pubkey::Pubkey> + '_ {
+    let message = &tx.message;
+    let account_keys = message.static_account_keys();
+
+    message
+        .instructions()
+        .iter()
+        .map(|ix| ix.program_id(account_keys))
+}
+
+fn is_simple_vote_transaction(transaction: &solana_sdk::transaction::VersionedTransaction) -> bool {
+    let signatures = transaction.signatures.clone();
+    let is_legacy_message = matches!(
+        transaction.version(),
+        solana_sdk::transaction::TransactionVersion::Legacy(_)
+    );
+
+    let program_ids = get_program_ids(transaction);
+    is_simple_vote_transaction_impl(&signatures, is_legacy_message, program_ids)
+}
+
+/// Simple vote transaction meets these conditions:
+/// 1. has 1 or 2 signatures;
+/// 2. is legacy message;
+/// 3. has only one instruction;
+/// 4. which must be Vote instruction;
+#[inline]
+pub fn is_simple_vote_transaction_impl<'a>(
+    signatures: &[Signature],
+    is_legacy_message: bool,
+    mut instruction_programs: impl Iterator<Item = &'a solana_sdk::pubkey::Pubkey>,
+) -> bool {
+    signatures.len() < 3
+        && is_legacy_message
+        && instruction_programs
+            .next()
+            .xor(instruction_programs.next())
+            .map(|program_id| program_id.to_string() == solana_sdk_ids::vote::ID.to_string())
+            .unwrap_or(false)
+}
+
+use std::io::Read;
+
+/// Opens either a local file or a streaming HTTP reader.
+/// • For local files we return the `File` directly.
+/// • For HTTP(S) URLs we issue a single GET and stream the body.
+pub fn open_reader(path: &str) -> Result<Box<dyn Read + Send>, Box<dyn Error>> {
+    if path.starts_with("http://") || path.starts_with("https://") {
+        println!("Opening URL: {}", path);
+        let resp = reqwest::blocking::get(path)?.error_for_status()?; // turn non-2xx into an error
+        Ok(Box::new(resp))
+    } else {
+        println!("Opening file: {}", path);
+        let file = std::fs::File::open(path)?;
+        Ok(Box::new(file))
     }
 }

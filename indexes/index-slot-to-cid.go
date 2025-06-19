@@ -9,6 +9,7 @@ import (
 
 	"github.com/ipfs/go-cid"
 	"github.com/rpcpool/yellowstone-faithful/compactindexsized"
+	"github.com/rpcpool/yellowstone-faithful/continuity"
 	"github.com/rpcpool/yellowstone-faithful/deprecated/compactindex36"
 )
 
@@ -37,12 +38,13 @@ func formatFilename_SlotToCid(epoch uint64, rootCid cid.Cid, network Network) st
 
 var Kind_SlotToCid = []byte("slot-to-cid")
 
+const SLOTS_PER_EPOCH = 432000
+
 func NewWriter_SlotToCid(
 	epoch uint64,
 	rootCid cid.Cid,
 	network Network,
 	tmpDir string, // Where to put the temporary index files; WILL BE DELETED.
-	numItems uint64,
 ) (*SlotToCid_Writer, error) {
 	if !IsValidNetwork(network) {
 		return nil, ErrInvalidNetwork
@@ -52,7 +54,7 @@ func NewWriter_SlotToCid(
 	}
 	index, err := compactindexsized.NewBuilderSized(
 		tmpDir,
-		uint(numItems),
+		uint(SLOTS_PER_EPOCH),
 		IndexValueSize_SlotToCid,
 	)
 	if err != nil {
@@ -86,7 +88,7 @@ func (w *SlotToCid_Writer) Put(slot uint64, cid_ cid.Cid) error {
 	return w.index.Insert(key, value)
 }
 
-func (w *SlotToCid_Writer) Seal(ctx context.Context, dstDir string) error {
+func (w *SlotToCid_Writer) SealAndClose(ctx context.Context, dstDir string) error {
 	if w.sealed {
 		return fmt.Errorf("already sealed")
 	}
@@ -94,25 +96,32 @@ func (w *SlotToCid_Writer) Seal(ctx context.Context, dstDir string) error {
 	filepath := filepath.Join(dstDir, formatFilename_SlotToCid(w.meta.Epoch, w.meta.RootCid, w.meta.Network))
 	w.finalPath = filepath
 
-	file, err := os.Create(filepath)
+	file, err := os.Create(filepath + ".tmp")
 	if err != nil {
 		return fmt.Errorf("failed to create file: %w", err)
 	}
-	defer file.Close()
 
-	if err := w.index.Seal(ctx, file); err != nil {
-		return fmt.Errorf("failed to seal index: %w", err)
-	}
-	w.sealed = true
-
-	return nil
-}
-
-func (w *SlotToCid_Writer) Close() error {
-	if !w.sealed {
-		return fmt.Errorf("attempted to close a slot-to-cid index that was not sealed")
-	}
-	return w.index.Close()
+	return continuity.New().
+		Thenf("seal", func() error {
+			if err := w.index.SealAndClose(ctx, file); err != nil {
+				return fmt.Errorf("failed to seal index: %w", err)
+			}
+			w.sealed = true
+			return nil
+		}).
+		Thenf("close", func() error {
+			if err := file.Close(); err != nil {
+				return fmt.Errorf("failed to close file: %w", err)
+			}
+			return nil
+		}).
+		Thenf("rename", func() error {
+			if err := os.Rename(filepath+".tmp", filepath); err != nil {
+				return fmt.Errorf("failed to rename temporary file: %w", err)
+			}
+			return nil
+		}).
+		Err()
 }
 
 // GetFilepath returns the path to the sealed index file.
