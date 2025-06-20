@@ -332,10 +332,6 @@ func (a *GsfaWriter) flushKVs(kvs ...linkedlog.KeyToOffsetAndSizeAndBlocktime) e
 	return nil
 }
 
-var enableDebug = false
-
 func debugln(args ...interface{}) {
-	if enableDebug {
-		klog.Infoln(args...)
-	}
+	klog.V(6).Infoln(args...)
 }
