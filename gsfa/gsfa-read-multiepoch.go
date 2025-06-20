@@ -202,6 +202,7 @@ epochLoop:
 	return transactions, nil
 }
 
+// Time: until ------- before (we are iterating backwards in time)
 func (multi *GsfaReaderMultiepoch) GetBeforeUntilSlot(
 	ctx context.Context,
 	pk solana.PublicKey,
@@ -210,6 +211,13 @@ func (multi *GsfaReaderMultiepoch) GetBeforeUntilSlot(
 	until uint64, // Until this slot, inclusive (i.e. stop at this slot, including it).
 	fetcher func(uint64, linkedlog.OffsetAndSizeAndSlot) (*ipldbindcode.Transaction, error),
 ) (EpochToTransactionObjects, error) {
+	if before == 0 {
+		return make(EpochToTransactionObjects), nil
+	}
+	klog.V(5).Infof("GetBeforeUntilSlot: pk=%s, limit=%d, before=%d, until=%d", pk, limit, before, until)
+	if until > before {
+		return nil, fmt.Errorf("until slot %d must be less than before slot %d", until, before)
+	}
 	if limit <= 0 {
 		return make(EpochToTransactionObjects), nil
 	}
@@ -278,18 +286,24 @@ epochLoop:
 			debugln("sigIndexes:", locations, "newNext:", newNext)
 			next = &newNext
 			for locIndex, txLoc := range locations {
+				if txLoc.Slot >= before {
+					continue // Skip transactions that are not before the given slot.
+				}
+				if txLoc.Slot < until {
+					break epochLoop // Stop if we reached a transaction that is before the given slot.
+				}
 				tx, err := fetcher(epochNum, txLoc)
 				if err != nil {
 					return nil, fmt.Errorf("error while getting signature at index=%v: %w", txLoc, err)
 				}
-				if tx.Slot < int(until) {
+				if uint64(tx.Slot) < (until) {
 					break epochLoop
 				}
 				sig, err := tx.Signature()
 				if err != nil {
 					return nil, fmt.Errorf("error while getting signature: %w", err)
 				}
-				klog.V(5).Infoln(locIndex, "sig:", sig, "epoch:", epochNum)
+				klog.V(5).Infoln(locIndex, "sig:", sig, "slot:", tx.Slot, "epoch:", epochNum)
 				if limit > 0 && transactions.Count() >= limit {
 					break epochLoop
 				}
