@@ -4,7 +4,7 @@ concurrency:
 
 name: Data Report Generator
 on:
-  push:
+  #push:
   schedule:
     - cron: '3 */4 * * *'  # Run every 4 hours
   workflow_dispatch:  # Allow manual trigger
