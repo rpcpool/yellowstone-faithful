@@ -34,7 +34,9 @@ func NewDealRegistry() *DealRegistry {
 	}
 }
 
-var requiredFields = 8
+const (
+	requiredFields = 8 // Number of required fields in the CSV file
+)
 
 // DealsFromCSV reads a CSV file and returns a DealRegistry.
 func DealsFromCSV(path string) (*DealRegistry, error) {
@@ -76,7 +78,7 @@ func DealsFromCSV(path string) (*DealRegistry, error) {
 		if err != nil {
 			return registry, fmt.Errorf("failed to read csv record line: %w", err)
 		}
-		
+
 		// Ensure we have at least the required number of fields
 		if len(record) < requiredFields {
 			return registry, fmt.Errorf("record has insufficient fields: %d, expected at least %d", len(record), requiredFields)
