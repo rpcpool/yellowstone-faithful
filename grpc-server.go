@@ -1151,7 +1151,14 @@ func (multi *MultiEpoch) processSlotTransactions(
 					return
 				}
 				duration := time.Since(startTime)
-				klog.V(2).Infof("GSFA query completed for account %s, from slot %d to %d took %s", pKey.String(), startSlot, endSlot, duration)
+				klog.Infof("DEBUG: GSFA query completed for account %s, from slot %d to %d took %s, found %d epochs with transactions", pKey.String(), startSlot, endSlot, duration, len(epochToTxns))
+				
+				totalTxnCount := 0
+				for epoch, txns := range epochToTxns {
+					totalTxnCount += len(txns)
+					klog.Infof("DEBUG: Epoch %d has %d transactions for account %s", epoch, len(txns), pKey.String())
+				}
+				klog.Infof("DEBUG: Total transactions found for account %s: %d", pKey.String(), totalTxnCount)
 
 				for epochNumber, txns := range epochToTxns {
 					epochHandler, err := multi.GetEpoch(epochNumber)
@@ -1160,21 +1167,27 @@ func (multi *MultiEpoch) processSlotTransactions(
 						return
 					}
 
-					for _, txn := range txns {
+					for txIdx, txn := range txns {
 						if txn == nil {
-							klog.V(2).Infof("Skipping nil transaction from epoch %d", epochNumber)
+							klog.Infof("DEBUG: Skipping nil transaction %d from epoch %d", txIdx, epochNumber)
 							continue
 						}
+						
+						klog.Infof("DEBUG: Processing transaction %d from epoch %d for account %s, slot %d", txIdx, epochNumber, pKey.String(), txn.Slot)
 
 						txStartTime := time.Now()
 						tx, meta, err := parseTransactionAndMetaFromNode(txn, epochHandler.GetDataFrameByCid)
 						klog.V(3).Infof("Parsing transaction for account %s took %s", pKey.String(), time.Since(txStartTime))
 						if err != nil {
+							klog.Errorf("DEBUG: Failed to parse transaction %d from epoch %d for account %s: %v", txIdx, epochNumber, pKey.String(), err)
 							errChan <- status.Errorf(codes.Internal, "Failed to parse transaction from node: %v", err)
 							return
 						}
 
-						if !filterOutTxn(tx, meta) {
+						filterResult := filterOutTxn(tx, meta)
+						klog.Infof("DEBUG: Transaction %d (slot %d) for account %s - filter result: %v", txIdx, txn.Slot, pKey.String(), filterResult)
+						
+						if !filterResult {
 							txResp := new(old_faithful_grpc.TransactionResponse)
 							txResp.Transaction = new(old_faithful_grpc.Transaction)
 							{
@@ -1203,8 +1216,11 @@ func (multi *MultiEpoch) processSlotTransactions(
 									return
 								}
 							}
-
+							
+							klog.Infof("DEBUG: Adding transaction to buffer - slot %d, index %d for account %s", txResp.Slot, *txResp.Index, pKey.String())
 							buffer.add(txResp.Slot, *txResp.Index, txResp)
+						} else {
+							klog.Infof("DEBUG: Transaction filtered out - slot %d for account %s", txn.Slot, pKey.String())
 						}
 					}
 				}
