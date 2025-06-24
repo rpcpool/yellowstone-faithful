@@ -212,9 +212,9 @@ class FaithfulDataReport:
         )
 
     def format_row(self, data: EpochData) -> str:
-        car_cell = f"[epoch-{data.epoch}.car]({data.car})" if data.car != "n/a" else "✗"
-        sha_cell = f"[{data.sha[:7]}]({data.sha_url})" if data.sha != "n/a" else "✗"
-        size_cell = f"{data.size} GB" if data.size != "n/a" else "✗"
+        car_cell = f"[epoch-{data.epoch}.car]({data.car})" if data.car != "n/a" else "❌"
+        sha_cell = f"[{data.sha[:7]}]({data.sha_url})" if data.sha != "n/a" else "❌"
+        size_cell = f"{data.size} GB" if data.size != "n/a" else "❌"
         
         # Update totals
         if data.car != "n/a":
@@ -228,23 +228,23 @@ class FaithfulDataReport:
         if 0 <= data.epoch < self.txmeta_first_epoch and data.txmeta != "n/a":
             txmeta_cell = f"[★]({data.txmeta_url})"
         else:
-            txmeta_cell = f"[✗]({data.txmeta_url})" if data.txmeta != "n/a" and not validate_txmeta_output(data.txmeta) else \
-                         f"[✓]({data.txmeta_url})" if data.txmeta != "n/a" else "✗"
+            txmeta_cell = f"[❌]({data.txmeta_url})" if data.txmeta != "n/a" and not validate_txmeta_output(data.txmeta) else \
+                         f"[✅]({data.txmeta_url})" if data.txmeta != "n/a" else "❌"
 
         # epoch 208 POH validation is handled differently
         if data.epoch == 208 and data.poh != "n/a":
             poh_cell = f"[★★]({data.poh_url})"
         elif data.poh != "n/a" and not validate_poh_output(data.poh):
-            poh_cell = f"[✗]({data.poh_url})"
+            poh_cell = f"[❌]({data.poh_url})"
         elif data.poh != "n/a":
-            poh_cell = f"[✓]({data.poh_url})"
+            poh_cell = f"[✅]({data.poh_url})"
         else:
-            poh_cell = "✗"
+            poh_cell = "❌"
 
-        indices_cell = "✓" if data.indices != "n/a" else "✗"
-        indices_size_cell = f"{data.indices_size} GB" if data.indices_size != "n/a" else "✗"
-        deals_cell = f"[✓]({data.deals})" if data.deals != "n/a" else "✗"
-        slots_cell = f"[{data.epoch}.slots.txt]({data.slots_url})" if data.slots_url != "n/a" else "✗"
+        indices_cell = "✅" if data.indices != "n/a" else "❌"
+        indices_size_cell = f"{data.indices_size} GB" if data.indices_size != "n/a" else "❌"
+        deals_cell = f"[✅]({data.deals})" if data.deals != "n/a" else "❌"
+        slots_cell = f"[{data.epoch}.slots.txt]({data.slots_url})" if data.slots_url != "n/a" else "❌"
 
         # Track issues for summary report
         issues = []
