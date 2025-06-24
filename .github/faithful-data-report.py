@@ -24,7 +24,7 @@ class FaithfulDataReport:
     def __init__(self):
         self.host = "https://files.old-faithful.net"
         self.deals_host = "https://filecoin-car-storage-cdn.b-cdn.net"
-        self.txmeta_first_epoch = 92
+        self.txmeta_first_epoch = 10
         self.issues = []  # Track issues for summary report
         self.index_files = [
             "mainnet-cid-to-offset-and-size.index",

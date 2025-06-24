@@ -14,7 +14,7 @@ require (
 	github.com/filecoin-project/go-data-transfer/v2 v2.0.0-rc7 // indirect
 	github.com/filecoin-project/go-state-types v0.10.0 // indirect
 	github.com/gagliardetto/binary v0.8.0
-	github.com/gagliardetto/solana-go v1.10.0
+	github.com/gagliardetto/solana-go v1.12.0
 	github.com/google/uuid v1.6.0
 	github.com/hannahhoward/go-pubsub v1.0.0 // indirect
 	github.com/ipfs/go-blockservice v0.5.0 // indirect
