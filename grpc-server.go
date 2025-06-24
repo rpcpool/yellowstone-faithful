@@ -1104,7 +1104,7 @@ func (multi *MultiEpoch) processSlotTransactions(
 				defer cancel()
 
 				startTime := time.Now()
-				klog.V(2).Infof("Starting GSFA query for account %s, from slot %d to %d", pKey.String(), startSlot, endSlot)
+				klog.Infof("DEBUG: Starting GSFA query for account %s, from slot %d to %d", pKey.String(), startSlot, endSlot)
 
 				epochToTxns, err := gsfaReader.GetBeforeUntilSlot(
 					queryCtx,
@@ -1137,6 +1137,7 @@ func (multi *MultiEpoch) processSlotTransactions(
 					},
 				)
 				if err != nil {
+					klog.Errorf("DEBUG: GSFA query failed for account %s: %v", pKey.String(), err)
 					errChan <- err
 					return
 				}
