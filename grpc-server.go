@@ -944,9 +944,11 @@ func (multi *MultiEpoch) StreamTransactions(params *old_faithful_grpc.StreamTran
 	}
 	gsfaReader, epochNums := multi.getGsfaReadersInEpochDescendingOrderForSlotRange(ctx, startSlot, endSlot)
 
+	klog.Infof("DEBUG: GSFA reader loading for slots %d-%d: found %d epochs: %v", startSlot, endSlot, len(epochNums), epochNums)
+
 	gsfaReadersLoaded := true
 	if len(epochNums) == 0 {
-		klog.V(2).Info("No gsfa readers were loaded")
+		klog.Infof("DEBUG: No gsfa readers were loaded for slot range %d-%d", startSlot, endSlot)
 		gsfaReadersLoaded = false
 	}
 
@@ -1024,6 +1026,7 @@ func (multi *MultiEpoch) processSlotTransactions(
 	}
 
 	if filter == nil || len(filter.AccountInclude) == 0 || !gsfaReadersLoaded {
+		klog.Infof("DEBUG: Taking slot-by-slot path - filter==nil: %v, len(accountInclude): %d, gsfaReadersLoaded: %v", filter == nil, len(filter.GetAccountInclude()), gsfaReadersLoaded)
 
 		for slot := startSlot; slot <= endSlot; slot++ {
 			select {
@@ -1087,6 +1090,7 @@ func (multi *MultiEpoch) processSlotTransactions(
 		}
 		return nil
 	} else {
+		klog.Infof("DEBUG: Taking GSFA path - found account filters and GSFA readers loaded")
 
 		const batchSize = 100
 		buffer := newTxBuffer(uint64(startSlot), uint64(endSlot))
