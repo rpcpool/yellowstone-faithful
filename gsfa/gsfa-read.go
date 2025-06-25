@@ -30,6 +30,17 @@ func isDir(path string) (bool, error) {
 	return info.IsDir(), nil
 }
 
+func sizeOfFile(path string) (int64, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return 0, fmt.Errorf("error while getting file info for %s: %w", path, err)
+	}
+	if info.IsDir() {
+		return 0, fmt.Errorf("expected a file, but got a directory: %s", path)
+	}
+	return info.Size(), nil
+}
+
 // NewGsfaReader opens an existing index in READ-ONLY mode.
 func NewGsfaReader(indexRootDir string) (*GsfaReader, error) {
 	if ok, err := isDir(indexRootDir); err != nil {
@@ -40,6 +51,19 @@ func NewGsfaReader(indexRootDir string) (*GsfaReader, error) {
 	index := &GsfaReader{}
 	{
 		offsetsIndex := filepath.Join(indexRootDir, string(indexes.Kind_PubkeyToOffsetAndSize)+".index")
+		// check size; if is 1733 bytes, then it's the buggy version of the index.
+		size, err := sizeOfFile(offsetsIndex)
+		if err != nil {
+			return nil, fmt.Errorf("error while getting size of offsets index file %s: %w", offsetsIndex, err)
+		}
+		if size == 1733 {
+			return nil, fmt.Errorf("the offsets index file %s is the buggy version (1733 bytes); "+
+				"please delete the whole gsfa index and re-create it with the latest old-faithful-cli", offsetsIndex)
+		} else if size < 1733 {
+			return nil, fmt.Errorf("the offsets index file %s is too small (%d bytes); "+
+				"please delete the whole gsfa index and re-create it with the latest old-faithful-cli. "+
+				"Expected at least 1733 bytes, got %d bytes", offsetsIndex, size, size)
+		}
 		offsets, err := indexes.Open_PubkeyToOffsetAndSize(offsetsIndex)
 		if err != nil {
 			return nil, fmt.Errorf("error while opening offsets index: %w", err)

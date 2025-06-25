@@ -44,3 +44,23 @@ func Uint64ToLEBytes(v uint64) []byte {
 func Uint64FromLEBytes(buf []byte) uint64 {
 	return binary.LittleEndian.Uint64(buf)
 }
+
+func CalcEpochsForSlotRange(startSlot, endSlot uint64) []uint64 {
+	epochStart := CalcEpochForSlot(startSlot)
+	epochEnd := CalcEpochForSlot(endSlot)
+	return calcRangeInclusive(epochStart, epochEnd)
+}
+
+func calcRangeInclusive(start, end uint64) []uint64 {
+	if start == end {
+		return []uint64{start} // if start and end are the same, return a slice with that single value
+	}
+	if start > end {
+		end, start = start, end // ensure start is less than or equal to end
+	}
+	rangeSlice := make([]uint64, end-start+1)
+	for i := range rangeSlice {
+		rangeSlice[i] = start + uint64(i)
+	}
+	return rangeSlice
+}

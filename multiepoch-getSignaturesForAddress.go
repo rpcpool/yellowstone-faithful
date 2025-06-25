@@ -48,13 +48,13 @@ func (ser *MultiEpoch) getGsfaReadersInEpochDescendingOrderForSlotRange(ctx cont
 	ser.mu.RLock()
 	defer ser.mu.RUnlock()
 
-	startEpoch := slottools.CalcEpochForSlot(startSlot)
-	endEpoch := slottools.CalcEpochForSlot(endSlot)
-
-	epochs := make([]*Epoch, 0, endEpoch-startEpoch+1)
-	for _, epoch := range ser.epochs {
-		if epoch.Epoch() >= startEpoch && epoch.Epoch() <= endEpoch {
+	wantedEpochs := slottools.CalcEpochsForSlotRange(startSlot, endSlot)
+	epochs := make([]*Epoch, 0, len(wantedEpochs))
+	for _, wantedEpoch := range wantedEpochs {
+		if epoch, ok := ser.epochs[wantedEpoch]; ok {
 			epochs = append(epochs, epoch)
+		} else {
+			klog.Warningf("epoch %d not found in multiepoch", wantedEpoch)
 		}
 	}
 
