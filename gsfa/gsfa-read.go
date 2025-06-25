@@ -58,10 +58,10 @@ func NewGsfaReader(indexRootDir string) (*GsfaReader, error) {
 		}
 		if size == 1733 {
 			return nil, fmt.Errorf("the offsets index file %s is the buggy version (1733 bytes); "+
-				"please delete it and re-create the GSFA index with the latest old-faithful-cli", offsetsIndex)
+				"please delete the whole gsfa index and re-create it with the latest old-faithful-cli", offsetsIndex)
 		} else if size < 1733 {
 			return nil, fmt.Errorf("the offsets index file %s is too small (%d bytes); "+
-				"please delete it and re-create the GSFA index with the latest old-faithful-cli. "+
+				"please delete the whole gsfa index and re-create it with the latest old-faithful-cli. "+
 				"Expected at least 1733 bytes, got %d bytes", offsetsIndex, size, size)
 		}
 		offsets, err := indexes.Open_PubkeyToOffsetAndSize(offsetsIndex)
