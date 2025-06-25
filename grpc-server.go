@@ -1123,7 +1123,6 @@ func (multi *MultiEpoch) processSlotTransactions(
 	// Handle any errors
 	klog.V(5).Infof("Checking for errors from goroutines")
 	errCheckStartTime := time.Now()
-	wg.Wait()
 	select {
 	case err := <-wgWaitToChannel(wg):
 		if err != nil {
