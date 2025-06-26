@@ -57,9 +57,20 @@ fn main() -> Result<(), Box<dyn Error>> {
         let mut todo_previous_blockhash = solana_sdk::hash::Hash::default();
         let mut todo_latest_entry_blockhash = solana_sdk::hash::Hash::default();
         loop {
-            let nodes = reader.read_until_block()?;
+            let nodes = reader.read_until_block().map_err(|err| {
+                Box::new(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    std::format!("Error reading until block: {:?}", err),
+                ))
+            })?;
             // println!("Nodes: {:?}", nodes.get_cids());
-            let block = nodes.get_block()?;
+            let block = nodes.get_block().map_err(|err| {
+                Box::new(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    std::format!("Error reading block: {:?}", err),
+                ))
+            })?;
+
             println!("Slot: {:?}", block.slot);
             // println!("Raw node: {:?}", raw_node);
             let mut entry_index: usize = 0;
@@ -77,9 +88,19 @@ fn main() -> Result<(), Box<dyn Error>> {
 
                         {
                             let reassembled_metadata =
-                                nodes.reassemble_dataframes(transaction.metadata.clone())?;
+                                nodes.reassemble_dataframes(transaction.metadata.clone()).map_err(|err| {
+                                    Box::new(std::io::Error::new(
+                                        std::io::ErrorKind::Other,
+                                        std::format!("Error reassembling metadata: {:?}", err),
+                                    ))
+                                })?;
 
-                            let decompressed = utils::decompress_zstd(reassembled_metadata.clone())?;
+                            let decompressed = utils::decompress_zstd(reassembled_metadata.clone()).map_err(|err| {
+                                Box::new(std::io::Error::new(
+                                    std::io::ErrorKind::Other,
+                                    std::format!("Error decompressing metadata: {:?}", err),
+                                ))
+                            })?;
 
                             let metadata: solana_storage_proto::convert::generated::TransactionStatusMeta =
                                 prost_011::Message::decode(decompressed.as_slice()).map_err(|err| {
@@ -91,7 +112,12 @@ fn main() -> Result<(), Box<dyn Error>> {
 
 
                             let as_native_metadata: solana_transaction_status::TransactionStatusMeta =
-                                metadata.try_into()?;
+                                metadata.try_into().map_err(|err| {
+                                    Box::new(std::io::Error::new(
+                                        std::io::ErrorKind::Other,
+                                        std::format!("Error converting metadata to native: {:?}", err),
+                                    ))
+                                })?;
 
                             let is_vote = is_simple_vote_transaction(&parsed);
 
@@ -251,6 +277,11 @@ fn main() -> Result<(), Box<dyn Error>> {
                     }
                 }
                 Ok(())
+            }).map_err(|err| {
+                Box::new(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    std::format!("Error processing node: {:?}", err),
+                ))
             })?;
         }
     }
