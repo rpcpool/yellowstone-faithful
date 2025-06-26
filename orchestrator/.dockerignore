@@ -63,8 +63,3 @@ temp/
 
 # OS files
 Thumbs.db
-
-# Prisma - only keep schema
-prisma/*
-!prisma/schema.prisma
-!prisma/migrations/
