@@ -20,7 +20,6 @@ COPY . .
 
 # Build the application
 RUN pnpm build
-RUN pnpm prisma generate
 
 # Production stage
 FROM node:22-alpine AS runner
