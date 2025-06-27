@@ -18,9 +18,6 @@ RUN pnpm install --frozen-lockfile
 # Copy source code
 COPY . .
 
-# Generate Prisma client
-RUN pnpm prisma generate
-
 # Build the application
 RUN pnpm build
 
@@ -45,12 +42,6 @@ COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/pnpm-lock.yaml ./pnpm-lock.yaml
-
-# Install production dependencies and Prisma CLI
-RUN pnpm install --prod --frozen-lockfile && \
-    pnpm add -D prisma && \
-    pnpm prisma generate && \
-    pnpm remove prisma
 
 # Copy source files for worker
 COPY --from=builder /app/src ./src

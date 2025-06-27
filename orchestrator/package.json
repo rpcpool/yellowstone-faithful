@@ -10,7 +10,7 @@
     "lint:eslint": "next lint",
     "typecheck": "tsc --noEmit",
     "seed": "tsx prisma/seed.ts",
-    "migrate:deploy": "prisma migrate deploy",
+    "migrate:deploy": "pnpm prisma migrate deploy",
     "task": "tsx scripts/run-task.ts",
     "worker": "tsx src/lib/worker.ts",
     "test": "jest",
