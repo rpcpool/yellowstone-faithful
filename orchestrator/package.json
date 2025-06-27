@@ -11,6 +11,7 @@
     "lint:eslint": "next lint",
     "typecheck": "tsc --noEmit",
     "seed": "tsx prisma/seed.ts",
+    "migrate:dev": "pnpx prisma migrate dev",
     "migrate:deploy": "pnpx prisma migrate deploy",
     "task": "tsx scripts/run-task.ts",
     "worker": "tsx src/lib/worker.ts",
