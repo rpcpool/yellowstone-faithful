@@ -50,6 +50,8 @@ COPY --from=builder /app/tsconfig.json ./tsconfig.json
 # Set correct permissions
 RUN chown -R nextjs:nodejs /app
 
+RUN pnpm add tsx --prod
+
 USER nextjs
 
 # Expose port
