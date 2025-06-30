@@ -2,20 +2,70 @@
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { useState } from "react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useState, useEffect } from "react";
 import { useMutation } from "@tanstack/react-query";
+
+interface Source {
+  id: string;
+  name: string;
+  type: string;
+  enabled: boolean;
+}
 
 export default function SettingsPage() {
   const [isReindexing, setIsReindexing] = useState(false);
+  const [selectedSource, setSelectedSource] = useState<string>("all");
+  const [sources, setSources] = useState<Source[]>([]);
+  const [isLoadingSources, setIsLoadingSources] = useState(true);
   const [lastReindexResult, setLastReindexResult] = useState<{
     success: boolean;
     message: string;
     timestamp: Date;
   } | null>(null);
 
+  // Fetch sources on component mount
+  useEffect(() => {
+    const fetchSources = async () => {
+      try {
+        const response = await fetch('/api/sources?enabled=true&pageSize=100');
+        if (response.ok) {
+          const data = await response.json();
+          setSources(data.sources || []);
+        } else {
+          console.error('Failed to fetch sources');
+        }
+      } catch (error) {
+        console.error('Error fetching sources:', error);
+      } finally {
+        setIsLoadingSources(false);
+      }
+    };
+
+    fetchSources();
+  }, []);
+
   const mutation = useMutation({
     mutationFn: async () => {
-      const response = await fetch('/api/reindex', { method: 'POST' });
+      const response = await fetch('/api/jobs/schedule', { 
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          jobType: 'refreshAllEpochs',
+          params: {
+            ...(selectedSource !== 'all' && { sourceName: selectedSource }),
+            batchSize: 100 // Process 100 epochs at a time
+          }
+        })
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.details || error.error || 'Failed to schedule job');
+      }
+      
       return response.json();
     },
     onSuccess: (data) => {
@@ -67,19 +117,39 @@ export default function SettingsPage() {
                   d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
                 />
               </svg>
-              Re-index Remote Files
+              Re-index Data Sources
             </CardTitle>
             <CardDescription>
-              Schedule a background job to scan and re-index all remote files. This will update the database 
-              with the latest file information by checking remote storage locations and updating the index 
-              status for all epochs.
+              Schedule a background job to re-index data from selected sources. This will check the availability 
+              of data files and update the database with the current status. You can choose to re-index all 
+              sources or select a specific source to refresh.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
+              <Select value={selectedSource} onValueChange={setSelectedSource} disabled={isLoadingSources || sources.length === 0}>
+                <SelectTrigger className="w-full sm:w-[250px]">
+                  <SelectValue placeholder={
+                    isLoadingSources ? "Loading sources..." : 
+                    sources.length === 0 ? "No sources configured" : 
+                    "Select source"
+                  } />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Sources</SelectItem>
+                  {sources.length === 0 && !isLoadingSources && (
+                    <SelectItem value="" disabled>No sources available</SelectItem>
+                  )}
+                  {sources.map((source) => (
+                    <SelectItem key={source.id} value={source.name}>
+                      {source.name} ({source.type})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <Button
                 onClick={handleReindex}
-                disabled={isReindexing}
+                disabled={isReindexing || isLoadingSources || sources.length === 0}
                 className="w-full sm:w-auto"
               >
                 {isReindexing ? (
@@ -107,7 +177,7 @@ export default function SettingsPage() {
                                          Scheduling...
                    </>
                  ) : (
-                   'Schedule Re-indexing Job'
+                   selectedSource === 'all' ? 'Schedule Re-indexing (All Sources)' : `Schedule Re-indexing (${selectedSource})`
                  )}
               </Button>
               
@@ -165,10 +235,10 @@ export default function SettingsPage() {
                <p><strong>What this does:</strong></p>
                <ul className="list-disc list-inside space-y-1 ml-2">
                  <li>Schedules a background job via Faktory worker system</li>
-                 <li>Scans remote storage locations for all epochs</li>
+                 <li>Refreshes data availability status for selected source(s)</li>
                  <li>Updates database records with current file status</li>
-                 <li>Identifies newly available or missing index files</li>
-                 <li>Refreshes the dashboard with latest information</li>
+                 <li>Supports filtering by specific data source (S3, HTTP, Local)</li>
+                 <li>Processes all epochs for the selected source(s)</li>
                </ul>
                <p className="mt-2"><strong>Note:</strong> The job runs in the background and may take several minutes to complete. Check the worker logs for progress updates.</p>
              </div>

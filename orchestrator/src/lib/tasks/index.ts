@@ -4,6 +4,7 @@ import { getGsfaIndexTask } from "./get_gsfa_index";
 import { getStandardIndexesTask } from "./get_standard_indexes";
 import { refreshEpochTask } from "./refresh_epoch";
 import { refreshSourceTask } from "./refresh_source";
+import { refreshAllEpochsTask } from "./refresh_all_epochs";
 
 function allTasks(): Task[] {
   return [
@@ -12,6 +13,7 @@ function allTasks(): Task[] {
     getStandardIndexesTask as Task,
     refreshSourceTask as Task,
     refreshEpochTask as Task,
+    refreshAllEpochsTask as Task,
   ];
 }
 
@@ -19,5 +21,5 @@ function getTask(name: string): Task | undefined {
   return allTasks().find((task) => task.name === name);
 }
 
-export { allTasks, fetchEpochCidsTask, getGsfaIndexTask, getStandardIndexesTask, getTask, refreshEpochTask, refreshSourceTask };
+export { allTasks, fetchEpochCidsTask, getGsfaIndexTask, getStandardIndexesTask, getTask, refreshEpochTask, refreshSourceTask, refreshAllEpochsTask };
 

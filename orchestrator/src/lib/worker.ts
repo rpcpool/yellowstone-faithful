@@ -5,7 +5,6 @@ import { allTasks } from '@/lib/tasks';
 import minimist from 'minimist';
 import os from 'os';
 
-
 async function main() {
   const parsedArgs = minimist(process.argv.slice(2));
 
@@ -15,7 +14,7 @@ async function main() {
 
   // Worker registration function
   async function registerWorker(): Promise<string | null> {
-    const hostname = os.hostname();
+    const workerName = process.env.WORKER_NAME || os.hostname();
     const pid = process.pid;
     
     try {
@@ -26,7 +25,7 @@ async function main() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          hostname,
+          hostname: workerName,
           pid,
           capabilities: ["default", "local"] // Initial capabilities, will add worker ID later
         })
