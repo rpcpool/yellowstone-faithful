@@ -1,10 +1,8 @@
-import faktory from "faktory-worker";
 import type { Job } from "faktory-worker";
+import faktory from "faktory-worker";
 
 const client = new faktory.Client({
-  host: process.env.FAKTORY_HOST,
-  port: process.env.FAKTORY_PORT,
-  password: process.env.FAKTORY_PASSWORD,
+  url: process.env.FAKTORY_URL,
 });
 
 export { client, faktory };
