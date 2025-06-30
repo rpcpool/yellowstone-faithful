@@ -1,6 +1,6 @@
+import { IndexType, Prisma } from '@/generated/prisma';
+import { prisma } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
-import { IndexType, Prisma } from '../../../generated/prisma/index.js';
-import { prisma } from '../../../lib/prisma';
 
 // Helper function to convert BigInt values to numbers
 function convertBigIntToNumber(obj: unknown): unknown {

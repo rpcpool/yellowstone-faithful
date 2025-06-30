@@ -7,7 +7,7 @@ import { DashboardStatsSkeleton, EpochGridSkeleton } from "@/components/skeleton
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
-const TOTAL_EPOCHS = 792;
+// TOTAL_EPOCHS will now come from the stats API
 
 type EpochDetails = {
   epoch: {
@@ -61,20 +61,23 @@ export default function Home() {
     gcTime: 5 * 60 * 1000, // Keep in cache for 5 minutes
   });
 
+  const totalEpochs = stats?.currentEpoch || 792; // Use current epoch from stats, fallback to 792
+
   const {
-    data: epochs = Array(TOTAL_EPOCHS).fill(null),
+    data: epochs = Array(totalEpochs).fill(null),
     isLoading: isLoadingEpochs,
   } = useQuery({
-    queryKey: ['epochs', TOTAL_EPOCHS],
+    queryKey: ['epochs', totalEpochs],
     queryFn: async () => {
       console.log('Fetching epochs...');
-      const res = await fetch(`/api/epochs?start=0&end=${TOTAL_EPOCHS}`);
+      const res = await fetch(`/api/epochs?start=0&end=${totalEpochs}`);
       if (!res.ok) throw new Error('Failed to fetch epochs');
       const data = await res.json();
       return data.epochs && Array.isArray(data.epochs)
         ? data.epochs
-        : Array(TOTAL_EPOCHS).fill(null);
+        : Array(totalEpochs).fill(null);
     },
+    enabled: !!stats, // Only fetch epochs after stats are loaded
     staleTime: 60000, // Consider data fresh for 1 minute
     gcTime: 10 * 60 * 1000, // Keep in cache for 10 minutes
   });
@@ -119,7 +122,7 @@ export default function Home() {
         ) : (
           <EpochGrid 
             epochs={epochs}
-            totalEpochs={TOTAL_EPOCHS}
+            totalEpochs={totalEpochs}
             onEpochClick={handleEpochClick}
           />
         )}

@@ -14,12 +14,12 @@ import {
   TrendingUp
 } from "lucide-react";
 
-const TOTAL_EPOCHS = 792;
-
 type StatsData = {
   totalSize: string;
   totalIndexes: number;
   gsfaEpochCount: number; // Count of epochs with GSFA indexes
+  currentEpoch: number; // Current epoch from Solana RPC
+  totalEpochsDb: number; // Total epochs in the database
   statusDistribution: Record<string, number>;
   typeDistribution: Record<string, number>;
   sourceDistribution: Record<string, number>;
@@ -33,6 +33,8 @@ interface DashboardStatsProps {
 export function DashboardStats({ stats }: DashboardStatsProps) {
   // Get total index size from stats API (more accurate than calculating from epoch data)
   const totalIndexSize = stats ? parseInt(stats.totalSize, 10) : 0;
+  const totalEpochsDb = stats?.totalEpochsDb || 0;
+  const totalEpochs = stats?.currentEpoch || 792; // Use current epoch from stats
 
   return (
     <div className="space-y-4">
@@ -40,7 +42,7 @@ export function DashboardStats({ stats }: DashboardStatsProps) {
       <div className="space-y-2">
         <h1 className="text-3xl font-bold tracking-tight">Epochs Dashboard</h1>
         <p className="text-muted-foreground">
-          Monitoring {TOTAL_EPOCHS} epochs with real-time status updates
+          Monitoring {totalEpochs} epochs with real-time status updates
         </p>
       </div>
 
@@ -52,9 +54,11 @@ export function DashboardStats({ stats }: DashboardStatsProps) {
             <Clock className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent className="text-center">
-            <div className="text-2xl font-bold">{TOTAL_EPOCHS.toLocaleString()}</div>
+            <div className="text-2xl font-bold">
+              {stats ? `${totalEpochsDb.toLocaleString()}/${totalEpochs.toLocaleString()}` : "Loading..."}
+            </div>
             <p className="text-xs text-muted-foreground">
-              Being monitored
+              Epochs Monitored
             </p>
           </CardContent>
         </Card>
@@ -137,7 +141,7 @@ export function DashboardStats({ stats }: DashboardStatsProps) {
             {stats ? (
               <div className="space-y-3">
                 {Object.entries(stats.statusDistribution).map(([status, count]) => {
-                  const percentage = ((count / TOTAL_EPOCHS) * 100).toFixed(1);
+                  const percentage = ((count / totalEpochs) * 100).toFixed(1);
                   const getStatusIcon = (status: string) => {
                     switch (status.toLowerCase()) {
                       case 'complete':

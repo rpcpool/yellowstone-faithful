@@ -1,10 +1,21 @@
+import { PrismaClient } from '@/generated/prisma';
+import { getLatestEpoch } from '@/lib/epochs/get-latest-epoch';
 import { NextResponse } from 'next/server';
-import { PrismaClient } from '../../../generated/prisma/index.js';
 
 const prisma = new PrismaClient();
 
 export async function GET() {
   try {
+    // Fetch current epoch from Solana RPC
+    let currentEpoch: number;
+    try {
+      currentEpoch = await getLatestEpoch();
+    } catch (error) {
+      console.error('Failed to fetch current epoch:', error);
+      // Fallback to a reasonable default if RPC fails
+      currentEpoch = 792; // Use previous hardcoded value as fallback
+    }
+
     // Get the sum of all index sizes using Prisma aggregation
     const result = await prisma.epochIndex.aggregate({
       _sum: {
@@ -54,6 +65,9 @@ export async function GET() {
       }
     });
 
+    // Get count of all epochs in the database
+    const totalEpochsDb = await prisma.epoch.count();
+
     // Convert the grouped results to a more convenient format
     const statusDistribution = statusCounts.reduce((acc, item) => {
       acc[item.status] = item._count.status;
@@ -88,6 +102,8 @@ export async function GET() {
       totalSize: result._sum.size?.toString() || '0', // Convert BigInt to string
       totalIndexes: result._count.id,
       gsfaEpochCount, // New field for epochs with GSFA indexes
+      currentEpoch, // Current epoch from Solana RPC
+      totalEpochsDb, // New field: total epochs in DB
       statusDistribution,
       typeDistribution,
       typeSizeDistribution, // New field with storage sizes by type

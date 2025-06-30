@@ -1,9 +1,11 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
-const TOTAL_EPOCHS = 792;
+interface EpochGridSkeletonProps {
+  totalEpochs?: number;
+}
 
-export function EpochGridSkeleton() {
+export function EpochGridSkeleton({ totalEpochs = 792 }: EpochGridSkeletonProps = {}) {
   return (
     <Card>
       <CardHeader>
@@ -46,7 +48,7 @@ export function EpochGridSkeleton() {
 
       <CardContent>
         <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(2.5rem, 1fr))' }}>
-          {Array.from({ length: TOTAL_EPOCHS }).map((_, i) => (
+          {Array.from({ length: totalEpochs }).map((_, i) => (
             <Skeleton 
               key={i} 
               className="w-10 h-10 rounded animate-pulse"

@@ -1,5 +1,6 @@
 // Returns the latest epoch number from the Solana RPC API
-export async function getLatestEpoch(rpcUrl: string = 'https://api.mainnet-beta.solana.com'): Promise<number> {
+export async function getLatestEpoch(rpcUrl?: string): Promise<number> {
+  const url = rpcUrl || process.env.SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com';
   type EpochInfoResponse = {
     jsonrpc: string;
     result: {
@@ -19,7 +20,7 @@ export async function getLatestEpoch(rpcUrl: string = 'https://api.mainnet-beta.
     method: 'getEpochInfo',
   });
 
-  const res = await fetch(rpcUrl, {
+  const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body,

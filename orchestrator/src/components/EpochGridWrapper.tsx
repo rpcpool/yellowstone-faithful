@@ -4,28 +4,27 @@ import { EpochGrid } from "@/components/EpochGrid";
 import { EpochGridSkeleton } from "@/components/skeletons";
 import { useQuery } from "@tanstack/react-query";
 
-const TOTAL_EPOCHS = 792;
-
 interface EpochGridWrapperProps {
   onEpochClick: (epochIndex: number) => void;
+  totalEpochs?: number;
 }
 
-export function EpochGridWrapper({ onEpochClick }: EpochGridWrapperProps) {
+export function EpochGridWrapper({ onEpochClick, totalEpochs = 792 }: EpochGridWrapperProps) {
   const {
-    data: epochs = Array(TOTAL_EPOCHS).fill(null),
+    data: epochs = Array(totalEpochs).fill(null),
     isLoading,
     error
   } = useQuery({
-    queryKey: ['epochs', TOTAL_EPOCHS],
+    queryKey: ['epochs', totalEpochs],
     queryFn: async () => {
-      const res = await fetch(`/api/epochs?start=0&end=${TOTAL_EPOCHS}`);
+      const res = await fetch(`/api/epochs?start=0&end=${totalEpochs}`);
       if (!res.ok) throw new Error('Failed to fetch epochs');
       const data = await res.json();
       return data.epochs && Array.isArray(data.epochs)
         ? data.epochs
-        : Array(TOTAL_EPOCHS).fill(null);
+        : Array(totalEpochs).fill(null);
     },
-    initialData: Array(TOTAL_EPOCHS).fill(null),
+    initialData: Array(totalEpochs).fill(null),
     staleTime: 60000, // Consider data fresh for 1 minute
     gcTime: 10 * 60 * 1000, // Keep in cache for 10 minutes
   });
@@ -55,7 +54,7 @@ export function EpochGridWrapper({ onEpochClick }: EpochGridWrapperProps) {
   return (
     <EpochGrid 
       epochs={epochs}
-      totalEpochs={TOTAL_EPOCHS}
+      totalEpochs={totalEpochs}
       onEpochClick={onEpochClick}
     />
   );
