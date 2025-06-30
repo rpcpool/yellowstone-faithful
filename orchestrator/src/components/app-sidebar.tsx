@@ -71,18 +71,6 @@ const data = {
           title: "Indexes",
           url: "/data/indexes",
         },
-        {
-          title: "Storage",
-          url: "/storage",
-        },
-        {
-          title: "GSFA Files",
-          url: "/gsfa",
-        },
-        {
-          title: "Remote Files",
-          url: "/remote",
-        },
       ],
     },
     {
@@ -93,22 +81,6 @@ const data = {
         {
           title: "Settings",
           url: "/settings",
-        },
-        {
-          title: "Re-indexing",
-          url: "/settings#reindex",
-        },
-        {
-          title: "Jobs",
-          url: "/settings/jobs",
-        },
-        {
-          title: "Workers",
-          url: "/workers",
-        },
-        {
-          title: "Logs",
-          url: "/logs",
         },
       ],
     },
@@ -124,7 +96,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         <div className="flex items-center gap-2 px-2 py-2">
           <GalleryVerticalEnd className="h-6 w-6" />
           {state === "expanded" && (
-            <span className="text-sm font-semibold">Old Reliable</span>
+            <span className="text-sm font-semibold">Old Faithful</span>
           )}
         </div>
       </SidebarHeader>
@@ -134,7 +106,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       <SidebarFooter>
         <div className="px-2 py-2 text-center">
           {state === "expanded" && (
-            <span className="text-xs text-muted-foreground">Old Reliable</span>
+            <span className="text-xs text-muted-foreground">Old Faithful</span>
           )}
         </div>
       </SidebarFooter>

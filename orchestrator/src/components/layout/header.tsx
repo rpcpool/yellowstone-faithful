@@ -13,7 +13,7 @@ export function Header() {
               {/*  TODO: Add logo here */}
             </div>
             <span className="hidden font-bold sm:inline-block text-foreground">
-              Old Reliable
+              Old Faithful
             </span>
           </Link>
         </div>

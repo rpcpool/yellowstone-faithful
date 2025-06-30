@@ -4,6 +4,7 @@ import { SourceDomainService } from '@/lib/domain/source/services/source-domain-
 import { CreateSourceUseCase } from '@/lib/application/source/use-cases/create-source';
 import { UpdateSourceUseCase } from '@/lib/application/source/use-cases/update-source';
 import { DataSourceType } from '@/generated/prisma';
+import { SourceConfiguration } from '@/lib/domain/source/entities/source';
 
 // Initialize repositories and services
 const sourceRepository = new PrismaSourceRepository();
@@ -39,7 +40,7 @@ export async function POST(req: Request) {
         pid: body.pid,
         capabilities: body.capabilities,
         startedAt: new Date().toISOString()
-      } as any;
+      } as SourceConfiguration;
       
       // Update the source configuration
       const updateUseCase = new UpdateSourceUseCase(sourceDomainService);

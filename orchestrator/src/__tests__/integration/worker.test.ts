@@ -2,8 +2,6 @@
  * @jest-environment node
  */
 
-import os from 'os';
-
 // Mock fetch globally
 global.fetch = jest.fn();
 

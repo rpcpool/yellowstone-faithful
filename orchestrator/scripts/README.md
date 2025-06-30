@@ -1,6 +1,6 @@
 # Scripts
 
-This directory contains utility scripts for the Old Reliable project.
+This directory contains utility scripts for the Old Faithful project.
 
 ## download_indexdir.sh (Recommended)
 

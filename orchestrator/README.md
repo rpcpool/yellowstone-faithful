@@ -1,10 +1,10 @@
-# Old Reliable
+# Old Faithful
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue)](https://www.typescriptlang.org/)
 [![Next.js](https://img.shields.io/badge/Next.js-15-black)](https://nextjs.org/)
 
-Old Reliable (OR) is a comprehensive framework built on top of Triton's Old Faithful system for archival access to Solana blockchain data. It provides a modern web interface and robust backend for managing, indexing, and serving historical Solana epoch data from multiple data sources.
+Old Faithful (OF) is a comprehensive framework built on top of Triton's Old Faithful system for archival access to Solana blockchain data. It provides a modern web interface and robust backend for managing, indexing, and serving historical Solana epoch data from multiple data sources.
 
 ## Features
 
@@ -43,8 +43,8 @@ Old Reliable (OR) is a comprehensive framework built on top of Triton's Old Fait
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/notwedtm/old-reliable.git
-cd old-reliable
+git clone https://github.com/notwedtm/old-faithful.git
+cd old-faithful
 ```
 
 2. Install dependencies:

@@ -19,7 +19,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Old Reliable",
+  title: "Old Faithful",
   description: "Old Faithful management system",
 };
 
