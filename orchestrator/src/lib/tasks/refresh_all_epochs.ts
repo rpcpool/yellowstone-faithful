@@ -78,7 +78,6 @@ export const refreshAllEpochsTask: Task<RefreshAllEpochsArgs> = {
   schedule: async (args: RefreshAllEpochsArgs): Promise<string> => {
     const job: Job = client.job(refreshAllEpochsTask.name, args);
     job.queue = "default";
-    job.args = [args]; // Ensure args are properly formatted
     await job.push();
     return job.jid;
   },
