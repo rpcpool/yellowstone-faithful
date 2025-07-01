@@ -1,11 +1,11 @@
-import { NextResponse } from 'next/server';
-import { PrismaEpochRepository } from '@/lib/infrastructure/repositories/prisma-epoch-repository';
-import { GetEpochsUseCase } from '@/lib/application/epoch/use-cases/get-epochs';
 import { GetEpochByIdUseCase } from '@/lib/application/epoch/use-cases/get-epoch-by-id';
+import { GetEpochsUseCase } from '@/lib/application/epoch/use-cases/get-epochs';
 import { GetEpochsRangeUseCase } from '@/lib/application/epoch/use-cases/get-epochs-range';
 import { Epoch } from '@/lib/domain/epoch/entities/epoch';
 import { EpochId } from '@/lib/domain/epoch/value-objects/epoch-id';
 import { EpochStatus } from '@/lib/domain/epoch/value-objects/epoch-status';
+import { PrismaEpochRepository } from '@/lib/infrastructure/repositories/prisma-epoch-repository';
+import { NextResponse } from 'next/server';
 
 // Initialize repository
 const epochRepository = new PrismaEpochRepository();
@@ -141,7 +141,7 @@ export async function POST(req: Request) {
     const { epochs, startEpoch, endEpoch } = body;
 
     // Validate input
-    if (!epochs && (!startEpoch || !endEpoch)) {
+    if (!epochs && (startEpoch === undefined || endEpoch === undefined)) {
       return NextResponse.json(
         { error: 'Must provide either epochs array or startEpoch/endEpoch range' },
         { status: 400 }
