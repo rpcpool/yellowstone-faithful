@@ -11,6 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { deleteJob, fetchJobs } from "@/lib/api";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 
 interface Source {
   id: string;
@@ -28,10 +29,15 @@ interface EpochData {
 
 export default function SettingsPage() {
   const queryClient = useQueryClient();
+  const searchParams = useSearchParams();
+  
+  // Get initial values from URL params
+  const initialTab = searchParams.get("tab") || "general";
+  const initialSource = searchParams.get("source") || "all";
   
   // General tab state
   const [isReindexing, setIsReindexing] = useState(false);
-  const [selectedSource, setSelectedSource] = useState<string>("all");
+  const [selectedSource, setSelectedSource] = useState<string>(initialSource);
   const [sources, setSources] = useState<Source[]>([]);
   const [isLoadingSources, setIsLoadingSources] = useState(true);
   const [lastReindexResult, setLastReindexResult] = useState<{
@@ -95,6 +101,15 @@ export default function SettingsPage() {
   // Re-index mutation
   const reindexMutation = useMutation({
     mutationFn: async () => {
+      // Find the source ID if a specific source is selected
+      let sourceId = undefined;
+      if (selectedSource !== 'all') {
+        const source = sources.find(s => s.name === selectedSource);
+        if (source) {
+          sourceId = source.id;
+        }
+      }
+      
       const response = await fetch('/api/jobs/schedule', { 
         method: 'POST',
         headers: {
@@ -103,7 +118,7 @@ export default function SettingsPage() {
         body: JSON.stringify({
           jobType: 'refreshAllEpochs',
           params: {
-            ...(selectedSource !== 'all' && { sourceName: selectedSource }),
+            ...(sourceId && { sourceId }),
             batchSize: 100
           }
         })
@@ -247,7 +262,7 @@ export default function SettingsPage() {
         </p>
       </div>
 
-      <Tabs defaultValue="general" className="space-y-4">
+      <Tabs defaultValue={initialTab} className="space-y-4">
         <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="general">General</TabsTrigger>
           <TabsTrigger value="epochs">Epochs</TabsTrigger>

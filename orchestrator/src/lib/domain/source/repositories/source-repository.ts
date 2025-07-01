@@ -25,7 +25,7 @@ export interface SourceRepository extends Repository<Source> {
   findById(id: string): Promise<Source | null>;
   findByName(name: string): Promise<Source | null>;
   findAll(filters?: SourceFilters, pagination?: PaginationOptions): Promise<PaginatedResult<Source>>;
-  save(source: Source): Promise<void>;
+  save(source: Source): Promise<Source>;
   delete(id: string): Promise<void>;
   exists(id: string): Promise<boolean>;
   existsByName(name: string): Promise<boolean>;

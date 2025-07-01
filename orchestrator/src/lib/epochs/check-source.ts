@@ -13,6 +13,14 @@ export async function checkSource(epochId: number, source: DataSource): Promise<
   
   // Check all index types concurrently
   const indexCheckPromises = indexTypes.map(async (indexType) => {
+    let indexUrl = '';
+    try {
+      indexUrl = await source.getEpochIndexUrl(epochId, indexType);
+      console.log(`[checkSource] Will check path for index ${indexType} in ${source.name}: ${indexUrl}`);
+    } catch (error) {
+      console.warn(`[checkSource] Could not get path for index ${indexType} in ${source.name}:`, error);
+      return false;
+    }
     console.log(`[checkSource] Checking ${source.name} for index ${indexType} of epoch ${epochId}...`);
     try {
       const exists = await source.epochIndexExists(epochId, indexType);
@@ -73,6 +81,13 @@ export async function checkSource(epochId: number, source: DataSource): Promise<
 
   // Check GSFA index concurrently with other indexes
   const gsfaCheckPromise = (async () => {
+    let gsfaUrl = '';
+    try {
+      gsfaUrl = await source.getEpochGsfaUrl(epochId);
+      console.log(`[checkSource] Will check path for GSFA index in ${source.name}: ${gsfaUrl}`);
+    } catch (error) {
+      console.warn(`[checkSource] Could not get path for GSFA index in ${source.name}:`, error);
+    }
     try {
       const gsfaFound = await source.epochGsfaIndexExists(epochId);
       console.log(`[checkSource] Gsfa index in ${source.name}: ${gsfaFound ? 'found' : 'not found'}`);

@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Edit, Trash2, Power, PowerOff } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Plus, Power, PowerOff, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -21,10 +21,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { toast } from "sonner";
 import { SourceDialog } from "@/components/sources/source-dialog";
-import { DeleteSourceDialog } from "@/components/sources/delete-source-dialog";
 import { DataSourceType } from "@/generated/prisma";
+import Link from "next/link";
 
 interface Source {
   id: string;
@@ -62,8 +61,6 @@ export default function SourcesPage() {
   const [typeFilter, setTypeFilter] = useState<DataSourceType | "all">("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
-  const [editingSource, setEditingSource] = useState<Source | null>(null);
-  const [deletingSource, setDeletingSource] = useState<Source | null>(null);
 
   const queryClient = useQueryClient();
 
@@ -91,33 +88,6 @@ export default function SourcesPage() {
     },
   });
 
-  const toggleSourceMutation = useMutation({
-    mutationFn: async ({ id, enabled }: { id: string; enabled: boolean }) => {
-      const response = await fetch(`/api/sources/${id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ enabled }),
-      });
-      if (!response.ok) {
-        throw new Error("Failed to update source");
-      }
-      return response.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["sources"] });
-      toast.success("Source updated successfully");
-    },
-    onError: (error) => {
-      toast.error(`Failed to update source: ${error.message}`);
-    },
-  });
-
-  const handleToggleSource = (source: Source) => {
-    toggleSourceMutation.mutate({
-      id: source.id,
-      enabled: !source.enabled,
-    });
-  };
 
   return (
     <div className="container mx-auto py-6 space-y-6">
@@ -174,13 +144,20 @@ export default function SourcesPage() {
                 <TableHead>Status</TableHead>
                 <TableHead>Created</TableHead>
                 <TableHead>Updated</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {data?.sources.map((source) => (
                 <TableRow key={source.id}>
-                  <TableCell className="font-medium">{source.name}</TableCell>
+                  <TableCell className="font-medium">
+                    <Link 
+                      href={`/sources/${source.id}`}
+                      className="hover:underline flex items-center gap-1"
+                    >
+                      {source.name}
+                      <ExternalLink className="h-3 w-3" />
+                    </Link>
+                  </TableCell>
                   <TableCell>
                     <Badge
                       variant="outline"
@@ -192,8 +169,6 @@ export default function SourcesPage() {
                   <TableCell>
                     <Badge
                       variant={source.enabled ? "default" : "secondary"}
-                      className="cursor-pointer"
-                      onClick={() => handleToggleSource(source)}
                     >
                       {source.enabled ? (
                         <>
@@ -213,22 +188,6 @@ export default function SourcesPage() {
                   </TableCell>
                   <TableCell>
                     {new Date(source.updatedAt).toLocaleDateString()}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setEditingSource(source)}
-                    >
-                      <Edit className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setDeletingSource(source)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
                   </TableCell>
                 </TableRow>
               ))}
@@ -262,32 +221,16 @@ export default function SourcesPage() {
       )}
 
       <SourceDialog
-        open={isCreateDialogOpen || !!editingSource}
+        open={isCreateDialogOpen}
         onOpenChange={(open) => {
           if (!open) {
             setIsCreateDialogOpen(false);
-            setEditingSource(null);
           }
         }}
-        source={editingSource}
+        source={null}
         onSuccess={() => {
           queryClient.invalidateQueries({ queryKey: ["sources"] });
           setIsCreateDialogOpen(false);
-          setEditingSource(null);
-        }}
-      />
-
-      <DeleteSourceDialog
-        open={!!deletingSource}
-        onOpenChange={(open) => {
-          if (!open) {
-            setDeletingSource(null);
-          }
-        }}
-        source={deletingSource}
-        onSuccess={() => {
-          queryClient.invalidateQueries({ queryKey: ["sources"] });
-          setDeletingSource(null);
         }}
       />
     </div>

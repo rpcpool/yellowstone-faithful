@@ -50,17 +50,25 @@ async function main() {
     }
   }
 
-  // Register worker only when running as local source
-  if (parsedArgs['local-source']) {
-    console.log("Running as local source");
-    console.log("Registering worker as local source...");
-    workerId = await registerWorker();
+  // Register worker when running as a source
+  if (parsedArgs['local-source'] || parsedArgs['source-id']) {
+    const sourceId = parsedArgs['source-id'];
     
-    // Add local queue and worker-specific queue
-    queues.push("local");
-    if (workerId) {
-      queues.push(`local:${workerId}`);
+    if (sourceId) {
+      // If source-id is provided, use it directly
+      console.log(`Running as source with ID: ${sourceId}`);
+      queues.push(`source.${sourceId}`);
       console.log(`Worker will listen to queues: ${queues.join(', ')}`);
+    } else {
+      // Legacy behavior for local-source flag
+      console.log("Running as local source");
+      console.log("Registering worker as local source...");
+      workerId = await registerWorker();
+      
+      if (workerId) {
+        queues.push(`source.${workerId}`);
+        console.log(`Worker will listen to queues: ${queues.join(', ')}`);
+      }
     }
   }
 

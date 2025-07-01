@@ -79,10 +79,13 @@ export class Source implements Entity<Source> {
     name: string,
     type: DataSourceType,
     configuration: SourceConfiguration,
-    enabled: boolean = true
+    enabled: boolean = true,
+    id?: string
   ): Source {
     const now = new Date();
-    const id = `src_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    return new Source(id, name, type, configuration, enabled, now, now);
+    // If no ID is provided, we'll let Prisma generate it
+    // Use empty string as placeholder - the repository will handle proper ID assignment
+    const sourceId = id || '';
+    return new Source(sourceId, name, type, configuration, enabled, now, now);
   }
 }

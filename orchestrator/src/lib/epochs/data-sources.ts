@@ -1,13 +1,13 @@
 import { DataSource } from '@/lib/interfaces/data-source';
+import { filesystemDataSource } from '@/sources/filesystem';
 import { httpDataSource } from '@/sources/http';
-import { localDataSource } from '@/sources/local';
 import { s3DataSource } from '@/sources/s3';
 
 // Available data sources
 export const dataSources: DataSource[] = [
   s3DataSource,
   httpDataSource,
-  localDataSource,
+  filesystemDataSource,
 ]; 
 
 export function getDataSource(name: string): DataSource {

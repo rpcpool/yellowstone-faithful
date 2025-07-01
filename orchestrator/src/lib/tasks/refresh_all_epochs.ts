@@ -7,9 +7,10 @@ import { Task } from "@/lib/interfaces/task";
 import { z } from "zod";
 import { refreshEpochTask } from "./refresh_epoch";
 import { refreshSourceTask } from "./refresh_source";
+import { PrismaSourceRepository } from "@/lib/infrastructure/repositories/prisma-source-repository";
 
 export const refreshAllEpochsArgsSchema = z.object({
-  sourceName: z.string().optional(), // Optional: filter by specific source
+  sourceId: z.string().optional(), // Optional: filter by specific source ID
   batchSize: z.number().optional().default(100), // Number of epochs to process at once
 });
 
@@ -23,13 +24,23 @@ export const refreshAllEpochsTask: Task<RefreshAllEpochsArgs> = {
     return refreshAllEpochsArgsSchema.safeParse(args).success;
   },
   run: async (args: RefreshAllEpochsArgs): Promise<boolean> => {
-    const { sourceName, batchSize = 100 } = args;
+    const { sourceId, batchSize = 100 } = args;
     
     let scheduledCount = 0;
     let failedCount = 0;
     let offset = 0;
     
-    console.log(`Starting refresh for all epochs with params:`, { sourceName, batchSize });
+    // Validate sourceId if provided
+    if (sourceId) {
+      const sourceRepository = new PrismaSourceRepository();
+      const source = await sourceRepository.findById(sourceId);
+      if (!source) {
+        throw new Error(`Source with ID ${sourceId} not found`);
+      }
+      console.log(`Starting refresh for all epochs with source: ${source.name} (ID: ${sourceId})`);
+    } else {
+      console.log(`Starting refresh for all epochs with all sources`);
+    }
     
     while (true) {
       // Fetch epochs in batches
@@ -46,11 +57,11 @@ export const refreshAllEpochsTask: Task<RefreshAllEpochsArgs> = {
       // Schedule jobs for each epoch
       for (const epoch of epochs) {
         try {
-          if (sourceName) {
+          if (sourceId) {
             // Schedule refreshSource job for specific source
             await refreshSourceTask.schedule({
               epochId: epoch.id,
-              sourceName: sourceName
+              sourceId: sourceId
             });
           } else {
             // Schedule refreshEpoch job for all sources

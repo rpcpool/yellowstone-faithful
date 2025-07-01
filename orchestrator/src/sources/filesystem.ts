@@ -4,8 +4,8 @@ import { DataSourceType } from "@/lib/interfaces/data-source";
 import { indexTypeToKebabCase } from "@/lib/utils";
 import { existsSync, statSync } from "fs";
 
-export const localDataSource: FileSystemSource = {
-  name: "Local",
+export const filesystemDataSource: FileSystemSource = {
+  name: "Filesystem",
   type: DataSourceType.FILESYSTEM,
 
   getBasePath: () => "/data/indexes",
@@ -95,6 +95,7 @@ export const localDataSource: FileSystemSource = {
     try {
       const cid = await this.getEpochCid(epoch);
       const formattedIndexType = indexTypeToKebabCase(indexType);
+      console.log(`[getEpochIndexUrl] ${this.getBasePath()}/${epoch}/epoch-${epoch}-${cid}-mainnet-${formattedIndexType}.index`);
       return `${this.getBasePath()}/${epoch}/epoch-${epoch}-${cid}-mainnet-${formattedIndexType}.index`;
     } catch {
       // If CID file doesn't exist, return a fallback URL

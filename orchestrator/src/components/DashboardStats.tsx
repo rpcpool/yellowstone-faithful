@@ -50,15 +50,15 @@ export function DashboardStats({ stats }: DashboardStatsProps) {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Epochs</CardTitle>
+            <CardTitle className="text-sm font-medium">Epochs Monitored</CardTitle>
             <Clock className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent className="text-center">
             <div className="text-2xl font-bold">
-              {stats ? `${totalEpochsDb.toLocaleString()}/${totalEpochs.toLocaleString()}` : "Loading..."}
+              {stats ? `${totalEpochsDb}/${totalEpochs + 1}` : "Loading..."}
             </div>
             <p className="text-xs text-muted-foreground">
-              Epochs Monitored
+              Monitored / Total
             </p>
           </CardContent>
         </Card>
@@ -141,7 +141,7 @@ export function DashboardStats({ stats }: DashboardStatsProps) {
             {stats ? (
               <div className="space-y-3">
                 {Object.entries(stats.statusDistribution).map(([status, count]) => {
-                  const percentage = ((count / totalEpochs) * 100).toFixed(1);
+                  const percentage = ((count / (totalEpochs + 1)) * 100).toFixed(1);
                   const getStatusIcon = (status: string) => {
                     switch (status.toLowerCase()) {
                       case 'complete':

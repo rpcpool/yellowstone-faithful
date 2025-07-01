@@ -23,10 +23,10 @@ export class SourceDomainService {
     // Create new source
     const source = Source.create(name, type, configuration, enabled);
 
-    // Save to repository
-    await this.sourceRepository.save(source);
+    // Save to repository and get back the source with generated ID
+    const savedSource = await this.sourceRepository.save(source);
 
-    return source;
+    return savedSource;
   }
 
   async updateSource(

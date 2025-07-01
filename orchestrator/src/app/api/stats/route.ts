@@ -13,7 +13,7 @@ export async function GET() {
     } catch (error) {
       console.error('Failed to fetch current epoch:', error);
       // Fallback to a reasonable default if RPC fails
-      currentEpoch = 792; // Use previous hardcoded value as fallback
+      currentEpoch = 800;
     }
 
     // Get the sum of all index sizes using Prisma aggregation

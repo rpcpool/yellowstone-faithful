@@ -21,14 +21,30 @@ export class PrismaSourceRepository implements SourceRepository {
     );
   }
 
-  private toPrismaData(source: Source): Prisma.SourceCreateInput | Prisma.SourceUpdateInput {
-    return {
-      id: source.id,
+  private toPrismaCreateData(source: Source): Prisma.SourceCreateInput {
+    const data: Prisma.SourceCreateInput = {
       name: source.name,
       type: source.type,
       configuration: source.configuration as Prisma.JsonObject,
       enabled: source.enabled,
       createdAt: source.createdAt,
+      updatedAt: source.updatedAt
+    };
+    
+    // Only include ID if it's not empty (for existing entities)
+    if (source.id) {
+      data.id = source.id;
+    }
+    
+    return data;
+  }
+  
+  private toPrismaUpdateData(source: Source): Prisma.SourceUpdateInput {
+    return {
+      name: source.name,
+      type: source.type,
+      configuration: source.configuration as Prisma.JsonObject,
+      enabled: source.enabled,
       updatedAt: source.updatedAt
     };
   }
@@ -93,14 +109,24 @@ export class PrismaSourceRepository implements SourceRepository {
     };
   }
 
-  async save(source: Source): Promise<void> {
-    const data = this.toPrismaData(source);
+  async save(source: Source): Promise<Source> {
+    let savedSource: PrismaSource;
     
-    await prisma.source.upsert({
-      where: { id: source.id },
-      update: data as Prisma.SourceUpdateInput,
-      create: data as Prisma.SourceCreateInput
-    });
+    if (source.id) {
+      // Update existing source
+      savedSource = await prisma.source.upsert({
+        where: { id: source.id },
+        update: this.toPrismaUpdateData(source),
+        create: this.toPrismaCreateData(source)
+      });
+    } else {
+      // Create new source (let Prisma generate the ID)
+      savedSource = await prisma.source.create({
+        data: this.toPrismaCreateData(source)
+      });
+    }
+    
+    return this.toDomainEntity(savedSource);
   }
 
   async delete(id: string): Promise<void> {
