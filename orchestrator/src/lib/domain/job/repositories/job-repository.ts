@@ -11,5 +11,5 @@ export interface JobRepository extends Repository<Job> {
     jobType: string,
     statuses: JobStatus[]
   ): Promise<Job | null>;
-  save(job: Job): Promise<void>;
+  save(job: Job): Promise<Job>;
 }

@@ -37,19 +37,19 @@ export function createFilesystemSource(id: string, name: string, config: {
       return false;
     },
 
-    async epochIndexExists(epoch: number, indexType: IndexType): Promise<boolean> {
+    async epochIndexExists(_epoch: number, _indexType: IndexType): Promise<boolean> {
       return false;
     },
 
-    async epochGsfaIndexExists(epoch: number): Promise<boolean> {
+    async epochGsfaIndexExists(_epoch: number): Promise<boolean> {
       return false;
     },
 
-    async epochIndexStats(epoch: number, indexType: IndexType): Promise<{ size: number }> {
+    async epochIndexStats(_epoch: number, _indexType: IndexType): Promise<{ size: number }> {
       return { size: 0 };
     },
 
-    async getEpochCid(epoch: number): Promise<string> {
+    async getEpochCid(_epoch: number): Promise<string> {
       throw new Error("Not implemented");
     },
 

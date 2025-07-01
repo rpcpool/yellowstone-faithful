@@ -65,7 +65,7 @@ export class PrismaJobRepository implements JobRepository {
     return this.toDomain(jobData);
   }
 
-  async save(job: Job): Promise<void> {
+  async save(job: Job): Promise<Job> {
     const data = {
       id: job.getId(),
       epochId: job.getEpochId().getValue(),
@@ -76,7 +76,7 @@ export class PrismaJobRepository implements JobRepository {
       updatedAt: job.getUpdatedAt()
     };
 
-    await this.prisma.job.upsert({
+    const savedJob = await this.prisma.job.upsert({
       where: { id: job.getId() },
       update: {
         status: data.status,
@@ -85,6 +85,8 @@ export class PrismaJobRepository implements JobRepository {
       },
       create: data
     });
+
+    return this.toDomain(savedJob);
   }
 
   async delete(id: string): Promise<void> {

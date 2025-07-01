@@ -1,7 +1,5 @@
 import { NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
-import { EpochStatus } from '@/lib/domain/epoch/value-objects/epoch-status';
-import { EpochStatusCalculator } from '@/lib/domain/epoch/services/epoch-status-calculator';
+import { PrismaClient } from '@/generated/prisma';
 
 const prisma = new PrismaClient();
 
@@ -17,7 +15,7 @@ interface EpochWithIndexes {
 }
 
 export async function GET(
-  req: Request,
+  _req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
@@ -62,8 +60,6 @@ export async function GET(
     });
 
     // Calculate status for each epoch based on available indexes from this source
-    const statusCalculator = new EpochStatusCalculator();
-    
     const epochs = epochsWithIndexes.map((epoch: EpochWithIndexes) => {
       // Get the index types available from this source
       const indexTypes = epoch.epochIndexes.map(idx => idx.type);
