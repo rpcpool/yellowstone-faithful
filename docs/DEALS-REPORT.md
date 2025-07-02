@@ -4,9 +4,10 @@
 
 | Epoch | Metadata Entries | Deals in CSV | Deals to Metadata Ratio | Deals Active | Percent Active | Pieces Not Found |
 |-------|------------------|--------------|-------------------------|--------------|----------------|------------------|
+| 810 | pending cargen | 0 | 0.0% | 0 | 0.0% | 0 |
 | 809 | pending cargen | 0 | 0.0% | 0 | 0.0% | 0 |
-| 808 | pending cargen | 0 | 0.0% | 0 | 0.0% | 0 |
-| 807 | pending cargen | 0 | 0.0% | 0 | 0.0% | 0 |
+| 808 | 211 | 0 | 0.0% | 0 | 0.0% | 0 |
+| 807 | 201 | 0 | 0.0% | 0 | 0.0% | 0 |
 | 806 | 195 | 0 | 0.0% | 0 | 0.0% | 0 |
 | 805 | 198 | 0 | 0.0% | 0 | 0.0% | 0 |
 | 804 | 198 | 0 | 0.0% | 0 | 0.0% | 0 |
@@ -814,13 +815,13 @@
 | 2 | 1 | 4 | 400.0% | 4 | 100.0% | 0 |
 | 1 | 1 | 4 | 400.0% | 4 | 100.0% | 0 |
 | 0 | 1 | 6 | 600.0% | 6 | 100.0% | 0 |
-| **Total** | 40,569 | 40,237 | 99.2% | 34,523 | 85.8% | 5,714 |
+| **Total** | 40,981 | 40,237 | 98.2% | 34,523 | 85.8% | 5,714 |
 
 ## Summary for All Epochs
 
-- **Metadata Entries**: 40,569
+- **Metadata Entries**: 40,981
 - **Deals in CSV**: 40,237
-- **Deals to Metadata Ratio**: 99.2%
+- **Deals to Metadata Ratio**: 98.2%
 - **Deals Active**: 34,523
 - **Percent Active**: 85.8%
 - **Pieces Not Found**: 5,714
