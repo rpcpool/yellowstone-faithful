@@ -1,6 +1,7 @@
-import { DataSource, DataSourceType } from "@/lib/interfaces/data-source";
 import { IndexType } from "@/generated/prisma";
+import { DataSource, DataSourceType } from "@/lib/interfaces/data-source";
 import { indexTypeToKebabCase } from "@/lib/utils";
+import { promises as fs } from "fs";
 
 export interface FileSystemSource extends DataSource {
   // FileSystemSource inherits all methods from DataSource
@@ -45,8 +46,14 @@ export function createFilesystemSource(id: string, name: string, config: {
       return false;
     },
 
-    async epochIndexStats(_epoch: number, _indexType: IndexType): Promise<{ size: number }> {
-      return { size: 0 };
+    async epochIndexStats(epoch: number, indexType: IndexType): Promise<{ size: number }> {
+      const filePath = await this.getEpochIndexUrl(epoch, indexType);
+      try {
+        const stat = await fs.stat(filePath);
+        return { size: stat.size };
+      } catch {
+        return { size: 0 };
+      }
     },
 
     async getEpochCid(_epoch: number): Promise<string> {
@@ -58,16 +65,16 @@ export function createFilesystemSource(id: string, name: string, config: {
     },
 
     async getEpochGsfaUrl(epoch: number): Promise<string> {
-      return `file://${config.basePath}/${epoch}/indexes/epoch-${epoch}-mainnet-gsfa.indexdir`;
+      return `file://${config.basePath}/${epoch}/epoch-${epoch}-mainnet-gsfa.indexdir`;
     },
 
     async getEpochIndexUrl(epoch: number, indexType: IndexType): Promise<string> {
       const formattedIndexType = indexTypeToKebabCase(indexType);
-      return `file://${config.basePath}/${epoch}/indexes/epoch-${epoch}-mainnet-${formattedIndexType}.index`;
+      return `file://${config.basePath}/${epoch}/epoch-${epoch}-mainnet-${formattedIndexType}.index`;
     },
 
     async getEpochGsfaIndexArchiveUrl(epoch: number): Promise<string> {
-      return `file://${config.basePath}/${epoch}/indexes/epoch-${epoch}-gsfa.indexdir.tar.zstd`;
+      return `file://${config.basePath}/${epoch}/epoch-${epoch}-gsfa.indexdir.tar.zstd`;
     },
   };
   /* eslint-enable @typescript-eslint/no-unused-vars */
