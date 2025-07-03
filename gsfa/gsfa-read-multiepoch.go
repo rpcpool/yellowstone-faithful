@@ -250,7 +250,9 @@ epochLoop:
 		if !ok {
 			return nil, fmt.Errorf("epoch is not set for the #%d provided gsfa reader", readerIndex)
 		}
+		klog.Infof("DEBUG GSFA: Checking epoch %d for pk=%s (reader index %d)", epochNum, pk, readerIndex)
 		if epochNum > beforeEpoch {
+			klog.Infof("DEBUG GSFA: Skipping epoch %d > beforeEpoch %d", epochNum, beforeEpoch)
 			continue epochLoop
 		}
 
@@ -258,6 +260,7 @@ epochLoop:
 		locs, err := index.offsets.Get(pk)
 		if err != nil {
 			if compactindexsized.IsNotFound(err) {
+				klog.Infof("DEBUG GSFA: pk=%s not found in epoch %d index", pk, epochNum)
 				continue epochLoop
 			}
 			return nil, fmt.Errorf("error while getting initial offset: %w", err)
@@ -279,17 +282,25 @@ epochLoop:
 			if err != nil {
 				return nil, fmt.Errorf("error while reading linked log with next=%v: %w", next, err)
 			}
-			klog.V(5).Infof("ReadWithSize took %s to get %d locs", time.Since(startedReadAt), len(locations))
+			klog.Infof("DEBUG GSFA: ReadWithSize took %s to get %d locs for pk=%s", time.Since(startedReadAt), len(locations), pk)
 			if len(locations) == 0 {
+				klog.Infof("DEBUG GSFA: No locations found for pk=%s in epoch %d", pk, epochNum)
 				continue epochLoop
+			}
+			// Log first and last location slots
+			if len(locations) > 0 {
+				klog.Infof("DEBUG GSFA: Found %d locations for pk=%s, slot range [%d-%d], checking against before=%d, until=%d", 
+					len(locations), pk, locations[0].Slot, locations[len(locations)-1].Slot, before, until)
 			}
 			debugln("sigIndexes:", locations, "newNext:", newNext)
 			next = &newNext
 			for locIndex, txLoc := range locations {
 				if txLoc.Slot >= before {
+					klog.Infof("DEBUG GSFA: Skipping tx at slot %d >= before %d", txLoc.Slot, before)
 					continue // Skip transactions that are not before the given slot.
 				}
 				if txLoc.Slot < until {
+					klog.Infof("DEBUG GSFA: Breaking at tx slot %d < until %d", txLoc.Slot, until)
 					break epochLoop // Stop if we reached a transaction that is before the given slot.
 				}
 				tx, err := fetcher(epochNum, txLoc)
@@ -303,11 +314,12 @@ epochLoop:
 				if err != nil {
 					return nil, fmt.Errorf("error while getting signature: %w", err)
 				}
-				klog.V(5).Infoln(locIndex, "sig:", sig, "slot:", tx.Slot, "epoch:", epochNum)
+				klog.Infof("DEBUG GSFA: Processing tx %d sig=%s slot=%d epoch=%d for pk=%s", locIndex, sig, tx.Slot, epochNum, pk)
 				if limit > 0 && transactions.Count() >= limit {
 					break epochLoop
 				}
 				transactions[epochNum] = append(transactions[epochNum], tx)
+				klog.Infof("DEBUG GSFA: Added tx to results, total count now: %d", transactions.Count())
 			}
 		}
 	}
