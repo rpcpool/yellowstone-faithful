@@ -4733,6 +4733,10 @@ func DeserializeTransactionStatusMeta(deserializer serde.Deserializer) (Transact
 	if val, err := deserialize_vector_u64(deserializer); err == nil {
 		obj.PreBalances = val
 	} else {
+		if errors.Is(err, io.EOF) {
+			deserializer.DecreaseContainerDepth()
+			return obj, nil
+		}
 		return obj, fmt.Errorf("Failed to deserialize PreBalances: %w", err)
 	}
 	if val, err := deserialize_vector_u64(deserializer); err == nil {
@@ -4744,6 +4748,8 @@ func DeserializeTransactionStatusMeta(deserializer serde.Deserializer) (Transact
 		}
 		return obj, fmt.Errorf("Failed to deserialize PostBalances: %w", err)
 	}
+
+	// Beyond this point, we handle optional fields that may not always be present.
 	if val, err := deserialize_option_vector_InnerInstructions(deserializer); err == nil {
 		obj.InnerInstructions = val
 	} else {
