@@ -41,17 +41,16 @@ type StoredConfirmedBlock struct {
 	BlockHeight       *uint64 // This field is optional and may not be present in all serialized
 }
 
-func BincodeDeserializeStoredConfirmedBlock(input []byte) (StoredConfirmedBlock, error) {
+func BincodeDeserializeStoredConfirmedBlock(input []byte) (*StoredConfirmedBlock, error) {
 	if input == nil {
-		var obj StoredConfirmedBlock
-		return obj, fmt.Errorf("cannot deserialize null array")
+		return nil, fmt.Errorf("cannot deserialize null array")
 	}
 	deserializer := NewDeserializer(input)
 	obj, err := DeserializeStoredConfirmedBlock(deserializer)
 	if err == nil && deserializer.GetBufferOffset() < uint64(len(input)) {
-		return obj, fmt.Errorf("some input bytes were not read")
+		return nil, fmt.Errorf("some input bytes were not read")
 	}
-	return obj, err
+	return &obj, err
 }
 
 func DeserializeStoredConfirmedBlock(deserializer serde.Deserializer) (StoredConfirmedBlock, error) {
@@ -174,25 +173,29 @@ func deserialize_option_StoredConfirmedBlockTransactionStatusMeta(deserializer s
 //	    pre_balances: Vec<u64>,
 //	    post_balances: Vec<u64>,
 //	}
+//
+// This is how tx meta is stored in bigtable (different from the one in RocksDB).
 type StoredConfirmedBlockTransactionStatusMeta struct {
-	raw          []byte // This field is used to store the raw bytes of the transaction status meta.
 	Err          *TransactionError
 	Fee          uint64
 	PreBalances  []uint64
 	PostBalances []uint64
 }
 
-// StoredConfirmedBlockTransactionStatusMeta.Raw returns the raw bytes of the transaction status meta.
-func (obj *StoredConfirmedBlockTransactionStatusMeta) Raw() []byte {
-	if obj == nil {
-		return nil
+func BincodeDeserializeStoredConfirmedBlockTransactionStatusMeta(input []byte) (StoredConfirmedBlockTransactionStatusMeta, error) {
+	if input == nil {
+		return StoredConfirmedBlockTransactionStatusMeta{}, fmt.Errorf("cannot deserialize null array")
 	}
-	return obj.raw
+	deserializer := NewDeserializer(input)
+	obj, err := DeserializeStoredConfirmedBlockTransactionStatusMeta(deserializer)
+	if err == nil && deserializer.GetBufferOffset() < uint64(len(input)) {
+		return StoredConfirmedBlockTransactionStatusMeta{}, fmt.Errorf("some input bytes were not read")
+	}
+	return obj, err
 }
 
 func DeserializeStoredConfirmedBlockTransactionStatusMeta(de serde.Deserializer) (StoredConfirmedBlockTransactionStatusMeta, error) {
 	var obj StoredConfirmedBlockTransactionStatusMeta
-	obj.raw = de.(*deserializer).Buffer.Bytes() // Store the raw bytes for later use.
 	if err := de.IncreaseContainerDepth(); err != nil {
 		return obj, fmt.Errorf("failed to increase container depth at StoredConfirmedBlockTransactionStatusMeta: %w", err)
 	}
@@ -222,6 +225,7 @@ func DeserializeStoredConfirmedBlockTransactionStatusMeta(de serde.Deserializer)
 		return obj, fmt.Errorf("failed to deserialize PostBalances: %w", err)
 	}
 	de.DecreaseContainerDepth()
+
 	return obj, nil
 }
 
