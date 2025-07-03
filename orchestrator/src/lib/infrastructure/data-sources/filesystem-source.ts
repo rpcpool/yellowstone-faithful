@@ -66,6 +66,7 @@ export function createFilesystemSource(id: string, name: string, config: {
     },
 
     async getEpochGsfaUrl(epoch: number): Promise<string> {
+      const cid = await this.getEpochCid(epoch);
       return `file://${config.basePath}/${epoch}/epoch-${epoch}-${cid}-mainnet-gsfa.indexdir`;
     },
 
