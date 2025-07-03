@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -104,7 +105,15 @@ func newCmd_Index_gsfa() *cli.Command {
 				klog.Exit("Please provide an --index-dir=<dir to store the index>")
 			}
 			if ok, err := isDirectory(indexDir); err != nil {
-				return fmt.Errorf("error checking index-dir %q: %w", indexDir, err)
+				if errors.Is(err, os.ErrNotExist) {
+					if err := os.MkdirAll(indexDir, 0o755); err != nil {
+						return fmt.Errorf("failed to create index-dir: %w", err)
+					} else {
+						klog.Infof("Created index-dir: %s", indexDir)
+					}
+				} else {
+					return err
+				}
 			} else if !ok {
 				return fmt.Errorf("index-dir is not a directory")
 			}
@@ -127,14 +136,16 @@ func newCmd_Index_gsfa() *cli.Command {
 			}
 
 			meta := indexmeta.Meta{}
-			if err := meta.AddUint64(indexmeta.MetadataKey_Epoch, epoch); err != nil {
-				return fmt.Errorf("failed to add epoch to sig_exists index metadata: %w", err)
-			}
-			if err := meta.AddCid(indexmeta.MetadataKey_RootCid, rootCID); err != nil {
-				return fmt.Errorf("failed to add root cid to sig_exists index metadata: %w", err)
-			}
-			if err := meta.AddString(indexmeta.MetadataKey_Network, string(network)); err != nil {
-				return fmt.Errorf("failed to add network to sig_exists index metadata: %w", err)
+			{
+				if err := meta.AddUint64(indexmeta.MetadataKey_Epoch, epoch); err != nil {
+					return fmt.Errorf("failed to add epoch to sig_exists index metadata: %w", err)
+				}
+				if err := meta.AddCid(indexmeta.MetadataKey_RootCid, rootCID); err != nil {
+					return fmt.Errorf("failed to add root cid to sig_exists index metadata: %w", err)
+				}
+				if err := meta.AddString(indexmeta.MetadataKey_Network, string(network)); err != nil {
+					return fmt.Errorf("failed to add network to sig_exists index metadata: %w", err)
+				}
 			}
 			tmpDir := c.String("tmp-dir")
 			tmpDir = filepath.Join(tmpDir, fmt.Sprintf("yellowstone-faithful-gsfa-%d", time.Now().UnixNano()))
@@ -236,8 +247,7 @@ func newCmd_Index_gsfa() *cli.Command {
 							if requireTxMetadata {
 								klog.Errorf("Transaction %s has no metadata", txWithInfo.Transaction.Signatures[0])
 								spew.Dump(txWithInfo.Error, txWithInfo.IsMetaParseError())
-								spew.Dump(txWithInfo)
-								panic("metadata error")
+								panic("Transaction has no metadata, but requireTxMetadata is set to true")
 							}
 						}
 						isSuccess := func() bool {
@@ -320,7 +330,7 @@ func newCmd_Index_gsfa() *cli.Command {
 				if err := indexW.Close(); err != nil {
 					klog.Fatalf("Error while closing: %s", err)
 				}
-				klog.Infof("Success: gSFA index created at %s with %d transactions", gsfaIndexDir, numProcessedTransactions.Load())
+				klog.Infof("Success: gSFA index created at %s with %s transactions", gsfaIndexDir, humanize.Comma(int64(numProcessedTransactions.Load())))
 				klog.Infof("Finished in %s", time.Since(startedAt))
 			}
 
