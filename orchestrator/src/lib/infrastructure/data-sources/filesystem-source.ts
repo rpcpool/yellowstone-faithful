@@ -56,8 +56,9 @@ export function createFilesystemSource(id: string, name: string, config: {
       }
     },
 
-    async getEpochCid(_epoch: number): Promise<string> {
-      throw new Error("Not implemented");
+    async getEpochCid(epoch: number): Promise<string> {
+      const response = await fetch(`https://files.old-faithful.net/${epoch}/epoch-${epoch}.cid`);
+      return (await response.text()).trim();
     },
 
     async getEpochCarUrl(epoch: number): Promise<string> {
@@ -65,16 +66,18 @@ export function createFilesystemSource(id: string, name: string, config: {
     },
 
     async getEpochGsfaUrl(epoch: number): Promise<string> {
-      return `file://${config.basePath}/${epoch}/epoch-${epoch}-mainnet-gsfa.indexdir`;
+      return `file://${config.basePath}/${epoch}/epoch-${epoch}-${cid}-mainnet-gsfa.indexdir`;
     },
 
     async getEpochIndexUrl(epoch: number, indexType: IndexType): Promise<string> {
+      const cid = await this.getEpochCid(epoch);
       const formattedIndexType = indexTypeToKebabCase(indexType);
-      return `file://${config.basePath}/${epoch}/epoch-${epoch}-mainnet-${formattedIndexType}.index`;
+      return `file://${config.basePath}/${epoch}/epoch-${epoch}-${cid}-mainnet-${formattedIndexType}.index`;
     },
 
     async getEpochGsfaIndexArchiveUrl(epoch: number): Promise<string> {
-      return `file://${config.basePath}/${epoch}/epoch-${epoch}-gsfa.indexdir.tar.zstd`;
+      const cid = await this.getEpochCid(epoch);
+      return `file://${config.basePath}/${epoch}/epoch-${epoch}-${cid}-mainnet-gsfa.indexdir.tar.zstd`;
     },
   };
   /* eslint-enable @typescript-eslint/no-unused-vars */
