@@ -31,7 +31,6 @@ interface EpochsResponse {
 }
 
 async function getEpochs(page: number, pageSize: number, search?: string, status?: string): Promise<EpochsResponse> {
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
   const params = new URLSearchParams({
     page: page.toString(),
     pageSize: pageSize.toString(),
@@ -46,7 +45,7 @@ async function getEpochs(page: number, pageSize: number, search?: string, status
   }
   
   const response = await fetch(
-    `${baseUrl}/api/epochs?${params.toString()}`,
+    `/api/epochs?${params.toString()}`,
     {
       cache: 'no-store',
     }
