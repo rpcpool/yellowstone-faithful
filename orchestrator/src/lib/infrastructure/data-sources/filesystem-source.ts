@@ -34,16 +34,34 @@ export function createFilesystemSource(id: string, name: string, config: {
     type: DataSourceType.FILESYSTEM,
 
     async epochExists(_epoch: number): Promise<boolean> {
-      // Would check if directory exists at ${basePath}/epoch-${epoch}
-      return false;
+      // Check if the CAR file exists
+      const carUrl = await this.getEpochCarUrl(_epoch);
+      try {
+        await fs.access(carUrl);
+        return true;
+      } catch {
+        return false;
+      }
     },
 
     async epochIndexExists(_epoch: number, _indexType: IndexType): Promise<boolean> {
-      return false;
+      const filePath = await this.getEpochIndexUrl(_epoch, _indexType);
+      try {
+        await fs.access(filePath);
+        return true;
+      } catch {
+        return false;
+      }
     },
 
     async epochGsfaIndexExists(_epoch: number): Promise<boolean> {
-      return false;
+      const filePath = await this.getEpochGsfaUrl(_epoch);
+      try {
+        await fs.access(filePath);
+        return true;
+      } catch {
+        return false;
+      }
     },
 
     async epochIndexStats(epoch: number, indexType: IndexType): Promise<{ size: number }> {
@@ -62,23 +80,23 @@ export function createFilesystemSource(id: string, name: string, config: {
     },
 
     async getEpochCarUrl(epoch: number): Promise<string> {
-      return `file://${config.basePath}/${epoch}/epoch-${epoch}.car`;
+      return `${config.basePath}/${epoch}/epoch-${epoch}.car`;
     },
 
     async getEpochGsfaUrl(epoch: number): Promise<string> {
       const cid = await this.getEpochCid(epoch);
-      return `file://${config.basePath}/${epoch}/epoch-${epoch}-${cid}-mainnet-gsfa.indexdir`;
+      return `${config.basePath}/${epoch}/epoch-${epoch}-${cid}-mainnet-gsfa.indexdir`;
     },
 
     async getEpochIndexUrl(epoch: number, indexType: IndexType): Promise<string> {
       const cid = await this.getEpochCid(epoch);
       const formattedIndexType = indexTypeToKebabCase(indexType);
-      return `file://${config.basePath}/${epoch}/epoch-${epoch}-${cid}-mainnet-${formattedIndexType}.index`;
+      return `${config.basePath}/${epoch}/epoch-${epoch}-${cid}-mainnet-${formattedIndexType}.index`;
     },
 
     async getEpochGsfaIndexArchiveUrl(epoch: number): Promise<string> {
       const cid = await this.getEpochCid(epoch);
-      return `file://${config.basePath}/${epoch}/epoch-${epoch}-${cid}-mainnet-gsfa.indexdir.tar.zstd`;
+      return `${config.basePath}/${epoch}/epoch-${epoch}-${cid}-mainnet-gsfa.indexdir.tar.zstd`;
     },
   };
   /* eslint-enable @typescript-eslint/no-unused-vars */
