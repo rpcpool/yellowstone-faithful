@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"strings"
 
 	"github.com/novifinancial/serde-reflection/serde-generate/runtime/golang/bincode"
 	"github.com/novifinancial/serde-reflection/serde-generate/runtime/golang/serde"
@@ -4785,74 +4784,42 @@ func DeserializeTransactionStatusMeta(deserializer serde.Deserializer) (Transact
 	if val, err := deserialize_option_vector_InnerInstructions(deserializer); err == nil {
 		obj.InnerInstructions = val
 	} else {
-		if errors.Is(err, io.EOF) {
-			deserializer.DecreaseContainerDepth()
-			return obj, nil
-		}
-		return obj, fmt.Errorf("Failed to deserialize InnerInstructions: %w", err)
+		return obj, nil
 	}
 	if val, err := deserialize_option_vector_str(deserializer); err == nil {
 		obj.LogMessages = val
 	} else {
-		if errors.Is(err, io.EOF) {
-			deserializer.DecreaseContainerDepth()
-			return obj, nil
-		}
-		return obj, fmt.Errorf("Failed to deserialize LogMessages: %w", err)
+		return obj, nil
 	}
 	if val, err := deserialize_option_vector_TransactionTokenBalance(deserializer); err == nil {
 		obj.PreTokenBalances = val
 	} else {
-		if errors.Is(err, io.EOF) || strings.Contains(err.Error(), "invalid bool byte") || strings.Contains(err.Error(), "length is too large") {
-			deserializer.DecreaseContainerDepth()
-			return obj, nil
-		}
-		return obj, fmt.Errorf("Failed to deserialize PreTokenBalances: %w", err)
+		return obj, nil
 	}
 	if val, err := deserialize_option_vector_TransactionTokenBalance(deserializer); err == nil {
 		obj.PostTokenBalances = val
 	} else {
-		if errors.Is(err, io.EOF) || strings.Contains(err.Error(), "invalid bool byte") || strings.Contains(err.Error(), "length is too large") {
-			deserializer.DecreaseContainerDepth()
-			return obj, nil
-		}
-		return obj, fmt.Errorf("Failed to deserialize PostTokenBalances: %w", err)
+		return obj, nil
 	}
 	if val, err := deserialize_option_vector_Reward(deserializer); err == nil {
 		obj.Rewards = val
 	} else {
-		if errors.Is(err, io.EOF) {
-			deserializer.DecreaseContainerDepth()
-			return obj, nil
-		}
-		return obj, fmt.Errorf("Failed to deserialize Rewards: %w", err)
+		return obj, nil
 	}
 	if val, err := DeserializeLoadedAddresses(deserializer); err == nil {
 		obj.LoadedAddresses = val
 	} else {
-		if errors.Is(err, io.EOF) {
-			deserializer.DecreaseContainerDepth()
-			return obj, nil
-		}
-		return obj, fmt.Errorf("Failed to deserialize LoadedAddresses: %w", err)
+		return obj, nil
 	}
 	if val, err := deserialize_option_TransactionReturnData(deserializer); err == nil {
 		obj.ReturnData = val
 	} else {
-		if errors.Is(err, io.EOF) {
-			deserializer.DecreaseContainerDepth()
-			return obj, nil
-		}
-		return obj, fmt.Errorf("Failed to deserialize ReturnData: %w", err)
+		return obj, nil
 	}
 	if val, err := deserialize_option_u64(deserializer); err == nil {
 		obj.ComputeUnitsConsumed = val
 	} else {
-		if errors.Is(err, io.EOF) {
-			deserializer.DecreaseContainerDepth()
-			return obj, nil
-		}
-		return obj, fmt.Errorf("Failed to deserialize ComputeUnitsConsumed: %w", err)
+		return obj, nil
 	}
 	deserializer.DecreaseContainerDepth()
 	return obj, nil
