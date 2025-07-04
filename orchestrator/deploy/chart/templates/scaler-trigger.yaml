@@ -1,0 +1,9 @@
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: keda-redis-stream-triggerauth
+spec:
+  secretTargetRef:
+    - parameter: password
+      name: car-processing-redis # name of the Secret
+      key: redis-password # name of the key in the Secret
