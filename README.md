@@ -29,15 +29,18 @@ The command accepts a list of [epoch config files](#epoch-configuration-files) a
 
 It supports the following flags:
 
-- `--listen`: The address to listen on, e.g. `--listen=:8888`
+- `--listen`: The address to listen on for JSON-RPC requests, e.g. `--listen=:8888`
+- `--grpc-listen`: The address to listen on for gRPC requests, e.g. `--grpc-listen=:8889`
 - `--include`: You can specify one or more (reuse the same flag multiple times) glob patterns to include files or dirs that match them, e.g. `--include=/path/epoch-*.yml`.
 - `--exclude`: You can specify one or more (reuse the same flag multiple times) glob patterns to exclude files or dirs that match them, e.g. `--exclude=/something-*/epoch-*.yml`.
 - `--debug`: Enable debug logging.
-- `--proxy`: Proxy requests to a downstream RPC server if the data can't be found in the archive, e.g. `--proxy=/path/to/my-rpc.json`. See [RPC server proxying](#rpc-server-proxying) for more details.
+- `--proxy`: Proxy requests to a downstream RPC server if the data can't be found in the archive, e.g. `--proxy=/path/to/my-proxy-config.yml`. See [RPC server proxying](#rpc-server-proxying) for more details.
 - `--gsfa-only-signatures`: When enabled, the RPC server will only return signatures for getSignaturesForAddress requests instead of the full transaction data.
 - `--watch`: When specified, all the provided epoch files and dirs will be watched for changes and the RPC server will automatically reload the data when changes are detected. Usage: `--watch` (boolean flag). This is useful when you want to provide just a folder and then add new epochs to it without having to restart the server.
 - `--epoch-load-concurrency=2`: How many epochs to load in parallel when starting the RPC server. Defaults to number of CPUs. This is useful when you have a lot of epochs and want to speed up the initial load time.
+- `--epoch-search-concurrency=3`: How many epochs to search in parallel when looking for data. Defaults to 3. This is useful for performance tuning when serving requests across multiple epochs.
 - `--max-cache=<megabytes>`: How much memory to use for caching. Defaults to 0 (no limit). This is useful when you want to limit the memory usage of the RPC server.
+- `--filecoin-api-address`: Filecoin API endpoint address for direct Filecoin retrievals, e.g. `--filecoin-api-address=https://api.node.glif.io`
 
 NOTES:
 
@@ -57,12 +60,26 @@ data: # data section (required)
     # This makes the indexes.cid_to_offset_and_size required.
     # If you are running in filecoin-mode, you can omit the car section entirely.
     uri: /media/runner/solana/cars/epoch-0.car
+    # Alternative: Source CAR data from Filecoin pieces (advanced)
+    # from_pieces:
+    #   metadata:
+    #     uri: /path/to/metadata.json
+    #   deals:
+    #     uri: /path/to/deals.json
+    #   piece_to_uri:
+    #     bafk2bzaceabc123...: # piece CID
+    #       uri: "https://example.com/piece"
   filecoin:
     # filecoin-mode section: source the data directly from filecoin.
     # If you are running in car-mode, you can omit this section.
     # if enable=true, then the data will be sourced from filecoin.
     # if enable=false, then the data will be sourced from a CAR file (see 'car' section above).
     enable: false
+    # Optional: Specify root CID and providers for Filecoin retrievals
+    # root_cid: bafyreifljyxj55v6jycjf2y7tdibwwwqx75eqf5mn2thip2sswyc536zqq
+    # providers:
+    #   - "/ip4/1.2.3.4/tcp/1234/p2p/12D3KooWExample..."
+    #   - "/ip4/5.6.7.8/tcp/5678/p2p/12D3KooWAnother..."
 genesis: # genesis section (required for epoch 0 only)
   # Local filepath to the genesis tarball.
   # You can download the genesis tarball from
@@ -82,6 +99,9 @@ indexes: # indexes section (required)
   sig_exists:
     # required (always); you can provide either a local filepath or a HTTP url:
     uri: '/media/runner/solana/indexes/epoch-0/epoch-0-bafyreifljyxj55v6jycjf2y7tdibwwwqx75eqf5mn2thip2sswyc536zqq-mainnet-sig-exists.index'
+  slot_to_blocktime:
+    # required for getBlockTime support; you can provide either a local filepath or a HTTP url:
+    uri: '/media/runner/solana/indexes/epoch-0/epoch-0-bafyreifljyxj55v6jycjf2y7tdibwwwqx75eqf5mn2thip2sswyc536zqq-mainnet-slot-to-blocktime.index'
   gsfa: # getSignaturesForAddress index
     # optional; must be a local directory path.
     uri: '/media/runner/solana/indexes/epoch-0/gsfa/epoch-0-bafyreifljyxj55v6jycjf2y7tdibwwwqx75eqf5mn2thip2sswyc536zqq-gsfa.indexdir'
@@ -91,6 +111,24 @@ NOTES:
 
 - The `uri` parameter supports both HTTP URIs as well as file based ones (where not specified otherwise).
 - If you specify an HTTP URI, you need to make sure that the url supports HTTP Range requests. S3 or similar APIs will support this.
+
+## RPC server proxying
+
+The RPC server supports proxying requests to a downstream RPC server when data can't be found in the archive. This is configured via the `--proxy` flag which takes a path to a proxy configuration file.
+
+### Proxy configuration file format
+
+```yaml
+target: "https://api.mainnet-beta.solana.com"
+headers:
+  "User-Agent": "Old-Faithful-RPC-Server"
+  "Custom-Header": "custom-value"
+proxyFailedRequests: true
+```
+
+- `target`: The downstream RPC server URL to proxy requests to
+- `headers`: Optional HTTP headers to include in proxied requests
+- `proxyFailedRequests`: Whether to proxy requests that fail (default: false)
 
 ## Index generation
 
@@ -132,13 +170,14 @@ The content addressable nature means that each epoch, block, transaction and shr
 
 ### Indexes
 
-Indexes will be needed to map Solana's block numbers, transaction signatures and addresses to their respective CIDs. These indexes will be developed as part of this project. There are four kinds of indexes that the Old Faithful index generation can provide:
+Indexes will be needed to map Solana's block numbers, transaction signatures and addresses to their respective CIDs. These indexes will be developed as part of this project. There are several kinds of indexes that the Old Faithful index generation can provide:
 
  - slot-to-cid: Lookup a CID based on a slot number
  - tx-to-cid: Lookup a CID based on a transaction signature
  - gsfa: An index mapping Solana addresses to a list of singatures
  - cid-to-offset-and-size: Index for a specific CAR file, used by the local rpc server (see above) to find CIDs in a car file
- - sig-exists: An index to speed up lookups for signatures when using multiepoch support in the production server.
+ - sig-exists: An index to speed up lookups for signatures when using multiepoch support in the production server
+ - slot-to-blocktime: Maps slot numbers to their block timestamps, required for getBlockTime RPC method support
 
 ### Archive access
 
@@ -154,7 +193,8 @@ The data that you will need to be able to run a local RPC server is:
   3) the tx-to-cid index for that epoch
   4) the cid-to-offset-and-size index for that epoch car file
   5) the sig-exists index for that epoch (optional, but important to speed up multiepoch fetches)
-  6) Optionally (if you want to support getSignaturesForAddress): the gsfa index
+  6) the slot-to-blocktime index for that epoch (required for getBlockTime support)
+  7) Optionally (if you want to support getSignaturesForAddress): the gsfa index
 
 The epoch car file can be generated from a rocksdb snapshot from a running validator or from one of the archives provided by the Solana foundation or third parties like Triton. You can also download a pre-generated Epoch car file either from Filecoin itself or via the download URLs provided by Triton.
 
