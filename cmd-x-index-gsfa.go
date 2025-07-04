@@ -130,9 +130,21 @@ func newCmd_Index_gsfa() *cli.Command {
 				network,
 			))
 			klog.Infof("Creating gsfa index dir at %s", gsfaIndexDir)
+			if fileExists, err := isFileOrDirExists(gsfaIndexDir); err != nil {
+				return fmt.Errorf("failed to check if gsfa index dir exists: %w", err)
+			} else if fileExists {
+				if isNonEmpty, err := isDirNonEmpty(gsfaIndexDir); err != nil {
+					return fmt.Errorf("failed to check if gsfa index dir is non-empty: %w", err)
+				} else if isNonEmpty {
+					return fmt.Errorf("gsfa index dir already exists and is not empty: %s", gsfaIndexDir)
+				}
+				klog.Infof("gsfa index dir already exists: %s", gsfaIndexDir)
+				klog.Infof("If you want to overwrite it, please delete it first.")
+				return nil
+			}
 			err = os.Mkdir(gsfaIndexDir, 0o755)
 			if err != nil {
-				return fmt.Errorf("failed to create index dir: %w", err)
+				return fmt.Errorf("failed to create gsfa index dir: %w", err)
 			}
 
 			meta := indexmeta.Meta{}
@@ -347,4 +359,26 @@ func formatIndexDirname_gsfa(epoch uint64, rootCid cid.Cid, network indexes.Netw
 		network,
 		"gsfa.indexdir",
 	)
+}
+
+func isFileOrDirExists(path string) (bool, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil // File or directory does not exist
+		}
+		return false, err // Other error occurred
+	}
+	return info.IsDir() || info.Mode().IsRegular(), nil // Return true if it's a directory or a regular file
+}
+
+func isDirNonEmpty(path string) (bool, error) {
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil // Directory does not exist
+		}
+		return false, err // Other error occurred
+	}
+	return len(entries) > 0, nil // Return true if there are any entries in the directory
 }
