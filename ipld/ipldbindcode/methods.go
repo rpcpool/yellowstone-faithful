@@ -342,3 +342,135 @@ func (n Block) HasRewards() bool {
 	hasRewards := !n.Rewards.(cidlink.Link).Cid.Equals(dummycid.DummyCID)
 	return hasRewards
 }
+
+// List__Link.Reset() resets the List__Link to an empty state.
+func (l *List__Link) Reset() {
+	if l == nil {
+		return
+	}
+	*l = (*l)[:0] // Reset the slice to an empty state.
+}
+
+// Epoch.Reset resets the Epoch to an empty state.
+func (e *Epoch) Reset() {
+	if e == nil {
+		return
+	}
+	e.Kind = 0
+	e.Epoch = 0
+	e.Subsets.Reset() // Reset the slice to an empty state.
+}
+
+// Subset.Reset resets the Subset to an empty state.
+func (s *Subset) Reset() {
+	if s == nil {
+		return
+	}
+	s.Kind = 0
+	s.First = 0
+	s.Last = 0
+	s.Blocks.Reset() // Reset the slice to an empty state.
+}
+
+// List__Shredding.Reset resets the List__Shredding to an empty state.
+func (l *List__Shredding) Reset() {
+	if l == nil {
+		return
+	}
+	*l = (*l)[:0] // Reset the slice to an empty state.
+}
+
+// Block.Reset resets the Block to an empty state.
+func (b *Block) Reset() {
+	if b == nil {
+		return
+	}
+	b.Kind = 0
+	b.Slot = 0
+	b.Shredding.Reset()                              // Reset the slice to an empty state.
+	b.Entries.Reset()                                // Reset the slice to an empty state.
+	b.Meta = SlotMeta{}                              // Reset the SlotMeta to an empty state.
+	b.Rewards = cidlink.Link{Cid: dummycid.DummyCID} // Reset the Rewards to a dummy CID.
+}
+
+// Rewards.Reset resets the Rewards to an empty state.
+func (r *Rewards) Reset() {
+	if r == nil {
+		return
+	}
+	r.Kind = 0
+	r.Slot = 0
+	r.Data.Reset() // Reset the DataFrame to an empty state.
+}
+
+// SlotMeta.Reset resets the SlotMeta to an empty state.
+func (s *SlotMeta) Reset() {
+	if s == nil {
+		return
+	}
+	s.Parent_slot = 0
+	s.Blocktime = 0
+	clearIntptrPtr(s.Block_height) // Reset the Block_height pointer to nil.
+	s.Block_height = nil           // Reset the pointer to nil.
+}
+
+// Shredding.Reset resets the Shredding to an empty state.
+func (s *Shredding) Reset() {
+	if s == nil {
+		return
+	}
+	s.EntryEndIdx = 0
+	s.ShredEndIdx = 0
+}
+
+// Entry.Reset resets the Entry to an empty state.
+func (e *Entry) Reset() {
+	if e == nil {
+		return
+	}
+	e.Kind = 0
+	e.NumHashes = 0
+	e.Hash = e.Hash[:0]    // Reset the Hash to an empty slice.
+	e.Transactions.Reset() // Reset the slice to an empty state.
+}
+
+// DataFrame.Reset resets the DataFrame to an empty state.
+func (d *DataFrame) Reset() {
+	if d == nil {
+		return
+	}
+	d.Kind = 0
+	if d.Hash != nil {
+		*d.Hash = nil // Reset the pointer to nil.
+	}
+	d.Hash = nil            // Reset the pointer to nil.
+	clearIntptrPtr(d.Index) // Reset the Index pointer to nil.
+	clearIntptrPtr(d.Total) // Reset the Total pointer to nil.
+	d.Total = nil           // Reset the pointer to nil.
+	d.Data = d.Data[:0]     // Reset the Data slice to an empty state.
+	if d.Next != nil && *d.Next != nil {
+		(*d.Next).Reset() // Reset the List__Link to an empty state.
+	} else {
+		d.Next = nil // Reset the pointer to nil.
+	}
+}
+
+// Transaction.Reset resets the Transaction to an empty state.
+func (t *Transaction) Reset() {
+	if t == nil {
+		return
+	}
+	t.Kind = 0
+	t.Data.Reset() // Reset the DataFrame to an empty state.
+	t.Metadata.Reset()
+	t.Slot = 0
+	clearIntptrPtr(t.Index) // Reset the Index pointer to nil.
+}
+
+func clearIntptrPtr(ptr **int) {
+	if ptr == nil || *ptr == nil {
+		return
+	}
+	**ptr = 0  // Reset the value to 0.
+	*ptr = nil // Reset the pointer to nil.
+}
