@@ -36,7 +36,7 @@ func TestReader(t *testing.T) {
 		if !ok {
 			t.Fatalf("expected true, got false")
 		}
-		_, sectionSize, data, err := mr.NextNodeBytes()
+		_, sectionSize, buf, err := mr.NextNodeBytes()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -45,6 +45,7 @@ func TestReader(t *testing.T) {
 		if sectionSize != expectedSectionSize {
 			t.Fatalf("expected size %d, got %d", expectedSectionSize, sectionSize)
 		}
+		data := buf.Bytes()
 		if !bytes.Equal(data, thisData) {
 			t.Fatalf("expected data %s, got %s", thisData, data)
 		}
@@ -88,7 +89,7 @@ func TestReader(t *testing.T) {
 		if !ok {
 			t.Fatalf("expected true, got false")
 		}
-		_, sectionSize, data, err := mr.NextNodeBytes()
+		_, sectionSize, buf, err := mr.NextNodeBytes()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -97,6 +98,7 @@ func TestReader(t *testing.T) {
 		if sectionSize != expectedSectionSize {
 			t.Fatalf("expected size %d, got %d", expectedSectionSize, sectionSize)
 		}
+		data := buf.Bytes()
 		if !bytes.Equal(data, thisData) {
 			t.Fatalf("expected data %s, got %s", thisData, data)
 		}
@@ -143,7 +145,7 @@ func TestReader(t *testing.T) {
 			if !ok {
 				t.Fatalf("expected true, got false")
 			}
-			_, sectionSize, data, err := mr.NextNodeBytes()
+			_, sectionSize, buf, err := mr.NextNodeBytes()
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -152,6 +154,7 @@ func TestReader(t *testing.T) {
 			if sectionSize != expectedSectionSize {
 				t.Fatalf("expected size %d, got %d", expectedSectionSize, sectionSize)
 			}
+			data := buf.Bytes()
 			if !bytes.Equal(data, thisData) {
 				t.Fatalf("expected data %s, got %s", thisData, data)
 			}
@@ -179,7 +182,7 @@ func TestReader(t *testing.T) {
 			if !ok {
 				t.Fatalf("expected true, got false")
 			}
-			_, sectionSize, data, err := mr.NextNodeBytes()
+			_, sectionSize, buf, err := mr.NextNodeBytes()
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -188,6 +191,7 @@ func TestReader(t *testing.T) {
 			if sectionSize != expectedSectionSize {
 				t.Fatalf("expected size %d, got %d", expectedSectionSize, sectionSize)
 			}
+			data := buf.Bytes()
 			if !bytes.Equal(data, thisData) {
 				t.Fatalf("expected data %s, got %s", thisData, data)
 			}
@@ -217,7 +221,7 @@ func TestReader(t *testing.T) {
 			if !ok {
 				t.Fatalf("expected true, got false")
 			}
-			_, sectionSize, data, err := mr.NextNodeBytes()
+			_, sectionSize, buf, err := mr.NextNodeBytes()
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -226,6 +230,7 @@ func TestReader(t *testing.T) {
 			if sectionSize != expectedSectionSize {
 				t.Fatalf("expected size %d, got %d", expectedSectionSize, sectionSize)
 			}
+			data := buf.Bytes()
 			if !bytes.Equal(data, thisData) {
 				t.Fatalf("expected data %s, got %s", thisData, data)
 			}
@@ -253,7 +258,7 @@ func TestReader(t *testing.T) {
 			if !ok {
 				t.Fatalf("expected true, got false")
 			}
-			_, sectionSize, data, err := mr.NextNodeBytes()
+			_, sectionSize, buf, err := mr.NextNodeBytes()
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -262,6 +267,7 @@ func TestReader(t *testing.T) {
 			if sectionSize != expectedSectionSize {
 				t.Fatalf("expected size %d, got %d", expectedSectionSize, sectionSize)
 			}
+			data := buf.Bytes()
 			if !bytes.Equal(data, thisData) {
 				t.Fatalf("expected data %s, got %s", thisData, data)
 			}

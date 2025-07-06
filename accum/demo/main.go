@@ -13,9 +13,11 @@ import (
 	"time"
 
 	"github.com/dustin/go-humanize"
-	"github.com/rpcpool/yellowstone-faithful/carreader"
-	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
+	"github.com/rpcpool/yellowstone-faithful/accum"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
+	"github.com/rpcpool/yellowstone-faithful/readasonecar"
+	"golang.org/x/sync/errgroup"
+	"k8s.io/klog/v2"
 )
 
 func main() {
@@ -36,15 +38,12 @@ func main() {
 
 	fmt.Println("Reading CAR file:", carPath)
 
-	file, err := os.Open(carPath)
+	reader, err := readasonecar.NewFromFilepaths(carPath)
 	if err != nil {
-		panic(fmt.Errorf("failed to open file %q: %w", carPath, err))
+		klog.Exitf("Failed to open CAR: %s", err)
 	}
-	defer file.Close()
-	reader, err := carreader.NewPrefetching(file)
-	if err != nil {
-		panic(fmt.Errorf("failed to create car reader for file %q: %w", carPath, err))
-	}
+	defer reader.Close()
+
 	size, err := sizeOfFile(carPath)
 	if err != nil {
 		panic(fmt.Errorf("failed to get size of file %q: %w", carPath, err))
@@ -61,15 +60,23 @@ func main() {
 		iplddecoders.KindEntry,
 		iplddecoders.KindRewards,
 	}
+	iterator := accum.NewReader(reader)
+	blockWg := new(errgroup.Group)
 	for {
-		numRead++
-		cid, offset, buf, err := reader.NextNodeBytes()
+		blockCheckpoint := time.Now()
+		children, err := iterator.ReadUntilBlock(skipKinds)
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				break // No more objects to read
 			}
-			panic(fmt.Errorf("error reading next object: %w", err))
+			panic(fmt.Errorf("error while reading until block: %w", err))
 		}
+		took := time.Since(blockCheckpoint)
+		if took > time.Millisecond*10 {
+			fmt.Printf("=== Read %d objects in %s ===\n", numRead, time.Since(startedAt))
+			fmt.Println("Warning: Reading a block took too long:", took)
+		}
+		numRead += children.Len()
 		if numRead%1_000_000 == 0 {
 			fmt.Printf("Read %d objects in %s\n", numRead, time.Since(lastCheckpoint))
 			lastCheckpoint = time.Now()
@@ -77,47 +84,26 @@ func main() {
 		if numRead%100_000_000 == 0 {
 			fmt.Printf("=== Read %d objects in %s ===\n", numRead, time.Since(startedAt))
 		}
-		data := buf.Bytes()
-		kind, err := iplddecoders.GetKind(data)
-		if err != nil {
-			panic(err)
-		}
-		if skipKinds.Has(kind) {
+		if children.Len() == 0 {
 			continue
 		}
-		decoded, err := iplddecoders.DecodeAny(data)
-		if err != nil {
-			panic(err)
-		}
-		switch dec := decoded.(type) {
-		case *ipldbindcode.Transaction:
-			iplddecoders.PutTransaction(dec)
-		case *ipldbindcode.Entry:
-			iplddecoders.PutEntry(dec)
-		case *ipldbindcode.Block:
-			iplddecoders.PutBlock(dec)
-		case *ipldbindcode.Subset:
-			iplddecoders.PutSubset(dec)
-		case *ipldbindcode.Epoch:
-			iplddecoders.PutEpoch(dec)
-		case *ipldbindcode.Rewards:
-			iplddecoders.PutRewards(dec)
-		case *ipldbindcode.DataFrame:
-			iplddecoders.PutDataFrame(dec)
-		default:
-			panic(fmt.Errorf("unknown kind %s for CID %s", kind, cid))
-		}
-		// if kind == iplddecoders.KindBlock {
-		// 	block, err := iplddecoders.DecodeBlock(node)
-		// 	if err != nil {
-		// 		panic(fmt.Errorf("failed to decode block: %w", err))
-		// 	}
-		// 	fmt.Printf("Reached solana block %d\n", block.Slot)
-		// }
-
-		_ = cid                  // Use cid if needed
-		_ = offset               // Use offset if needed
-		carreader.PutBuffer(buf) // Return the buffer to the pool
+		blockWg.Go(func() error {
+			startedAt := time.Now()
+			transactions, err := children.GetTransactions()
+			if err != nil {
+				panic(fmt.Errorf("error while getting transactions: %w", err))
+			}
+			tookTxs := time.Since(startedAt)
+			if tookTxs > time.Millisecond*10 {
+				fmt.Println("===Warning: Getting transactions took too long:", tookTxs)
+			}
+			_ = transactions
+			iterator.Put(children)
+			return nil
+		})
+	}
+	if err := blockWg.Wait(); err != nil {
+		klog.Exitf("Error while processing blocks: %s", err)
 	}
 }
 

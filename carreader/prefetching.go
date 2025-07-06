@@ -193,7 +193,7 @@ func (cr *PrefetchingCarReader) NextNodeBytes() (cid.Cid, uint64, *bytebufferpoo
 
 // PutBuffer returns a data buffer used by a block back to the internal pool.
 // This MUST be called after you are finished with the `[]byte` from NextNodeBytes or the block from Next.
-func (cr *PrefetchingCarReader) PutBuffer(data *bytebufferpool.ByteBuffer) {
+func PutBuffer(data *bytebufferpool.ByteBuffer) {
 	bytebufferpool.Put(data) // Return the buffer to the pool
 }
 
@@ -217,7 +217,7 @@ func (cr *PrefetchingCarReader) HeaderSize() (uint64, error) {
 // GetGlobalOffsetForNextRead is not supported in the prefetching reader as the offset
 // is managed by the background goroutine.
 func (cr *PrefetchingCarReader) GetGlobalOffsetForNextRead() (uint64, bool) {
-	return 0, false
+	panic("GetGlobalOffsetForNextRead is not supported in PrefetchingCarReader; use NextNodeBytes or NextInfo instead")
 }
 
 // readHeader remains the same as it's part of the initial setup.

@@ -173,7 +173,7 @@ func newCmd_find_missing_tx_metadata() *cli.Command {
 					}
 
 					// decode the block:
-					block, err := iplddecoders.DecodeBlock(parent.ObjectData)
+					block, err := iplddecoders.DecodeBlock(parent.ObjectData.Bytes())
 					if err != nil {
 						return fmt.Errorf("error while decoding block: %w", err)
 					}
@@ -199,6 +199,7 @@ func newCmd_find_missing_tx_metadata() *cli.Command {
 					if err != nil {
 						return fmt.Errorf("error while converting objects to transactions: %w", err)
 					}
+					defer accum.PutTransactionWithSlotSlice(transactions)
 					for ii := range transactions {
 						txWithInfo := transactions[ii]
 						numProcessedTransactions.Add(1)

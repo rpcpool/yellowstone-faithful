@@ -149,7 +149,9 @@ func main() {
 			func(blockObject *accum.ObjectWithMetadata, dagObjects accum.ObjectsWithMetadata) error {
 				numSlotsSeen.Add(1)
 
-				block, err := iplddecoders.DecodeBlock(blockObject.ObjectData)
+				rawData := blockObject.ObjectData.Bytes()
+
+				block, err := iplddecoders.DecodeBlock(rawData)
 				if err != nil {
 					return fmt.Errorf("error while decoding block: %w", err)
 				}

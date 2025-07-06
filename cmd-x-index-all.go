@@ -218,7 +218,7 @@ func createAllIndexes(
 			break
 		}
 
-		_cid, sectionLength, block, err := rd.NextNode()
+		_cid, sectionLength, buf, err := rd.NextNodeBytes()
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				break
@@ -234,11 +234,12 @@ func createAllIndexes(
 		}
 		numIndexedOffsets++
 
-		kind := iplddecoders.Kind(block.RawData()[1])
+		rawData := buf.Bytes()
+		kind := iplddecoders.Kind(rawData[1])
 		switch kind {
 		case iplddecoders.KindBlock:
 			{
-				block, err := iplddecoders.DecodeBlock(block.RawData())
+				block, err := iplddecoders.DecodeBlock(rawData)
 				if err != nil {
 					return nil, 0, fmt.Errorf("failed to decode block: %w", err)
 				}
@@ -256,7 +257,7 @@ func createAllIndexes(
 			}
 		case iplddecoders.KindTransaction:
 			{
-				txNode, err := iplddecoders.DecodeTransaction(block.RawData())
+				txNode, err := iplddecoders.DecodeTransaction(rawData)
 				if err != nil {
 					return nil, 0, fmt.Errorf("failed to decode transaction: %w", err)
 				}
@@ -599,7 +600,7 @@ func verifyAllIndexes(
 		if !ok {
 			break
 		}
-		_cid, sectionLength, block, err := rd.NextNode()
+		_cid, sectionLength, buf, err := rd.NextNodeBytes()
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				break
@@ -622,11 +623,12 @@ func verifyAllIndexes(
 
 		numIndexedOffsets++
 
-		kind := iplddecoders.Kind(block.RawData()[1])
+		rawData := buf.Bytes()
+		kind := iplddecoders.Kind(rawData[1])
 		switch kind {
 		case iplddecoders.KindBlock:
 			{
-				block, err := iplddecoders.DecodeBlock(block.RawData())
+				block, err := iplddecoders.DecodeBlock(rawData)
 				if err != nil {
 					return fmt.Errorf("failed to decode block: %w", err)
 				}
@@ -654,7 +656,7 @@ func verifyAllIndexes(
 			}
 		case iplddecoders.KindTransaction:
 			{
-				txNode, err := iplddecoders.DecodeTransaction(block.RawData())
+				txNode, err := iplddecoders.DecodeTransaction(rawData)
 				if err != nil {
 					return fmt.Errorf("failed to decode transaction: %w", err)
 				}

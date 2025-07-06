@@ -131,3 +131,24 @@ func PutDataFrame(df *ipldbindcode.DataFrame) {
 	df.Reset() // Reset the data frame to its initial state.
 	dataFramePool.Put(df)
 }
+
+func PutAny(obj ipldbindcode.Node) {
+	switch v := obj.(type) {
+	case *ipldbindcode.Transaction:
+		PutTransaction(v)
+	case *ipldbindcode.Entry:
+		PutEntry(v)
+	case *ipldbindcode.Block:
+		PutBlock(v)
+	case *ipldbindcode.Subset:
+		PutSubset(v)
+	case *ipldbindcode.Epoch:
+		PutEpoch(v)
+	case *ipldbindcode.Rewards:
+		PutRewards(v)
+	case *ipldbindcode.DataFrame:
+		PutDataFrame(v)
+	default:
+		panic("unknown type for PutAny")
+	}
+}

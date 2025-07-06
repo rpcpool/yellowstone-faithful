@@ -4,13 +4,13 @@ import (
 	"context"
 	"errors"
 	"io"
-	"sync"
 
 	"github.com/filecoin-project/go-leb128"
 	"github.com/ipfs/go-cid"
-	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
+	"github.com/rpcpool/yellowstone-faithful/carreader"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
 	"github.com/rpcpool/yellowstone-faithful/readasonecar"
+	"github.com/valyala/bytebufferpool"
 )
 
 type ObjectAccumulator struct {
@@ -52,45 +52,21 @@ func (oa *ObjectAccumulator) SetSkip(n uint64) {
 	oa.skipNodes = n
 }
 
-var flushBufferPool = sync.Pool{
-	New: func() interface{} {
-		return &flushBuffer{}
-	},
-}
-
-func getFlushBuffer() *flushBuffer {
-	return flushBufferPool.Get().(*flushBuffer)
-}
-
-func putFlushBuffer(fb *flushBuffer) {
-	fb.Reset()
-	flushBufferPool.Put(fb)
-}
-
-type flushBuffer struct {
-	parent   *ObjectWithMetadata
-	children []ObjectWithMetadata
-}
-
-// Reset resets the flushBuffer.
-func (fb *flushBuffer) Reset() {
-	fb.parent = nil
-	fb.children = fb.children[:0]
-}
-
 type ObjectWithMetadata struct {
 	Cid           cid.Cid
 	Offset        uint64
 	SectionLength uint64
-	ObjectData    []byte
+	ObjectData    *bytebufferpool.ByteBuffer
 }
 
 type ObjectsWithMetadata []ObjectWithMetadata
 
-func (oa ObjectsWithMetadata) GetTransactionsAndMeta(
-	block *ipldbindcode.Block,
-) ([]*TransactionWithSlot, error) {
-	return ObjectsToTransactionsAndMetadata(block, oa)
+// ObjectsWithMetadata.Put
+func (oa *ObjectsWithMetadata) Put() {
+	for i := range *oa {
+		carreader.PutBuffer((*oa)[i].ObjectData)
+	}
+	*oa = (*oa)[:0]
 }
 
 func (oa *ObjectAccumulator) sendToFlusher(
@@ -160,7 +136,7 @@ buffersLoop:
 				ObjectData:    data,
 			}
 
-			kind := iplddecoders.Kind(data[1])
+			kind := iplddecoders.Kind(data.Bytes()[1])
 			if kind == oa.flushOnKind {
 				// element is parent
 				oa.sendToFlusher(cancel, &element, children)
@@ -191,18 +167,20 @@ func (obj ObjectWithMetadata) RawSection() ([]byte, error) {
 	// length = len(cid) + len(data)
 	// section = leb128(length) || cid || data
 
-	sectionLen := len(obj.Cid.Bytes()) + len(obj.ObjectData)
+	dataBytes := obj.ObjectData.Bytes()
+	sectionLen := len(obj.Cid.Bytes()) + len(dataBytes)
 	// write uvarint length of the section
 	buf = append(buf, leb128.FromUInt64(uint64(sectionLen))...)
 	// write cid
 	buf = append(buf, obj.Cid.Bytes()...)
 	// write data
-	buf = append(buf, obj.ObjectData...)
+	buf = append(buf, dataBytes...)
 	return buf, nil
 }
 
 func (obj ObjectWithMetadata) RawSectionSize() int {
-	sectionLen := len(obj.Cid.Bytes()) + len(obj.ObjectData)
+	dataBytes := obj.ObjectData.Bytes()
+	sectionLen := len(obj.Cid.Bytes()) + len(dataBytes)
 	lenBytes := leb128.FromUInt64(uint64(sectionLen))
 
 	// Size is:

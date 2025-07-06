@@ -258,7 +258,7 @@ func _DecodeDataFrameClassic(dataFrameRaw []byte) (*ipldbindcode.DataFrame, erro
 	return &dataFrame, nil
 }
 
-func DecodeAny(anyRaw []byte) (any, error) {
+func DecodeAny(anyRaw []byte) (ipldbindcode.Node, error) {
 	kind, err := GetKind(anyRaw)
 	if err != nil {
 		return nil, err

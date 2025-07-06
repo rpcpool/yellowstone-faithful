@@ -144,7 +144,7 @@ func newCmd_SplitCar() *cli.Command {
 			metadata.CarPieces = &carlet.CarPiecesAndMetadata{OriginalCarHeader: encodedHeader, OriginalCarHeaderSize: uint64(headerSize)}
 
 			combinedReader := io.MultiReader(headerBuf, file)
-			rd, err := carreader.New(io.NopCloser(combinedReader))
+			rd, err := carreader.NewPrefetching(io.NopCloser(combinedReader))
 			if err != nil {
 				return fmt.Errorf("failed to open CAR: %w", err)
 			}
@@ -277,7 +277,7 @@ func newCmd_SplitCar() *cli.Command {
 					}
 
 					// owm1 is necessarily a Block
-					block, err := iplddecoders.DecodeBlock(parent.ObjectData)
+					block, err := iplddecoders.DecodeBlock(parent.ObjectData.Bytes())
 					if err != nil {
 						return fmt.Errorf("failed to decode block: %w", err)
 					}

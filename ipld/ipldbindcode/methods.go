@@ -474,3 +474,31 @@ func clearIntptrPtr(ptr **int) {
 	**ptr = 0  // Reset the value to 0.
 	*ptr = nil // Reset the pointer to nil.
 }
+
+type Node interface {
+	Node()
+}
+
+var (
+	_ Node = Epoch{}
+	_ Node = Subset{}
+	_ Node = Block{}
+	_ Node = Rewards{}
+	_ Node = Entry{}
+	_ Node = Transaction{}
+	_ Node = DataFrame{}
+)
+
+func (e Epoch) Node() {}
+
+func (s Subset) Node() {}
+
+func (b Block) Node() {}
+
+func (r Rewards) Node() {}
+
+func (e Entry) Node() {}
+
+func (t Transaction) Node() {}
+
+func (d DataFrame) Node() {}

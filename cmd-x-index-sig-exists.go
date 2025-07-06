@@ -15,7 +15,6 @@ import (
 	"github.com/dustin/go-humanize"
 	"github.com/gagliardetto/solana-go"
 	"github.com/ipfs/go-cid"
-	"github.com/ipfs/go-libipfs/blocks"
 	"github.com/rpcpool/yellowstone-faithful/bucketteer"
 	"github.com/rpcpool/yellowstone-faithful/indexes"
 	"github.com/rpcpool/yellowstone-faithful/indexmeta"
@@ -23,6 +22,7 @@ import (
 	"github.com/rpcpool/yellowstone-faithful/readasonecar"
 	concurrently "github.com/tejzpr/ordered-concurrently/v3"
 	"github.com/urfave/cli/v2"
+	"github.com/valyala/bytebufferpool"
 	"k8s.io/klog/v2"
 )
 
@@ -161,7 +161,7 @@ func newCmd_Index_sigExists() *cli.Command {
 			}()
 
 			for {
-				block, err := rd.Next()
+				_cid, _, buf, err := rd.NextNodeBytes()
 				if err != nil {
 					if errors.Is(err, io.EOF) {
 						fmt.Println("EOF")
@@ -169,7 +169,8 @@ func newCmd_Index_sigExists() *cli.Command {
 					}
 					return err
 				}
-				kind := iplddecoders.Kind(block.RawData()[1])
+				rawData := buf.Bytes()
+				kind := iplddecoders.Kind(rawData[1])
 
 				switch kind {
 				case iplddecoders.KindTransaction:
@@ -185,7 +186,8 @@ func newCmd_Index_sigExists() *cli.Command {
 						waitResultsReceived.Add(1)
 						numReceivedAtomic.Add(1)
 						workerInputChan <- newSignatureSlot(
-							block,
+							_cid,
+							buf,
 							func() {
 								waitExecuted.Done()
 							},
@@ -275,15 +277,18 @@ type SignatureAndSlot struct {
 }
 
 type sigToEpochParser struct {
-	blk  blocks.Block
+	_cid cid.Cid // The CID of the block (not used in this parser, but can be useful for debugging)
 	done func()
+	blk  *bytebufferpool.ByteBuffer
 }
 
 func newSignatureSlot(
-	blk blocks.Block,
+	_cid cid.Cid,
+	blk *bytebufferpool.ByteBuffer,
 	done func(),
 ) *sigToEpochParser {
 	return &sigToEpochParser{
+		_cid: _cid,
 		blk:  blk,
 		done: done,
 	}
@@ -296,9 +301,10 @@ func (w sigToEpochParser) Run(ctx context.Context) interface{} {
 
 	block := w.blk
 
-	decoded, err := iplddecoders.DecodeTransaction(block.RawData())
+	raw := block.Bytes()
+	decoded, err := iplddecoders.DecodeTransaction(raw)
 	if err != nil {
-		return fmt.Errorf("error while decoding transaction from nodex %s: %w", block.Cid(), err)
+		return fmt.Errorf("error while decoding transaction from nodex %s: %w", w._cid, err)
 	}
 	sig, err := readFirstSignature(decoded.Data.Bytes())
 	if err != nil {

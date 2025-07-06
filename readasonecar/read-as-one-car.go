@@ -7,21 +7,17 @@ import (
 	"os"
 
 	"github.com/ipfs/go-cid"
-	"github.com/ipfs/go-libipfs/blocks"
 	"github.com/rpcpool/yellowstone-faithful/carreader"
+	"github.com/valyala/bytebufferpool"
 )
 
 var _ CarReader = (*MultiReader)(nil)
 
 type CarReader interface {
-	Next() (blocks.Block, error)
-	NextInfo() (cid.Cid, uint64, error)
-	NextNode() (cid.Cid, uint64, *blocks.BasicBlock, error)
-	NextNodeBytes() (cid.Cid, uint64, []byte, error)
+	NextNodeBytes() (cid.Cid, uint64, *bytebufferpool.ByteBuffer, error)
 
 	GetGlobalOffsetForNextRead() (uint64, bool)
 	Close() error
-	io.ReaderAt
 }
 
 type MultiReader struct {
@@ -77,7 +73,7 @@ type Container struct {
 	Size       uint64 // is the whole file size
 	HeaderSize uint64 // is the size of the header
 	File       *os.File
-	CarReader  *carreader.CarReader
+	CarReader  *carreader.PrefetchingCarReader
 }
 
 // Close closes the underlying file.
@@ -90,7 +86,7 @@ func OpenFile(path string) (*Container, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to open file %q: %w", path, err)
 	}
-	reader, err := carreader.New(file)
+	reader, err := carreader.NewPrefetching(file)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create car reader for file %q: %w", path, err)
 	}
@@ -111,11 +107,6 @@ func OpenFile(path string) (*Container, error) {
 	}, nil
 }
 
-func (mr *MultiReader) Next() (blocks.Block, error) {
-	_, _, block, err := mr.NextNode()
-	return block, err
-}
-
 func (mr *MultiReader) NextInfo() (cid.Cid, uint64, error) {
 	if mr.currentIndex >= len(mr.readers) {
 		return cid.Cid{}, 0, io.EOF
@@ -132,23 +123,7 @@ func (mr *MultiReader) NextInfo() (cid.Cid, uint64, error) {
 	return cid, sectionLen, err
 }
 
-func (mr *MultiReader) NextNode() (cid.Cid, uint64, *blocks.BasicBlock, error) {
-	if mr.currentIndex >= len(mr.readers) {
-		return cid.Cid{}, 0, nil, io.EOF
-	}
-	r := mr.readers[mr.currentIndex]
-	cid, sectionLen, block, err := r.CarReader.NextNode()
-	if errors.Is(err, io.EOF) {
-		mr.move()
-		return mr.NextNode()
-	}
-	if err == nil {
-		mr.incrGlobalOffset(sectionLen)
-	}
-	return cid, sectionLen, block, err
-}
-
-func (mr *MultiReader) NextNodeBytes() (cid.Cid, uint64, []byte, error) {
+func (mr *MultiReader) NextNodeBytes() (cid.Cid, uint64, *bytebufferpool.ByteBuffer, error) {
 	if mr.currentIndex >= len(mr.readers) {
 		return cid.Cid{}, 0, nil, io.EOF
 	}
