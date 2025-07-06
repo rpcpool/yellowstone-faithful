@@ -18,80 +18,21 @@ import (
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
 )
 
-func SysTotalMemory() uint64 {
-	in := &syscall.Sysinfo_t{}
-	err := syscall.Sysinfo(in)
-	if err != nil {
-		return 0
-	}
-	// If this is a 32-bit system, then these fields are
-	// uint32 instead of uint64.
-	// So we always convert to uint64 to match signature.
-	return uint64(in.Totalram) * uint64(in.Unit)
-}
-
-func SysFreeMemory() uint64 {
-	in := &syscall.Sysinfo_t{}
-	err := syscall.Sysinfo(in)
-	if err != nil {
-		return 0
-	}
-	// If this is a 32-bit system, then these fields are
-	// uint32 instead of uint64.
-	// So we always convert to uint64 to match signature.
-	return uint64(in.Freeram) * uint64(in.Unit)
-}
-
-func ProcUsageMemory() (uint64, error) {
-	in := &syscall.Rusage{}
-	err := syscall.Getrusage(syscall.RUSAGE_SELF, in)
-	if err != nil {
-		return 0, fmt.Errorf("failed to get process memory usage: %w", err)
-	}
-	// Convert to bytes
-	return uint64(in.Maxrss) * 1024, nil // Maxrss is in kilobytes
-}
-
-func exitIfMemUsageTooHigh(thresholdPercent float64) {
-	total := SysTotalMemory()
-	free := SysFreeMemory()
-	used := total - free
-
-	usedPercent := float64(used) / float64(total) * 100.0
-	if usedPercent > thresholdPercent {
-		procUsage, err := ProcUsageMemory()
-		if err != nil {
-			fmt.Printf("Failed to get process memory usage: %v\n", err)
-			os.Exit(1)
-		}
-		fmt.Printf("Memory usage is too high: %.2f%% (threshold: %.2f%%). This process is using %s of memory.\n", usedPercent, thresholdPercent, humanize.Bytes(procUsage))
-		fmt.Printf("Total memory: %s, Free memory: %s, Used memory: %s\n",
-			humanize.Bytes(total),
-			humanize.Bytes(free),
-			humanize.Bytes(used))
-		fmt.Println("Exiting to prevent OOM killer.")
-		os.Exit(1)
-	}
-}
-
-func monitorMemoryUsage(thresholdPercent float64, interval time.Duration) {
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ticker.C:
-			exitIfMemUsageTooHigh(thresholdPercent)
-		}
-	}
-}
-
 func main() {
 	var carPath string
 	flag.StringVar(&carPath, "car", "", "Path to the CAR file")
 	flag.Parse()
 
-	go monitorMemoryUsage(95.0, time.Second)
+	// {
+	// 	total := SysTotalMemory()
+	// 	free := SysFreeMemory()
+	// 	used := total - free
+	// 	fmt.Printf("Total memory: %s, Free memory: %s, Used memory: %s\n",
+	// 		humanize.Bytes(total),
+	// 		humanize.Bytes(free),
+	// 		humanize.Bytes(used))
+	// }
+	// go monitorMemoryUsage(95.0, time.Second)
 
 	fmt.Println("Reading CAR file:", carPath)
 
@@ -180,4 +121,72 @@ func sizeOfFile(path string) (int64, error) {
 		return 0, fmt.Errorf("failed to get file info for %q: %w", path, err)
 	}
 	return info.Size(), nil
+}
+
+func SysTotalMemory() uint64 {
+	in := &syscall.Sysinfo_t{}
+	err := syscall.Sysinfo(in)
+	if err != nil {
+		return 0
+	}
+	// If this is a 32-bit system, then these fields are
+	// uint32 instead of uint64.
+	// So we always convert to uint64 to match signature.
+	return uint64(in.Totalram) * uint64(in.Unit)
+}
+
+func SysFreeMemory() uint64 {
+	in := &syscall.Sysinfo_t{}
+	err := syscall.Sysinfo(in)
+	if err != nil {
+		return 0
+	}
+	// If this is a 32-bit system, then these fields are
+	// uint32 instead of uint64.
+	// So we always convert to uint64 to match signature.
+	return uint64(in.Freeram) * uint64(in.Unit)
+}
+
+func ProcUsageMemory() (uint64, error) {
+	in := &syscall.Rusage{}
+	err := syscall.Getrusage(syscall.RUSAGE_SELF, in)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get process memory usage: %w", err)
+	}
+	// Convert to bytes
+	return uint64(in.Maxrss) * 1024, nil // Maxrss is in kilobytes
+}
+
+func exitIfMemUsageTooHigh(thresholdPercent float64) {
+	total := SysTotalMemory()
+	free := SysFreeMemory()
+	used := total - free
+
+	usedPercent := float64(used) / float64(total) * 100.0
+	if usedPercent > thresholdPercent {
+		procUsage, err := ProcUsageMemory()
+		if err != nil {
+			fmt.Printf("Failed to get process memory usage: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("Memory usage is too high: %.2f%% (threshold: %.2f%%). This process is using %s of memory.\n", usedPercent, thresholdPercent, humanize.Bytes(procUsage))
+		fmt.Printf("Total memory: %s, Free memory: %s, Used memory: %s\n",
+			humanize.Bytes(total),
+			humanize.Bytes(free),
+			humanize.Bytes(used))
+		fmt.Println("Exiting to prevent OOM killer.")
+		os.Exit(1)
+	}
+}
+
+func monitorMemoryUsage(thresholdPercent float64, interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			exitIfMemUsageTooHigh(thresholdPercent)
+		}
+	}
 }
