@@ -47,7 +47,7 @@ type PrefetchingCarReader struct {
 }
 
 func NewPrefetching(r io.ReadCloser) (*PrefetchingCarReader, error) {
-	return NewPrefetchingWithSize(r, 100_000_000) // Default prefetching size
+	return NewPrefetchingWithSize(r, 1_000_000) // Default prefetching size
 }
 
 // New creates a new PrefetchingCarReader from an io.ReadCloser.
