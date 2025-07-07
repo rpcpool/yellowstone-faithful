@@ -26,7 +26,7 @@ export const options = {
   rps: 1,
 };
 
-const RPC_ENDPOINT = 'http://faithful5.rpcpool.wg:8897';
+const RPC_ENDPOINT = __ENV.TEST_RPC_ENDPOINT;
 const MAX_PAGES = 3;
 const SIGNATURES_PER_PAGE = 25;
 const REQUEST_DELAY = 3;
