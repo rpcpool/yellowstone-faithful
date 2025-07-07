@@ -1,4 +1,4 @@
-import { check, sleep } from 'k6';
+import { check, sleep, randomSeed } from 'k6';
 import http from 'k6/http';
 import { getBlockPayload } from '../payloads.ts';
 import { GetSlotRPCResponse } from '../types.ts';
@@ -19,6 +19,14 @@ if (!TEST_RPC_ENDPOINT) {
 }
 
 export default function () {
+  // Set random seed if provided via environment variable
+  const baseSeed = __ENV.K6_RANDOM_SEED;
+  if (baseSeed) {
+    // Combine base seed with iteration number for unique but reproducible randomness
+    const iterationSeed = parseInt(baseSeed) + __ITER;
+    randomSeed(iterationSeed);
+  }
+
   const headers = {
     'Content-Type': 'application/json',
   };

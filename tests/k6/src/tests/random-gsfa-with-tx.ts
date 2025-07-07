@@ -1,8 +1,8 @@
 import { check, randomSeed } from 'k6';
 import http from 'k6/http';
 import { Counter, Rate, Trend } from 'k6/metrics';
-import { getSignaturesForAddressPayload } from '../payloads.ts';
-import { GetSignaturesForAddressResponse } from '../types.ts';
+import { getSignaturesForAddressPayload, getTransactionPayload } from '../payloads.ts';
+import { GetSignaturesForAddressResponse, GetTransactionRPCResponse, RPCRequest } from '../types.ts';
 import { getRandomSolanaAddress, parseResponseBody } from '../utils.ts';
 
 // Custom metrics
@@ -12,6 +12,10 @@ const requestDuration = new Trend('request_duration');
 const successfulAddresses = new Counter('successful_addresses');
 const emptyAddresses = new Counter('empty_addresses');
 const signatureOrderingErrors = new Counter('signature_ordering_errors');
+const transactionFetchErrors = new Counter('transaction_fetch_errors');
+const transactionFetchDuration = new Trend('transaction_fetch_duration');
+const transactionsFetched = new Counter('transactions_fetched');
+const batchRequestDuration = new Trend('batch_request_duration');
 
 export const options = {
   iterations: 10,
@@ -22,6 +26,8 @@ export const options = {
     'successful_addresses': ['count>0'],
     'signature_ordering_errors': ['count==0'],
     'empty_addresses': ['count<10'],
+    'transaction_fetch_errors': ['rate<0.2'],
+    'transaction_fetch_duration': ['p(95)<3000'],
   },
   rps: 1,
 };
@@ -29,11 +35,110 @@ export const options = {
 const RPC_ENDPOINT = __ENV.TEST_RPC_ENDPOINT;
 const MAX_PAGES = 3;
 const SIGNATURES_PER_PAGE = 1000;
+const BATCH_MODE = __ENV.BATCH_MODE === 'true';
 
 const getBodyPreview = (body: string | ArrayBuffer | null): string => {
   if (!body) return 'empty';
   const str = parseResponseBody(body);
   return str.slice(0, 200);
+};
+
+const fetchTransactionsBatch = (signatures: string[], headers: Record<string, string>) => {
+  console.log(`Fetching ${signatures.length} transactions in batch mode`);
+  
+  const batchPayload = signatures.map((signature, index) => ({
+    ...getTransactionPayload(signature, 'finalized', 0),
+    id: index + 1
+  }));
+  
+  const payloadStr = JSON.stringify(batchPayload);
+  
+  const startTime = new Date();
+  const response = http.post(RPC_ENDPOINT, payloadStr, {
+    headers: {
+      ...headers,
+      'Content-Length': payloadStr.length.toString()
+    },
+    timeout: '30s'
+  });
+  const duration = new Date().getTime() - startTime.getTime();
+  batchRequestDuration.add(duration);
+  
+  console.log(`Batch response status: ${response.status}, time: ${duration}ms`);
+  
+  if (response.status !== 200) {
+    console.error(`Batch request failed:`, {
+      status: response.status,
+      body: getBodyPreview(response.body)
+    });
+    transactionFetchErrors.add(signatures.length);
+    return;
+  }
+  
+  try {
+    const bodyStr = parseResponseBody(response.body);
+    const responses = JSON.parse(bodyStr) as GetTransactionRPCResponse[];
+    
+    let successCount = 0;
+    let errorCount = 0;
+    
+    responses.forEach((txResponse, index) => {
+      if (txResponse.error) {
+        console.error(`Transaction fetch error for ${signatures[index]}:`, txResponse.error);
+        errorCount++;
+      } else if (txResponse.result) {
+        successCount++;
+      }
+    });
+    
+    transactionsFetched.add(successCount);
+    transactionFetchErrors.add(errorCount);
+    
+    console.log(`Batch complete: ${successCount} successful, ${errorCount} errors`);
+  } catch (error) {
+    console.error('Batch response parsing error:', error);
+    transactionFetchErrors.add(signatures.length);
+  }
+};
+
+const fetchTransactionSequential = (signature: string, headers: Record<string, string>) => {
+  const payload = getTransactionPayload(signature, 'finalized', 0);
+  const payloadStr = JSON.stringify(payload);
+  
+  const startTime = new Date();
+  const response = http.post(RPC_ENDPOINT, payloadStr, {
+    headers: {
+      ...headers,
+      'Content-Length': payloadStr.length.toString()
+    },
+    timeout: '10s'
+  });
+  const duration = new Date().getTime() - startTime.getTime();
+  transactionFetchDuration.add(duration);
+  
+  if (response.status !== 200) {
+    console.error(`Transaction fetch failed for ${signature}:`, {
+      status: response.status,
+      body: getBodyPreview(response.body)
+    });
+    transactionFetchErrors.add(1);
+    return;
+  }
+  
+  try {
+    const bodyStr = parseResponseBody(response.body);
+    const data = JSON.parse(bodyStr) as GetTransactionRPCResponse;
+    
+    if (data.error) {
+      console.error(`Transaction RPC error for ${signature}:`, data.error);
+      transactionFetchErrors.add(1);
+    } else if (data.result) {
+      transactionsFetched.add(1);
+    }
+  } catch (error) {
+    console.error(`Transaction parsing error for ${signature}:`, error);
+    transactionFetchErrors.add(1);
+  }
 };
 
 export default function () {
@@ -52,12 +157,13 @@ export default function () {
 
   const address = getRandomSolanaAddress();
   let beforeSignature: string | undefined = undefined;
-  let untilSignature: string | undefined = undefined; // Optional: for range testing
+  let untilSignature: string | undefined = undefined;
   let pageCount = 0;
   let totalSignatures = 0;
   let previousSignatures: string[] = [];
+  let allSignaturesForBatch: string[] = [];
 
-  console.log(`Starting test for address: ${address}`);
+  console.log(`Starting test for address: ${address} (Batch mode: ${BATCH_MODE})`);
 
   while (pageCount < MAX_PAGES) {
     const payload = getSignaturesForAddressPayload(
@@ -132,7 +238,6 @@ export default function () {
         errorCounter.add(1);
         errorRate.add(true);
         
-        // Handle specific RPC error codes
         if (data.error.code === -32602) {
           console.error('Invalid parameters provided');
         } else if (data.error.code === -32001) {
@@ -188,6 +293,18 @@ export default function () {
           successfulAddresses.add(1);
         }
 
+        // Fetch transactions
+        if (BATCH_MODE) {
+          // In batch mode, collect all signatures
+          allSignaturesForBatch.push(...currentSignatures);
+        } else {
+          // In sequential mode, fetch transactions immediately
+          console.log(`Fetching ${currentSignatures.length} transactions sequentially`);
+          for (const sig of currentSignatures) {
+            fetchTransactionSequential(sig, headers);
+          }
+        }
+
         if (signatures.length < SIGNATURES_PER_PAGE) {
           console.log('Reached end of signatures list');
           break;
@@ -216,8 +333,14 @@ export default function () {
     pageCount++;
   }
 
+  // If in batch mode, send all transaction requests now
+  if (BATCH_MODE && allSignaturesForBatch.length > 0) {
+    fetchTransactionsBatch(allSignaturesForBatch, headers);
+  }
+
   console.log(`Test finished for ${address}:`, {
     pagesProcessed: pageCount,
-    totalSignatures
+    totalSignatures,
+    batchMode: BATCH_MODE
   });
 }
