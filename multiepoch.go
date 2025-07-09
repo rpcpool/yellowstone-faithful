@@ -306,6 +306,7 @@ func newMultiEpochHandler(handler *MultiEpoch, lsConf *ListenerConfig) func(ctx 
 			klog.V(2).Infof("[%s] request %q took %s", reqID, sanitizeMethod(method), took)
 			metrics.StatusCode.WithLabelValues(fmt.Sprint(reqCtx.Response.StatusCode())).Inc()
 			metrics.RpcResponseLatencyHistogram.WithLabelValues(sanitizeMethod(method)).Observe(took.Seconds())
+			metrics.RpcResponseLatencySummary.WithLabelValues(sanitizeMethod(method)).Observe(took.Seconds())
 		}()
 		{
 			// handle the /metrics endpoint
