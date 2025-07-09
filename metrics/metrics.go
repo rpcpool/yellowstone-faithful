@@ -101,6 +101,43 @@ var CarLookupHistogram = promauto.NewHistogramVec(
 	[]string{"car", "is_remote", "is_split_car"},
 )
 
+// Cache metrics
+var CacheHitMissTotal = promauto.NewCounterVec(
+	prometheus.CounterOpts{
+		Name: "cache_hit_miss_total",
+		Help: "Total cache hits and misses",
+	},
+	[]string{"operation", "result"},
+)
+
+// Request count metrics
+var TransactionCountPerRequest = promauto.NewHistogramVec(
+	prometheus.HistogramOpts{
+		Name:    "transaction_count_per_request",
+		Help:    "Number of transactions per request",
+		Buckets: []float64{1, 5, 10, 25, 50, 100, 500, 1000, 5000, 10000},
+	},
+	[]string{"method"},
+)
+
+var SignatureCountPerRequest = promauto.NewHistogramVec(
+	prometheus.HistogramOpts{
+		Name:    "signature_count_per_request",
+		Help:    "Number of signatures per request",
+		Buckets: []float64{1, 5, 10, 25, 50, 100, 500, 1000, 5000, 10000},
+	},
+	[]string{"method"},
+)
+
+// Index lookup metrics
+var IndexLookupTotal = promauto.NewCounterVec(
+	prometheus.CounterOpts{
+		Name: "index_lookup_total",
+		Help: "Total index lookups",
+	},
+	[]string{"index_type", "result"},
+)
+
 var latencyBuckets = []float64{
 	// fractional seconds from 0 to 1, with increments of 0.05 (= 50 ms)
 	0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45,

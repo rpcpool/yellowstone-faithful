@@ -379,6 +379,9 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 		}
 		buildTxSpan.SetAttributes(attribute.Int("num_transactions", len(allTransactions)))
 		buildTxSpan.End()
+		
+		// Record transaction count metric
+		metrics.TransactionCountPerRequest.WithLabelValues("getBlock").Observe(float64(len(allTransactions)))
 	}
 
 	// sort.Slice(allTransactions, func(i, j int) bool {
