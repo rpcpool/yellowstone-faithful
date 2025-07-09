@@ -18,6 +18,7 @@ import (
 	"github.com/rpcpool/yellowstone-faithful/compactindexsized"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"github.com/rpcpool/yellowstone-faithful/jsonbuilder"
+	"github.com/rpcpool/yellowstone-faithful/metrics"
 	"github.com/rpcpool/yellowstone-faithful/slottools"
 	solanablockrewards "github.com/rpcpool/yellowstone-faithful/solana-block-rewards"
 	solanatxmetaparsers "github.com/rpcpool/yellowstone-faithful/solana-tx-meta-parsers"
