@@ -1,6 +1,8 @@
 package metrics
 
 import (
+	"time"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
@@ -67,6 +69,16 @@ var RpcResponseLatencyHistogram = promauto.NewHistogramVec(
 		Name:    "rpc_response_latency_histogram",
 		Help:    "RPC response latency histogram",
 		Buckets: latencyBuckets,
+	},
+	[]string{"rpc_method"},
+)
+
+var RpcResponseLatencySummary = promauto.NewSummaryVec(
+	prometheus.SummaryOpts{
+		Name:       "rpc_response_latency_summary",
+		Help:       "RPC response latency summary with percentiles",
+		Objectives: map[float64]float64{0.5: 0.05, 0.9: 0.01, 0.95: 0.01, 0.99: 0.001},
+		MaxAge:     time.Minute * 10,
 	},
 	[]string{"rpc_method"},
 )
