@@ -102,7 +102,7 @@ func newCmd_rpc() *cli.Command {
 			&cli.IntFlag{
 				Name:        "max-cache",
 				Usage:       "Maximum size of the cache in MB",
-				Value:       0,
+				Value:       128,
 				Destination: &maxCacheSizeMB,
 			},
 			&cli.StringFlag{
