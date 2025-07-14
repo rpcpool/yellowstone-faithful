@@ -3,7 +3,7 @@
 |817|epoch is|ongoing||||||||
 | 816 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | 815 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| 814 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| 814 | [epoch-814.car](https://files.old-faithful.net/814/epoch-814.car) | [c5a56dc](https://files.old-faithful.net/814/epoch-814.sha256) | 835 GB | [✅](https://files.old-faithful.net/814/tx-metadata-check.log) | [✅](https://files.old-faithful.net/814/poh-check.log) | ✅ | 83 GB | ❌ | [814.slots.txt](https://files.old-faithful.net/814/814.slots.txt) |
 | 813 | [epoch-813.car](https://files.old-faithful.net/813/epoch-813.car) | [760705d](https://files.old-faithful.net/813/epoch-813.sha256) | 842 GB | [✅](https://files.old-faithful.net/813/tx-metadata-check.log) | [✅](https://files.old-faithful.net/813/poh-check.log) | ✅ | 84 GB | ❌ | [813.slots.txt](https://files.old-faithful.net/813/813.slots.txt) |
 | 812 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | 811 | [epoch-811.car](https://files.old-faithful.net/811/epoch-811.car) | [c34ec67](https://files.old-faithful.net/811/epoch-811.sha256) | 830 GB | [✅](https://files.old-faithful.net/811/tx-metadata-check.log) | [✅](https://files.old-faithful.net/811/poh-check.log) | ✅ | 82 GB | ❌ | [811.slots.txt](https://files.old-faithful.net/811/811.slots.txt) |
@@ -818,7 +818,7 @@
 | 2 | [epoch-2.car](https://files.old-faithful.net/2/epoch-2.car) | [54bba04](https://files.old-faithful.net/2/epoch-2.sha256) | 14 GB | [★](https://files.old-faithful.net/2/tx-metadata-check.log) | [✅](https://files.old-faithful.net/2/poh-check.log) | ✅ | 6 GB | [✅](https://filecoin-car-storage-cdn.b-cdn.net/2/deals.csv) | [2.slots.txt](https://files.old-faithful.net/2/2.slots.txt) |
 | 1 | [epoch-1.car](https://files.old-faithful.net/1/epoch-1.car) | [611ca99](https://files.old-faithful.net/1/epoch-1.sha256) | 8 GB | [★](https://files.old-faithful.net/1/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1/poh-check.log) | ✅ | 6 GB | [✅](https://filecoin-car-storage-cdn.b-cdn.net/1/deals.csv) | [1.slots.txt](https://files.old-faithful.net/1/1.slots.txt) |
 | 0 | [epoch-0.car](https://files.old-faithful.net/0/epoch-0.car) | [3c6347f](https://files.old-faithful.net/0/epoch-0.sha256) | 4 GB | [★](https://files.old-faithful.net/0/tx-metadata-check.log) | [✅](https://files.old-faithful.net/0/poh-check.log) | ✅ | 6 GB | [✅](https://filecoin-car-storage-cdn.b-cdn.net/0/deals.csv) | [0.slots.txt](https://files.old-faithful.net/0/0.slots.txt) |
-| **Total** | 812 | (5 behind) | 331 TB | - | - | - | 40 TB | - | - |
+| **Total** | 813 | (4 behind) | 332 TB | - | - | - | 40 TB | - | - |
 
 ★ = tx meta validation skipped (epochs 0-10 where tx meta wasn't enabled yet)
 
@@ -834,6 +834,5 @@
 - Epoch 542: failed POH check
 - Epoch 810: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size
 - Epoch 812: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size
-- Epoch 814: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size
 - Epoch 815: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size
 - Epoch 816: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size
