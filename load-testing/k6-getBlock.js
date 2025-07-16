@@ -33,7 +33,9 @@ export const options = {
     // The p95 response time threshold has been increased to 3000ms (3s)
     // to accommodate the observed high latency.
     http_req_duration: ['p(95)<3000'],
-    rpc_errors: ['count<10'], // Fail if more than 10 RPC errors occur.
+    // The test will fail if the server returns more than 10 RPC-level errors.
+    // This threshold measures reliability, not just performance.
+    rpc_errors: ['count<10'],
   },
 };
 
@@ -44,8 +46,6 @@ export default function () {
     Math.floor(Math.random() * (MAX_BLOCK - MIN_BLOCK + 1)) + MIN_BLOCK;
 
   // 2. Construct the JSON-RPC payload.
-  // NOTE: The test results indicate the target server is ignoring `transactionDetails: "none"`
-  // and returning a full, multi-megabyte payload. This is the primary cause of high latency.
   const payload = JSON.stringify({
     jsonrpc: '2.0',
     id: 1,
@@ -68,14 +68,14 @@ export default function () {
   const res = http.post(RPC_URL, payload, params);
 
   // 4. Perform robust checks on the response.
-  check(res, {
+  const httpSuccess = check(res, {
     'HTTP status is 200': (r) => r.status === 200,
   });
 
-  if (res.status === 200) {
+  if (httpSuccess) {
     const body = res.json();
     // Perform a series of detailed checks on the RPC response body.
-    const isRpcSuccess = check(body, {
+    const rpcSuccess = check(body, {
       'RPC: no error field': (b) => b && !b.error,
       'RPC: has result object': (b) =>
         b && typeof b.result === 'object' && b.result !== null,
@@ -85,9 +85,19 @@ export default function () {
         b && b.result && typeof b.result.blockTime === 'number',
     });
 
-    // If any of the RPC checks failed, increment our custom counter.
-    if (!isRpcSuccess) {
+    // If any of the RPC checks failed, increment our custom counter and log the error.
+    if (!rpcSuccess) {
       rpcErrors.add(1);
+      // Log the specific error and the block number that caused it for debugging the server.
+      if (body && body.error) {
+        console.error(
+          `RPC Error on block ${randomBlock}: ${JSON.stringify(body.error)}`,
+        );
+      } else {
+        console.error(
+          `Malformed RPC response on block ${randomBlock}: ${res.body}`,
+        );
+      }
     }
   } else {
     // If the HTTP request itself failed, count that as an RPC error.
