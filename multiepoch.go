@@ -354,14 +354,16 @@ func newMultiEpochHandler(handler *MultiEpoch, lsConf *ListenerConfig) func(ctx 
 			}
 		}
 		// read request body
-		body := reqCtx.Request.Body()
-
+		body, err := getRequestBody(reqCtx)
+		if err != nil {
+			reqCtx.Error("Error decompressing request body", fasthttp.StatusInternalServerError)
+			return
+		}
 		reqCtx.Response.Header.Set("X-Request-ID", reqID)
 
 		// parse request
 		var rpcRequest jsonrpc2.Request
 		if err := fasterJson.Unmarshal(body, &rpcRequest); err != nil {
-			klog.Errorf("[%s] failed to parse request body: %v", err)
 			replyJSON(reqCtx, http.StatusBadRequest, jsonrpc2.Response{
 				Error: &jsonrpc2.Error{
 					Code:    jsonrpc2.CodeParseError,
@@ -472,6 +474,28 @@ func newMultiEpochHandler(handler *MultiEpoch, lsConf *ListenerConfig) func(ctx 
 			return
 		}
 		metrics.MethodToSuccessOrFailure.WithLabelValues(sanitizeMethod(method), "success").Inc()
+	}
+}
+
+// getRequestBody checks if the request body is compressed and decompresses it.
+// It returns the raw body if no compression is specified.
+func getRequestBody(ctx *fasthttp.RequestCtx) ([]byte, error) {
+	// Get the Content-Encoding header
+	encoding := string(ctx.Request.Header.ContentEncoding())
+
+	switch encoding {
+	case "gzip":
+		// Decompress gzip content
+		return ctx.Request.BodyGunzip()
+	case "deflate":
+		// Decompress deflate content
+		return ctx.Request.BodyInflate()
+	case "br":
+		// Decompress brotli content
+		return ctx.Request.BodyUnbrotli()
+	default:
+		// If no or unknown encoding, return the raw body
+		return ctx.Request.Body(), nil
 	}
 }
 

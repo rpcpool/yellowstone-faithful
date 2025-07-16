@@ -16,6 +16,8 @@ import { Counter } from 'k6/metrics';
 const RPC_URL = __ENV.RPC_URL || 'http://127.0.0.1:8899';
 const MIN_BLOCK = parseInt(__ENV.MIN_BLOCK || '320544000');
 const MAX_BLOCK = parseInt(__ENV.MAX_BLOCK || '320975999');
+// Set to 'true' to request and handle gzip compression.
+const USE_GZIP = __ENV.USE_GZIP === 'true';
 
 // --- Custom Metrics ---
 // A custom counter to specifically track unexpected RPC-level errors.
@@ -62,6 +64,12 @@ export default function () {
   const params = {
     headers: { 'Content-Type': 'application/json' },
   };
+
+  // Add gzip compression option if enabled via environment variable.
+  // k6 will automatically add the 'Accept-Encoding' header and decompress the response.
+  if (USE_GZIP) {
+    params.compression = 'gzip';
+  }
 
   // 3. Send the POST request.
   const res = http.post(RPC_URL, payload, params);
@@ -133,5 +141,8 @@ export default function () {
 // 3. Run the test from your terminal.
 //    k6 run k6-getBlock.js
 
-// 4. To override configuration using environment variables:
-//    k6 run -e RPC_URL=http://another-node:8899 -e MAX_BLOCK=400000000 k6-getBlock.js
+// 4. To run with gzip compression enabled:
+//    k6 run -e USE_GZIP=true k6-getBlock.js
+
+// 5. To override other configurations:
+//    k6 run -e USE_GZIP=true -e RPC_URL=http://another-node:8899 k6-getBlock.js
