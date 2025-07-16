@@ -4,8 +4,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"strings"
 
+	"github.com/davecgh/go-spew/spew"
+	bin "github.com/gagliardetto/binary"
+	"github.com/mr-tron/base58"
 	"github.com/novifinancial/serde-reflection/serde-generate/runtime/golang/bincode"
 	"github.com/novifinancial/serde-reflection/serde-generate/runtime/golang/serde"
 )
@@ -14,8 +16,8 @@ var ErrSomeBytesNotRead = errors.New("Some input bytes were not read")
 
 type CompiledInstruction struct {
 	ProgramIdIndex uint8
-	Accounts       []uint8
-	Data           []uint8
+	Accounts       []uint8 // NOTE: solana_short_vec
+	Data           []uint8 // NOTE: solana_short_vec
 }
 
 func (obj *CompiledInstruction) Serialize(serializer serde.Serializer) error {
@@ -56,18 +58,44 @@ func DeserializeCompiledInstruction(deserializer serde.Deserializer) (CompiledIn
 	} else {
 		return obj, fmt.Errorf("Failed to deserialize ProgramIdIndex (as u8): %w", err)
 	}
-	if val, err := deserialize_accounts_vector_u8(deserializer); err == nil {
+	if val, err := deserialize_solana_short_vec_u8(deserializer); err == nil {
 		obj.Accounts = val
 	} else {
 		return obj, fmt.Errorf("Failed to deserialize Accounts (as []u8): %w", err)
 	}
-	if val, err := deserialize_accounts_vector_u8(deserializer); err == nil {
+	if val, err := deserialize_solana_short_vec_u8(deserializer); err == nil {
+		fmt.Println(base58.Encode(val))
+		fmt.Println("have:", bin.FormatByteSlice(val))
+		ddd, _ := base58.Decode("3DTZbgwsozUF")
+		fmt.Println("want:", bin.FormatByteSlice(ddd))
 		obj.Data = val
 	} else {
 		return obj, fmt.Errorf("Failed to deserialize Data (as []u8): %w", err)
 	}
 	deserializer.DecreaseContainerDepth()
 	return obj, nil
+}
+
+// solana_short_vec
+func deserializeCompactU16(deserializer serde.Deserializer) (uint16, error) {
+	got, err := bin.DecodeCompactU16LengthFromByteReader(&wrapDeserializerByteReader{deserializer})
+	if err != nil {
+		return 0, fmt.Errorf("Failed to deserialize CompactU16: %w", err)
+	}
+	return uint16(got), nil
+}
+
+type wrapDeserializerByteReader struct {
+	deserializer serde.Deserializer
+}
+
+// io.ByteReader
+func (w *wrapDeserializerByteReader) ReadByte() (byte, error) {
+	b, err := w.deserializer.DeserializeU8()
+	if err != nil {
+		return 0, fmt.Errorf("Failed to read byte: %w", err)
+	}
+	return b, nil
 }
 
 func BincodeDeserializeCompiledInstruction(input []byte) (CompiledInstruction, error) {
@@ -85,7 +113,7 @@ func BincodeDeserializeCompiledInstruction(input []byte) (CompiledInstruction, e
 
 type InnerInstruction struct {
 	Instruction CompiledInstruction
-	StackHeight *uint32
+	// StackHeight *uint32
 }
 
 func (obj *InnerInstruction) Serialize(serializer serde.Serializer) error {
@@ -95,9 +123,9 @@ func (obj *InnerInstruction) Serialize(serializer serde.Serializer) error {
 	if err := obj.Instruction.Serialize(serializer); err != nil {
 		return err
 	}
-	if err := serialize_option_u32(obj.StackHeight, serializer); err != nil {
-		return err
-	}
+	// if err := serialize_option_u32(obj.StackHeight, serializer); err != nil {
+	// 	return err
+	// }
 	serializer.DecreaseContainerDepth()
 	return nil
 }
@@ -123,14 +151,15 @@ func DeserializeInnerInstruction(deserializer serde.Deserializer) (InnerInstruct
 	} else {
 		return obj, fmt.Errorf("Failed to deserialize Instruction (as CompiledInstruction): %w", err)
 	}
+	spew.Dump(obj)
+	spew.Dump(base58.Encode(obj.Instruction.Data))
+	spew.Dump("##############################################################################################################")
+	spew.Dump("##############################################################################################################")
+	// Stack height was added way later, to when the data was serialized as protobuf.
 	// if val, err := deserialize_option_u32(deserializer); err == nil {
 	// 	obj.StackHeight = val
 	// } else {
-	// 	// TODO: remove StackHeight because it doesn't exist in the legacy format.
-	// 	if strings.Contains(err.Error(), "invalid bool byte") {
-	// 		obj.StackHeight = nil
-	// 		return obj, nil
-	// 	}
+	// 	// DEBUG
 	// 	return obj, fmt.Errorf("Failed to deserialize StackHeight (as *uint32): %w", err)
 	// }
 	deserializer.DecreaseContainerDepth()
@@ -4645,15 +4674,16 @@ func BincodeDeserializeTransactionReturnData(input []byte) (TransactionReturnDat
 	return obj, err
 }
 
-type TransactionStatusMeta struct {
+// https://github.com/anza-xyz/agave/blob/6f29aeb2fccdefdf47fd264e4af8c4e7040e679c/storage-proto/src/lib.rs#L178
+type StoredTransactionStatusMeta struct {
 	Status               Result
 	Fee                  uint64
 	PreBalances          []uint64
 	PostBalances         []uint64
 	InnerInstructions    *[]InnerInstructions
 	LogMessages          *[]string
-	PreTokenBalances     *[]TransactionTokenBalance
-	PostTokenBalances    *[]TransactionTokenBalance
+	PreTokenBalances     *[]StoredTransactionTokenBalance
+	PostTokenBalances    *[]StoredTransactionTokenBalance
 	Rewards              *[]Reward
 	LoadedAddresses      LoadedAddresses
 	ReturnData           *TransactionReturnData
@@ -4661,7 +4691,7 @@ type TransactionStatusMeta struct {
 }
 
 // SerializeStored serializes the TransactionStatusMeta when it has only the fields that are stored in bigtable.
-func (obj *TransactionStatusMeta) SerializeStored(serializer serde.Serializer) error {
+func (obj *StoredTransactionStatusMeta) SerializeStored(serializer serde.Serializer) error {
 	if err := serializer.IncreaseContainerDepth(); err != nil {
 		return err
 	}
@@ -4681,7 +4711,7 @@ func (obj *TransactionStatusMeta) SerializeStored(serializer serde.Serializer) e
 	return nil
 }
 
-func (obj *TransactionStatusMeta) BincodeSerializeStored() ([]byte, error) {
+func (obj *StoredTransactionStatusMeta) BincodeSerializeStored() ([]byte, error) {
 	if obj == nil {
 		return nil, fmt.Errorf("Cannot serialize null object")
 	}
@@ -4692,7 +4722,7 @@ func (obj *TransactionStatusMeta) BincodeSerializeStored() ([]byte, error) {
 	return serializer.GetBytes(), nil
 }
 
-func (obj *TransactionStatusMeta) Serialize(serializer serde.Serializer) error {
+func (obj *StoredTransactionStatusMeta) Serialize(serializer serde.Serializer) error {
 	if err := serializer.IncreaseContainerDepth(); err != nil {
 		return err
 	}
@@ -4736,7 +4766,7 @@ func (obj *TransactionStatusMeta) Serialize(serializer serde.Serializer) error {
 	return nil
 }
 
-func (obj *TransactionStatusMeta) BincodeSerialize() ([]byte, error) {
+func (obj *StoredTransactionStatusMeta) BincodeSerialize() ([]byte, error) {
 	if obj == nil {
 		return nil, fmt.Errorf("Cannot serialize null object")
 	}
@@ -4747,8 +4777,8 @@ func (obj *TransactionStatusMeta) BincodeSerialize() ([]byte, error) {
 	return serializer.GetBytes(), nil
 }
 
-func DeserializeTransactionStatusMeta(deserializer serde.Deserializer) (TransactionStatusMeta, error) {
-	var obj TransactionStatusMeta
+func DeserializeStoredTransactionStatusMeta(deserializer serde.Deserializer) (StoredTransactionStatusMeta, error) {
+	var obj StoredTransactionStatusMeta
 	if err := deserializer.IncreaseContainerDepth(); err != nil {
 		return obj, fmt.Errorf("failed to increase container depth at TransactionStatusMeta: %w", err)
 	}
@@ -4785,101 +4815,69 @@ func DeserializeTransactionStatusMeta(deserializer serde.Deserializer) (Transact
 	if val, err := deserialize_option_vector_InnerInstructions(deserializer); err == nil {
 		obj.InnerInstructions = val
 	} else {
-		if errors.Is(err, io.EOF) {
-			deserializer.DecreaseContainerDepth()
-			return obj, nil
-		}
 		return obj, fmt.Errorf("Failed to deserialize InnerInstructions: %w", err)
 	}
 	if val, err := deserialize_option_vector_str(deserializer); err == nil {
 		obj.LogMessages = val
 	} else {
-		if errors.Is(err, io.EOF) {
-			deserializer.DecreaseContainerDepth()
-			return obj, nil
-		}
-		return obj, fmt.Errorf("Failed to deserialize LogMessages: %w", err)
+		return obj, nil
 	}
 	if val, err := deserialize_option_vector_TransactionTokenBalance(deserializer); err == nil {
 		obj.PreTokenBalances = val
 	} else {
-		if errors.Is(err, io.EOF) || strings.Contains(err.Error(), "invalid bool byte") || strings.Contains(err.Error(), "length is too large") {
-			deserializer.DecreaseContainerDepth()
-			return obj, nil
-		}
-		return obj, fmt.Errorf("Failed to deserialize PreTokenBalances: %w", err)
+		return obj, nil
 	}
 	if val, err := deserialize_option_vector_TransactionTokenBalance(deserializer); err == nil {
 		obj.PostTokenBalances = val
 	} else {
-		if errors.Is(err, io.EOF) || strings.Contains(err.Error(), "invalid bool byte") || strings.Contains(err.Error(), "length is too large") {
-			deserializer.DecreaseContainerDepth()
-			return obj, nil
-		}
 		return obj, fmt.Errorf("Failed to deserialize PostTokenBalances: %w", err)
 	}
 	if val, err := deserialize_option_vector_Reward(deserializer); err == nil {
 		obj.Rewards = val
 	} else {
-		if errors.Is(err, io.EOF) {
-			deserializer.DecreaseContainerDepth()
-			return obj, nil
-		}
 		return obj, fmt.Errorf("Failed to deserialize Rewards: %w", err)
 	}
 	if val, err := DeserializeLoadedAddresses(deserializer); err == nil {
 		obj.LoadedAddresses = val
 	} else {
-		if errors.Is(err, io.EOF) {
-			deserializer.DecreaseContainerDepth()
-			return obj, nil
-		}
 		return obj, fmt.Errorf("Failed to deserialize LoadedAddresses: %w", err)
 	}
 	if val, err := deserialize_option_TransactionReturnData(deserializer); err == nil {
 		obj.ReturnData = val
 	} else {
-		if errors.Is(err, io.EOF) {
-			deserializer.DecreaseContainerDepth()
-			return obj, nil
-		}
 		return obj, fmt.Errorf("Failed to deserialize ReturnData: %w", err)
 	}
 	if val, err := deserialize_option_u64(deserializer); err == nil {
 		obj.ComputeUnitsConsumed = val
 	} else {
-		if errors.Is(err, io.EOF) {
-			deserializer.DecreaseContainerDepth()
-			return obj, nil
-		}
 		return obj, fmt.Errorf("Failed to deserialize ComputeUnitsConsumed: %w", err)
 	}
 	deserializer.DecreaseContainerDepth()
 	return obj, nil
 }
 
-func BincodeDeserializeTransactionStatusMeta(input []byte) (TransactionStatusMeta, error) {
+func BincodeDeserializeStoredTransactionStatusMeta(input []byte) (StoredTransactionStatusMeta, error) {
 	if input == nil {
-		var obj TransactionStatusMeta
+		var obj StoredTransactionStatusMeta
 		return obj, fmt.Errorf("Cannot deserialize null array")
 	}
 	deserializer := bincode.NewDeserializer(input)
-	obj, err := DeserializeTransactionStatusMeta(deserializer)
+	obj, err := DeserializeStoredTransactionStatusMeta(deserializer)
 	if err == nil && deserializer.GetBufferOffset() < uint64(len(input)) {
 		return obj, ErrSomeBytesNotRead
 	}
 	return obj, err
 }
 
-type TransactionTokenBalance struct {
+type StoredTransactionTokenBalance struct {
 	AccountIndex  uint8
 	Mint          string
-	UiTokenAmount UiTokenAmount
+	UiTokenAmount StoredTokenAmount
 	Owner         string
 	ProgramId     string
 }
 
-func (obj *TransactionTokenBalance) Serialize(serializer serde.Serializer) error {
+func (obj *StoredTransactionTokenBalance) Serialize(serializer serde.Serializer) error {
 	if err := serializer.IncreaseContainerDepth(); err != nil {
 		return err
 	}
@@ -4902,7 +4900,7 @@ func (obj *TransactionTokenBalance) Serialize(serializer serde.Serializer) error
 	return nil
 }
 
-func (obj *TransactionTokenBalance) BincodeSerialize() ([]byte, error) {
+func (obj *StoredTransactionTokenBalance) BincodeSerialize() ([]byte, error) {
 	if obj == nil {
 		return nil, fmt.Errorf("Cannot serialize null object")
 	}
@@ -4913,8 +4911,8 @@ func (obj *TransactionTokenBalance) BincodeSerialize() ([]byte, error) {
 	return serializer.GetBytes(), nil
 }
 
-func DeserializeTransactionTokenBalance(deserializer serde.Deserializer) (TransactionTokenBalance, error) {
-	var obj TransactionTokenBalance
+func DeserializeTransactionTokenBalance(deserializer serde.Deserializer) (StoredTransactionTokenBalance, error) {
+	var obj StoredTransactionTokenBalance
 	if err := deserializer.IncreaseContainerDepth(); err != nil {
 		return obj, err
 	}
@@ -4928,7 +4926,7 @@ func DeserializeTransactionTokenBalance(deserializer serde.Deserializer) (Transa
 	} else {
 		return obj, err
 	}
-	if val, err := DeserializeUiTokenAmount(deserializer); err == nil {
+	if val, err := DeserializeStoredTokenAmount(deserializer); err == nil {
 		obj.UiTokenAmount = val
 	} else {
 		return obj, err
@@ -4947,9 +4945,9 @@ func DeserializeTransactionTokenBalance(deserializer serde.Deserializer) (Transa
 	return obj, nil
 }
 
-func BincodeDeserializeTransactionTokenBalance(input []byte) (TransactionTokenBalance, error) {
+func BincodeDeserializeTransactionTokenBalance(input []byte) (StoredTransactionTokenBalance, error) {
 	if input == nil {
-		var obj TransactionTokenBalance
+		var obj StoredTransactionTokenBalance
 		return obj, fmt.Errorf("Cannot deserialize null array")
 	}
 	deserializer := bincode.NewDeserializer(input)
@@ -4960,34 +4958,32 @@ func BincodeDeserializeTransactionTokenBalance(input []byte) (TransactionTokenBa
 	return obj, err
 }
 
-type UiTokenAmount struct {
-	UiAmount       *float64
-	Decimals       uint8
-	Amount         string
-	UiAmountString string
+type StoredTokenAmount struct {
+	UiAmount float64
+	Decimals uint8
+	Amount   StringAmount
 }
 
-func (obj *UiTokenAmount) Serialize(serializer serde.Serializer) error {
+type StringAmount string
+
+func (obj *StoredTokenAmount) Serialize(serializer serde.Serializer) error {
 	if err := serializer.IncreaseContainerDepth(); err != nil {
 		return err
 	}
-	if err := serialize_option_f64(obj.UiAmount, serializer); err != nil {
+	if err := serializer.SerializeF64(obj.UiAmount); err != nil {
 		return err
 	}
 	if err := serializer.SerializeU8(obj.Decimals); err != nil {
 		return err
 	}
-	if err := serializer.SerializeStr(obj.Amount); err != nil {
-		return err
-	}
-	if err := serializer.SerializeStr(obj.UiAmountString); err != nil {
+	if err := serializer.SerializeStr(string(obj.Amount)); err != nil {
 		return err
 	}
 	serializer.DecreaseContainerDepth()
 	return nil
 }
 
-func (obj *UiTokenAmount) BincodeSerialize() ([]byte, error) {
+func (obj *StoredTokenAmount) BincodeSerialize() ([]byte, error) {
 	if obj == nil {
 		return nil, fmt.Errorf("Cannot serialize null object")
 	}
@@ -4998,12 +4994,12 @@ func (obj *UiTokenAmount) BincodeSerialize() ([]byte, error) {
 	return serializer.GetBytes(), nil
 }
 
-func DeserializeUiTokenAmount(deserializer serde.Deserializer) (UiTokenAmount, error) {
-	var obj UiTokenAmount
+func DeserializeStoredTokenAmount(deserializer serde.Deserializer) (StoredTokenAmount, error) {
+	var obj StoredTokenAmount
 	if err := deserializer.IncreaseContainerDepth(); err != nil {
 		return obj, err
 	}
-	if val, err := deserialize_option_f64(deserializer); err == nil {
+	if val, err := deserializer.DeserializeF64(); err == nil {
 		obj.UiAmount = val
 	} else {
 		return obj, err
@@ -5014,12 +5010,7 @@ func DeserializeUiTokenAmount(deserializer serde.Deserializer) (UiTokenAmount, e
 		return obj, err
 	}
 	if val, err := deserializer.DeserializeStr(); err == nil {
-		obj.Amount = val
-	} else {
-		return obj, err
-	}
-	if val, err := deserializer.DeserializeStr(); err == nil {
-		obj.UiAmountString = val
+		obj.Amount = StringAmount(val)
 	} else {
 		return obj, err
 	}
@@ -5027,13 +5018,13 @@ func DeserializeUiTokenAmount(deserializer serde.Deserializer) (UiTokenAmount, e
 	return obj, nil
 }
 
-func BincodeDeserializeUiTokenAmount(input []byte) (UiTokenAmount, error) {
+func BincodeDeserializeUiTokenAmount(input []byte) (StoredTokenAmount, error) {
 	if input == nil {
-		var obj UiTokenAmount
+		var obj StoredTokenAmount
 		return obj, fmt.Errorf("Cannot deserialize null array")
 	}
 	deserializer := bincode.NewDeserializer(input)
-	obj, err := DeserializeUiTokenAmount(deserializer)
+	obj, err := DeserializeStoredTokenAmount(deserializer)
 	if err == nil && deserializer.GetBufferOffset() < uint64(len(input)) {
 		return obj, ErrSomeBytesNotRead
 	}
@@ -5182,7 +5173,7 @@ func serialize_option_u32(value *uint32, serializer serde.Serializer) error {
 func deserialize_option_u32(deserializer serde.Deserializer) (*uint32, error) {
 	tag, err := deserializer.DeserializeOptionTag()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to deserialize option tag: %w", err)
 	}
 	if tag {
 		value := new(uint32)
@@ -5333,7 +5324,7 @@ func deserialize_option_vector_Reward(deserializer serde.Deserializer) (*[]Rewar
 	}
 }
 
-func serialize_option_vector_TransactionTokenBalance(value *[]TransactionTokenBalance, serializer serde.Serializer) error {
+func serialize_option_vector_TransactionTokenBalance(value *[]StoredTransactionTokenBalance, serializer serde.Serializer) error {
 	if value != nil {
 		if err := serializer.SerializeOptionTag(true); err != nil {
 			return err
@@ -5349,13 +5340,13 @@ func serialize_option_vector_TransactionTokenBalance(value *[]TransactionTokenBa
 	return nil
 }
 
-func deserialize_option_vector_TransactionTokenBalance(deserializer serde.Deserializer) (*[]TransactionTokenBalance, error) {
+func deserialize_option_vector_TransactionTokenBalance(deserializer serde.Deserializer) (*[]StoredTransactionTokenBalance, error) {
 	tag, err := deserializer.DeserializeOptionTag()
 	if err != nil {
 		return nil, err
 	}
 	if tag {
-		value := new([]TransactionTokenBalance)
+		value := new([]StoredTransactionTokenBalance)
 		if val, err := deserialize_vector_TransactionTokenBalance(deserializer); err == nil {
 			*value = val
 		} else {
@@ -5513,7 +5504,7 @@ func deserialize_vector_Reward(deserializer serde.Deserializer) ([]Reward, error
 	return obj, nil
 }
 
-func serialize_vector_TransactionTokenBalance(value []TransactionTokenBalance, serializer serde.Serializer) error {
+func serialize_vector_TransactionTokenBalance(value []StoredTransactionTokenBalance, serializer serde.Serializer) error {
 	if err := serializer.SerializeLen(uint64(len(value))); err != nil {
 		return err
 	}
@@ -5525,12 +5516,12 @@ func serialize_vector_TransactionTokenBalance(value []TransactionTokenBalance, s
 	return nil
 }
 
-func deserialize_vector_TransactionTokenBalance(deserializer serde.Deserializer) ([]TransactionTokenBalance, error) {
+func deserialize_vector_TransactionTokenBalance(deserializer serde.Deserializer) ([]StoredTransactionTokenBalance, error) {
 	length, err := deserializer.DeserializeLen()
 	if err != nil {
 		return nil, fmt.Errorf("failed to deserialize length: %w", err)
 	}
-	obj := make([]TransactionTokenBalance, length)
+	obj := make([]StoredTransactionTokenBalance, length)
 	for i := range obj {
 		if val, err := DeserializeTransactionTokenBalance(deserializer); err == nil {
 			obj[i] = val
@@ -5627,6 +5618,22 @@ func deserialize_vector_u8(deserializer serde.Deserializer) ([]uint8, error) {
 
 func deserialize_accounts_vector_u8(deserializer serde.Deserializer) ([]uint8, error) {
 	length, err := deserializer.DeserializeU8()
+	if err != nil {
+		return nil, fmt.Errorf("Failed to deserialize length: %w", err)
+	}
+	obj := make([]uint8, length)
+	for i := range obj {
+		if val, err := deserializer.DeserializeU8(); err == nil {
+			obj[i] = val
+		} else {
+			return nil, err
+		}
+	}
+	return obj, nil
+}
+
+func deserialize_solana_short_vec_u8(deserializer serde.Deserializer) ([]uint8, error) {
+	length, err := deserializeCompactU16(deserializer)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to deserialize length: %w", err)
 	}
