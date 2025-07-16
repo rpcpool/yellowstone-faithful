@@ -4,15 +4,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sync/atomic"
 	"time"
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/dustin/go-humanize"
+
 	"github.com/ipfs/go-cid"
 	"github.com/rpcpool/yellowstone-faithful/accum"
 	"github.com/rpcpool/yellowstone-faithful/carreader"
@@ -27,11 +29,14 @@ import (
 	"github.com/urfave/cli/v2"
 	"golang.org/x/sync/errgroup"
 	"k8s.io/klog/v2"
+
+	"github.com/gagliardetto/solana-go"
 )
 
 func newCmd_Index_gsfa() *cli.Command {
 	var epoch uint64
 	var network indexes.Network
+	var pubkeysExclude solana.PublicKeySlice
 	return &cli.Command{
 		Name:        "gsfa",
 		Description: "Create GSFA index from a CAR file",
@@ -74,7 +79,7 @@ func newCmd_Index_gsfa() *cli.Command {
 			},
 			&cli.StringFlag{
 				Name:  "tmp-dir",
-				Usage: "temporary directory to use for storing intermediate files; WILL BE DELETED",
+				Usage: "temporary directory to use for storing intermediate files",
 				Value: os.TempDir(),
 			},
 			&cli.StringSliceFlag{
@@ -94,6 +99,20 @@ func newCmd_Index_gsfa() *cli.Command {
 				Name:  "sigverify",
 				Usage: "Verify signatures of transactions",
 				Value: true,
+			},
+			&cli.StringSliceFlag{
+				Name:  "exclude-pubkey",
+				Usage: "Exclude transactions that contain these public keys in their account keys",
+				Action: func(c *cli.Context, v []string) error {
+					for _, pk := range v {
+						parsed, err := solana.PublicKeyFromBase58(pk)
+						if err != nil {
+							return fmt.Errorf("failed to parse public key %q: %w", pk, err)
+						}
+						pubkeysExclude = append(pubkeysExclude, parsed)
+					}
+					return nil
+				},
 			},
 		},
 		Action: func(c *cli.Context) error {
@@ -146,13 +165,11 @@ func newCmd_Index_gsfa() *cli.Command {
 				} else if isNonEmpty {
 					return fmt.Errorf("gsfa index dir already exists and is not empty: %s", gsfaIndexDir)
 				}
-				klog.Infof("gsfa index dir already exists: %s", gsfaIndexDir)
-				klog.Infof("If you want to overwrite it, please delete it first.")
-				return nil
-			}
-			err = os.Mkdir(gsfaIndexDir, 0o755)
-			if err != nil {
-				return fmt.Errorf("failed to create gsfa index dir: %w", err)
+			} else {
+				err = os.Mkdir(gsfaIndexDir, 0o755)
+				if err != nil {
+					return fmt.Errorf("failed to create gsfa index dir: %w", err)
+				}
 			}
 
 			meta := indexmeta.Meta{}
@@ -168,9 +185,9 @@ func newCmd_Index_gsfa() *cli.Command {
 				}
 			}
 			tmpDir := c.String("tmp-dir")
-			tmpDir = filepath.Join(tmpDir, fmt.Sprintf("yellowstone-faithful-gsfa-%d", time.Now().UnixNano()))
-			if err := os.MkdirAll(tmpDir, 0o755); err != nil {
-				return fmt.Errorf("failed to create tmp dir: %w", err)
+			tmpDir, err = os.MkdirTemp(tmpDir, "gsfa_indexer_*")
+			if err != nil {
+				return fmt.Errorf("failed to create temporary directory: %w", err)
 			}
 			indexW, err := gsfa.NewGsfaWriter(
 				gsfaIndexDir,
@@ -201,141 +218,13 @@ func newCmd_Index_gsfa() *cli.Command {
 			numMissingMetadata.Store(0)
 
 			requireTxMetadata := c.Bool("require-tx-metadata")
-			if false {
-				iterator := accum.NewReader(rd)
-				for {
-					children, err := iterator.ReadUntilBlock(
-						iplddecoders.KindSlice{
-							iplddecoders.KindEntry,
-							iplddecoders.KindRewards,
-						},
-					)
-					if err != nil {
-						if errors.Is(err, io.EOF) {
-							break // No more objects to read
-						}
-						return fmt.Errorf("error while reading until block: %w", err)
-					}
-					if children.Len() == 0 {
-						klog.Infof("No more objects to read, exiting...")
-						continue
-					}
-					// block, err := children.GetBlock()
-					// if err != nil {
-					// 	panic(err)
-					// }
-					// fmt.Println(block.Slot, len(*children))
-					transactions, err := children.GetTransactions()
-					if err != nil {
-						return fmt.Errorf("error while getting transactions: %w", err)
-					}
-					if sigverify {
-						wg := new(errgroup.Group)
-						for ii := range transactions {
-							txWithInfo := transactions[ii]
-							wg.Go(func() error {
-								if err := txWithInfo.Transaction.VerifySignatures(); err != nil {
-									return fmt.Errorf(
-										"error while verifying signatures for transaction %s: %w",
-										txWithInfo.Transaction.Signatures[0],
-										err,
-									)
-								}
-								return nil
-							})
-						}
-						if err := wg.Wait(); err != nil {
-							klog.Exitf("Error while verifying signatures: %s", err)
-						}
-					}
-					{
-						for ii := range transactions {
-							txWithInfo := transactions[ii]
-							numProcessedTransactions.Add(1)
-							accountKeys := txWithInfo.Transaction.Message.AccountKeys
-							if txWithInfo.Metadata != nil && txWithInfo.Metadata.IsProtobuf() {
-								meta := txWithInfo.Metadata.GetProtobuf()
-								accountKeys = append(accountKeys, byteSlicesToKeySlice(meta.LoadedReadonlyAddresses)...)
-								accountKeys = append(accountKeys, byteSlicesToKeySlice(meta.LoadedWritableAddresses)...)
-							}
-							hasMeta := txWithInfo.Metadata != nil // We include this to know whether isSuccess is valid.
-							if txWithInfo.Metadata == nil || !txWithInfo.Metadata.HasMeta() {
-								numMissingMetadata.Add(1)
-								if requireTxMetadata {
-									klog.Errorf("Transaction %s has no metadata", txWithInfo.Transaction.Signatures[0])
-									spew.Dump(txWithInfo.Error, txWithInfo.IsMetaParseError())
-									panic("Transaction has no metadata, but requireTxMetadata is set to true")
-								}
-							}
-							isSuccess := func() bool {
-								// check if the transaction is a success:
-								if txWithInfo.Metadata == nil {
-									// NOTE: if there is no metadata, we have NO WAY of knowing if the transaction was successful.
-									return false
-								}
-								if txWithInfo.Metadata.IsProtobuf() {
-									meta := txWithInfo.Metadata.GetProtobuf()
-									if meta.Err == nil {
-										return true
-									}
-								}
-								if txWithInfo.Metadata.IsSerde() {
-									meta := txWithInfo.Metadata.GetSerde()
-									_, ok := meta.Status.(*serde_agave.Result__Ok)
-									if ok {
-										return true
-									}
-								}
-								return false
-							}()
 
-							isVote := IsVote(&txWithInfo.Transaction)
-
-							err = indexW.Push(
-								txWithInfo.Offset,
-								txWithInfo.Length,
-								txWithInfo.Slot,
-								accountKeys,
-								hasMeta,
-								isSuccess,
-								isVote,
-							)
-							if err != nil {
-								klog.Exitf("Error while pushing to gsfa index: %s", err)
-							}
-
-							if time.Since(lastPrintedAt) > time.Second {
-								percentDone := float64(txWithInfo.Slot-epochStart) / float64(epochEnd-epochStart) * 100
-								// clear line, then print progress
-								msg := fmt.Sprintf(
-									"\rCreating gSFA index for epoch %d - %s | %s | %.2f%% | slot %s | tx %s",
-									epoch,
-									time.Now().Format("2006-01-02 15:04:05"),
-									time.Since(startedAt).Truncate(time.Second),
-									percentDone,
-									humanize.Comma(int64(txWithInfo.Slot)),
-									humanize.Comma(int64(numProcessedTransactions.Load())),
-								)
-								var eta time.Duration
-								timePast := time.Since(startedAt).Truncate(time.Second).Round(time.Second)
-								if percentDone > 0 && timePast > 0 {
-									// it took timePast to get percentDone done
-									remainingPercent := 100 - percentDone
-									msForOnePercent := float64(timePast.Milliseconds()) / percentDone
-									eta = time.Millisecond * time.Duration(msForOnePercent*remainingPercent)
-									eta = eta.Truncate(time.Second).Round(time.Second)
-								}
-								if eta > 0 {
-									msg += fmt.Sprintf(" | ETA %s", eta.Truncate(time.Second))
-								}
-								fmt.Print(msg)
-								lastPrintedAt = time.Now()
-							}
-						}
-					}
-					iterator.Put(children)
-				}
+			if len(pubkeysExclude) > 0 {
+				slog.Info("Excluding transactions with the following public keys:", "pubkeys", pubkeysExclude)
 			}
+
+			numTransactionsWithMoreThanOnePieceForMetadata := new(atomic.Uint64)
+
 			accum := accum.NewObjectAccumulator(
 				rd,
 				iplddecoders.KindBlock,
@@ -356,11 +245,12 @@ func newCmd_Index_gsfa() *cli.Command {
 					}
 
 					if parent == nil {
-						transactions, err := accum.ObjectsToTransactionsAndMetadata(&ipldbindcode.Block{
-							Meta: ipldbindcode.SlotMeta{
-								Blocktime: 0,
-							},
-						}, children)
+						transactions, err := accum.ObjectsToTransactionsAndMetadata(
+							&ipldbindcode.Block{
+								Meta: ipldbindcode.SlotMeta{
+									Blocktime: 0,
+								},
+							}, children)
 						if err != nil {
 							return fmt.Errorf("error while converting objects to transactions: %w", err)
 						}
@@ -394,6 +284,11 @@ func newCmd_Index_gsfa() *cli.Command {
 										err,
 									)
 								}
+								{
+									if len(txWithInfo.MetadataPieces) > 0 {
+										numTransactionsWithMoreThanOnePieceForMetadata.Add(1)
+									}
+								}
 								return nil
 							})
 						}
@@ -417,7 +312,7 @@ func newCmd_Index_gsfa() *cli.Command {
 							if requireTxMetadata {
 								klog.Errorf("Transaction %s has no metadata", txWithInfo.Transaction.Signatures[0])
 								spew.Dump(txWithInfo.Error, txWithInfo.IsMetaParseError())
-								panic("Transaction has no metadata, but requireTxMetadata is set to true")
+								panic("Transaction has no metadata, but --require-tx-metadata=true")
 							}
 						}
 						isSuccess := func() bool {
@@ -444,6 +339,15 @@ func newCmd_Index_gsfa() *cli.Command {
 
 						isVote := IsVote(&txWithInfo.Transaction)
 
+						// v2:
+						if len(pubkeysExclude) > 0 {
+							accountKeys = slices.DeleteFunc(
+								accountKeys,
+								func(pk solana.PublicKey) bool {
+									return slices.Contains(pubkeysExclude, pk)
+								},
+							)
+						}
 						err = indexW.Push(
 							txWithInfo.Offset,
 							txWithInfo.Length,
@@ -458,6 +362,10 @@ func newCmd_Index_gsfa() *cli.Command {
 						}
 
 						if time.Since(lastPrintedAt) > time.Second {
+							slog.Info(
+								"num transactions with more than one piece for metadata",
+								"num", numTransactionsWithMoreThanOnePieceForMetadata.Load(),
+							)
 							percentDone := float64(txWithInfo.Slot-epochStart) / float64(epochEnd-epochStart) * 100
 							// clear line, then print progress
 							msg := fmt.Sprintf(
