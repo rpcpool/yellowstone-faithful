@@ -216,7 +216,7 @@ func (n *NodesWithCids) GetByCid(cid *cid.Cid) *NodeWithCid {
 //	    Ok(data)
 //	}
 func (n *NodesWithCids) ReassembleDataframes(firstDataFrame *ipldbindcode.DataFrame) ([]byte, error) {
-	return tooling.LoadDataFromDataFrames(firstDataFrame, func(ctx context.Context, wantedCid cid.Cid) (*ipldbindcode.DataFrame, error) {
+	return ipldbindcode.LoadDataFromDataFrames(firstDataFrame, func(ctx context.Context, wantedCid cid.Cid) (*ipldbindcode.DataFrame, error) {
 		nodeWithCid := n.GetByCid(&wantedCid)
 		if nodeWithCid == nil {
 			return nil, fmt.Errorf("missing CID: %s", wantedCid.String())

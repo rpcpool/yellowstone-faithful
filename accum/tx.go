@@ -16,14 +16,32 @@ import (
 )
 
 type TransactionWithSlot struct {
-	Offset      uint64
-	Length      uint64
-	Slot        uint64
-	Blocktime   uint64
-	Position    uint64 // Position in the block, used for sorting
-	Error       error
-	Transaction solana.Transaction
-	Metadata    *solanatxmetaparsers.TransactionStatusMetaContainer
+	Offset         uint64
+	Length         uint64
+	Slot           uint64
+	Blocktime      uint64
+	Position       uint64 // Position in the block, used for sorting
+	Error          error
+	Transaction    solana.Transaction
+	Metadata       *solanatxmetaparsers.TransactionStatusMetaContainer
+	MetadataPieces []MetadataPieceSectionRef // Used for multipiece metadata
+}
+
+// TransactionWithSlot.GetTotalOffsetAndLengthAndCount returns the total offset and length of the transaction and its metadata pieces.
+func (obj TransactionWithSlot) GetTotalOffsetAndLengthAndCount() (uint64, uint64, int) {
+	// assume the metadata comes before the transaction:
+	// e.g. {piece}{piece}{piece}{transaction}
+	totalOffset := obj.Offset
+	totalLength := obj.Length
+	if len(obj.MetadataPieces) > 0 {
+		// if we have metadata pieces, we need to calculate the total offset and length:
+		sort.Slice(obj.MetadataPieces, func(i, j int) bool {
+			return obj.MetadataPieces[i].Offset < obj.MetadataPieces[j].Offset
+		})
+		totalOffset = obj.MetadataPieces[0].Offset
+		totalLength = obj.Offset + obj.Length - totalOffset
+	}
+	return totalOffset, totalLength, 1 + len(obj.MetadataPieces) // transaction + metadata pieces
 }
 
 // IsMetaNotFound returns true if the error is a not found error.
@@ -150,18 +168,23 @@ func ObjectsToTransactionsAndMetadata(
 ) ([]*TransactionWithSlot, error) {
 	transactions := getTransactionWithSlotSlice()
 	dataBlocksMap := getDatablocksMap()
-	defer putDataBlocksMap(dataBlocksMap)
+	defer func() {
+		clearDataBlocksMap(dataBlocksMap)
+		putDataBlocksMap(dataBlocksMap)
+	}()
 	for objI := range objects {
 		object := objects[objI]
 		objectData := object.ObjectData.Bytes()
 		// check if the object is a transaction:
-		kind := iplddecoders.Kind(objectData[1])
+		kind, err := iplddecoders.GetKind(objectData)
+		if err != nil {
+			return nil, fmt.Errorf("error while getting kind from object %s: %w", object.Cid, err)
+		}
 		if kind == iplddecoders.KindDataFrame {
 			dataBlocksMap[object.Cid.String()] = object
 			continue
 		}
 	}
-	defer clearDataBlocksMap(dataBlocksMap)
 	wg := new(errgroup.Group)
 	mu := &sync.Mutex{}
 	for objI := range objects {
@@ -227,7 +250,7 @@ func ObjectsToTransactionsAndMetadata(
 				}
 			} else {
 				// metadata didn't fit into the transaction object, and was split into multiple dataframes:
-				metaBuffer, err := tooling.LoadDataFromDataFrames(
+				metaBuffer, err := ipldbindcode.LoadDataFromDataFrames(
 					&decodedTxObj.Metadata,
 					func(ctx context.Context, wantedCid cid.Cid) (*ipldbindcode.DataFrame, error) {
 						if dataBlock, ok := dataBlocksMap[wantedCid.String()]; ok {
@@ -235,6 +258,10 @@ func ObjectsToTransactionsAndMetadata(
 							if err != nil {
 								return nil, err
 							}
+							tws.MetadataPieces = append(tws.MetadataPieces, MetadataPieceSectionRef{
+								Offset: dataBlock.Offset,
+								Length: dataBlock.SectionLength,
+							})
 							return df, nil
 						}
 						return nil, fmt.Errorf("dataframe not found")

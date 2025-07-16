@@ -303,7 +303,7 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 				Message: "Internal error",
 			}, fmt.Errorf("failed to decode Rewards: %v", err)
 		}
-		rewardsBuf, err := tooling.LoadDataFromDataFrames(&rewardsNode.Data, epochHandler.GetDataFrameByCid)
+		rewardsBuf, err := ipldbindcode.LoadDataFromDataFrames(&rewardsNode.Data, epochHandler.GetDataFrameByCid)
 		if err != nil {
 			telemetry.RecordError(rewardsSpan, err, "Failed to load Rewards dataFrames")
 			rewardsSpan.End()

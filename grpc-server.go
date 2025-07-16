@@ -423,7 +423,7 @@ func (multi *MultiEpoch) GetBlock(ctx context.Context, params *old_faithful_grpc
 			rewardsSpan.End()
 			return nil, status.Errorf(codes.Internal, "Failed to get Rewards: %v", err)
 		}
-		rewardsBuf, err := tooling.LoadDataFromDataFrames(&rewardsNode.Data, epochHandler.GetDataFrameByCid)
+		rewardsBuf, err := ipldbindcode.LoadDataFromDataFrames(&rewardsNode.Data, epochHandler.GetDataFrameByCid)
 		if err != nil {
 			telemetry.RecordError(rewardsSpan, err, "Failed to load Rewards dataFrames")
 			rewardsSpan.End()

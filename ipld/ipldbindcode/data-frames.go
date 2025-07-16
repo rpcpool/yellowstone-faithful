@@ -1,4 +1,4 @@
-package tooling
+package ipldbindcode
 
 import (
 	"bytes"
@@ -8,12 +8,11 @@ import (
 
 	"github.com/ipfs/go-cid"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
-	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 )
 
 func LoadDataFromDataFrames(
-	firstDataFrame *ipldbindcode.DataFrame,
-	dataFrameGetter func(ctx context.Context, wantedCid cid.Cid) (*ipldbindcode.DataFrame, error),
+	firstDataFrame *DataFrame,
+	dataFrameGetter func(ctx context.Context, wantedCid cid.Cid) (*DataFrame, error),
 ) ([]byte, error) {
 	allFrames, err := getAllFramesFromDataFrame(firstDataFrame, dataFrameGetter)
 	if err != nil {
@@ -35,7 +34,7 @@ func LoadDataFromDataFrames(
 	if !ok {
 		return dataBuffer.Bytes(), nil
 	}
-	err = ipldbindcode.VerifyHash(dataBuffer.Bytes(), bufHash)
+	err = VerifyHash(dataBuffer.Bytes(), bufHash)
 	if err != nil {
 		return nil, err
 	}
@@ -43,10 +42,10 @@ func LoadDataFromDataFrames(
 }
 
 func getAllFramesFromDataFrame(
-	firstDataFrame *ipldbindcode.DataFrame,
-	dataFrameGetter func(ctx context.Context, wantedCid cid.Cid) (*ipldbindcode.DataFrame, error),
-) ([]*ipldbindcode.DataFrame, error) {
-	frames := []*ipldbindcode.DataFrame{firstDataFrame}
+	firstDataFrame *DataFrame,
+	dataFrameGetter func(ctx context.Context, wantedCid cid.Cid) (*DataFrame, error),
+) ([]*DataFrame, error) {
+	frames := []*DataFrame{firstDataFrame}
 	// get the next data frames
 	next, ok := firstDataFrame.GetNext()
 	if !ok || len(next) == 0 {

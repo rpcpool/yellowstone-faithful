@@ -9,6 +9,7 @@ import (
 	"github.com/gagliardetto/solana-go"
 	"github.com/ipfs/go-cid"
 	carv2 "github.com/ipld/go-car/v2"
+	"github.com/rpcpool/yellowstone-faithful/carreader"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	solanatxmetaparsers "github.com/rpcpool/yellowstone-faithful/solana-tx-meta-parsers"
 	splitcarfetcher "github.com/rpcpool/yellowstone-faithful/split-car-fetcher"
@@ -28,7 +29,7 @@ func isHTTP(where string) bool {
 func openIndexStorage(
 	ctx context.Context,
 	where string,
-) (ReaderAtCloser, error) {
+) (carreader.ReaderAtCloser, error) {
 	where = strings.TrimSpace(where)
 	if isHTTP(where) {
 		klog.Infof("opening index file from %q as HTTP remote file", where)
@@ -62,7 +63,7 @@ func openIndexStorage(
 	}, nil
 }
 
-func openCarStorage(ctx context.Context, where string) (*carv2.Reader, ReaderAtCloser, error) {
+func openCarStorage(ctx context.Context, where string) (*carv2.Reader, carreader.ReaderAtCloser, error) {
 	where = strings.TrimSpace(where)
 	if isHTTP(where) {
 		klog.Infof("opening CAR file from %q as HTTP remote file", where)
@@ -86,31 +87,12 @@ func openCarStorage(ctx context.Context, where string) (*carv2.Reader, ReaderAtC
 	return carReader, nil, nil
 }
 
-func readSectionFromReaderAt(reader ReaderAtCloser, offset uint64, length uint64) ([]byte, error) {
-	data := make([]byte, length)
-	_, err := reader.ReadAt(data, int64(offset))
-	if err != nil {
-		return nil, err
-	}
-	return data, nil
-}
-
-func readNodeFromReaderAtWithOffsetAndSize(reader ReaderAtCloser, wantedCid *cid.Cid, offset uint64, length uint64) ([]byte, error) {
-	// read MaxVarintLen64 bytes
-	section := make([]byte, length)
-	_, err := reader.ReadAt(section, int64(offset))
-	if err != nil {
-		return nil, err
-	}
-	return parseNodeFromSection(section, wantedCid)
-}
-
 func parseTransactionAndMetaFromNode(
 	transactionNode *ipldbindcode.Transaction,
 	dataFrameGetter func(ctx context.Context, wantedCid cid.Cid) (*ipldbindcode.DataFrame, error),
 ) (tx solana.Transaction, meta *solanatxmetaparsers.TransactionStatusMetaContainer, _ error) {
 	{
-		transactionBuffer, err := tooling.LoadDataFromDataFrames(&transactionNode.Data, dataFrameGetter)
+		transactionBuffer, err := ipldbindcode.LoadDataFromDataFrames(&transactionNode.Data, dataFrameGetter)
 		if err != nil {
 			return solana.Transaction{}, nil, err
 		}
@@ -124,7 +106,7 @@ func parseTransactionAndMetaFromNode(
 	}
 
 	{
-		metaBuffer, err := tooling.LoadDataFromDataFrames(&transactionNode.Metadata, dataFrameGetter)
+		metaBuffer, err := ipldbindcode.LoadDataFromDataFrames(&transactionNode.Metadata, dataFrameGetter)
 		if err != nil {
 			return solana.Transaction{}, nil, err
 		}
@@ -149,12 +131,12 @@ func getTransactionAndMetaFromNode(
 	transactionNode *ipldbindcode.Transaction,
 	dataFrameGetter func(ctx context.Context, wantedCid cid.Cid) (*ipldbindcode.DataFrame, error),
 ) ([]byte, []byte, error) {
-	transactionBuffer, err := tooling.LoadDataFromDataFrames(&transactionNode.Data, dataFrameGetter)
+	transactionBuffer, err := ipldbindcode.LoadDataFromDataFrames(&transactionNode.Data, dataFrameGetter)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to load transaction: %w", err)
 	}
 
-	metaBuffer, err := tooling.LoadDataFromDataFrames(&transactionNode.Metadata, dataFrameGetter)
+	metaBuffer, err := ipldbindcode.LoadDataFromDataFrames(&transactionNode.Metadata, dataFrameGetter)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to load metadata: %w", err)
 	}

@@ -1,6 +1,7 @@
 package ipldbindcode
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,6 +15,8 @@ import (
 	"github.com/ipfs/go-cid"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/rpcpool/yellowstone-faithful/dummycid"
+	solanatxmetaparsers "github.com/rpcpool/yellowstone-faithful/solana-tx-meta-parsers"
+	"github.com/rpcpool/yellowstone-faithful/tooling"
 )
 
 // DataFrame.HasHash returns whether the 'Hash' field is present.
@@ -126,7 +129,7 @@ func (n Transaction) GetPositionIndex() (int, bool) {
 
 var DisableHashVerification bool
 
-func (decoded Transaction) GetSolanaTransaction() (*solana.Transaction, error) {
+func (decoded *Transaction) GetSolanaTransaction() (*solana.Transaction, error) {
 	if total, ok := decoded.Data.GetTotal(); !ok || total == 1 {
 		completeData := decoded.Data.Bytes()
 		if !DisableHashVerification {
@@ -150,11 +153,72 @@ func (decoded Transaction) GetSolanaTransaction() (*solana.Transaction, error) {
 	}
 }
 
-func (decoded Transaction) Signatures() ([]solana.Signature, error) {
+var (
+	ErrPiecesNotAvailable = errors.New("transaction pieces are not available")
+	ErrMetadataNotFound   = errors.New("transaction metadata not found")
+)
+
+func (decodedTxObj *Transaction) GetMetadata() (*solanatxmetaparsers.TransactionStatusMetaContainer, error) {
+	if total, ok := decodedTxObj.Metadata.GetTotal(); !ok || total == 1 {
+		// metadata fit into the transaction object:
+		completeBuffer := decodedTxObj.Metadata.Bytes()
+		if ha, ok := decodedTxObj.Metadata.GetHash(); ok {
+			err := VerifyHash(completeBuffer, ha)
+			if err != nil {
+				return nil, fmt.Errorf("failed to verify metadata hash: %w", err)
+			}
+		}
+		if len(completeBuffer) > 0 {
+			uncompressedMeta, err := tooling.DecompressZstd(completeBuffer)
+			if err != nil {
+				return nil, fmt.Errorf("failed to decompress metadata: %w", err)
+			}
+			status, err := solanatxmetaparsers.ParseTransactionStatusMetaContainer(uncompressedMeta)
+			if err == nil {
+				return status, nil
+			} else {
+				return nil, fmt.Errorf("failed to parse metadata: %w", err)
+			}
+		} else {
+			return nil, ErrMetadataNotFound
+		}
+	}
+	// metadata didn't fit into the transaction object, and was split into multiple dataframes.
+	return nil, ErrPiecesNotAvailable
+}
+
+func (decodedTxObj *Transaction) GetMetadataWithFrameLoader(dataFrameGetter func(ctx context.Context, wantedCid cid.Cid) (*DataFrame, error)) (*solanatxmetaparsers.TransactionStatusMetaContainer, error) {
+	// metadata didn't fit into the transaction object, and was split into multiple dataframes:
+	metaBuffer, err := LoadDataFromDataFrames(
+		&decodedTxObj.Metadata,
+		dataFrameGetter,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load metadata: %w", err)
+	}
+
+	// if we have a metadata buffer, try to decompress it:
+	if len(metaBuffer) > 0 {
+		uncompressedMeta, err := tooling.DecompressZstd(metaBuffer)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decompress metadata: %w", err)
+		}
+		status, err := solanatxmetaparsers.ParseTransactionStatusMetaContainer(uncompressedMeta)
+		if err == nil {
+			return status, nil
+		} else {
+			return nil, fmt.Errorf("failed to parse metadata: %w", err)
+		}
+	} else {
+		return nil, ErrMetadataNotFound
+	}
+}
+
+func (decoded *Transaction) Signatures() ([]solana.Signature, error) {
 	return readAllSignatures(decoded.Data.Bytes())
 }
 
-func (decoded Transaction) Signature() (solana.Signature, error) {
+func (decoded *Transaction) Signature() (solana.Signature, error) {
 	return readFirstSignature(decoded.Data.Bytes())
 }
 

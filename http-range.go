@@ -1,22 +1,17 @@
 package main
 
 import (
-	"io"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/rpcpool/yellowstone-faithful/carreader"
 	"github.com/rpcpool/yellowstone-faithful/metrics"
 	"k8s.io/klog/v2"
 )
 
-type ReaderAtCloser interface {
-	io.ReaderAt
-	io.Closer
-}
-
 type readCloserWrapper struct {
-	rac        ReaderAtCloser
+	rac        carreader.ReaderAtCloser
 	isRemote   bool
 	isSplitCar bool
 	name       string

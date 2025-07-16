@@ -3,6 +3,7 @@ package solanatxmetaparsers
 import (
 	"errors"
 	"fmt"
+	"sync"
 
 	"github.com/gagliardetto/solana-go"
 	serde_agave "github.com/rpcpool/yellowstone-faithful/parse_legacy_transaction_status_meta"
@@ -13,7 +14,7 @@ import (
 
 type TransactionStatusMetaContainer struct {
 	vProtobuf *confirmed_block.TransactionStatusMeta
-	vSerde    *serde_agave.TransactionStatusMeta
+	vSerde    *serde_agave.StoredTransactionStatusMeta
 }
 
 // HasMeta returns true if the container holds a value.
@@ -42,7 +43,7 @@ func (c *TransactionStatusMetaContainer) GetProtobuf() *confirmed_block.Transact
 }
 
 // GetSerde returns the contained latest serde format value.
-func (c *TransactionStatusMetaContainer) GetSerde() *serde_agave.TransactionStatusMeta {
+func (c *TransactionStatusMetaContainer) GetSerde() *serde_agave.StoredTransactionStatusMeta {
 	return c.vSerde
 }
 
