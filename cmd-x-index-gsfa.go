@@ -224,7 +224,15 @@ func newCmd_Index_gsfa() *cli.Command {
 			}
 
 			numTransactionsWithMoreThanOnePieceForMetadata := new(atomic.Uint64)
-
+			defer func() {
+				n := numTransactionsWithMoreThanOnePieceForMetadata.Load()
+				if n > 0 {
+					slog.Info(
+						"num transactions with more than one piece for metadata",
+						"num", numTransactionsWithMoreThanOnePieceForMetadata.Load(),
+					)
+				}
+			}()
 			accum := accum.NewObjectAccumulator(
 				rd,
 				iplddecoders.KindBlock,
@@ -362,10 +370,6 @@ func newCmd_Index_gsfa() *cli.Command {
 						}
 
 						if time.Since(lastPrintedAt) > time.Second {
-							slog.Info(
-								"num transactions with more than one piece for metadata",
-								"num", numTransactionsWithMoreThanOnePieceForMetadata.Load(),
-							)
 							percentDone := float64(txWithInfo.Slot-epochStart) / float64(epochEnd-epochStart) * 100
 							// clear line, then print progress
 							msg := fmt.Sprintf(
