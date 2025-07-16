@@ -40,7 +40,6 @@ export const options = {
 // A VU will run this function in a loop for the duration of the test.
 export default function () {
   // 1. Generate a random block number for this iteration using standard JavaScript.
-  // This is compatible with all versions of k6.
   const randomBlock = Math.floor(
     Math.random() * (MAX_BLOCK - MIN_BLOCK + 1) + MIN_BLOCK,
   );
@@ -71,11 +70,28 @@ export default function () {
   // 4. Send the POST request.
   const res = http.post(RPC_URL, payload, params);
 
-  // 5. Check the response to verify it was successful.
+  // 5. Perform robust checks on the response.
+  let parsedBody;
+  try {
+    parsedBody = res.json();
+  } catch (e) {
+    parsedBody = null;
+  }
+
   check(res, {
     'status is 200': (r) => r.status === 200,
-    'body contains result': (r) => r.body.includes('result'),
   });
+
+  if (res.status === 200) {
+    check(parsedBody, {
+      'RPC: no error field': (body) => body && !body.error,
+      'RPC: result object exists': (body) => body && body.result,
+      'RPC: result has blockhash': (body) =>
+        body && body.result && typeof body.result.blockhash === 'string',
+      'RPC: result has blockTime': (body) =>
+        body && body.result && typeof body.result.blockTime === 'number',
+    });
+  }
 
   // Add a short sleep to pace the requests slightly.
   sleep(1);
@@ -93,7 +109,7 @@ export default function () {
 //      sudo apt-get install k6
 //    See https://k6.io/docs/getting-started/installation/ for other systems.
 
-// 2. Cd into the directory where `k6-getBlock.js` is located.
+// 2. Save this script as `k6-getBlock.js`.
 
 // 3. Run the test from your terminal.
 //    The load profile (users, duration) is defined in the `options` section of the script.
