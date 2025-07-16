@@ -5,9 +5,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/davecgh/go-spew/spew"
 	bin "github.com/gagliardetto/binary"
-	"github.com/mr-tron/base58"
 	"github.com/novifinancial/serde-reflection/serde-generate/runtime/golang/bincode"
 	"github.com/novifinancial/serde-reflection/serde-generate/runtime/golang/serde"
 )
@@ -64,10 +62,6 @@ func DeserializeCompiledInstruction(deserializer serde.Deserializer) (CompiledIn
 		return obj, fmt.Errorf("Failed to deserialize Accounts (as []u8): %w", err)
 	}
 	if val, err := deserialize_solana_short_vec_u8(deserializer); err == nil {
-		fmt.Println(base58.Encode(val))
-		fmt.Println("have:", bin.FormatByteSlice(val))
-		ddd, _ := base58.Decode("3DTZbgwsozUF")
-		fmt.Println("want:", bin.FormatByteSlice(ddd))
 		obj.Data = val
 	} else {
 		return obj, fmt.Errorf("Failed to deserialize Data (as []u8): %w", err)
@@ -151,10 +145,6 @@ func DeserializeInnerInstruction(deserializer serde.Deserializer) (InnerInstruct
 	} else {
 		return obj, fmt.Errorf("Failed to deserialize Instruction (as CompiledInstruction): %w", err)
 	}
-	spew.Dump(obj)
-	spew.Dump(base58.Encode(obj.Instruction.Data))
-	spew.Dump("##############################################################################################################")
-	spew.Dump("##############################################################################################################")
 	// Stack height was added way later, to when the data was serialized as protobuf.
 	// if val, err := deserialize_option_u32(deserializer); err == nil {
 	// 	obj.StackHeight = val
