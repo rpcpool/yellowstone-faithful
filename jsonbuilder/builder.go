@@ -178,6 +178,15 @@ func (o *OrderedJSONObject) Null(key string) *OrderedJSONObject {
 	return o
 }
 
+func (o *OrderedJSONObject) EmptyArray(key string) *OrderedJSONObject {
+	if o.err != nil {
+		return o
+	}
+	o.writeKey(key)
+	o.buf = append(o.buf, '[', ']')
+	return o
+}
+
 // --- OrderedJSONObject Slice Methods ---
 
 func (o *OrderedJSONObject) StringSlice(key string, values []string) *OrderedJSONObject {
@@ -204,15 +213,6 @@ func (o *OrderedJSONObject) UintSlice(key string, values []uint64) *OrderedJSONO
 	}
 	o.writeKey(key)
 	o.buf = appendUintSlice(o.buf, values)
-	return o
-}
-
-func (o *OrderedJSONObject) EmptyArray(key string) *OrderedJSONObject {
-	if o.err != nil {
-		return o
-	}
-	o.writeKey(key)
-	o.buf = append(o.buf, '[', ']')
 	return o
 }
 
@@ -295,6 +295,12 @@ func (a *ArrayBuilder) AddBool(value bool) *ArrayBuilder {
 func (a *ArrayBuilder) AddNull() *ArrayBuilder {
 	a.writeValueSeparator()
 	a.buf = append(a.buf, "null"...)
+	return a
+}
+
+func (a *ArrayBuilder) AddEmptyArray() *ArrayBuilder {
+	a.writeValueSeparator()
+	a.buf = append(a.buf, '[', ']')
 	return a
 }
 
@@ -478,41 +484,13 @@ func appendUintSlice(dst []byte, values []uint64) []byte {
 	return dst
 }
 
-// --- Custom Integer to String Conversion ---
-const digits = "00010203040506070809101112131415161718192021222324252627282930313233343536373839404142434445464748495051525354555657585960616263646566676869707172737475767778798081828384858687888990919293949596979899"
+// --- Integer to String Conversion ---
+// Using the standard library's battle-tested strconv for correctness and reliability.
 
 func appendUint(dst []byte, n uint64) []byte {
-	if n == 0 {
-		return append(dst, '0')
-	}
-	var buf [20]byte
-	i := len(buf)
-	for n >= 100 {
-		i -= 2
-		q := n / 100
-		copy(buf[i:], digits[n%100*2:])
-		n = q
-	}
-	if n >= 10 {
-		i -= 2
-		copy(buf[i:], digits[n*2:])
-	} else {
-		i--
-		buf[i] = byte('0' + n)
-	}
-	return append(dst, buf[i:]...)
+	return strconv.AppendUint(dst, n, 10)
 }
 
 func appendInt(dst []byte, n int64) []byte {
-	if n == 0 {
-		return append(dst, '0')
-	}
-	if n < 0 {
-		dst = append(dst, '-')
-		n = -n
-		if n < 0 { // Handle math.MinInt64
-			return append(dst, "9223372036854775808"...)
-		}
-	}
-	return appendUint(dst, uint64(n))
+	return strconv.AppendInt(dst, n, 10)
 }
