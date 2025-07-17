@@ -3,6 +3,7 @@ package jsonbuilder
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 
 	"github.com/bytedance/sonic"
 	"github.com/valyala/bytebufferpool"
@@ -59,70 +60,50 @@ func (a *ArrayBuilder) Put() {
 }
 
 // MarshalJSON completes the JSON object and returns its contents.
-// This operation is non-destructive; the builder can be reused after this call.
-// If an error occurred during building, it will be returned here.
 func (o *OrderedJSONObject) MarshalJSON() ([]byte, error) {
 	if o.err != nil {
 		return nil, o.err
 	}
 	if o.buf == nil {
-		// Builder was consumed or Put() was called.
 		return []byte("{}"), nil
 	}
 	o.buf.WriteByte('}')
-	// Create a copy to return, so the original buffer can be safely reused.
 	data := make([]byte, o.buf.Len())
 	copy(data, o.buf.Bytes())
-	// Truncate the buffer to remove the closing brace, making it reusable.
-	o.buf.B = o.buf.B[:o.buf.Len()-1]
+	o.buf.B = o.buf.B[:o.buf.Len()-1] // Remove the last byte (the closing brace)
 	return data, nil
 }
 
 // MarshalJSON completes the JSON array and returns its contents.
-// This operation is non-destructive; the builder can be reused after this call.
-// If an error occurred during building, it will be returned here.
 func (a *ArrayBuilder) MarshalJSON() ([]byte, error) {
 	if a.err != nil {
 		return nil, a.err
 	}
 	if a.buf == nil {
-		// Builder was consumed or Put() was called.
 		return []byte("[]"), nil
 	}
 	a.buf.WriteByte(']')
-	// Create a copy to return, so the original buffer can be safely reused.
 	data := make([]byte, a.buf.Len())
 	copy(data, a.buf.Bytes())
-	// Truncate the buffer to remove the closing brace, making it reusable.
-	a.buf.B = a.buf.B[:a.buf.Len()-1]
+	a.buf.B = a.buf.B[:a.buf.Len()-1] // Remove the last byte (the closing bracket)
 	return data, nil
 }
 
-// writeKey handles writing the comma and the marshaled key to the buffer.
 func (o *OrderedJSONObject) writeKey(key string) {
-	// No-op if an error has already occurred.
 	if o.err != nil {
 		return
 	}
-
 	if !o.isFirst {
 		o.buf.WriteByte(',')
 	} else {
 		o.isFirst = false
 	}
-
-	keyBytes, err := sonic.ConfigFastest.Marshal(key)
-	if err != nil {
-		o.err = fmt.Errorf("failed to marshal key %q: %w", key, err)
-		return
-	}
-	o.buf.Write(keyBytes)
+	// Use the optimized string writer for the key
+	o.buf.B = appendString(o.buf.B, key)
 	o.buf.WriteByte(':')
 }
 
-// writeValue handles writing the comma for an array element.
-func (a *ArrayBuilder) writeValue() {
-	// No-op if an error has already occurred.
+func (a *ArrayBuilder) writeValueSeparator() {
 	if a.err != nil {
 		return
 	}
@@ -133,131 +114,70 @@ func (a *ArrayBuilder) writeValue() {
 	}
 }
 
-// Value adds a generic JSON value to the object, marshaling it immediately.
-func (o *OrderedJSONObject) Value(key string, value any) *OrderedJSONObject {
+// --- OrderedJSONObject Optimized Methods ---
+
+func (o *OrderedJSONObject) String(key, value string) *OrderedJSONObject {
 	if o.err != nil {
 		return o
 	}
-	// Prevent panic on already-consumed builders.
-	if o.buf == nil {
-		o.err = fmt.Errorf("jsonbuilder: Value called on a consumed object builder")
-		return o
-	}
-
 	o.writeKey(key)
-	// writeKey might have set an error.
+	o.buf.B = appendString(o.buf.B, value)
+	return o
+}
+
+func (o *OrderedJSONObject) Int(key string, value int64) *OrderedJSONObject {
 	if o.err != nil {
 		return o
 	}
+	o.writeKey(key)
+	o.buf.B = strconv.AppendInt(o.buf.B, value, 10)
+	return o
+}
 
-	switch v := value.(type) {
-	case *OrderedJSONObject:
-		if v.err != nil {
-			o.err = v.err
-			return o
-		}
-		// Marshal the nested object. MarshalJSON is non-destructive.
-		// The caller who created 'v' is responsible for calling Put() on it.
-		val, err := v.MarshalJSON()
-		if err != nil {
-			o.err = err
-			return o
-		}
-		o.buf.Write(val)
-	case *ArrayBuilder:
-		if v.err != nil {
-			o.err = v.err
-			return o
-		}
-		// Marshal the nested array. MarshalJSON is non-destructive.
-		val, err := v.MarshalJSON()
-		if err != nil {
-			o.err = err
-			return o
-		}
-		o.buf.Write(val)
-	default:
-		val, err := sonic.ConfigFastest.Marshal(v)
-		if err != nil {
-			o.err = fmt.Errorf("failed to marshal value for key %q: %w", key, err)
-			return o
-		}
-		o.buf.Write(val)
+func (o *OrderedJSONObject) Uint(key string, value uint64) *OrderedJSONObject {
+	if o.err != nil {
+		return o
+	}
+	o.writeKey(key)
+	o.buf.B = strconv.AppendUint(o.buf.B, value, 10)
+	return o
+}
+
+func (o *OrderedJSONObject) Uint8(key string, value uint8) *OrderedJSONObject {
+	return o.Uint(key, uint64(value))
+}
+
+func (o *OrderedJSONObject) Float(key string, value float64) *OrderedJSONObject {
+	if o.err != nil {
+		return o
+	}
+	o.writeKey(key)
+	o.buf.B = strconv.AppendFloat(o.buf.B, value, 'f', -1, 64)
+	return o
+}
+
+func (o *OrderedJSONObject) Bool(key string, value bool) *OrderedJSONObject {
+	if o.err != nil {
+		return o
+	}
+	o.writeKey(key)
+	if value {
+		o.buf.WriteString("true")
+	} else {
+		o.buf.WriteString("false")
 	}
 	return o
 }
 
-// AddValue appends a generic value to the array, marshaling it immediately.
-func (a *ArrayBuilder) AddValue(value any) *ArrayBuilder {
-	if a.err != nil {
-		return a
+func (o *OrderedJSONObject) Null(key string) *OrderedJSONObject {
+	if o.err != nil {
+		return o
 	}
-	// Prevent panic on already-consumed builders.
-	if a.buf == nil {
-		a.err = fmt.Errorf("jsonbuilder: AddValue called on a consumed array builder")
-		return a
-	}
-
-	a.writeValue()
-
-	switch v := value.(type) {
-	case *OrderedJSONObject:
-		if v.err != nil {
-			a.err = v.err
-			return a
-		}
-		val, err := v.MarshalJSON()
-		if err != nil {
-			a.err = err
-			return a
-		}
-		a.buf.Write(val)
-	case *ArrayBuilder:
-		if v.err != nil {
-			a.err = v.err
-			return a
-		}
-		val, err := v.MarshalJSON()
-		if err != nil {
-			a.err = err
-			return a
-		}
-		a.buf.Write(val)
-	default:
-		val, err := sonic.ConfigFastest.Marshal(v)
-		if err != nil {
-			a.err = fmt.Errorf("failed to marshal array value: %w", err)
-			return a
-		}
-		a.buf.Write(val)
-	}
-	return a
+	o.writeKey(key)
+	o.buf.WriteString("null")
+	return o
 }
 
-// --- OrderedJSONObject Methods ---
-
-func (o *OrderedJSONObject) String(key, value string) *OrderedJSONObject { return o.Value(key, value) }
-
-func (o *OrderedJSONObject) Int(key string, value int64) *OrderedJSONObject {
-	return o.Value(key, value)
-}
-
-func (o *OrderedJSONObject) Uint(key string, value uint64) *OrderedJSONObject {
-	return o.Value(key, value)
-}
-
-func (o *OrderedJSONObject) Uint8(key string, value uint8) *OrderedJSONObject {
-	return o.Value(key, value)
-}
-
-func (o *OrderedJSONObject) Float(key string, value float64) *OrderedJSONObject {
-	return o.Value(key, value)
-}
-
-func (o *OrderedJSONObject) Bool(key string, value bool) *OrderedJSONObject {
-	return o.Value(key, value)
-}
-func (o *OrderedJSONObject) Null(key string) *OrderedJSONObject { return o.Value(key, nil) }
 func (o *OrderedJSONObject) Raw(key string, value json.RawMessage) *OrderedJSONObject {
 	return o.Value(key, value)
 }
@@ -270,10 +190,101 @@ func (o *OrderedJSONObject) Array(key string, arr *ArrayBuilder) *OrderedJSONObj
 	return o.Value(key, arr)
 }
 
+// Value remains as a fallback for complex types not covered by optimized methods.
+func (o *OrderedJSONObject) Value(key string, value any) *OrderedJSONObject {
+	if o.err != nil {
+		return o
+	}
+	if o.buf == nil {
+		o.err = fmt.Errorf("jsonbuilder: Value called on a consumed object builder")
+		return o
+	}
+	o.writeKey(key)
+	if o.err != nil {
+		return o
+	}
+	val, err := sonic.ConfigFastest.Marshal(value)
+	if err != nil {
+		o.err = fmt.Errorf("failed to marshal value for key %q: %w", key, err)
+		return o
+	}
+	o.buf.Write(val)
+	return o
+}
+
+// --- ArrayBuilder Optimized Methods ---
+
+func (a *ArrayBuilder) AddString(value string) *ArrayBuilder {
+	a.writeValueSeparator()
+	a.buf.B = appendString(a.buf.B, value)
+	return a
+}
+
+func (a *ArrayBuilder) AddInt(value int64) *ArrayBuilder {
+	a.writeValueSeparator()
+	a.buf.B = strconv.AppendInt(a.buf.B, value, 10)
+	return a
+}
+
+func (a *ArrayBuilder) AddUint(value uint64) *ArrayBuilder {
+	a.writeValueSeparator()
+	a.buf.B = strconv.AppendUint(a.buf.B, value, 10)
+	return a
+}
+
+func (a *ArrayBuilder) AddUint8(value uint8) *ArrayBuilder {
+	return a.AddUint(uint64(value))
+}
+
+func (a *ArrayBuilder) AddFloat(value float64) *ArrayBuilder {
+	a.writeValueSeparator()
+	a.buf.B = strconv.AppendFloat(a.buf.B, value, 'f', -1, 64)
+	return a
+}
+
+func (a *ArrayBuilder) AddBool(value bool) *ArrayBuilder {
+	a.writeValueSeparator()
+	if value {
+		a.buf.WriteString("true")
+	} else {
+		a.buf.WriteString("false")
+	}
+	return a
+}
+
+func (a *ArrayBuilder) AddNull() *ArrayBuilder {
+	a.writeValueSeparator()
+	a.buf.WriteString("null")
+	return a
+}
+
+func (a *ArrayBuilder) AddObject(obj *OrderedJSONObject) *ArrayBuilder { return a.AddValue(obj) }
+func (a *ArrayBuilder) AddArray(arr *ArrayBuilder) *ArrayBuilder       { return a.AddValue(arr) }
+
+// AddValue remains as a fallback for complex types.
+func (a *ArrayBuilder) AddValue(value any) *ArrayBuilder {
+	if a.err != nil {
+		return a
+	}
+	if a.buf == nil {
+		a.err = fmt.Errorf("jsonbuilder: AddValue called on a consumed array builder")
+		return a
+	}
+	a.writeValueSeparator()
+	val, err := sonic.ConfigFastest.Marshal(value)
+	if err != nil {
+		a.err = fmt.Errorf("failed to marshal array value: %w", err)
+		return a
+	}
+	a.buf.Write(val)
+	return a
+}
+
+// --- Functional Methods ---
+
 func (o *OrderedJSONObject) ObjectFunc(key string, fn func(*OrderedJSONObject)) *OrderedJSONObject {
 	obj := NewObject()
 	fn(obj)
-	// Value is now non-consuming, so we must explicitly Put the temporary object.
 	o.Value(key, obj)
 	obj.Put()
 	return o
@@ -282,7 +293,6 @@ func (o *OrderedJSONObject) ObjectFunc(key string, fn func(*OrderedJSONObject)) 
 func (o *OrderedJSONObject) ArrayFunc(key string, fn func(*ArrayBuilder)) *OrderedJSONObject {
 	arr := NewArray()
 	fn(arr)
-	// Value is now non-consuming, so we must explicitly Put the temporary array.
 	o.Value(key, arr)
 	arr.Put()
 	return o
@@ -309,18 +319,6 @@ func (o *OrderedJSONObject) ApplyIf(condition bool, fn func(*OrderedJSONObject))
 	return o
 }
 
-// --- ArrayBuilder Methods ---
-
-func (a *ArrayBuilder) AddString(value string) *ArrayBuilder           { return a.AddValue(value) }
-func (a *ArrayBuilder) AddUint8(value uint8) *ArrayBuilder             { return a.AddValue(value) }
-func (a *ArrayBuilder) AddUint(value uint64) *ArrayBuilder             { return a.AddValue(value) }
-func (a *ArrayBuilder) AddInt(value int64) *ArrayBuilder               { return a.AddValue(value) }
-func (a *ArrayBuilder) AddFloat(value float64) *ArrayBuilder           { return a.AddValue(value) }
-func (a *ArrayBuilder) AddBool(value bool) *ArrayBuilder               { return a.AddValue(value) }
-func (a *ArrayBuilder) AddObject(obj *OrderedJSONObject) *ArrayBuilder { return a.AddValue(obj) }
-func (a *ArrayBuilder) AddArray(arr *ArrayBuilder) *ArrayBuilder       { return a.AddValue(arr) }
-func (a *ArrayBuilder) AddNull() *ArrayBuilder                         { return a.AddValue(nil) }
-
 func (a *ArrayBuilder) Func(fn func(*ArrayBuilder)) *ArrayBuilder {
 	if a.err == nil && fn != nil {
 		fn(a)
@@ -342,65 +340,28 @@ func (a *ArrayBuilder) ApplyIf(condition bool, fn func(*ArrayBuilder)) *ArrayBui
 	return a
 }
 
-func Example_build() {
-	// Example usage with functional composition
-	person := NewObject().
-		Func(func(o *OrderedJSONObject) {
-			o.String("name", "John Doe")
-			o.Int("age", 30)
-		}).
-		Apply("timestamp", func() any {
-			return "2023-07-20T12:34:56Z"
-		}).
-		ApplyIf(true, func(o *OrderedJSONObject) {
-			o.Bool("verified", true)
-		}).
-		ObjectFunc("address", func(o *OrderedJSONObject) {
-			o.String("street", "123 Main St")
-			o.Apply("city", func() any {
-				return "Springfield"
-			})
-		}).
-		ArrayFunc("hobbies", func(a *ArrayBuilder) {
-			a.AddString("reading")
-			a.AddString("hiking")
-			a.Apply(func() any {
-				return NewObject().
-					String("name", "cooking").
-					Int("years", 5)
-			})
-		})
-
-	// Use json.Marshal, which will call our custom MarshalJSON method.
-	jsonData, err := json.Marshal(person)
-	if err != nil {
-		fmt.Printf("Error during build: %v\n", err)
-	} else {
-		fmt.Println(string(jsonData))
+// appendString is a high-performance JSON string escaper.
+func appendString(dst []byte, s string) []byte {
+	dst = append(dst, '"')
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case c == '"' || c == '\\':
+			dst = append(dst, '\\', c)
+		case c >= 0x20: // Standard ASCII characters
+			dst = append(dst, c)
+		case c == '\n':
+			dst = append(dst, '\\', 'n')
+		case c == '\r':
+			dst = append(dst, '\\', 'r')
+		case c == '\t':
+			dst = append(dst, '\\', 't')
+		default: // Control characters
+			dst = append(dst, '\\', 'u', '0', '0', hex[c>>4], hex[c&0xF])
+		}
 	}
-
-	// It's critical to Put the top-level object back to the pool when done.
-	person.Put()
+	dst = append(dst, '"')
+	return dst
 }
 
-func Example_build_with_error() {
-	// Create an invalid object to trigger an error.
-	// A map[string]interface{} with a non-string key is not valid JSON.
-	invalidValue := map[interface{}]string{
-		123: "value",
-	}
-
-	obj := NewObject().
-		String("field1", "ok").
-		Value("invalid_field", invalidValue). // This will cause a marshaling error.
-		String("field2", "this will not be added")
-
-	_, err := json.Marshal(obj)
-	if err != nil {
-		fmt.Printf("Successfully caught error: %v\n", err)
-	} else {
-		fmt.Println("Failed to catch error.")
-	}
-
-	obj.Put()
-}
+var hex = "0123456789abcdef"
