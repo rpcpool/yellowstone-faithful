@@ -6,57 +6,56 @@ import (
 	"strconv"
 
 	"github.com/bytedance/sonic"
-	"github.com/valyala/bytebufferpool"
 )
 
 // OrderedJSONObject represents a JSON object that is marshaled progressively.
 type OrderedJSONObject struct {
-	buf     *bytebufferpool.ByteBuffer
+	buf     []byte
 	isFirst bool
 	err     error // Holds the first error encountered.
 }
 
 // ArrayBuilder represents a JSON array that is marshaled progressively.
 type ArrayBuilder struct {
-	buf     *bytebufferpool.ByteBuffer
+	buf     []byte
 	isFirst bool
 	err     error // Holds the first error encountered.
 }
 
 // NewObject creates a new empty OrderedJSONObject, initializing its buffer.
 func NewObject() *OrderedJSONObject {
-	buf := bytebufferpool.Get()
-	buf.WriteByte('{')
+	// Start with a reasonable initial capacity to reduce reallocations.
+	buf := make([]byte, 0, 512)
+	buf = append(buf, '{')
 	return &OrderedJSONObject{
 		buf:     buf,
 		isFirst: true,
 	}
 }
 
-// Put releases the object's buffer back to the pool. This is crucial for memory management.
+// Put resets the builder's buffer, allowing it to be reused.
+// Note: This no longer uses an external pool.
 func (o *OrderedJSONObject) Put() {
-	if o.buf != nil {
-		bytebufferpool.Put(o.buf)
-		o.buf = nil // Prevent double-put
-	}
+	o.buf = o.buf[:0]
+	o.isFirst = true
+	o.err = nil
 }
 
 // NewArray creates a new ArrayBuilder, initializing its buffer.
 func NewArray() *ArrayBuilder {
-	buf := bytebufferpool.Get()
-	buf.WriteByte('[')
+	buf := make([]byte, 0, 256)
+	buf = append(buf, '[')
 	return &ArrayBuilder{
 		buf:     buf,
 		isFirst: true,
 	}
 }
 
-// Put releases the array's buffer back to the pool.
+// Put resets the builder's buffer.
 func (a *ArrayBuilder) Put() {
-	if a.buf != nil {
-		bytebufferpool.Put(a.buf)
-		a.buf = nil // Prevent double-put
-	}
+	a.buf = a.buf[:0]
+	a.isFirst = true
+	a.err = nil
 }
 
 // MarshalJSON completes the JSON object and returns its contents.
@@ -67,10 +66,10 @@ func (o *OrderedJSONObject) MarshalJSON() ([]byte, error) {
 	if o.buf == nil {
 		return []byte("{}"), nil
 	}
-	o.buf.WriteByte('}')
-	data := make([]byte, o.buf.Len())
-	copy(data, o.buf.Bytes())
-	o.buf.B = o.buf.B[:o.buf.Len()-1] // Truncate the last byte (the closing brace)
+	o.buf = append(o.buf, '}')
+	data := make([]byte, len(o.buf))
+	copy(data, o.buf)
+	o.buf = o.buf[:len(o.buf)-1] // Truncate the last byte (the closing brace)
 	return data, nil
 }
 
@@ -82,10 +81,10 @@ func (a *ArrayBuilder) MarshalJSON() ([]byte, error) {
 	if a.buf == nil {
 		return []byte("[]"), nil
 	}
-	a.buf.WriteByte(']')
-	data := make([]byte, a.buf.Len())
-	copy(data, a.buf.Bytes())
-	a.buf.B = a.buf.B[:a.buf.Len()-1] // Truncate the last byte (the closing bracket)
+	a.buf = append(a.buf, ']')
+	data := make([]byte, len(a.buf))
+	copy(data, a.buf)
+	a.buf = a.buf[:len(a.buf)-1] // Truncate the last byte (the closing bracket)
 	return data, nil
 }
 
@@ -94,13 +93,13 @@ func (o *OrderedJSONObject) writeKey(key string) {
 		return
 	}
 	if !o.isFirst {
-		o.buf.WriteByte(',')
+		o.buf = append(o.buf, ',')
 	} else {
 		o.isFirst = false
 	}
 	// Use the optimized string writer for the key
-	o.buf.B = appendString(o.buf.B, key)
-	o.buf.WriteByte(':')
+	o.buf = appendString(o.buf, key)
+	o.buf = append(o.buf, ':')
 }
 
 func (a *ArrayBuilder) writeValueSeparator() {
@@ -108,7 +107,7 @@ func (a *ArrayBuilder) writeValueSeparator() {
 		return
 	}
 	if !a.isFirst {
-		a.buf.WriteByte(',')
+		a.buf = append(a.buf, ',')
 	} else {
 		a.isFirst = false
 	}
@@ -121,7 +120,7 @@ func (o *OrderedJSONObject) String(key, value string) *OrderedJSONObject {
 		return o
 	}
 	o.writeKey(key)
-	o.buf.B = appendString(o.buf.B, value)
+	o.buf = appendString(o.buf, value)
 	return o
 }
 
@@ -130,7 +129,7 @@ func (o *OrderedJSONObject) Int(key string, value int64) *OrderedJSONObject {
 		return o
 	}
 	o.writeKey(key)
-	o.buf.B = strconv.AppendInt(o.buf.B, value, 10)
+	o.buf = appendInt(o.buf, value)
 	return o
 }
 
@@ -139,7 +138,7 @@ func (o *OrderedJSONObject) Uint(key string, value uint64) *OrderedJSONObject {
 		return o
 	}
 	o.writeKey(key)
-	o.buf.B = strconv.AppendUint(o.buf.B, value, 10)
+	o.buf = appendUint(o.buf, value)
 	return o
 }
 
@@ -152,7 +151,8 @@ func (o *OrderedJSONObject) Float(key string, value float64) *OrderedJSONObject 
 		return o
 	}
 	o.writeKey(key)
-	o.buf.B = strconv.AppendFloat(o.buf.B, value, 'f', -1, 64)
+	// strconv is still the most reliable for floats.
+	o.buf = strconv.AppendFloat(o.buf, value, 'f', -1, 64)
 	return o
 }
 
@@ -162,9 +162,9 @@ func (o *OrderedJSONObject) Bool(key string, value bool) *OrderedJSONObject {
 	}
 	o.writeKey(key)
 	if value {
-		o.buf.WriteString("true")
+		o.buf = append(o.buf, "true"...)
 	} else {
-		o.buf.WriteString("false")
+		o.buf = append(o.buf, "false"...)
 	}
 	return o
 }
@@ -174,7 +174,7 @@ func (o *OrderedJSONObject) Null(key string) *OrderedJSONObject {
 		return o
 	}
 	o.writeKey(key)
-	o.buf.WriteString("null")
+	o.buf = append(o.buf, "null"...)
 	return o
 }
 
@@ -185,7 +185,7 @@ func (o *OrderedJSONObject) StringSlice(key string, values []string) *OrderedJSO
 		return o
 	}
 	o.writeKey(key)
-	o.buf.B = appendStringSlice(o.buf.B, values)
+	o.buf = appendStringSlice(o.buf, values)
 	return o
 }
 
@@ -194,7 +194,7 @@ func (o *OrderedJSONObject) IntSlice(key string, values []int64) *OrderedJSONObj
 		return o
 	}
 	o.writeKey(key)
-	o.buf.B = appendIntSlice(o.buf.B, values)
+	o.buf = appendIntSlice(o.buf, values)
 	return o
 }
 
@@ -203,7 +203,7 @@ func (o *OrderedJSONObject) UintSlice(key string, values []uint64) *OrderedJSONO
 		return o
 	}
 	o.writeKey(key)
-	o.buf.B = appendUintSlice(o.buf.B, values)
+	o.buf = appendUintSlice(o.buf, values)
 	return o
 }
 
@@ -212,7 +212,7 @@ func (o *OrderedJSONObject) EmptyArray(key string) *OrderedJSONObject {
 		return o
 	}
 	o.writeKey(key)
-	o.buf.WriteString("[]")
+	o.buf = append(o.buf, '[', ']')
 	return o
 }
 
@@ -248,7 +248,7 @@ func (o *OrderedJSONObject) Value(key string, value any) *OrderedJSONObject {
 		o.err = fmt.Errorf("failed to marshal value for key %q: %w", key, err)
 		return o
 	}
-	o.buf.Write(val)
+	o.buf = append(o.buf, val...)
 	return o
 }
 
@@ -256,19 +256,19 @@ func (o *OrderedJSONObject) Value(key string, value any) *OrderedJSONObject {
 
 func (a *ArrayBuilder) AddString(value string) *ArrayBuilder {
 	a.writeValueSeparator()
-	a.buf.B = appendString(a.buf.B, value)
+	a.buf = appendString(a.buf, value)
 	return a
 }
 
 func (a *ArrayBuilder) AddInt(value int64) *ArrayBuilder {
 	a.writeValueSeparator()
-	a.buf.B = strconv.AppendInt(a.buf.B, value, 10)
+	a.buf = appendInt(a.buf, value)
 	return a
 }
 
 func (a *ArrayBuilder) AddUint(value uint64) *ArrayBuilder {
 	a.writeValueSeparator()
-	a.buf.B = strconv.AppendUint(a.buf.B, value, 10)
+	a.buf = appendUint(a.buf, value)
 	return a
 }
 
@@ -278,23 +278,23 @@ func (a *ArrayBuilder) AddUint8(value uint8) *ArrayBuilder {
 
 func (a *ArrayBuilder) AddFloat(value float64) *ArrayBuilder {
 	a.writeValueSeparator()
-	a.buf.B = strconv.AppendFloat(a.buf.B, value, 'f', -1, 64)
+	a.buf = strconv.AppendFloat(a.buf, value, 'f', -1, 64)
 	return a
 }
 
 func (a *ArrayBuilder) AddBool(value bool) *ArrayBuilder {
 	a.writeValueSeparator()
 	if value {
-		a.buf.WriteString("true")
+		a.buf = append(a.buf, "true"...)
 	} else {
-		a.buf.WriteString("false")
+		a.buf = append(a.buf, "false"...)
 	}
 	return a
 }
 
 func (a *ArrayBuilder) AddNull() *ArrayBuilder {
 	a.writeValueSeparator()
-	a.buf.WriteString("null")
+	a.buf = append(a.buf, "null"...)
 	return a
 }
 
@@ -302,19 +302,19 @@ func (a *ArrayBuilder) AddNull() *ArrayBuilder {
 
 func (a *ArrayBuilder) AddStringSlice(values []string) *ArrayBuilder {
 	a.writeValueSeparator()
-	a.buf.B = appendStringSlice(a.buf.B, values)
+	a.buf = appendStringSlice(a.buf, values)
 	return a
 }
 
 func (a *ArrayBuilder) AddIntSlice(values []int64) *ArrayBuilder {
 	a.writeValueSeparator()
-	a.buf.B = appendIntSlice(a.buf.B, values)
+	a.buf = appendIntSlice(a.buf, values)
 	return a
 }
 
 func (a *ArrayBuilder) AddUintSlice(values []uint64) *ArrayBuilder {
 	a.writeValueSeparator()
-	a.buf.B = appendUintSlice(a.buf.B, values)
+	a.buf = appendUintSlice(a.buf, values)
 	return a
 }
 
@@ -338,7 +338,7 @@ func (a *ArrayBuilder) AddValue(value any) *ArrayBuilder {
 		a.err = fmt.Errorf("failed to marshal array value: %w", err)
 		return a
 	}
-	a.buf.Write(val)
+	a.buf = append(a.buf, val...)
 	return a
 }
 
@@ -346,7 +346,7 @@ func (o *OrderedJSONObject) ObjectFunc(key string, fn func(*OrderedJSONObject)) 
 	obj := NewObject()
 	fn(obj)
 	o.Value(key, obj)
-	obj.Put()
+	// No need to Put, as it's a local builder that will be garbage collected.
 	return o
 }
 
@@ -354,7 +354,6 @@ func (o *OrderedJSONObject) ArrayFunc(key string, fn func(*ArrayBuilder)) *Order
 	arr := NewArray()
 	fn(arr)
 	o.Value(key, arr)
-	arr.Put()
 	return o
 }
 
@@ -404,10 +403,8 @@ func (a *ArrayBuilder) ApplyIf(condition bool, fn func(*ArrayBuilder)) *ArrayBui
 
 var hex = "0123456789abcdef"
 
-// appendString is a high-performance JSON string escaper with a fast path.
 func appendString(dst []byte, s string) []byte {
 	dst = append(dst, '"')
-	// Find the first character that needs escaping.
 	i := 0
 	for i < len(s) {
 		c := s[i]
@@ -416,15 +413,11 @@ func appendString(dst []byte, s string) []byte {
 		}
 		i++
 	}
-
-	// If no escaping is needed, we can do a single append.
 	if i == len(s) {
 		dst = append(dst, s...)
 		dst = append(dst, '"')
 		return dst
 	}
-
-	// Otherwise, append the safe part and then start the slow path.
 	dst = append(dst, s[:i]...)
 	for ; i < len(s); i++ {
 		c := s[i]
@@ -439,14 +432,12 @@ func appendString(dst []byte, s string) []byte {
 			dst = append(dst, '\\', 't')
 		default:
 			if c < 0x20 {
-				// This handles all other control characters U+0000 through U+001F.
 				dst = append(dst, '\\', 'u', '0', '0', hex[c>>4], hex[c&0xF])
 			} else {
 				dst = append(dst, c)
 			}
 		}
 	}
-
 	dst = append(dst, '"')
 	return dst
 }
@@ -469,7 +460,7 @@ func appendIntSlice(dst []byte, values []int64) []byte {
 		if i > 0 {
 			dst = append(dst, ',')
 		}
-		dst = strconv.AppendInt(dst, v, 10)
+		dst = appendInt(dst, v)
 	}
 	dst = append(dst, ']')
 	return dst
@@ -481,8 +472,47 @@ func appendUintSlice(dst []byte, values []uint64) []byte {
 		if i > 0 {
 			dst = append(dst, ',')
 		}
-		dst = strconv.AppendUint(dst, v, 10)
+		dst = appendUint(dst, v)
 	}
 	dst = append(dst, ']')
 	return dst
+}
+
+// --- Custom Integer to String Conversion ---
+const digits = "00010203040506070809101112131415161718192021222324252627282930313233343536373839404142434445464748495051525354555657585960616263646566676869707172737475767778798081828384858687888990919293949596979899"
+
+func appendUint(dst []byte, n uint64) []byte {
+	if n == 0 {
+		return append(dst, '0')
+	}
+	var buf [20]byte
+	i := len(buf)
+	for n >= 100 {
+		i -= 2
+		q := n / 100
+		copy(buf[i:], digits[n%100*2:])
+		n = q
+	}
+	if n >= 10 {
+		i -= 2
+		copy(buf[i:], digits[n*2:])
+	} else {
+		i--
+		buf[i] = byte('0' + n)
+	}
+	return append(dst, buf[i:]...)
+}
+
+func appendInt(dst []byte, n int64) []byte {
+	if n == 0 {
+		return append(dst, '0')
+	}
+	if n < 0 {
+		dst = append(dst, '-')
+		n = -n
+		if n < 0 { // Handle math.MinInt64
+			return append(dst, "9223372036854775808"...)
+		}
+	}
+	return appendUint(dst, uint64(n))
 }
