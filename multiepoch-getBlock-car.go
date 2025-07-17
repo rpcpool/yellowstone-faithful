@@ -214,7 +214,7 @@ func (multi *MultiEpoch) handleGetBlock_car(ctx context.Context, conn *requestCo
 	}
 	tim.time("get rewards")
 
-	var allTransactions []*jsonbuilder.OrderedJSONObject
+	allTransactions := make([]*jsonbuilder.OrderedJSONObject, 0, parsedNodes.CountTransactions())
 	{
 		_, buildTxSpan := telemetry.StartSpan(rpcSpanCtx, "GetBlock_BuildTransactions")
 		for transactionNode := range parsedNodes.Transaction() {
