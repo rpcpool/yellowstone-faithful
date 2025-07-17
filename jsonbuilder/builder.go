@@ -70,7 +70,7 @@ func (o *OrderedJSONObject) MarshalJSON() ([]byte, error) {
 	o.buf.WriteByte('}')
 	data := make([]byte, o.buf.Len())
 	copy(data, o.buf.Bytes())
-	o.buf.B = o.buf.B[:o.buf.Len()-1] // Remove the last byte (the closing brace)
+	o.buf.B = o.buf.B[:o.buf.Len()-1] // Truncate the last byte (the closing brace)
 	return data, nil
 }
 
@@ -85,7 +85,7 @@ func (a *ArrayBuilder) MarshalJSON() ([]byte, error) {
 	a.buf.WriteByte(']')
 	data := make([]byte, a.buf.Len())
 	copy(data, a.buf.Bytes())
-	a.buf.B = a.buf.B[:a.buf.Len()-1] // Remove the last byte (the closing bracket)
+	a.buf.B = a.buf.B[:a.buf.Len()-1] // Truncate the last byte (the closing bracket)
 	return data, nil
 }
 
@@ -178,6 +178,46 @@ func (o *OrderedJSONObject) Null(key string) *OrderedJSONObject {
 	return o
 }
 
+// --- OrderedJSONObject Slice Methods ---
+
+func (o *OrderedJSONObject) StringSlice(key string, values []string) *OrderedJSONObject {
+	if o.err != nil {
+		return o
+	}
+	o.writeKey(key)
+	o.buf.B = appendStringSlice(o.buf.B, values)
+	return o
+}
+
+func (o *OrderedJSONObject) IntSlice(key string, values []int64) *OrderedJSONObject {
+	if o.err != nil {
+		return o
+	}
+	o.writeKey(key)
+	o.buf.B = appendIntSlice(o.buf.B, values)
+	return o
+}
+
+func (o *OrderedJSONObject) UintSlice(key string, values []uint64) *OrderedJSONObject {
+	if o.err != nil {
+		return o
+	}
+	o.writeKey(key)
+	o.buf.B = appendUintSlice(o.buf.B, values)
+	return o
+}
+
+func (o *OrderedJSONObject) EmptyArray(key string) *OrderedJSONObject {
+	if o.err != nil {
+		return o
+	}
+	o.writeKey(key)
+	o.buf.WriteString("[]")
+	return o
+}
+
+// --- Fallback and Functional Methods ---
+
 func (o *OrderedJSONObject) Raw(key string, value json.RawMessage) *OrderedJSONObject {
 	return o.Value(key, value)
 }
@@ -258,6 +298,28 @@ func (a *ArrayBuilder) AddNull() *ArrayBuilder {
 	return a
 }
 
+// --- ArrayBuilder Slice Methods ---
+
+func (a *ArrayBuilder) AddStringSlice(values []string) *ArrayBuilder {
+	a.writeValueSeparator()
+	a.buf.B = appendStringSlice(a.buf.B, values)
+	return a
+}
+
+func (a *ArrayBuilder) AddIntSlice(values []int64) *ArrayBuilder {
+	a.writeValueSeparator()
+	a.buf.B = appendIntSlice(a.buf.B, values)
+	return a
+}
+
+func (a *ArrayBuilder) AddUintSlice(values []uint64) *ArrayBuilder {
+	a.writeValueSeparator()
+	a.buf.B = appendUintSlice(a.buf.B, values)
+	return a
+}
+
+// --- Fallback and Functional Methods ---
+
 func (a *ArrayBuilder) AddObject(obj *OrderedJSONObject) *ArrayBuilder { return a.AddValue(obj) }
 func (a *ArrayBuilder) AddArray(arr *ArrayBuilder) *ArrayBuilder       { return a.AddValue(arr) }
 
@@ -279,8 +341,6 @@ func (a *ArrayBuilder) AddValue(value any) *ArrayBuilder {
 	a.buf.Write(val)
 	return a
 }
-
-// --- Functional Methods ---
 
 func (o *OrderedJSONObject) ObjectFunc(key string, fn func(*OrderedJSONObject)) *OrderedJSONObject {
 	obj := NewObject()
@@ -340,28 +400,89 @@ func (a *ArrayBuilder) ApplyIf(condition bool, fn func(*ArrayBuilder)) *ArrayBui
 	return a
 }
 
-// appendString is a high-performance JSON string escaper.
+// --- Optimized Appenders ---
+
+var hex = "0123456789abcdef"
+
+// appendString is a high-performance JSON string escaper with a fast path.
 func appendString(dst []byte, s string) []byte {
 	dst = append(dst, '"')
-	for i := 0; i < len(s); i++ {
+	// Find the first character that needs escaping.
+	i := 0
+	for i < len(s) {
 		c := s[i]
-		switch {
-		case c == '"' || c == '\\':
+		if c < 0x20 || c == '"' || c == '\\' {
+			break
+		}
+		i++
+	}
+
+	// If no escaping is needed, we can do a single append.
+	if i == len(s) {
+		dst = append(dst, s...)
+		dst = append(dst, '"')
+		return dst
+	}
+
+	// Otherwise, append the safe part and then start the slow path.
+	dst = append(dst, s[:i]...)
+	for ; i < len(s); i++ {
+		c := s[i]
+		switch c {
+		case '"', '\\':
 			dst = append(dst, '\\', c)
-		case c >= 0x20: // Standard ASCII characters
-			dst = append(dst, c)
-		case c == '\n':
+		case '\n':
 			dst = append(dst, '\\', 'n')
-		case c == '\r':
+		case '\r':
 			dst = append(dst, '\\', 'r')
-		case c == '\t':
+		case '\t':
 			dst = append(dst, '\\', 't')
-		default: // Control characters
-			dst = append(dst, '\\', 'u', '0', '0', hex[c>>4], hex[c&0xF])
+		default:
+			if c < 0x20 {
+				// This handles all other control characters U+0000 through U+001F.
+				dst = append(dst, '\\', 'u', '0', '0', hex[c>>4], hex[c&0xF])
+			} else {
+				dst = append(dst, c)
+			}
 		}
 	}
+
 	dst = append(dst, '"')
 	return dst
 }
 
-var hex = "0123456789abcdef"
+func appendStringSlice(dst []byte, values []string) []byte {
+	dst = append(dst, '[')
+	for i, v := range values {
+		if i > 0 {
+			dst = append(dst, ',')
+		}
+		dst = appendString(dst, v)
+	}
+	dst = append(dst, ']')
+	return dst
+}
+
+func appendIntSlice(dst []byte, values []int64) []byte {
+	dst = append(dst, '[')
+	for i, v := range values {
+		if i > 0 {
+			dst = append(dst, ',')
+		}
+		dst = strconv.AppendInt(dst, v, 10)
+	}
+	dst = append(dst, ']')
+	return dst
+}
+
+func appendUintSlice(dst []byte, values []uint64) []byte {
+	dst = append(dst, '[')
+	for i, v := range values {
+		if i > 0 {
+			dst = append(dst, ',')
+		}
+		dst = strconv.AppendUint(dst, v, 10)
+	}
+	dst = append(dst, ']')
+	return dst
+}

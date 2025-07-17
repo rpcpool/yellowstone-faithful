@@ -190,7 +190,7 @@ func (multi *MultiEpoch) handleGetTransaction(ctx context.Context, conn *request
 		}, fmt.Errorf("failed to encode transaction: %w", err)
 	}
 
-	response.Value("slot", transactionNode.Slot)
+	response.Uint("slot", uint64(transactionNode.Slot))
 	{
 		blocktimeIndex := epochHandler.GetBlocktimeIndex()
 		if blocktimeIndex != nil {
@@ -199,9 +199,9 @@ func (multi *MultiEpoch) handleGetTransaction(ctx context.Context, conn *request
 				return nil, status.Errorf(codes.Internal, "Failed to get block: %v", err)
 			}
 			if blocktime == 0 {
-				response.Value("blockTime", nil)
+				response.Null("blockTime")
 			} else {
-				response.Value("blockTime", blocktime)
+				response.Int("blockTime", blocktime)
 			}
 		} else {
 			return &jsonrpc2.Error{
@@ -214,7 +214,7 @@ func (multi *MultiEpoch) handleGetTransaction(ctx context.Context, conn *request
 	{
 		pos, ok := transactionNode.GetPositionIndex()
 		if ok {
-			response.Value("position", pos)
+			response.Int("position", int64(pos))
 		}
 	}
 	// reply with the data

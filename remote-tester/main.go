@@ -218,11 +218,11 @@ func main() {
 							if err != nil {
 								panic(fmt.Errorf("tx %s : failed to convert to UI: %w", sig, err))
 							}
-							gotUi.Value("slot", txWithInfo.Slot)
+							gotUi.Uint("slot", txWithInfo.Slot)
 							if block.Meta.Blocktime == 0 {
-								gotUi.Value("blockTime", nil)
+								gotUi.Null("blockTime")
 							} else {
-								gotUi.Value("blockTime", block.Meta.Blocktime)
+								gotUi.Int("blockTime", int64(block.Meta.Blocktime))
 							}
 							{
 								carJson, err := gotUi.MarshalJSON()

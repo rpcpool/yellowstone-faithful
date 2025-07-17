@@ -397,12 +397,12 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 		genesis := epochHandler.GetGenesis()
 		if genesis != nil {
 			blockZeroBlocktime := uint64(genesis.Config.CreationTime.Unix())
-			response.Value("blockTime", blockZeroBlocktime)
+			response.Uint("blockTime", blockZeroBlocktime)
 		}
 		response.Uint("parentSlot", uint64(0))
 
 		blockZeroBlockHash := lastEntryHash.String()
-		response.Value("previousBlockhash", blockZeroBlockHash) // NOTE: this is what solana RPC does. Should it be nil instead? Or should it be the genesis hash?
+		response.String("previousBlockhash", blockZeroBlockHash) // NOTE: this is what solana RPC does. Should it be nil instead? Or should it be the genesis hash?
 	} else {
 		response.Uint("parentSlot", uint64(block.Meta.Parent_slot))
 		{
@@ -415,9 +415,9 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 		}
 	}
 	if blocktime != 0 {
-		response.Value("blockTime", blocktime)
+		response.Uint("blockTime", blocktime)
 	}
-	response.Value("blockhash", lastEntryHash.String())
+	response.String("blockhash", lastEntryHash.String())
 	if rewardsUi != nil {
 		response.Array("rewards", rewardsUi)
 	} else {
@@ -450,7 +450,7 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 					}, fmt.Errorf("failed to decode Entry: %v", err)
 				}
 				parentEntryHash := solana.HashFromBytes(parentEntryNode.Hash).String()
-				response.Value("previousBlockhash", parentEntryHash)
+				response.String("previousBlockhash", parentEntryHash)
 			}
 		} else {
 			if slot != 0 {

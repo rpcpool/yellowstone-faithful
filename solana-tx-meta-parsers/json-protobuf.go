@@ -62,12 +62,12 @@ func ProtobufTransactionStatusMetaToUi(meta *confirmed_block.TransactionStatusMe
 	{
 		// .preBalances
 		// pub pre_balances: Vec<u64>,
-		resp.Value("preBalances", meta.PreBalances)
+		resp.UintSlice("preBalances", meta.PreBalances)
 	}
 	{
 		// .postBalances
 		// pub post_balances: Vec<u64>,
-		resp.Value("postBalances", meta.PostBalances)
+		resp.UintSlice("postBalances", meta.PostBalances)
 	}
 	{
 		// .innerInstructions
