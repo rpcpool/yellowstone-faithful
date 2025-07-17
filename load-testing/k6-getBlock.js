@@ -10,15 +10,6 @@ import http from 'k6/http';
 import { check, sleep } from 'k6';
 import { Counter } from 'k6/metrics';
 
-// --- Configuration ---
-// Configuration is now driven by environment variables for better flexibility.
-// Example: k6 run -e RPC_URL=http://my-other-node:8899 k6-getBlock.js
-const RPC_URL = __ENV.RPC_URL || 'http://127.0.0.1:8899';
-const MIN_BLOCK = parseInt(__ENV.MIN_BLOCK || '320544000');
-const MAX_BLOCK = parseInt(__ENV.MAX_BLOCK || '320975999');
-// Set to 'true' to request and handle gzip compression.
-const USE_GZIP = __ENV.USE_GZIP === 'true';
-
 // --- Custom Metrics ---
 // A custom counter to specifically track unexpected RPC-level errors.
 const rpcErrors = new Counter('rpc_errors');
@@ -40,11 +31,50 @@ export const options = {
   },
 };
 
+// --- Setup Function ---
+// This function runs once before the test starts, initializing configuration
+// and passing it to the virtual users. This prevents the setup logic from
+// running for every VU.
+export function setup() {
+  const RPC_URL = __ENV.RPC_URL || 'http://127.0.0.1:8899';
+  const EPOCH = __ENV.EPOCH ? parseInt(__ENV.EPOCH) : null;
+  const EPOCH_LEN = 432000;
+  const USE_GZIP = __ENV.USE_GZIP === 'true';
+
+  let minBlock, maxBlock;
+
+  if (EPOCH !== null) {
+    // If an epoch is provided, calculate the block range automatically.
+    minBlock = EPOCH * EPOCH_LEN;
+    maxBlock = minBlock + EPOCH_LEN - 1;
+    console.log(
+      `EPOCH environment variable set to ${EPOCH}. Calculated block range: ${minBlock} to ${maxBlock}`,
+    );
+  } else {
+    // Otherwise, use the existing MIN_BLOCK/MAX_BLOCK variables or defaults.
+    minBlock = parseInt(__ENV.MIN_BLOCK || '320544000');
+    maxBlock = parseInt(__ENV.MAX_BLOCK || '320975999');
+    console.log(
+      `Using default or environment-provided block range: ${minBlock} to ${maxBlock}`,
+    );
+  }
+
+  // Return the configuration so it can be used in the VU code.
+  return {
+    rpcUrl: RPC_URL,
+    minBlock: minBlock,
+    maxBlock: maxBlock,
+    useGzip: USE_GZIP,
+  };
+}
+
 // --- Main Test Logic ---
-export default function () {
-  // 1. Generate a random block number.
+// The `data` parameter receives the object returned from the setup() function.
+export default function (data) {
+  // 1. Generate a random block number using the config from setup().
   const randomBlock =
-    Math.floor(Math.random() * (MAX_BLOCK - MIN_BLOCK + 1)) + MIN_BLOCK;
+    Math.floor(Math.random() * (data.maxBlock - data.minBlock + 1)) +
+    data.minBlock;
 
   // 2. Construct the JSON-RPC payload.
   const payload = JSON.stringify({
@@ -66,13 +96,12 @@ export default function () {
   };
 
   // Add gzip compression option if enabled via environment variable.
-  // k6 will automatically add the 'Accept-Encoding' header and decompress the response.
-  if (USE_GZIP) {
+  if (data.useGzip) {
     params.compression = 'gzip';
   }
 
   // 3. Send the POST request.
-  const res = http.post(RPC_URL, payload, params);
+  const res = http.post(data.rpcUrl, payload, params);
 
   // 4. Perform robust checks on the response.
   const httpSuccess = check(res, {
@@ -141,8 +170,8 @@ export default function () {
 // 3. Run the test from your terminal.
 //    k6 run k6-getBlock.js
 
-// 4. To run with gzip compression enabled:
-//    k6 run -e USE_GZIP=true k6-getBlock.js
+// 4. To run with a specific epoch:
+//    k6 run -e EPOCH=742 k6-getBlock.js
 
-// 5. To override other configurations:
-//    k6 run -e USE_GZIP=true -e RPC_URL=http://another-node:8899 k6-getBlock.js
+// 5. To run with gzip compression enabled:
+//    k6 run -e USE_GZIP=true -e EPOCH=742 k6-getBlock.js
