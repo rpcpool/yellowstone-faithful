@@ -7,7 +7,7 @@ import (
 )
 
 func TransactionToUi(
-	tx solana.Transaction,
+	tx *solana.Transaction,
 	format solana.EncodingType,
 ) (*jsonbuilder.OrderedJSONObject, error) {
 	obj := jsonbuilder.NewObject()

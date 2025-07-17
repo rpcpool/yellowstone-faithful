@@ -42,6 +42,12 @@ func (c *requestContext) Reply(
 	if err != nil {
 		return err
 	}
+	{
+		// if result has Put method, call it:
+		if puttable, ok := result.(interface{ Put() }); ok {
+			puttable.Put()
+		}
+	}
 	raw := json.RawMessage(resRaw)
 	resp := &jsonrpc2.Response{
 		ID:     id,

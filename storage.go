@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 
 	bin "github.com/gagliardetto/binary"
 	"github.com/gagliardetto/solana-go"
@@ -87,28 +88,47 @@ func openCarStorage(ctx context.Context, where string) (*carv2.Reader, carreader
 	return carReader, nil, nil
 }
 
+var transactionPool = &sync.Pool{
+	New: func() any {
+		return &solana.Transaction{}
+	},
+}
+
+func getTransactionFromPool() *solana.Transaction {
+	tx := transactionPool.Get().(*solana.Transaction)
+	return tx
+}
+
+func putTransactionToPool(tx *solana.Transaction) {
+	tx.Signatures = tx.Signatures[:0] // Reset signatures slice
+	tx.Message = solana.Message{}
+	transactionPool.Put(tx)
+}
+
 func parseTransactionAndMetaFromNode(
 	transactionNode *ipldbindcode.Transaction,
 	dataFrameGetter func(ctx context.Context, wantedCid cid.Cid) (*ipldbindcode.DataFrame, error),
-) (tx solana.Transaction, meta *solanatxmetaparsers.TransactionStatusMetaContainer, _ error) {
+) (tx *solana.Transaction, meta *solanatxmetaparsers.TransactionStatusMetaContainer, _ error) {
 	{
 		transactionBuffer, err := ipldbindcode.LoadDataFromDataFrames(&transactionNode.Data, dataFrameGetter)
 		if err != nil {
-			return solana.Transaction{}, nil, err
+			return nil, nil, err
 		}
-		if err := bin.UnmarshalBin(&tx, transactionBuffer); err != nil {
+		tx = getTransactionFromPool()
+		if err := bin.UnmarshalBin(tx, transactionBuffer); err != nil {
 			klog.Errorf("failed to unmarshal transaction: %v", err)
-			return solana.Transaction{}, nil, err
+			return nil, nil, err
 		} else if len(tx.Signatures) == 0 {
 			klog.Errorf("transaction has no signatures")
-			return solana.Transaction{}, nil, err
+			return nil, nil, err
 		}
 	}
+	// return tx, nil, nil
 
 	{
 		metaBuffer, err := ipldbindcode.LoadDataFromDataFrames(&transactionNode.Metadata, dataFrameGetter)
 		if err != nil {
-			return solana.Transaction{}, nil, err
+			return nil, nil, err
 		}
 		if len(metaBuffer) > 0 {
 			uncompressedMeta, err := tooling.DecompressZstd(metaBuffer)

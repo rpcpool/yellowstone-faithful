@@ -235,7 +235,7 @@ func (multi *MultiEpoch) handleGetSignaturesForAddress(ctx context.Context, conn
 								response[ii]["err"] = nil
 							}
 
-							memoData := getMemoInstructionDataFromTransaction(&tx)
+							memoData := getMemoInstructionDataFromTransaction(tx)
 							if memoData != nil {
 								response[ii]["memo"] = string(memoData)
 							}

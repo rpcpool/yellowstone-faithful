@@ -30,12 +30,12 @@ import (
 // }
 
 type EncodedTransactionWithStatusMeta struct {
-	Transaction solana.Transaction
+	Transaction *solana.Transaction
 	Meta        *TransactionStatusMetaContainer
 }
 
 func NewEncodedTransactionWithStatusMeta(
-	tx solana.Transaction, meta *TransactionStatusMetaContainer,
+	tx *solana.Transaction, meta *TransactionStatusMetaContainer,
 ) *EncodedTransactionWithStatusMeta {
 	return &EncodedTransactionWithStatusMeta{
 		Transaction: tx,
@@ -234,7 +234,7 @@ func clone[T any](in []T) []T {
 }
 
 func compiledInstructionsToJsonParsed(
-	tx solana.Transaction,
+	tx *solana.Transaction,
 	inst solana.CompiledInstruction,
 	meta *TransactionStatusMetaContainer,
 ) (json.RawMessage, error) {

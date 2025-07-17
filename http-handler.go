@@ -10,7 +10,8 @@ func replyJSON(ctx *fasthttp.RequestCtx, code int, v interface{}) {
 	ctx.SetContentType("application/json")
 	ctx.SetStatusCode(code)
 
-	if err := jsoniter.ConfigCompatibleWithStandardLibrary.NewEncoder(ctx).Encode(v); err != nil {
+	encoder := jsoniter.ConfigCompatibleWithStandardLibrary.NewEncoder(ctx)
+	if err := encoder.Encode(v); err != nil {
 		klog.Errorf("failed to marshal response: %v", err)
 	}
 }

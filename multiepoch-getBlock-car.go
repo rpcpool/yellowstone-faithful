@@ -5,9 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"runtime"
-	"sync"
-	"time"
 
 	"github.com/gagliardetto/gsfa-v3/3.3/tooling"
 	"github.com/gagliardetto/solana-go"
@@ -25,7 +22,6 @@ import (
 	"github.com/sourcegraph/jsonrpc2"
 	"github.com/valyala/bytebufferpool"
 	"go.opentelemetry.io/otel/attribute"
-	"golang.org/x/sync/errgroup"
 	"k8s.io/klog/v2"
 )
 
@@ -33,8 +29,6 @@ func (multi *MultiEpoch) handleGetBlock_car(ctx context.Context, conn *requestCo
 	// Start top-level span
 	rpcSpanCtx, rpcSpan := telemetry.StartSpan(ctx, "jsonrpc.GetBlock")
 	defer rpcSpan.End()
-
-	startedAt := time.Now()
 
 	tim := newTimer(getRequestIDFromContext(rpcSpanCtx))
 	params, err := parseGetBlockRequest(req.Params)
@@ -65,177 +59,123 @@ func (multi *MultiEpoch) handleGetBlock_car(ctx context.Context, conn *requestCo
 		}, fmt.Errorf("failed to get epoch %d: %w", epochNumber, err)
 	}
 
-	{
-		childCid, err := epochHandler.FindCidFromSlot(ctx, slot)
-		if err != nil {
-			if errors.Is(err, compactindexsized.ErrNotFound) {
-				return &jsonrpc2.Error{
-					Code:    CodeNotFound,
-					Message: fmt.Sprintf("Slot %d was skipped, or missing in long-term storage", slot),
-				}, err
-			} else {
-				return &jsonrpc2.Error{
-					Code:    jsonrpc2.CodeInternalError,
-					Message: "Failed to get block",
-				}, fmt.Errorf("failed to get block: %w", err)
-			}
-		}
-		_ = childCid // TODO: use this CID to prefetch the block data
-		// Find CAR file oasChild for CID in index.
-		oasChild, err := epochHandler.FindOffsetAndSizeFromCid(ctx, childCid)
-		if err != nil {
-			// not found or error
-			return nil, fmt.Errorf("failed to find offset for CID %s: %w", childCid, err)
-		}
-		childData, err := epochHandler.GetNodeByOffsetAndSizeBuffer(ctx, &childCid, oasChild)
-		if err != nil {
+	//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+	childCid, err := epochHandler.FindCidFromSlot(ctx, slot)
+	if err != nil {
+		if errors.Is(err, compactindexsized.ErrNotFound) {
+			return &jsonrpc2.Error{
+				Code:    CodeNotFound,
+				Message: fmt.Sprintf("Slot %d was skipped, or missing in long-term storage", slot),
+			}, err
+		} else {
 			return &jsonrpc2.Error{
 				Code:    jsonrpc2.CodeInternalError,
 				Message: "Failed to get block",
-			}, fmt.Errorf("failed to get block data: %w", err)
+			}, fmt.Errorf("failed to get block: %w", err)
 		}
-		_ = childData // TODO: use this data to prefetch the block data
-		parsedChildBlock, err := iplddecoders.DecodeBlock(childData.Bytes())
-		if err != nil {
-			return nil, fmt.Errorf("failed to decode block: %w", err)
-		}
-		if uint64(parsedChildBlock.Slot) != slot {
-			return nil, fmt.Errorf("expected slot %d, got %d", slot, parsedChildBlock.Slot)
-		}
-		bytebufferpool.Put(childData) // return the buffer to the pool
-		{
-			conn.ctx.Response.Header.Set("DAG-Root-CID", childCid.String())
-		}
-
-		parentIsInPreviousEpoch := slottools.ParentIsInPreviousEpoch(uint64(parsedChildBlock.Meta.Parent_slot), (slot))
-		_ = parentIsInPreviousEpoch
-		// now we know the parent slot;
-		// TODO: the parent object might be in the previous epoch, so we need to handle that case.
-		parentCid, err := epochHandler.FindCidFromSlot(ctx, uint64(parsedChildBlock.Meta.Parent_slot))
-		if err != nil {
-			if errors.Is(err, compactindexsized.ErrNotFound) {
-				return nil, fmt.Errorf("parent slot %d was skipped, or missing in long-term storage", parsedChildBlock.Meta.Parent_slot)
-			}
-		}
-		if parentCid == cid.Undef {
-			return nil, fmt.Errorf("parent CID for slot %d is undefined", parsedChildBlock.Meta.Parent_slot)
-		}
-		parentOas, err := epochHandler.FindOffsetAndSizeFromCid(ctx, parentCid)
-		if err != nil {
-			return nil, fmt.Errorf("failed to find offset for parent CID %s: %w", parentCid, err)
-		}
-		offsetParent := parentOas.Offset
-		totalSize := oasChild.Offset + oasChild.Size - offsetParent
-		reader, err := epochHandler.GetEpochReaderAt()
-		if err != nil {
-			return nil, fmt.Errorf("failed to get epoch reader: %w", err)
-		}
-		// TODO: save this info immediately so for next getBlock(thisBlock) we know immediately where to read in the CAR file,
-		// and whether the parent is in the previous epoch or not.
-		section, err := readIntoBuffer(offsetParent, totalSize, reader)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read node from CAR: %w", err)
-		}
-
-		nodes, err := tooling.SplitIntoDataAndCids(section.Bytes())
-		if err != nil {
-			panic(err)
-		}
-		nodes.SortByCid()
-		bytebufferpool.Put(section) // return the buffer to the pool
-
-		parsedNodes, err := nodes.ToParsedAndCidSlice()
-		if err != nil {
-			panic(fmt.Errorf("failed to convert nodes to parsed nodes: %w", err))
-		}
-		parsedNodes.SortByCid()
-
-		slog.Info(
-			"getBlock-car",
-			"took so far", time.Since(startedAt).String(),
-		)
-		return nil, nil
 	}
+	_ = childCid // TODO: use this CID to prefetch the block data
+	// Find CAR file oasChild for CID in index.
+	oasChild, err := epochHandler.FindOffsetAndSizeFromCid(ctx, childCid)
+	if err != nil {
+		// not found or error
+		return nil, fmt.Errorf("failed to find offset for CID %s: %w", childCid, err)
+	}
+	childData, err := epochHandler.GetNodeByOffsetAndSizeBuffer(ctx, &childCid, oasChild)
+	if err != nil {
+		return &jsonrpc2.Error{
+			Code:    jsonrpc2.CodeInternalError,
+			Message: "Failed to get block",
+		}, fmt.Errorf("failed to get block data: %w", err)
+	}
+	_ = childData // TODO: use this data to prefetch the block data
+	block, err := iplddecoders.DecodeBlock(childData.Bytes())
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode block: %w", err)
+	}
+	if uint64(block.Slot) != slot {
+		return nil, fmt.Errorf("expected slot %d, got %d", slot, block.Slot)
+	}
+	bytebufferpool.Put(childData) // return the buffer to the pool
+	{
+		conn.ctx.Response.Header.Set("DAG-Root-CID", childCid.String())
+	}
+
+	parentSlot := uint64(block.Meta.Parent_slot)
+	parentIsInPreviousEpoch := slottools.ParentIsInPreviousEpoch(parentSlot, (slot))
+	_ = parentIsInPreviousEpoch
+	// now we know the parent slot;
+	// TODO: the parent object might be in the previous epoch, so we need to handle that case.
+	parentCid, err := epochHandler.FindCidFromSlot(ctx, parentSlot)
+	if err != nil {
+		if errors.Is(err, compactindexsized.ErrNotFound) {
+			return nil, fmt.Errorf("parent slot %d was skipped, or missing in long-term storage", parentSlot)
+		}
+	}
+	if parentCid == cid.Undef {
+		return nil, fmt.Errorf("parent CID for slot %d is undefined", parentSlot)
+	}
+	parentOas, err := epochHandler.FindOffsetAndSizeFromCid(ctx, parentCid)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find offset for parent CID %s: %w", parentCid, err)
+	}
+	offsetParent := parentOas.Offset
+	totalSize := oasChild.Offset + oasChild.Size - offsetParent
+	reader, err := epochHandler.GetEpochReaderAt()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get epoch reader: %w", err)
+	}
+	// TODO: save this info immediately so for next getBlock(thisBlock) we know immediately where to read in the CAR file,
+	// and whether the parent is in the previous epoch or not.
+	section, err := readIntoBuffer(offsetParent, totalSize, reader)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read node from CAR: %w", err)
+	}
+	tim.time("read section from CAR")
+
+	nodes, err := tooling.SplitIntoDataAndCids(section.Bytes())
+	if err != nil {
+		panic(err)
+	}
+	defer nodes.Put() // return the nodes to the pool
+	nodes.SortByCid()
+	bytebufferpool.Put(section) // return the buffer to the pool
+	tim.time("nodes")
+
+	parsedNodes, err := nodes.ToParsedAndCidSlice()
+	if err != nil {
+		panic(fmt.Errorf("failed to convert nodes to parsed nodes: %w", err))
+	}
+	defer parsedNodes.Put() // return the parsed nodes to the pool
+	parsedNodes.SortByCid()
+	tim.time("parsedNodes")
 
 	blocktime := uint64(block.Meta.Blocktime)
 
-	allTransactionNodes := make([][]*ipldbindcode.Transaction, len(block.Entries))
-	mu := &sync.Mutex{}
-	var lastEntryHash solana.Hash
-	{
-		entryProcCtx, entryProcSpan := telemetry.StartSpan(rpcSpanCtx, "GetBlock_ProcessEntries")
-		wg := new(errgroup.Group)
-		wg.SetLimit(runtime.NumCPU() * 2)
-		// get entries from the block
-		for entryIndex, entry := range block.Entries {
-			entryIndex := entryIndex
-			entryCid := entry.(cidlink.Link).Cid
-			wg.Go(func() error {
-				// get the entry by CID
-				entryNode, err := epochHandler.GetEntryByCid(entryProcCtx, entryCid)
-				if err != nil {
-					klog.Errorf("failed to decode Entry: %v", err)
-					return err
-				}
-
-				if entryIndex == len(block.Entries)-1 {
-					lastEntryHash = solana.HashFromBytes(entryNode.Hash)
-				}
-
-				twg := new(errgroup.Group)
-				twg.SetLimit(runtime.NumCPU())
-				// get the transactions from the entry
-				allTransactionNodes[entryIndex] = make([]*ipldbindcode.Transaction, len(entryNode.Transactions))
-				for txI := range entryNode.Transactions {
-					txI := txI
-					tx := entryNode.Transactions[txI]
-					twg.Go(func() error {
-						// get the transaction by CID
-						tcid := tx.(cidlink.Link).Cid
-						txNode, err := epochHandler.GetTransactionByCid(entryProcCtx, tcid)
-						if err != nil {
-							klog.Errorf("failed to decode Transaction %s: %v", tcid, err)
-							return nil
-						}
-						mu.Lock()
-						allTransactionNodes[entryIndex][txI] = txNode
-						mu.Unlock()
-						return nil
-					})
-				}
-				return twg.Wait()
-			})
-		}
-		err = wg.Wait()
-		entryProcSpan.End()
-		if err != nil {
-			return &jsonrpc2.Error{
-				Code:    jsonrpc2.CodeInternalError,
-				Message: "Internal error",
-			}, fmt.Errorf("failed to get entries: %v", err)
-		}
+	lastEntryCid := block.Entries[len(block.Entries)-1]
+	lastEntry, err := parsedNodes.EntryByCid(lastEntryCid.(cidlink.Link).Cid)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get last entry: %w", err)
 	}
+	lastEntryHash := solana.HashFromBytes(lastEntry.Hash)
 	tim.time("get entries")
 
-	var allTransactions []*jsonbuilder.OrderedJSONObject
 	var rewardsUi *jsonbuilder.ArrayBuilder
-	rewardsCid := block.Rewards.(cidlink.Link).Cid
 	hasRewards := block.HasRewards()
+	rewardsCid := block.Rewards.(cidlink.Link).Cid
 	if *params.Options.Rewards && hasRewards {
-		rewardsSpanCtx, rewardsSpan := telemetry.StartSpan(rpcSpanCtx, "GetBlock_RewardsProcessing")
-		rewardsNode, err := epochHandler.GetRewardsByCid(rewardsSpanCtx, rewardsCid)
+		rewardsNode, err := parsedNodes.RewardsByCid(rewardsCid)
 		if err != nil {
-			telemetry.RecordError(rewardsSpan, err, "Failed to get RewardsByCid")
-			rewardsSpan.End()
 			return &jsonrpc2.Error{
 				Code:    jsonrpc2.CodeInternalError,
 				Message: "Internal error",
 			}, fmt.Errorf("failed to decode Rewards: %v", err)
 		}
-		rewardsBuf, err := ipldbindcode.LoadDataFromDataFrames(&rewardsNode.Data, epochHandler.GetDataFrameByCid)
+		rewardsBuf, err := ipldbindcode.LoadDataFromDataFrames(&rewardsNode.Data, func(ctx context.Context, wantedCid cid.Cid) (*ipldbindcode.DataFrame, error) {
+			df, err := parsedNodes.DataFrameByCid(wantedCid)
+			return df, err
+		})
 		if err != nil {
-			telemetry.RecordError(rewardsSpan, err, "Failed to load Rewards dataFrames")
-			rewardsSpan.End()
 			return &jsonrpc2.Error{
 				Code:    jsonrpc2.CodeInternalError,
 				Message: "Internal error",
@@ -244,22 +184,20 @@ func (multi *MultiEpoch) handleGetBlock_car(ctx context.Context, conn *requestCo
 
 		uncompressedRewards, err := ytooling.DecompressZstd(rewardsBuf)
 		if err != nil {
-			telemetry.RecordError(rewardsSpan, err, "Failed to decompress Rewards")
-			rewardsSpan.End()
 			return &jsonrpc2.Error{
 				Code:    jsonrpc2.CodeInternalError,
 				Message: "Internal error",
 			}, fmt.Errorf("failed to decompress Rewards: %v", err)
 		}
-		rewardsSpan.SetAttributes(
-			attribute.Int("rewards_compressed_size", len(rewardsBuf)),
-			attribute.Int("rewards_uncompressed_size", len(uncompressedRewards)),
-		)
 		// try decoding as protobuf
 		actualRewards, err := solanablockrewards.ParseRewards(uncompressedRewards)
 		if err != nil {
-			// TODO: add support for legacy rewards format
-			fmt.Println("Rewards are not protobuf: " + err.Error())
+			slog.Error(
+				"failed to parse block rewards",
+				"block", slot,
+				"rewards_cid", rewardsCid.String(),
+				"error", err,
+			)
 		} else {
 			// encode rewards as JSON, then decode it as a map
 			rewards, _, err := solanablockrewards.RewardsToUi(actualRewards)
@@ -275,47 +213,60 @@ func (multi *MultiEpoch) handleGetBlock_car(ctx context.Context, conn *requestCo
 		klog.V(4).Infof("rewards not requested or not available")
 	}
 	tim.time("get rewards")
+
+	var allTransactions []*jsonbuilder.OrderedJSONObject
 	{
 		_, buildTxSpan := telemetry.StartSpan(rpcSpanCtx, "GetBlock_BuildTransactions")
-		for _, transactionNode := range mergeTxNodeSlices(allTransactionNodes) {
-			tx, meta, err := parseTransactionAndMetaFromNode(transactionNode, epochHandler.GetDataFrameByCid)
+		for transactionNode := range parsedNodes.Transaction() {
+			err := func() error {
+				tx, meta, err := parseTransactionAndMetaFromNode(transactionNode, func(ctx context.Context, wantedCid cid.Cid) (*ipldbindcode.DataFrame, error) {
+					df, err := parsedNodes.DataFrameByCid(wantedCid)
+					if err != nil {
+						return nil, fmt.Errorf("failed to get DataFrame by CID %s: %w", wantedCid, err)
+					}
+					return df, nil
+				})
+				if err != nil {
+					return fmt.Errorf("failed to decode transaction: %v", err)
+				}
+
+				out := solanatxmetaparsers.NewEncodedTransactionWithStatusMeta(
+					tx,
+					meta,
+				)
+
+				txUI, err := out.ToUi(*params.Options.Encoding)
+				if err != nil {
+					return fmt.Errorf("failed to encode transaction: %v", err)
+				}
+				out.Meta.Put()
+				putTransactionToPool(tx) // return the transaction to the pool
+				// TODO: include position index in the UI output.
+				// pos, ok := transactionNode.GetPositionIndex()
+				// if ok {
+				// 	txUI.Value("position", pos)
+				// }
+				allTransactions = append(allTransactions, txUI)
+				return nil
+			}()
 			if err != nil {
 				return &jsonrpc2.Error{
 					Code:    jsonrpc2.CodeInternalError,
 					Message: "Internal error",
-				}, fmt.Errorf("failed to decode transaction: %v", err)
+				}, fmt.Errorf("failed to build transactions: %w", err)
 			}
-
-			out := solanatxmetaparsers.NewEncodedTransactionWithStatusMeta(
-				tx,
-				meta,
-			)
-
-			txUI, err := out.ToUi(*params.Options.Encoding)
-			if err != nil {
-				return &jsonrpc2.Error{
-					Code:    jsonrpc2.CodeInternalError,
-					Message: "Internal error",
-				}, fmt.Errorf("failed to encode transaction: %v", err)
-			}
-			// TODO: include position index in the UI output.
-			// pos, ok := transactionNode.GetPositionIndex()
-			// if ok {
-			// 	txUI.Value("position", pos)
-			// }
-
-			allTransactions = append(allTransactions, txUI)
 		}
+
 		buildTxSpan.SetAttributes(attribute.Int("num_transactions", len(allTransactions)))
 		buildTxSpan.End()
 	}
+	tim.time("get transactions")
+	response := jsonbuilder.NewObject()
+	response.Value("transactions", allTransactions)
 
 	// sort.Slice(allTransactions, func(i, j int) bool {
 	// 	return allTransactions[i].Position < allTransactions[j].Position
 	// })
-	tim.time("get transactions")
-
-	response := jsonbuilder.NewObject()
 
 	if slot == 0 {
 		response.Uint("blockHeight", 0)
@@ -330,7 +281,7 @@ func (multi *MultiEpoch) handleGetBlock_car(ctx context.Context, conn *requestCo
 		blockZeroBlockHash := lastEntryHash.String()
 		response.Value("previousBlockhash", blockZeroBlockHash) // NOTE: this is what solana RPC does. Should it be nil instead? Or should it be the genesis hash?
 	} else {
-		response.Uint("parentSlot", uint64(block.Meta.ParentSlot))
+		response.Uint("parentSlot", parentSlot)
 		{
 			blockHeight, ok := block.GetBlockHeight()
 			if ok {
@@ -351,11 +302,9 @@ func (multi *MultiEpoch) handleGetBlock_car(ctx context.Context, conn *requestCo
 	}
 	{
 		parentSpanCtx, parentSpan := telemetry.StartSpan(rpcSpanCtx, "GetBlock_GetParentBlockForHash")
-		// get parent slot
-		parentSlot := uint64(block.Meta.ParentSlot)
 		parentSpan.SetAttributes(attribute.Int64("parent_slot", int64(parentSlot)))
 		if (parentSlot != 0 || slot == 1) && slottools.CalcEpochForSlot(parentSlot) == epochNumber {
-			parentBlock, _, err := epochHandler.GetBlock(WithSubrapghPrefetch(parentSpanCtx, false), parentSlot)
+			parentBlock, err := parsedNodes.BlockByCid(parentCid)
 			if err != nil {
 				telemetry.RecordError(parentSpan, err, "Failed to get parent block")
 				parentSpan.End()
@@ -365,8 +314,9 @@ func (multi *MultiEpoch) handleGetBlock_car(ctx context.Context, conn *requestCo
 				}, fmt.Errorf("failed to get/decode block: %v", err)
 			}
 			if len(parentBlock.Entries) > 0 {
-				lastEntryCidOfParent := parentBlock.Entries[len(parentBlock.Entries)-1]
-				parentEntryNode, err := epochHandler.GetEntryByCid(parentSpanCtx, lastEntryCidOfParent.(cidlink.Link).Cid)
+				lastEntryCidOfParent := parentBlock.Entries[len(parentBlock.Entries)-1].(cidlink.Link).Cid
+
+				parentEntryNode, err := epochHandler.GetEntryByCid(parentSpanCtx, lastEntryCidOfParent)
 				if err != nil {
 					telemetry.RecordError(parentSpan, err, "Failed to get parent entry")
 					parentSpan.End()
@@ -377,8 +327,10 @@ func (multi *MultiEpoch) handleGetBlock_car(ctx context.Context, conn *requestCo
 				}
 				parentEntryHash := solana.HashFromBytes(parentEntryNode.Hash).String()
 				response.Value("previousBlockhash", parentEntryHash)
+				// response.Null("previousBlockhash")
 			}
 		} else {
+			// TODO: handle the case when the parent is in a different epoch.
 			if slot != 0 {
 				klog.V(4).Infof("parent slot is in a different epoch, not implemented yet (can't get previousBlockhash)")
 			}
@@ -386,8 +338,6 @@ func (multi *MultiEpoch) handleGetBlock_car(ctx context.Context, conn *requestCo
 		parentSpan.End()
 	}
 	tim.time("get parent block")
-	response.Value("transactions", allTransactions)
-
 	err = conn.Reply(
 		ctx,
 		req.ID,

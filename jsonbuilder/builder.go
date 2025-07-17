@@ -1,15 +1,16 @@
 package jsonbuilder
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 
-	jsoniter "github.com/json-iterator/go"
+	"github.com/bytedance/sonic"
+	"github.com/valyala/bytebufferpool"
 )
 
 // OrderedJSONObject represents a JSON object that maintains field insertion order
 type OrderedJSONObject struct {
+	buf    *bytebufferpool.ByteBuffer
 	fields []field
 }
 
@@ -28,39 +29,44 @@ func NewObject() *OrderedJSONObject {
 	return &OrderedJSONObject{}
 }
 
-var jsonCustom = jsoniter.ConfigCompatibleWithStandardLibrary
+func (o *OrderedJSONObject) Put() {
+	if o.buf != nil {
+		bytebufferpool.Put(o.buf)
+	}
+	clear(o.fields)
+}
 
 // MarshalJSON implements custom JSON marshaling with order preservation
 func (o *OrderedJSONObject) MarshalJSON() ([]byte, error) {
-	var buf bytes.Buffer
-	buf.WriteByte('{')
+	o.buf = bytebufferpool.Get()
+	o.buf.WriteByte('{')
 
 	for i, f := range o.fields {
 		if i > 0 {
-			buf.WriteByte(',')
+			o.buf.WriteByte(',')
 		}
 
-		key, err := jsonCustom.Marshal(f.key)
+		key, err := sonic.ConfigFastest.Marshal(f.key)
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal key %q: %w", f.key, err)
 		}
-		buf.Write(key)
-		buf.WriteByte(':')
+		o.buf.Write(key)
+		o.buf.WriteByte(':')
 
-		val, err := jsonCustom.Marshal(f.value)
+		val, err := sonic.ConfigFastest.Marshal(f.value)
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal value for key %q: %w", f.key, err)
 		}
-		buf.Write(val)
+		o.buf.Write(val)
 	}
 
-	buf.WriteByte('}')
-	return buf.Bytes(), nil
+	o.buf.WriteByte('}')
+	return o.buf.Bytes(), nil
 }
 
 // MarshalJSON implements JSON marshaling for arrays
 func (a *ArrayBuilder) MarshalJSON() ([]byte, error) {
-	return jsonCustom.Marshal(a.elements)
+	return sonic.ConfigFastest.Marshal(a.elements)
 }
 
 // Value adds a generic JSON value to the object

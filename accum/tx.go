@@ -22,7 +22,7 @@ type TransactionWithSlot struct {
 	Blocktime      uint64
 	Position       uint64 // Position in the block, used for sorting
 	Error          error
-	Transaction    solana.Transaction
+	Transaction    *solana.Transaction
 	Metadata       *solanatxmetaparsers.TransactionStatusMetaContainer
 	MetadataPieces []MetadataPieceSectionRef // Used for multipiece metadata
 }
@@ -218,7 +218,7 @@ func ObjectsToTransactionsAndMetadata(
 			if err != nil {
 				return fmt.Errorf("error while getting solana transaction from object %s: %w", object.Cid, err)
 			}
-			tws.Transaction = *tx
+			tws.Transaction = tx
 			sigs := tx.Signatures
 			if len(sigs) == 0 {
 				return fmt.Errorf("transaction has no signatures: %s", object.Cid)

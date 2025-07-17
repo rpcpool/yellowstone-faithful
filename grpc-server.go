@@ -1074,7 +1074,7 @@ func (multi *MultiEpoch) processSlotTransactions(
 							return status.Errorf(codes.Internal, "Failed to parse transaction from node: %v", err)
 						}
 
-						if !filterOut.Do(&tx, meta) {
+						if !filterOut.Do(tx, meta) {
 							txResp := new(old_faithful_grpc.TransactionResponse)
 							txResp.Transaction = new(old_faithful_grpc.Transaction)
 							{

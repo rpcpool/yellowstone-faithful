@@ -345,7 +345,7 @@ func newCmd_Index_gsfa() *cli.Command {
 							return false
 						}()
 
-						isVote := IsVote(&txWithInfo.Transaction)
+						isVote := IsVote(txWithInfo.Transaction)
 
 						// v2:
 						if len(pubkeysExclude) > 0 {

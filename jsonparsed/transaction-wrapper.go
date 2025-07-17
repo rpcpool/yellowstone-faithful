@@ -25,7 +25,7 @@ type AccountKey struct {
 	Writable bool   `json:"writable"`
 }
 
-func FromTransaction(solTx solana.Transaction) (Transaction, error) {
+func FromTransaction(solTx *solana.Transaction) (Transaction, error) {
 	tx := Transaction{
 		Message: Message{
 			AccountKeys:  make([]AccountKey, len(solTx.Message.AccountKeys)),

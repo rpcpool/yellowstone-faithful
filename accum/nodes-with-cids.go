@@ -318,7 +318,7 @@ func (n *NodesWithCids) GetTransactions() ([]*TransactionWithSlot, error) {
 				Slot:      uint64(node.Slot),
 				Blocktime: uint64(block.Meta.Blocktime),
 			}
-			tws.Transaction = *tx
+			tws.Transaction = tx
 			sig := tx.Signatures[0]
 
 			metaBuffer, err := n.ReassembleDataframes(&node.Metadata)

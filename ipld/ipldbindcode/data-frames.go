@@ -14,6 +14,9 @@ func LoadDataFromDataFrames(
 	firstDataFrame *DataFrame,
 	dataFrameGetter func(ctx context.Context, wantedCid cid.Cid) (*DataFrame, error),
 ) ([]byte, error) {
+	if total, ok := firstDataFrame.GetTotal(); !ok || total == 1 {
+		return firstDataFrame.Bytes(), nil
+	}
 	allFrames, err := getAllFramesFromDataFrame(firstDataFrame, dataFrameGetter)
 	if err != nil {
 		return nil, err
