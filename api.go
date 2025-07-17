@@ -94,5 +94,13 @@ func (multi *MultiEpoch) apiHandler(reqCtx *fasthttp.RequestCtx) {
 		reqCtx.SetBodyString(transactionCid.String())
 		return
 	}
+	if string(reqCtx.Path()) == "/api/v1/epochs" {
+		// return the list of epochs
+		epochs := multi.GetEpochNumbers()
+		replyJSON(reqCtx, fasthttp.StatusOK, map[string]any{
+			"epochs": epochs,
+		})
+		return
+	}
 	reqCtx.SetStatusCode(fasthttp.StatusNotFound)
 }

@@ -37,18 +37,50 @@ export const options = {
 // running for every VU.
 export function setup() {
   const RPC_URL = __ENV.RPC_URL || 'http://127.0.0.1:8899';
-  const EPOCHS = __ENV.EPOCHS; // Expects a comma-separated list, e.g., "742,745,750"
+  let EPOCHS = __ENV.EPOCHS; // Expects a comma-separated list, e.g., "742,745,750"
   const EPOCH_LEN = 432000;
   const USE_GZIP = __ENV.USE_GZIP === 'true';
 
   let blockRanges = [];
 
-  if (EPOCHS) {
-    // If a list of epochs is provided, calculate the block range for each.
-    const epochList = EPOCHS.split(',');
+  // If EPOCHS environment variable is not provided, try fetching from the API.
+  if (!EPOCHS) {
     console.log(
-      `EPOCHS environment variable set to ${EPOCHS}. Calculating block ranges...`,
+      'EPOCHS environment variable not set. Attempting to fetch from API...',
     );
+    const epochsApiUrl = `${RPC_URL}/api/v1/epochs`;
+    const res = http.get(epochsApiUrl);
+
+    if (res.status === 200) {
+      try {
+        const responseData = res.json();
+        const fetchedEpochs = responseData.epochs; // Access the nested 'epochs' array.
+        if (Array.isArray(fetchedEpochs) && fetchedEpochs.length > 0) {
+          console.log(
+            `Successfully fetched ${fetchedEpochs.length} epochs from API.`,
+          );
+          EPOCHS = fetchedEpochs.join(','); // Convert array to comma-separated string to reuse parsing logic
+        } else {
+          console.log(
+            'API returned no epochs or an invalid format. Falling back to default block range.',
+          );
+        }
+      } catch (e) {
+        console.log(
+          `Failed to parse JSON from epochs API: ${e}. Falling back to default block range.`,
+        );
+      }
+    } else {
+      console.log(
+        `Failed to fetch epochs from API (status: ${res.status}). Falling back to default block range.`,
+      );
+    }
+  }
+
+  // If a list of epochs is available (from env var or API), calculate the block ranges.
+  if (EPOCHS) {
+    const epochList = EPOCHS.split(',');
+    console.log(`Using epochs: ${EPOCHS}. Calculating block ranges...`);
     epochList.forEach((epochStr) => {
       const epoch = parseInt(epochStr.trim());
       if (!isNaN(epoch)) {
@@ -60,19 +92,15 @@ export function setup() {
         );
       }
     });
-  } else {
-    // Otherwise, use the existing MIN_BLOCK/MAX_BLOCK variables or defaults.
+  }
+
+  // If, after all attempts, blockRanges is still empty, use the hardcoded default.
+  if (blockRanges.length === 0) {
     const minBlock = parseInt(__ENV.MIN_BLOCK || '320544000');
     const maxBlock = parseInt(__ENV.MAX_BLOCK || '320975999');
     blockRanges.push({ min: minBlock, max: maxBlock });
     console.log(
-      `Using default or environment-provided block range: ${minBlock} to ${maxBlock}`,
-    );
-  }
-
-  if (blockRanges.length === 0) {
-    throw new Error(
-      'No valid block ranges were configured. Please check your EPOCHS or MIN_BLOCK/MAX_BLOCK environment variables.',
+      `Using hardcoded default block range: ${minBlock} to ${maxBlock}`,
     );
   }
 
@@ -187,11 +215,11 @@ export default function (data) {
 
 // 2. Save this script as `k6-getBlock.js`.
 
-// 3. Run the test from your terminal.
+// 3. Run the test from your terminal. It will attempt to fetch epochs from the API.
 //    k6 run k6-getBlock.js
 
-// 4. To run with a specific list of epochs:
+// 4. To run with a specific list of epochs, overriding the API call:
 //    k6 run -e EPOCHS="742,745,750" k6-getBlock.js
 
 // 5. To run with gzip compression enabled:
-//    k6 run -e USE_GZIP=true -e EPOCHS="742,745,750" k6-getBlock.js
+//    k6 run -e USE_GZIP=true k6-getBlock.js
