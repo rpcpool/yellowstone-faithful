@@ -37,33 +37,49 @@ export const options = {
 // running for every VU.
 export function setup() {
   const RPC_URL = __ENV.RPC_URL || 'http://127.0.0.1:8899';
-  const EPOCH = __ENV.EPOCH ? parseInt(__ENV.EPOCH) : null;
+  const EPOCHS = __ENV.EPOCHS; // Expects a comma-separated list, e.g., "742,745,750"
   const EPOCH_LEN = 432000;
   const USE_GZIP = __ENV.USE_GZIP === 'true';
 
-  let minBlock, maxBlock;
+  let blockRanges = [];
 
-  if (EPOCH !== null) {
-    // If an epoch is provided, calculate the block range automatically.
-    minBlock = EPOCH * EPOCH_LEN;
-    maxBlock = minBlock + EPOCH_LEN - 1;
+  if (EPOCHS) {
+    // If a list of epochs is provided, calculate the block range for each.
+    const epochList = EPOCHS.split(',');
     console.log(
-      `EPOCH environment variable set to ${EPOCH}. Calculated block range: ${minBlock} to ${maxBlock}`,
+      `EPOCHS environment variable set to ${EPOCHS}. Calculating block ranges...`,
     );
+    epochList.forEach((epochStr) => {
+      const epoch = parseInt(epochStr.trim());
+      if (!isNaN(epoch)) {
+        const minBlock = epoch * EPOCH_LEN;
+        const maxBlock = minBlock + EPOCH_LEN - 1;
+        blockRanges.push({ min: minBlock, max: maxBlock });
+        console.log(
+          `  - Added range for epoch ${epoch}: ${minBlock} to ${maxBlock}`,
+        );
+      }
+    });
   } else {
     // Otherwise, use the existing MIN_BLOCK/MAX_BLOCK variables or defaults.
-    minBlock = parseInt(__ENV.MIN_BLOCK || '320544000');
-    maxBlock = parseInt(__ENV.MAX_BLOCK || '320975999');
+    const minBlock = parseInt(__ENV.MIN_BLOCK || '320544000');
+    const maxBlock = parseInt(__ENV.MAX_BLOCK || '320975999');
+    blockRanges.push({ min: minBlock, max: maxBlock });
     console.log(
       `Using default or environment-provided block range: ${minBlock} to ${maxBlock}`,
+    );
+  }
+
+  if (blockRanges.length === 0) {
+    throw new Error(
+      'No valid block ranges were configured. Please check your EPOCHS or MIN_BLOCK/MAX_BLOCK environment variables.',
     );
   }
 
   // Return the configuration so it can be used in the VU code.
   return {
     rpcUrl: RPC_URL,
-    minBlock: minBlock,
-    maxBlock: maxBlock,
+    blockRanges: blockRanges,
     useGzip: USE_GZIP,
   };
 }
@@ -71,12 +87,16 @@ export function setup() {
 // --- Main Test Logic ---
 // The `data` parameter receives the object returned from the setup() function.
 export default function (data) {
-  // 1. Generate a random block number using the config from setup().
-  const randomBlock =
-    Math.floor(Math.random() * (data.maxBlock - data.minBlock + 1)) +
-    data.minBlock;
+  // 1. Select a random epoch range from the configured list.
+  const selectedRange =
+    data.blockRanges[Math.floor(Math.random() * data.blockRanges.length)];
 
-  // 2. Construct the JSON-RPC payload.
+  // 2. Generate a random block number within that selected range.
+  const randomBlock =
+    Math.floor(Math.random() * (selectedRange.max - selectedRange.min + 1)) +
+    selectedRange.min;
+
+  // 3. Construct the JSON-RPC payload.
   const payload = JSON.stringify({
     jsonrpc: '2.0',
     id: 1,
@@ -100,10 +120,10 @@ export default function (data) {
     params.compression = 'gzip';
   }
 
-  // 3. Send the POST request.
+  // 4. Send the POST request.
   const res = http.post(data.rpcUrl, payload, params);
 
-  // 4. Perform robust checks on the response.
+  // 5. Perform robust checks on the response.
   const httpSuccess = check(res, {
     'HTTP status is 200': (r) => r.status === 200,
   });
@@ -170,8 +190,8 @@ export default function (data) {
 // 3. Run the test from your terminal.
 //    k6 run k6-getBlock.js
 
-// 4. To run with a specific epoch:
-//    k6 run -e EPOCH=742 k6-getBlock.js
+// 4. To run with a specific list of epochs:
+//    k6 run -e EPOCHS="742,745,750" k6-getBlock.js
 
 // 5. To run with gzip compression enabled:
-//    k6 run -e USE_GZIP=true -e EPOCH=742 k6-getBlock.js
+//    k6 run -e USE_GZIP=true -e EPOCHS="742,745,750" k6-getBlock.js
