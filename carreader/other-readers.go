@@ -119,3 +119,17 @@ type ReaderAtCloser interface {
 	io.ReaderAt
 	io.Closer
 }
+
+func ReadIntoBuffer(offset uint64, length uint64, dr io.ReaderAt) (*bytebufferpool.ByteBuffer, error) {
+	if dr == nil {
+		return nil, fmt.Errorf("reader is nil")
+	}
+	buf := bytebufferpool.Get()
+	buf.B = make([]byte, length)
+	_, err := dr.ReadAt(buf.B, int64(offset))
+	if err != nil {
+		bytebufferpool.Put(buf)
+		return nil, fmt.Errorf("failed to read from reader at offset %d: %w", offset, err)
+	}
+	return buf, nil
+}

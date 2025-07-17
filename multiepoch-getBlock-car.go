@@ -10,6 +10,7 @@ import (
 	"github.com/gagliardetto/solana-go"
 	"github.com/ipfs/go-cid"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	"github.com/rpcpool/yellowstone-faithful/carreader"
 	"github.com/rpcpool/yellowstone-faithful/compactindexsized"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
@@ -127,7 +128,7 @@ func (multi *MultiEpoch) handleGetBlock_car(ctx context.Context, conn *requestCo
 	}
 	// TODO: save this info immediately so for next getBlock(thisBlock) we know immediately where to read in the CAR file,
 	// and whether the parent is in the previous epoch or not.
-	section, err := readIntoBuffer(offsetParent, totalSize, reader)
+	section, err := carreader.ReadIntoBuffer(offsetParent, totalSize, reader)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read node from CAR: %w", err)
 	}

@@ -689,20 +689,6 @@ func (s *Epoch) ReadAtFromCar(ctx context.Context, offset uint64, length uint64)
 	return data, nil
 }
 
-func readIntoBuffer(offset uint64, length uint64, dr io.ReaderAt) (*bytebufferpool.ByteBuffer, error) {
-	if dr == nil {
-		return nil, fmt.Errorf("reader is nil")
-	}
-	buf := bytebufferpool.Get()
-	buf.B = make([]byte, length)
-	_, err := dr.ReadAt(buf.B, int64(offset))
-	if err != nil {
-		bytebufferpool.Put(buf)
-		return nil, fmt.Errorf("failed to read from reader at offset %d: %w", offset, err)
-	}
-	return buf, nil
-}
-
 func (s *Epoch) GetNodeByOffsetAndSize(ctx context.Context, wantedCid *cid.Cid, offsetAndSize *indexes.OffsetAndSize) ([]byte, error) {
 	buf, err := s.GetNodeByOffsetAndSizeBuffer(ctx, wantedCid, offsetAndSize)
 	if err != nil {
@@ -724,16 +710,11 @@ func (s *Epoch) GetNodeByOffsetAndSizeBuffer(ctx context.Context, wantedCid *cid
 		return nil, fmt.Errorf("no CAR reader available")
 	}
 	// Get reader and seek to offset, then read node.
-	dr, err := func() (io.ReaderAt, error) {
-		if s.localCarReader != nil {
-			return s.localCarReader.DataReader()
-		}
-		return s.remoteCarReader, nil
-	}()
+	dr, err := s.GetEpochReaderAt()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get local CAR data reader: %w", err)
 	}
-	section, err := readIntoBuffer(offset, length, dr)
+	section, err := carreader.ReadIntoBuffer(offset, length, dr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read node from CAR: %w", err)
 	}

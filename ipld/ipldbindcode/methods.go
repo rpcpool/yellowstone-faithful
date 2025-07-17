@@ -158,6 +158,9 @@ var (
 	ErrMetadataNotFound   = errors.New("transaction metadata not found")
 )
 
+// GetMetadata will parse and return the metadata of the transaction.
+// NOTE: This will return ErrPiecesNotAvailable if the metadata is split into multiple dataframes.
+// In that case, you should use GetMetadataWithFrameLoader instead.
 func (decodedTxObj *Transaction) GetMetadata() (*solanatxmetaparsers.TransactionStatusMetaContainer, error) {
 	if total, ok := decodedTxObj.Metadata.GetTotal(); !ok || total == 1 {
 		// metadata fit into the transaction object:
@@ -187,7 +190,12 @@ func (decodedTxObj *Transaction) GetMetadata() (*solanatxmetaparsers.Transaction
 	return nil, ErrPiecesNotAvailable
 }
 
+// GetMetadataWithFrameLoader will parse and return the metadata of the transaction.
+// It uses the provided dataFrameGetter function to load the missing dataframes.
 func (decodedTxObj *Transaction) GetMetadataWithFrameLoader(dataFrameGetter func(ctx context.Context, wantedCid cid.Cid) (*DataFrame, error)) (*solanatxmetaparsers.TransactionStatusMetaContainer, error) {
+	if total, ok := decodedTxObj.Metadata.GetTotal(); !ok || total == 1 {
+		return decodedTxObj.GetMetadata()
+	}
 	// metadata didn't fit into the transaction object, and was split into multiple dataframes:
 	metaBuffer, err := LoadDataFromDataFrames(
 		&decodedTxObj.Metadata,
