@@ -66,3 +66,10 @@ func TestUint64RangesHavePartialOverlapIncludingEdges(t *testing.T) {
 		require.True(t, Uint64RangesHavePartialOverlapIncludingEdges(r1, r2))
 	}
 }
+
+func TestParentIsInPreviousEpoch(t *testing.T) {
+	require.False(t, ParentIsInPreviousEpoch(320975998, 320975999))
+	require.True(t, ParentIsInPreviousEpoch(320543999, 320544000))
+	require.True(t, ParentIsInPreviousEpoch(431998, 432000))
+	require.False(t, ParentIsInPreviousEpoch(0, 1))
+}

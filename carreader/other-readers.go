@@ -10,6 +10,7 @@ import (
 
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-car/util"
+	"github.com/valyala/bytebufferpool"
 )
 
 func ReadNodeSizeFromReaderAtWithOffset(reader io.ReaderAt, offset uint64) (uint64, error) {
@@ -37,6 +38,7 @@ func ReadNodeWithKnownSize(br *bufio.Reader, wantedCid *cid.Cid, length uint64) 
 	return ParseNodeFromSection(section, wantedCid)
 }
 
+// ParseNodeFromSection parses a section and returns the data (omitting the CID)
 func ParseNodeFromSection(section []byte, wantedCid *cid.Cid) ([]byte, error) {
 	// read an uvarint from the buffer
 	gotLen, usize := binary.Uvarint(section)
@@ -56,6 +58,30 @@ func ParseNodeFromSection(section []byte, wantedCid *cid.Cid) ([]byte, error) {
 		return nil, fmt.Errorf("CID mismatch: expected %s, got %s", wantedCid, gotCid)
 	}
 	return data[cidLen:], nil
+}
+
+func ParseNodeFromSectionBuffer(section *bytebufferpool.ByteBuffer, wantedCid *cid.Cid) (*bytebufferpool.ByteBuffer, error) {
+	// read an uvarint from the buffer
+	gotLen, usize := binary.Uvarint(section.B)
+	if usize <= 0 {
+		return nil, fmt.Errorf("failed to decode uvarint")
+	}
+	if gotLen > uint64(util.MaxAllowedSectionSize) { // Don't OOM
+		return nil, errors.New("malformed car; header is bigger than util.MaxAllowedSectionSize")
+	}
+	cidLen, gotCid, err := cid.CidFromReader(bytes.NewReader(section.B[usize:]))
+	if err != nil {
+		return nil, fmt.Errorf("failed to read cid: %w", err)
+	}
+	// verify that the CID we read matches the one we expected.
+	if wantedCid != nil && !gotCid.Equals(*wantedCid) {
+		return nil, fmt.Errorf("CID mismatch: expected %s, got %s", wantedCid, gotCid)
+	}
+	dataStart := usize + cidLen
+	dataEnd := int(gotLen) + usize
+
+	section.B = section.B[dataStart:dataEnd]
+	return section, nil
 }
 
 func ReadAllFromReaderAt(reader io.ReaderAt, size uint64) ([]byte, error) {

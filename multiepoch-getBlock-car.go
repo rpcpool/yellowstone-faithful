@@ -1,58 +1,40 @@
 package main
 
 import (
-	"bufio"
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
-	"io"
+	"log/slog"
 	"runtime"
 	"sync"
+	"time"
 
+	"github.com/gagliardetto/gsfa-v3/3.3/tooling"
 	"github.com/gagliardetto/solana-go"
 	"github.com/ipfs/go-cid"
-	"github.com/ipld/go-car/util"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
-	jsoniter "github.com/json-iterator/go"
 	"github.com/rpcpool/yellowstone-faithful/compactindexsized"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
+	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
 	"github.com/rpcpool/yellowstone-faithful/jsonbuilder"
 	"github.com/rpcpool/yellowstone-faithful/slottools"
 	solanablockrewards "github.com/rpcpool/yellowstone-faithful/solana-block-rewards"
 	solanatxmetaparsers "github.com/rpcpool/yellowstone-faithful/solana-tx-meta-parsers"
 	"github.com/rpcpool/yellowstone-faithful/telemetry"
-	"github.com/rpcpool/yellowstone-faithful/tooling"
+	ytooling "github.com/rpcpool/yellowstone-faithful/tooling"
 	"github.com/sourcegraph/jsonrpc2"
+	"github.com/valyala/bytebufferpool"
 	"go.opentelemetry.io/otel/attribute"
 	"golang.org/x/sync/errgroup"
 	"k8s.io/klog/v2"
 )
 
-var fasterJson = jsoniter.ConfigCompatibleWithStandardLibrary
-
-type MyContextKey string
-
-const requestIDKey = MyContextKey("requestID")
-
-func setRequestIDToContext(ctx context.Context, id string) context.Context {
-	return context.WithValue(ctx, requestIDKey, id)
-}
-
-func getRequestIDFromContext(ctx context.Context) string {
-	id, ok := ctx.Value(requestIDKey).(string)
-	if !ok {
-		return ""
-	}
-	return id
-}
-
-func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContext, req *jsonrpc2.Request) (*jsonrpc2.Error, error) {
-	// TODO: check if it's car or lassie mode.
-	return multi.handleGetBlock_car(ctx, conn, req)
+func (multi *MultiEpoch) handleGetBlock_car(ctx context.Context, conn *requestContext, req *jsonrpc2.Request) (*jsonrpc2.Error, error) {
 	// Start top-level span
 	rpcSpanCtx, rpcSpan := telemetry.StartSpan(ctx, "jsonrpc.GetBlock")
 	defer rpcSpan.End()
+
+	startedAt := time.Now()
 
 	tim := newTimer(getRequestIDFromContext(rpcSpanCtx))
 	params, err := parseGetBlockRequest(req.Params)
@@ -83,154 +65,98 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 		}, fmt.Errorf("failed to get epoch %d: %w", epochNumber, err)
 	}
 
-	blockRetrievalCtx, blockRetrievalSpan := telemetry.StartSpan(rpcSpanCtx, "GetBlock_GetBlockFromEpoch")
-	block, blockCid, err := epochHandler.GetBlock(WithSubrapghPrefetch(blockRetrievalCtx, true), slot)
-	blockRetrievalSpan.End()
-	if err != nil {
-		if errors.Is(err, compactindexsized.ErrNotFound) {
-			return &jsonrpc2.Error{
-				Code:    CodeNotFound,
-				Message: fmt.Sprintf("Slot %d was skipped, or missing in long-term storage", slot),
-			}, err
-		} else {
+	{
+		childCid, err := epochHandler.FindCidFromSlot(ctx, slot)
+		if err != nil {
+			if errors.Is(err, compactindexsized.ErrNotFound) {
+				return &jsonrpc2.Error{
+					Code:    CodeNotFound,
+					Message: fmt.Sprintf("Slot %d was skipped, or missing in long-term storage", slot),
+				}, err
+			} else {
+				return &jsonrpc2.Error{
+					Code:    jsonrpc2.CodeInternalError,
+					Message: "Failed to get block",
+				}, fmt.Errorf("failed to get block: %w", err)
+			}
+		}
+		_ = childCid // TODO: use this CID to prefetch the block data
+		// Find CAR file oasChild for CID in index.
+		oasChild, err := epochHandler.FindOffsetAndSizeFromCid(ctx, childCid)
+		if err != nil {
+			// not found or error
+			return nil, fmt.Errorf("failed to find offset for CID %s: %w", childCid, err)
+		}
+		childData, err := epochHandler.GetNodeByOffsetAndSizeBuffer(ctx, &childCid, oasChild)
+		if err != nil {
 			return &jsonrpc2.Error{
 				Code:    jsonrpc2.CodeInternalError,
 				Message: "Failed to get block",
-			}, fmt.Errorf("failed to get block: %w", err)
+			}, fmt.Errorf("failed to get block data: %w", err)
 		}
-	}
-	// set the headers:
-	{
-		conn.ctx.Response.Header.Set("DAG-Root-CID", blockCid.String())
-	}
-
-	tim.time("GetBlock")
-	{
-		// Span for prefetch
-		carPrefetchCtx, carPrefetchSpan := telemetry.StartSpan(rpcSpanCtx, "GetBlock_CarPrefetch")
-		prefetcherFromCar := func() error {
-			parentIsInPreviousEpoch := slottools.CalcEpochForSlot(uint64(block.Meta.Parent_slot)) != slottools.CalcEpochForSlot(slot)
-			if slot == 0 {
-				parentIsInPreviousEpoch = true
-			}
-			if slot > 1 && block.Meta.Parent_slot == 0 {
-				parentIsInPreviousEpoch = true
-			}
-
-			var blockCid, parentBlockCid cid.Cid
-			wg := new(errgroup.Group)
-			wg.Go(func() (err error) {
-				blockCid, err = epochHandler.FindCidFromSlot(carPrefetchCtx, slot)
-				if err != nil {
-					return err
-				}
-				return nil
-			})
-			wg.Go(func() (err error) {
-				if parentIsInPreviousEpoch {
-					return nil
-				}
-				parentBlockCid, err = epochHandler.FindCidFromSlot(carPrefetchCtx, uint64(block.Meta.Parent_slot))
-				if err != nil {
-					return err
-				}
-				return nil
-			})
-			err = wg.Wait()
-			if err != nil {
-				return err
-			}
-			if slot == 0 {
-				klog.V(4).Infof("car start to slot(0)::%s", blockCid)
-			} else {
-				klog.V(4).Infof(
-					"slot(%d)::%s to slot(%d)::%s",
-					uint64(block.Meta.Parent_slot),
-					parentBlockCid,
-					slot,
-					blockCid,
-				)
-			}
-			{
-				var blockOffset, parentOffset, blockSize uint64
-				wg := new(errgroup.Group)
-				wg.Go(func() (err error) {
-					offsetAndSize, err := epochHandler.FindOffsetAndSizeFromCid(carPrefetchCtx, blockCid)
-					if err != nil {
-						return err
-					}
-					blockOffset = offsetAndSize.Offset
-					blockSize = offsetAndSize.Size
-					return nil
-				})
-				wg.Go(func() (err error) {
-					if parentIsInPreviousEpoch {
-						// get car file header size
-						parentOffset = epochHandler.carHeaderSize
-						return nil
-					}
-					offsetAndSize, err := epochHandler.FindOffsetAndSizeFromCid(carPrefetchCtx, parentBlockCid)
-					if err != nil {
-						return err
-					}
-					parentOffset = offsetAndSize.Offset
-					return nil
-				})
-				err = wg.Wait()
-				if err != nil {
-					return err
-				}
-
-				length := blockOffset + blockSize - parentOffset
-				// MiB := uint64(1024 * 1024)
-				// maxPrefetchSize := MiB * 10 // let's cap prefetching size
-				// if length > maxPrefetchSize {
-				// 	length = maxPrefetchSize
-				// }
-
-				start := parentOffset
-
-				klog.V(4).Infof("prefetching CAR: start=%d length=%d (parent_offset=%d)", start, length, parentOffset)
-				carSection, err := epochHandler.ReadAtFromCar(carPrefetchCtx, start, length)
-				if err != nil {
-					return err
-				}
-				dr := bytes.NewReader(carSection)
-				br := bufio.NewReader(dr)
-
-				gotCid, data, err := util.ReadNode(br)
-				if err != nil {
-					return fmt.Errorf("failed to read first node: %w", err)
-				}
-				if !parentIsInPreviousEpoch && !gotCid.Equals(parentBlockCid) {
-					return fmt.Errorf("CID mismatch: expected %s, got %s", parentBlockCid, gotCid)
-				}
-				epochHandler.GetCache().PutRawCarObject(gotCid, data)
-
-				for {
-					gotCid, data, err = util.ReadNode(br)
-					if err != nil {
-						if errors.Is(err, io.EOF) {
-							break
-						}
-						return fmt.Errorf("failed to read node: %w", err)
-					}
-					if gotCid.Equals(blockCid) {
-						break
-					}
-					epochHandler.GetCache().PutRawCarObject(gotCid, data)
-				}
-			}
-			return nil
+		_ = childData // TODO: use this data to prefetch the block data
+		parsedChildBlock, err := iplddecoders.DecodeBlock(childData.Bytes())
+		if err != nil {
+			return nil, fmt.Errorf("failed to decode block: %w", err)
 		}
-		if epochHandler.lassieFetcher == nil {
-			err := prefetcherFromCar()
-			if err != nil {
-				klog.Errorf("failed to prefetch from car: %v", err)
+		if uint64(parsedChildBlock.Slot) != slot {
+			return nil, fmt.Errorf("expected slot %d, got %d", slot, parsedChildBlock.Slot)
+		}
+		bytebufferpool.Put(childData) // return the buffer to the pool
+		{
+			conn.ctx.Response.Header.Set("DAG-Root-CID", childCid.String())
+		}
+
+		parentIsInPreviousEpoch := slottools.ParentIsInPreviousEpoch(uint64(parsedChildBlock.Meta.Parent_slot), (slot))
+		_ = parentIsInPreviousEpoch
+		// now we know the parent slot;
+		// TODO: the parent object might be in the previous epoch, so we need to handle that case.
+		parentCid, err := epochHandler.FindCidFromSlot(ctx, uint64(parsedChildBlock.Meta.Parent_slot))
+		if err != nil {
+			if errors.Is(err, compactindexsized.ErrNotFound) {
+				return nil, fmt.Errorf("parent slot %d was skipped, or missing in long-term storage", parsedChildBlock.Meta.Parent_slot)
 			}
 		}
-		carPrefetchSpan.End()
+		if parentCid == cid.Undef {
+			return nil, fmt.Errorf("parent CID for slot %d is undefined", parsedChildBlock.Meta.Parent_slot)
+		}
+		parentOas, err := epochHandler.FindOffsetAndSizeFromCid(ctx, parentCid)
+		if err != nil {
+			return nil, fmt.Errorf("failed to find offset for parent CID %s: %w", parentCid, err)
+		}
+		offsetParent := parentOas.Offset
+		totalSize := oasChild.Offset + oasChild.Size - offsetParent
+		reader, err := epochHandler.GetEpochReaderAt()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get epoch reader: %w", err)
+		}
+		// TODO: save this info immediately so for next getBlock(thisBlock) we know immediately where to read in the CAR file,
+		// and whether the parent is in the previous epoch or not.
+		section, err := readIntoBuffer(offsetParent, totalSize, reader)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read node from CAR: %w", err)
+		}
+
+		nodes, err := tooling.SplitIntoDataAndCids(section.Bytes())
+		if err != nil {
+			panic(err)
+		}
+		nodes.SortByCid()
+		bytebufferpool.Put(section) // return the buffer to the pool
+
+		parsedNodes, err := nodes.ToParsedAndCidSlice()
+		if err != nil {
+			panic(fmt.Errorf("failed to convert nodes to parsed nodes: %w", err))
+		}
+		parsedNodes.SortByCid()
+
+		slog.Info(
+			"getBlock-car",
+			"took so far", time.Since(startedAt).String(),
+		)
+		return nil, nil
 	}
+
 	blocktime := uint64(block.Meta.Blocktime)
 
 	allTransactionNodes := make([][]*ipldbindcode.Transaction, len(block.Entries))
@@ -316,7 +242,7 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 			}, fmt.Errorf("failed to load Rewards dataFrames: %v", err)
 		}
 
-		uncompressedRewards, err := tooling.DecompressZstd(rewardsBuf)
+		uncompressedRewards, err := ytooling.DecompressZstd(rewardsBuf)
 		if err != nil {
 			telemetry.RecordError(rewardsSpan, err, "Failed to decompress Rewards")
 			rewardsSpan.End()
@@ -404,7 +330,7 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 		blockZeroBlockHash := lastEntryHash.String()
 		response.Value("previousBlockhash", blockZeroBlockHash) // NOTE: this is what solana RPC does. Should it be nil instead? Or should it be the genesis hash?
 	} else {
-		response.Uint("parentSlot", uint64(block.Meta.Parent_slot))
+		response.Uint("parentSlot", uint64(block.Meta.ParentSlot))
 		{
 			blockHeight, ok := block.GetBlockHeight()
 			if ok {
@@ -426,7 +352,7 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 	{
 		parentSpanCtx, parentSpan := telemetry.StartSpan(rpcSpanCtx, "GetBlock_GetParentBlockForHash")
 		// get parent slot
-		parentSlot := uint64(block.Meta.Parent_slot)
+		parentSlot := uint64(block.Meta.ParentSlot)
 		parentSpan.SetAttributes(attribute.Int64("parent_slot", int64(parentSlot)))
 		if (parentSlot != 0 || slot == 1) && slottools.CalcEpochForSlot(parentSlot) == epochNumber {
 			parentBlock, _, err := epochHandler.GetBlock(WithSubrapghPrefetch(parentSpanCtx, false), parentSlot)
@@ -472,12 +398,4 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 		return nil, fmt.Errorf("failed to reply: %w", err)
 	}
 	return nil, nil
-}
-
-func mergeTxNodeSlices(slices [][]*ipldbindcode.Transaction) []*ipldbindcode.Transaction {
-	var out []*ipldbindcode.Transaction
-	for _, slice := range slices {
-		out = append(out, slice...)
-	}
-	return out
 }

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"crypto/rand"
@@ -12,6 +11,7 @@ import (
 	"time"
 
 	"github.com/multiformats/go-multiaddr"
+	"github.com/valyala/bytebufferpool"
 
 	"github.com/anjor/carlet"
 	"github.com/davecgh/go-spew/spew"
@@ -666,6 +666,7 @@ func (s *Epoch) GetNodeByCid(ctx context.Context, wantedCid cid.Cid) ([]byte, er
 	return s.GetNodeByOffsetAndSize(ctx, &wantedCid, oas)
 }
 
+// TODO: refactor.
 func (s *Epoch) ReadAtFromCar(ctx context.Context, offset uint64, length uint64) ([]byte, error) {
 	if s.localCarReader == nil {
 		// try remote reader
@@ -688,7 +689,29 @@ func (s *Epoch) ReadAtFromCar(ctx context.Context, offset uint64, length uint64)
 	return data, nil
 }
 
+func readIntoBuffer(offset uint64, length uint64, dr io.ReaderAt) (*bytebufferpool.ByteBuffer, error) {
+	if dr == nil {
+		return nil, fmt.Errorf("reader is nil")
+	}
+	buf := bytebufferpool.Get()
+	buf.B = make([]byte, length)
+	_, err := dr.ReadAt(buf.B, int64(offset))
+	if err != nil {
+		bytebufferpool.Put(buf)
+		return nil, fmt.Errorf("failed to read from reader at offset %d: %w", offset, err)
+	}
+	return buf, nil
+}
+
 func (s *Epoch) GetNodeByOffsetAndSize(ctx context.Context, wantedCid *cid.Cid, offsetAndSize *indexes.OffsetAndSize) ([]byte, error) {
+	buf, err := s.GetNodeByOffsetAndSizeBuffer(ctx, wantedCid, offsetAndSize)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get node by offset and size: %w", err)
+	}
+	return buf.B, nil
+}
+
+func (s *Epoch) GetNodeByOffsetAndSizeBuffer(ctx context.Context, wantedCid *cid.Cid, offsetAndSize *indexes.OffsetAndSize) (*bytebufferpool.ByteBuffer, error) {
 	if offsetAndSize == nil {
 		return nil, fmt.Errorf("offsetAndSize must not be nil")
 	}
@@ -697,22 +720,34 @@ func (s *Epoch) GetNodeByOffsetAndSize(ctx context.Context, wantedCid *cid.Cid, 
 	}
 	offset := offsetAndSize.Offset
 	length := offsetAndSize.Size
-	if s.localCarReader == nil {
-		// try remote reader
-		if s.remoteCarReader == nil {
-			return nil, fmt.Errorf("no CAR reader available")
-		}
-		return carreader.ReadNodeFromReaderAtWithOffsetAndSize(s.remoteCarReader, wantedCid, offset, length)
+	if s.localCarReader == nil && s.remoteCarReader == nil {
+		return nil, fmt.Errorf("no CAR reader available")
 	}
 	// Get reader and seek to offset, then read node.
-	dr, err := s.localCarReader.DataReader()
+	dr, err := func() (io.ReaderAt, error) {
+		if s.localCarReader != nil {
+			return s.localCarReader.DataReader()
+		}
+		return s.remoteCarReader, nil
+	}()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get local CAR data reader: %w", err)
 	}
-	dr.Seek(int64(offset), io.SeekStart)
-	br := bufio.NewReader(dr)
+	section, err := readIntoBuffer(offset, length, dr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read node from CAR: %w", err)
+	}
+	return carreader.ParseNodeFromSectionBuffer(section, wantedCid)
+}
 
-	return carreader.ReadNodeWithKnownSize(br, wantedCid, length)
+func (s *Epoch) GetEpochReaderAt() (io.ReaderAt, error) {
+	if s.localCarReader != nil {
+		return s.localCarReader.DataReader()
+	}
+	if s.remoteCarReader != nil {
+		return s.remoteCarReader, nil
+	}
+	return nil, fmt.Errorf("no CAR reader available")
 }
 
 func (s *Epoch) getNodeSize(ctx context.Context, offset uint64) (uint64, error) {
