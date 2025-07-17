@@ -106,7 +106,7 @@ func (s *JSONBuilderTestSuite) TestArrayFunc() {
 		AddObject(NewObject().String("key", "value"))
 
 	expected := `["first",42,{"key":"value"}]`
-	result, _ := json.Marshal(arr.elements)
+	result, _ := arr.MarshalJSON()
 	s.JSONEq(expected, string(result))
 }
 
@@ -186,21 +186,43 @@ func (s *JSONBuilderTestSuite) TestInvalidJSONValues() {
 }
 
 func (s *JSONBuilderTestSuite) TestDeepNesting() {
-	deepObj := NewObject()
-	current := deepObj
+	// With a progressive marshaler, nested structures must be built from the inside out.
 
-	// Create 10-level nested object
-	for i := 0; i < 10; i++ {
-		nested := NewObject().Int("level", int64(i))
-		current.Object("nested", nested)
-		current = nested
+	// Start with the innermost object.
+	// {"level": 9}
+	nested := NewObject().Int("level", 9)
+
+	// Loop backwards from the second-to-last level (8) up to the first (0).
+	for i := 8; i >= 0; i-- {
+		// Create a new parent object for the current 'nested' object.
+		// On the first iteration, this creates: {"level": 8, "nested": {"level": 9}}
+		parent := NewObject().
+			Int("level", int64(i)).
+			Object("nested", nested)
+
+		// The previous 'nested' object has been marshaled as a value into 'parent'.
+		// We are done with it and must release its buffer.
+		nested.Put()
+
+		// The new 'parent' becomes the 'nested' object for the next, outer loop iteration.
+		nested = parent
 	}
 
-	result, err := json.Marshal(deepObj)
+	// At this point, 'nested' holds the complete structure from level 0 to 9.
+	// Now, wrap this entire structure inside the final top-level object.
+	// {"nested": {"level": 0, "nested": ...}}
+	deepObj := NewObject().Object("nested", nested)
+	// We are done with the 'nested' builder, so release its resources.
+	nested.Put()
+
+	result, err := deepObj.MarshalJSON()
 	require.NoError(s.T(), err)
 
 	expected := `{"nested":{"level":0,"nested":{"level":1,"nested":{"level":2,"nested":{"level":3,"nested":{"level":4,"nested":{"level":5,"nested":{"level":6,"nested":{"level":7,"nested":{"level":8,"nested":{"level":9}}}}}}}}}}}`
 	assert.JSONEq(s.T(), expected, string(result))
+
+	// Clean up the final top-level object.
+	deepObj.Put()
 }
 
 func (s *JSONBuilderTestSuite) TestLargeStructure() {
