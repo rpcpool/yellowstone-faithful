@@ -391,7 +391,7 @@ export function handleSummary(data) {
     .replace(/\..+/, '');
   // Defensive check for runID in case setup_data is also malformed.
   const runID = finalConfig ? finalConfig.runID : 'unknown-run';
-  const jsonFilename = `summary-${runID}-${timestamp}.json`;
+  const jsonFilename = `summary-${timestamp}-${runID}.json`;
 
   console.log(`\nSaving detailed summary to ${jsonFilename}...`);
 
