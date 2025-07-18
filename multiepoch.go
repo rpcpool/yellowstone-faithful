@@ -13,6 +13,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/goware/urlx"
+	"github.com/grafana/pyroscope-go"
 	"github.com/libp2p/go-reuseport"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
@@ -575,36 +576,57 @@ func isValidLocalMethod(method string) bool {
 }
 
 // jsonrpc2.RequestHandler interface
-func (ser *MultiEpoch) handleRequest(ctx context.Context, conn *requestContext, req *jsonrpc2.Request) (*jsonrpc2.Error, error) {
+func (ser *MultiEpoch) handleRequest(ctx context.Context, conn *requestContext, req *jsonrpc2.Request) (jerr *jsonrpc2.Error, err error) {
 	switch req.Method {
 	case "getBlock":
 		spanCtx, span := telemetry.StartSpan(ctx, "jsonrpc.handleGetBlock")
 		defer span.End()
-		return ser.handleGetBlock(spanCtx, conn, req)
+		pyroscope.TagWrapper(context.Background(), pyroscope.Labels("rpc_method", "getBlock"), func(ctx context.Context) {
+			jerr, err = ser.handleGetBlock(spanCtx, conn, req)
+		})
+		return jerr, err
 	case "getTransaction":
 		spanCtx, span := telemetry.StartSpan(ctx, "jsonrpc.handleGetTransaction")
 		defer span.End()
-		return ser.handleGetTransaction(spanCtx, conn, req)
+		pyroscope.TagWrapper(context.Background(), pyroscope.Labels("rpc_method", "getTransaction"), func(ctx context.Context) {
+			jerr, err = ser.handleGetTransaction(spanCtx, conn, req)
+		})
+		return jerr, err
 	case "getSignaturesForAddress":
 		spanCtx, span := telemetry.StartSpan(ctx, "jsonrpc.handleGetSignaturesForAddress")
 		defer span.End()
-		return ser.handleGetSignaturesForAddress(spanCtx, conn, req)
+		pyroscope.TagWrapper(context.Background(), pyroscope.Labels("rpc_method", "getSignaturesForAddress"), func(ctx context.Context) {
+			jerr, err = ser.handleGetSignaturesForAddress(spanCtx, conn, req)
+		})
+		return jerr, err
 	case "getBlockTime":
 		spanCtx, span := telemetry.StartSpan(ctx, "jsonrpc.handleGetBlockTime")
 		defer span.End()
-		return ser.handleGetBlockTime(spanCtx, conn, req)
+		pyroscope.TagWrapper(context.Background(), pyroscope.Labels("rpc_method", "getBlockTime"), func(ctx context.Context) {
+			jerr, err = ser.handleGetBlockTime(spanCtx, conn, req)
+		})
+		return jerr, err
 	case "getGenesisHash":
 		spanCtx, span := telemetry.StartSpan(ctx, "jsonrpc.handleGetGenesisHash")
 		defer span.End()
-		return ser.handleGetGenesisHash(spanCtx, conn, req)
+		pyroscope.TagWrapper(context.Background(), pyroscope.Labels("rpc_method", "getGenesisHash"), func(ctx context.Context) {
+			jerr, err = ser.handleGetGenesisHash(spanCtx, conn, req)
+		})
+		return jerr, err
 	case "getFirstAvailableBlock":
 		spanCtx, span := telemetry.StartSpan(ctx, "jsonrpc.handleGetFirstAvailableBlock")
 		defer span.End()
-		return ser.handleGetFirstAvailableBlock(spanCtx, conn, req)
+		pyroscope.TagWrapper(context.Background(), pyroscope.Labels("rpc_method", "getFirstAvailableBlock"), func(ctx context.Context) {
+			jerr, err = ser.handleGetFirstAvailableBlock(spanCtx, conn, req)
+		})
+		return jerr, err
 	case "getSlot":
 		spanCtx, span := telemetry.StartSpan(ctx, "jsonrpc.handleGetSlot")
 		defer span.End()
-		return ser.handleGetSlot(spanCtx, conn, req)
+		pyroscope.TagWrapper(context.Background(), pyroscope.Labels("rpc_method", "getSlot"), func(ctx context.Context) {
+			jerr, err = ser.handleGetSlot(spanCtx, conn, req)
+		})
+		return jerr, err
 	default:
 		return &jsonrpc2.Error{
 			Code:    jsonrpc2.CodeMethodNotFound,

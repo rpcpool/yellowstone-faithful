@@ -12,6 +12,7 @@ import (
 	jsoniter "github.com/json-iterator/go"
 	"github.com/mostynb/zstdpool-freelist"
 	"github.com/mr-tron/base58"
+	"github.com/rpcpool/yellowstone-faithful/jsonbuilder"
 	"github.com/rpcpool/yellowstone-faithful/jsonparsed"
 	"github.com/rpcpool/yellowstone-faithful/third_party/solana_proto/confirmed_block"
 	"github.com/sourcegraph/jsonrpc2"
@@ -44,7 +45,7 @@ func (c *requestContext) Reply(
 	}
 	{
 		// if result has Put method, call it:
-		if puttable, ok := result.(interface{ Put() }); ok {
+		if puttable, ok := result.(jsonbuilder.Recyclable); ok {
 			puttable.Put()
 		}
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io/fs"
+	"log"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/allegro/bigcache/v3"
 	"github.com/fsnotify/fsnotify"
+	"github.com/grafana/pyroscope-go"
 	hugecache "github.com/rpcpool/yellowstone-faithful/huge-cache"
 	"github.com/rpcpool/yellowstone-faithful/metrics"
 	splitcarfetcher "github.com/rpcpool/yellowstone-faithful/split-car-fetcher"
@@ -36,6 +38,7 @@ func newCmd_rpc() *cli.Command {
 	var maxCacheSizeMB int
 	var grpcListenOn string
 	var lotusAPIAddress string
+	var pyroscopeServerAddress string
 	return &cli.Command{
 		Name:        "rpc",
 		Usage:       "Start a Solana JSON RPC server.",
@@ -111,6 +114,14 @@ func newCmd_rpc() *cli.Command {
 				Value:       defaultLotusAPIAddress,
 				Destination: &lotusAPIAddress,
 			},
+			&cli.StringFlag{
+				// PYROSCOPE_SERVER_ADDRESS
+				Name:        "pyroscope-server-address",
+				Usage:       "Address of the Pyroscope server for profiling",
+				Value:       "", // If empty, profiling is not enabled
+				Destination: &pyroscopeServerAddress,
+				EnvVars:     []string{"PYROSCOPE_SERVER_ADDRESS"},
+			},
 		),
 		Action: func(c *cli.Context) error {
 			if listenOn == "" && grpcListenOn == "" {
@@ -135,6 +146,50 @@ func newCmd_rpc() *cli.Command {
 			allCache, err := hugecache.NewWithConfig(c.Context, conf)
 			if err != nil {
 				return fmt.Errorf("failed to create cache: %w", err)
+			}
+			// Only start the profiler if the server address is provided.
+			if pyroscopeServerAddress != "" {
+				log.Printf("Pyroscope profiling is ENABLED. Connecting to %s\n", pyroscopeServerAddress)
+
+				// Set up runtime mutex and block profiling to get more detailed insights.
+				runtime.SetMutexProfileFraction(5)
+				runtime.SetBlockProfileRate(5)
+
+				// Get the hostname to use as a tag.
+				hostname, err := os.Hostname()
+				if err != nil {
+					log.Fatalf("could not get hostname: %v", err)
+				}
+
+				// Start the profiler. This is a non-blocking call.
+				// The profiler will run in the background and send data to the Pyroscope server.
+				_, err = pyroscope.Start(pyroscope.Config{
+					ApplicationName: "yellowstone-faithful",
+					ServerAddress:   pyroscopeServerAddress,
+					Logger:          pyroscope.StandardLogger,
+					Tags: map[string]string{
+						"hostname": hostname,
+						"service":  "yellowstone-faithful/rpc",
+					},
+					ProfileTypes: []pyroscope.ProfileType{
+						pyroscope.ProfileCPU,
+						pyroscope.ProfileAllocObjects,
+						pyroscope.ProfileAllocSpace,
+						pyroscope.ProfileInuseObjects,
+						pyroscope.ProfileInuseSpace,
+						pyroscope.ProfileGoroutines,
+						pyroscope.ProfileMutexCount,
+						pyroscope.ProfileMutexDuration,
+						pyroscope.ProfileBlockCount,
+						pyroscope.ProfileBlockDuration,
+					},
+				})
+				if err != nil {
+					// This is a non-fatal error, so we can just log it and continue.
+					log.Printf("failed to start pyroscope: %v", err)
+				}
+			} else {
+				log.Println("Pyroscope profiling is DISABLED. Set PYROSCOPE_SERVER_ADDRESS or --pyroscope-server-address to enable it.")
 			}
 
 			// Load configs:

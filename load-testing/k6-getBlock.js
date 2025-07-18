@@ -442,4 +442,4 @@ export function handleSummary(data) {
 //    K6_WEB_DASHBOARD_PERIOD=1s K6_WEB_DASHBOARD=true k6 run k6-getBlock.js
 //
 // 9. Export dashboard html to a file: K6_WEB_DASHBOARD_EXPORT={filename}; e.g. the filename can contain the timestamp;
-//    K6_WEB_DASHBOARD=true K6_WEB_DASHBOARD_EXPORT=dashboard-$(date +%Y%m%d-%H%M).html k6 run k6-getBlock.js
+//    K6_WEB_DASHBOARD=true K6_WEB_DASHBOARD_EXPORT=dashboard-$(date +%Y-%m-%dT%H-%M%S).html k6 run -e USE_GZIP=false k6-getBlock.js
