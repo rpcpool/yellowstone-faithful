@@ -9,6 +9,7 @@
 import http from 'k6/http';
 import { check, sleep } from 'k6';
 import { Counter, Trend } from 'k6/metrics';
+import { textSummary } from 'https://jslib.k6.io/k6-summary/0.1.0/index.js';
 
 // --- Custom Metrics ---
 // A custom counter to specifically track unexpected RPC-level errors.
@@ -211,6 +212,49 @@ export default function (data) {
   }
 
   sleep(1);
+}
+
+// --- Summary Function ---
+// This function runs at the end of the test and generates the final report.
+export function handleSummary(data) {
+  // Helper function to format bytes into a human-readable string.
+  function formatBytes(bytes, decimals = 2) {
+    if (!+bytes) return '0 Bytes';
+    const k = 1024;
+    const dm = decimals < 0 ? 0 : decimals;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
+  }
+
+  let customReport = '';
+
+  // Use optional chaining (?.) to safely access the nested 'values' property.
+  // This is the most robust way to prevent crashes if the metric data is inconsistent.
+  const responseStats = data.metrics.response_size?.values;
+
+  // Check if we successfully retrieved the stats object.
+  if (responseStats) {
+    // Build a custom summary string.
+    customReport += '\n\n█ HUMAN-READABLE RESPONSE SIZE\n\n';
+    customReport += `  response_size.......................................................: avg=${formatBytes(
+      responseStats.avg,
+    )} min=${formatBytes(responseStats.min)} med=${formatBytes(
+      responseStats.med,
+    )} max=${formatBytes(responseStats.max)} p(90)=${formatBytes(
+      responseStats['p(90)'],
+    )} p(95)=${formatBytes(responseStats['p(95)'])}`;
+  } else {
+    customReport +=
+      '\n\n█ HUMAN-READABLE RESPONSE SIZE\n\n  (No response size data was collected, likely due to all requests failing.)';
+  }
+
+  // Return the standard text summary, appending our custom report to it.
+  return {
+    stdout:
+      textSummary(data, { indent: ' ', enableColors: true }) + customReport,
+    'summary.json': JSON.stringify(data), // Optional: produce a machine-readable JSON summary
+  };
 }
 
 // --- HOW TO RUN THE LOAD TEST ---
