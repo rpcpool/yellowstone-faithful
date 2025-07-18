@@ -271,8 +271,7 @@ export default function (data) {
 // This function runs at the end of the test and generates the final report.
 export function handleSummary(data) {
   // This function manually recreates the structure of the default k6 summary report,
-  // including distinct sections for thresholds and results, while also adding the
-  // custom human-readable response size report.
+  // including distinct sections for thresholds and results.
 
   function formatBytes(bytes, decimals = 2) {
     if (
@@ -345,26 +344,25 @@ export function handleSummary(data) {
   }
 
   for (const [name, metric] of Object.entries(data.metrics)) {
-    // Skip checks and data metrics (handled separately)
-    if (
-      name === 'checks' ||
-      !metric.values ||
-      metric.contains === 'data' ||
-      name === 'response_size'
-    ) {
-      continue;
-    }
+    if (name === 'checks' || !metric.values) continue; // Already handled or no values
     let line = `\n  ${name}......................:`;
+
+    // Use the correct formatter based on the metric's 'contains' property or name.
+    const isDataMetric = metric.contains === 'data' || name === 'response_size';
+    const formatter = isDataMetric ? formatBytes : formatDuration;
+
     if (metric.type === 'trend') {
-      line += ` avg=${formatDuration(metric.values.avg)} min=${formatDuration(
+      line += ` avg=${formatter(metric.values.avg)} min=${formatter(
         metric.values.min,
-      )} med=${formatDuration(metric.values.med)} max=${formatDuration(
+      )} med=${formatter(metric.values.med)} max=${formatter(
         metric.values.max,
-      )} p(90)=${formatDuration(metric.values['p(90)'])} p(95)=${formatDuration(
+      )} p(90)=${formatter(metric.values['p(90)'])} p(95)=${formatter(
         metric.values['p(95)'],
       )}`;
     } else if (metric.type === 'counter') {
-      line += ` ${metric.values.count}   ${metric.values.rate.toFixed(2)}/s`;
+      line += ` ${formatter(metric.values.count)}   ${formatter(
+        metric.values.rate,
+      )}/s`;
     } else if (metric.type === 'gauge') {
       if (metric.values.min === metric.values.max) {
         line += ` value=${metric.values.value}`;
@@ -373,40 +371,6 @@ export function handleSummary(data) {
       }
     }
     summary.push(line);
-  }
-
-  // Create a dedicated section for data-related metrics.
-  summary.push('\n\n█ DATA METRICS (HUMAN-READABLE)\n');
-
-  const dataReceived = data.metrics.data_received;
-  if (dataReceived && dataReceived.values) {
-    summary.push(
-      `\n  data_received......................: ${formatBytes(
-        dataReceived.values.count,
-      )}   ${formatBytes(dataReceived.values.rate)}/s`,
-    );
-  }
-
-  const dataSent = data.metrics.data_sent;
-  if (dataSent && dataSent.values) {
-    summary.push(
-      `\n  data_sent..........................: ${formatBytes(
-        dataSent.values.count,
-      )}   ${formatBytes(dataSent.values.rate)}/s`,
-    );
-  }
-
-  const responseStats = data.metrics.response_size?.values;
-  if (responseStats) {
-    summary.push(
-      `\n  response_size......................: avg=${formatBytes(
-        responseStats.avg,
-      )} min=${formatBytes(responseStats.min)} med=${formatBytes(
-        responseStats.med,
-      )} max=${formatBytes(responseStats.max)} p(90)=${formatBytes(
-        responseStats['p(90)'],
-      )} p(95)=${formatBytes(responseStats['p(95)'])}`,
-    );
   }
 
   // Access the config from setup_data, which is the correct way.
