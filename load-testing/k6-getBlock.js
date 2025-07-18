@@ -428,9 +428,18 @@ export function handleSummary(data) {
 // To correlate response size and latency, you must export the raw results to a file
 // and analyze it with an external tool (e.g., Python with pandas/matplotlib, R, etc.).
 //
-// 6. Run the test and output to a JSON file:
+// 6. Run the test and output to a JSON file; the default filename will be `summary-<timestamp>-<runID>.json`.
 //    k6 run --out json=results.json k6-getBlock.js
 //
 // 7. You can then parse `results.json`. Each line is a JSON object. Look for objects
 //    where `type` is "Point" and `metric` is `http_req_duration` or `response_size`.
 //    You can then match these points by their timestamp (`data.time`) to correlate them.
+//
+// 8. Run the load test with a live dashboard:
+//    K6_WEB_DASHBOARD=true k6 run k6-getBlock.js
+//
+//    Customize the refresh rate of the dashboard:
+//    K6_WEB_DASHBOARD_PERIOD=1s K6_WEB_DASHBOARD=true k6 run k6-getBlock.js
+//
+// 9. Export dashboard html to a file: K6_WEB_DASHBOARD_EXPORT={filename}; e.g. the filename can contain the timestamp;
+//    K6_WEB_DASHBOARD=true K6_WEB_DASHBOARD_EXPORT=dashboard-$(date +%Y%m%d-%H%M).html k6 run k6-getBlock.js
