@@ -9,7 +9,6 @@
 import http from 'k6/http';
 import { check, sleep } from 'k6';
 import { Counter, Trend } from 'k6/metrics';
-import { textSummary } from 'https://jslib.k6.io/k6-summary/0.1.0/index.js';
 
 // --- Custom Metrics ---
 // A custom counter to specifically track unexpected RPC-level errors.
@@ -232,7 +231,10 @@ export default function (data) {
 // --- Summary Function ---
 // This function runs at the end of the test and generates the final report.
 export function handleSummary(data) {
-  // Helper function to format bytes into a human-readable string.
+  // This function manually recreates the structure of the default k6 summary report,
+  // including distinct sections for thresholds and results, while also adding the
+  // custom human-readable response size report.
+
   function formatBytes(bytes, decimals = 2) {
     if (
       bytes === null ||
@@ -248,45 +250,102 @@ export function handleSummary(data) {
     return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
   }
 
-  let customReport = '';
-
-  // Use optional chaining (?.) to safely access the nested 'values' property.
-  const responseStats = data.metrics.response_size?.values;
-
-  // Check if we successfully retrieved the stats object.
-  if (responseStats) {
-    // Build a custom summary string.
-    customReport += '\n\n█ HUMAN-READABLE RESPONSE SIZE\n\n';
-    customReport += `  response_size.......................................................: avg=${formatBytes(
-      responseStats.avg,
-    )} min=${formatBytes(responseStats.min)} med=${formatBytes(
-      responseStats.med,
-    )} max=${formatBytes(responseStats.max)} p(90)=${formatBytes(
-      responseStats['p(90)'],
-    )} p(95)=${formatBytes(responseStats['p(95)'])}`;
-  } else {
-    customReport +=
-      '\n\n█ HUMAN-READABLE RESPONSE SIZE\n\n  (No response size data was collected, likely due to all requests failing.)';
+  function formatDuration(ms) {
+    if (ms < 1000) return `${ms.toFixed(2)}ms`;
+    return `${(ms / 1000).toFixed(2)}s`;
   }
 
-  // Create the full summary object for JSON output.
+  const green = (text) => `\x1b[32m${text}\x1b[0m`;
+  const red = (text) => `\x1b[31m${text}\x1b[0m`;
+
+  let summary = ['\n\n█ THRESHOLDS\n'];
+
+  for (const t of Object.keys(data.thresholds)) {
+    const metricName = t.split('{')[0];
+    const metric = data.metrics[metricName];
+    if (metric && metric.thresholds && metric.thresholds[t]) {
+      const threshold = metric.thresholds[t];
+      const pass = threshold.ok;
+      const symbol = pass ? green('✓') : red('✗');
+
+      let valueStr = '';
+      if (metric.type === 'trend') {
+        const pValue = t.match(/p\((\d+\.?\d*)\)/);
+        if (pValue) {
+          valueStr = `p(${pValue[1]})=${formatDuration(
+            metric.values[pValue[0]],
+          )}`;
+        }
+      } else if (metric.type === 'rate') {
+        valueStr = `rate=${(metric.values.rate * 100).toFixed(2)}%`;
+      } else if (metric.type === 'counter') {
+        valueStr = `count=${metric.values.count}`;
+      }
+
+      summary.push(`\n  ${metricName}`);
+      summary.push(`    ${symbol} '${t}' ${valueStr}`);
+    }
+  }
+
+  summary.push('\n\n█ TOTAL RESULTS\n');
+
+  const checks = data.metrics.checks;
+  summary.push(
+    `\n  checks.........................: ${(
+      (checks.values.passes / (checks.values.passes + checks.values.fails)) *
+      100
+    ).toFixed(2)}%   ${green('✓ ' + checks.values.passes)}   ${red(
+      '✗ ' + checks.values.fails,
+    )}`,
+  );
+
+  for (const [name, metric] of Object.entries(data.metrics)) {
+    if (name === 'checks') continue; // Already handled
+    let line = `\n  ${name}......................:`;
+    if (metric.type === 'trend') {
+      line += ` avg=${formatDuration(metric.values.avg)} min=${formatDuration(
+        metric.values.min,
+      )} med=${formatDuration(metric.values.med)} max=${formatDuration(
+        metric.values.max,
+      )} p(90)=${formatDuration(metric.values['p(90)'])} p(95)=${formatDuration(
+        metric.values['p(95)'],
+      )}`;
+    } else if (metric.type === 'counter') {
+      line += ` ${metric.values.count}   ${metric.values.rate.toFixed(2)}/s`;
+    } else if (metric.type === 'gauge') {
+      line += ` value=${metric.values.value} min=${metric.values.min} max=${metric.values.max}`;
+    }
+    summary.push(line);
+  }
+
+  const responseStats = data.metrics.response_size?.values;
+  if (responseStats) {
+    summary.push('\n\n█ HUMAN-READABLE RESPONSE SIZE\n');
+    summary.push(
+      `\n  response_size.......................................................: avg=${formatBytes(
+        responseStats.avg,
+      )} min=${formatBytes(responseStats.min)} med=${formatBytes(
+        responseStats.med,
+      )} max=${formatBytes(responseStats.max)} p(90)=${formatBytes(
+        responseStats['p(90)'],
+      )} p(95)=${formatBytes(responseStats['p(95)'])}`,
+    );
+  }
+
   const fullSummary = {
     configuration: setupConfig,
     results: data,
   };
 
-  // Generate a filename with a timestamp.
   const timestamp = new Date()
     .toISOString()
     .replace(/:/g, '-')
     .replace(/\..+/, '');
   const jsonFilename = `summary-${timestamp}.json`;
 
-  // Return the standard text summary, appending our custom report to it.
   return {
-    stdout:
-      textSummary(data, { indent: ' ', enableColors: true }) + customReport,
-    [jsonFilename]: JSON.stringify(fullSummary, null, 2), // Use a dynamic filename
+    stdout: summary.join(''),
+    [jsonFilename]: JSON.stringify(fullSummary, null, 2),
   };
 }
 
