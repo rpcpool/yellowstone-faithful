@@ -2,6 +2,7 @@ package solanatxmetaparsers
 
 import (
 	"github.com/gagliardetto/solana-go"
+	"github.com/gagliardetto/solana-go/rpc"
 	"github.com/mr-tron/base58"
 	"github.com/rpcpool/yellowstone-faithful/jsonbuilder"
 )
@@ -9,6 +10,7 @@ import (
 func TransactionToUi(
 	tx *solana.Transaction,
 	format solana.EncodingType,
+	details rpc.TransactionDetailsType,
 ) (*jsonbuilder.OrderedJSONObject, error) {
 	obj := jsonbuilder.NewObject()
 	{

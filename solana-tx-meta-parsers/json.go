@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/gagliardetto/solana-go"
+	"github.com/gagliardetto/solana-go/rpc"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/mr-tron/base58"
 	"github.com/rpcpool/yellowstone-faithful/jsonbuilder"
@@ -44,7 +45,10 @@ func NewEncodedTransactionWithStatusMeta(
 }
 
 // EncodedTransactionWithStatusMeta.ToUi
-func (final *EncodedTransactionWithStatusMeta) ToUi(encoding solana.EncodingType) (*jsonbuilder.OrderedJSONObject, error) {
+func (final *EncodedTransactionWithStatusMeta) ToUi(
+	encoding solana.EncodingType,
+	details rpc.TransactionDetailsType,
+) (*jsonbuilder.OrderedJSONObject, error) {
 	// #[serde(rename_all = "camelCase")]
 	// pub struct EncodedTransactionWithStatusMeta {
 	//     pub transaction: EncodedTransaction,
@@ -78,6 +82,84 @@ func (final *EncodedTransactionWithStatusMeta) ToUi(encoding solana.EncodingType
 	} else {
 		resp.Null("meta")
 	}
+	var addVersion bool = false
+	defer func() {
+		if addVersion {
+			{
+				version := final.Transaction.Message.GetVersion()
+				if version == solana.MessageVersionLegacy {
+					resp.String("version", "legacy")
+				} else {
+					resp.Uint8("version", 0)
+				}
+			}
+		}
+	}()
+	{
+		switch details {
+		case rpc.TransactionDetailsNone:
+			return resp, nil
+		case rpc.TransactionDetailsAccounts:
+			{
+				// 	"transaction": {
+				//   "accountKeys": [
+				//     {
+				//       "pubkey": "7rJbC48rxYNb8ieLg8e9v2Jjm6vwMNTZra4hSnFChGuY",
+				//       "signer": true,
+				//       "source": "transaction",
+				//       "writable": true
+				//     },
+				//     {
+				//       "pubkey": "C9t4MQD7GGidZvdy9AV8Nwmnoou1jZEa7ZsEZnw5BncX",
+				//       "signer": false,
+				//       "source": "transaction",
+				//       "writable": true
+				//     },
+				//     {
+				//       "pubkey": "Vote111111111111111111111111111111111111111",
+				//       "signer": false,
+				//       "source": "transaction",
+				//       "writable": false
+				//     }
+				//   ],
+				//   "signatures": [
+				//     "2WpHPG1Dca7SWbFNBBm3cbDsGFngf5GZkgaDj3CzR7JpjjbQmDs4emoyeyWXqUJ5PGYG9xBmicBFaUkZEWYzyYdR"
+				//   ]
+				// }
+				resp.ObjectFunc("transaction", func(obj *jsonbuilder.OrderedJSONObject) {
+					obj.ArrayFunc(
+						"accountKeys",
+						func(ab *jsonbuilder.ArrayBuilder) {
+							for _, acc := range final.Transaction.Message.AccountKeys {
+								objAcc := jsonbuilder.NewObject()
+								{
+									objAcc.String("pubkey", acc.String())
+									objAcc.Bool("signer", final.Transaction.IsSigner(acc))
+									objAcc.String("source", "transaction")
+									objAcc.Bool("writable", final.Transaction.Message.IsWritableStatic(acc))
+								}
+								ab.AddObject(objAcc)
+							}
+						},
+					)
+					obj.StringSlice("signatures", func() []string {
+						out := make([]string, len(final.Transaction.Signatures))
+						for i, sig := range final.Transaction.Signatures {
+							out[i] = sig.String()
+						}
+						return out
+					}())
+				})
+				addVersion = true
+				return resp, nil
+			}
+		// case rpc.TransactionDetailsSignatures:
+		// NOTE: TransactionDetailsSignatures is handled outside of here.
+		case rpc.TransactionDetailsFull:
+			// passthrough and do the below.
+		}
+	}
+	addVersion = true
 	{
 		switch encoding {
 		case solana.EncodingBase64:
@@ -102,7 +184,7 @@ func (final *EncodedTransactionWithStatusMeta) ToUi(encoding solana.EncodingType
 					"base58",
 				})
 		case solana.EncodingJSON:
-			txAs, err := TransactionToUi(final.Transaction, encoding)
+			txAs, err := TransactionToUi(final.Transaction, encoding, details)
 			if err != nil {
 				return nil, fmt.Errorf("failed to serialize transaction: %w", err)
 			}
@@ -201,14 +283,6 @@ func (final *EncodedTransactionWithStatusMeta) ToUi(encoding solana.EncodingType
 		}
 	}
 
-	{
-		version := final.Transaction.Message.GetVersion()
-		if version == solana.MessageVersionLegacy {
-			resp.String("version", "legacy")
-		} else {
-			resp.Uint8("version", 0)
-		}
-	}
 	return resp, nil
 }
 

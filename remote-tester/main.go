@@ -22,6 +22,7 @@ import (
 	"github.com/rpcpool/yellowstone-faithful/readasonecar"
 	"github.com/rpcpool/yellowstone-faithful/slottools"
 	solanatxmetaparsers "github.com/rpcpool/yellowstone-faithful/solana-tx-meta-parsers"
+	"github.com/rpcpool/yellowstone-faithful/tooling"
 	"github.com/rpcpool/yellowstone-faithful/uri"
 	"github.com/yudai/gojsondiff"
 	diff "github.com/yudai/gojsondiff"
@@ -116,6 +117,7 @@ func main() {
 	)
 
 	format := solana.EncodingJSON
+	transactionDetails := tooling.TransactionDetailsFull
 
 	uris, err := generateListOfURIs(
 		uris,
@@ -214,7 +216,7 @@ func main() {
 								txWithInfo.Transaction,
 								txWithInfo.Metadata,
 							)
-							gotUi, err := uiBoth.ToUi(format)
+							gotUi, err := uiBoth.ToUi(format, transactionDetails)
 							if err != nil {
 								panic(fmt.Errorf("tx %s : failed to convert to UI: %w", sig, err))
 							}

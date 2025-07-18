@@ -87,11 +87,11 @@ func WithSubrapghPrefetch(ctx context.Context, yesNo bool) context.Context {
 type GetBlockRequest struct {
 	Slot    uint64 `json:"slot"`
 	Options struct {
-		Commitment                     *rpc.CommitmentType  `json:"commitment,omitempty"` // default: "finalized"
-		Encoding                       *solana.EncodingType `json:"encoding,omitempty"`   // default: "json"
-		MaxSupportedTransactionVersion *uint64              `json:"maxSupportedTransactionVersion,omitempty"`
-		TransactionDetails             *string              `json:"transactionDetails,omitempty"` // default: "full"
-		Rewards                        *bool                `json:"rewards,omitempty"`
+		Commitment                     *rpc.CommitmentType         `json:"commitment,omitempty"` // default: "finalized"
+		Encoding                       *solana.EncodingType        `json:"encoding,omitempty"`   // default: "json"
+		MaxSupportedTransactionVersion *uint64                     `json:"maxSupportedTransactionVersion,omitempty"`
+		TransactionDetails             *rpc.TransactionDetailsType `json:"transactionDetails,omitempty"` // default: "full"
+		Rewards                        *bool                       `json:"rewards,omitempty"`
 	} `json:"options,omitempty"`
 }
 
@@ -109,6 +109,13 @@ func (req *GetBlockRequest) Validate() error {
 	}
 	if req.Options.Encoding != nil && *req.Options.Encoding == solana.EncodingJSONParsed && !jsonparsed.IsEnabled() {
 		return fmt.Errorf("encoding=jsonParsed is not enabled on this server")
+	}
+	if req.Options.TransactionDetails != nil &&
+		*req.Options.TransactionDetails != rpc.TransactionDetailsFull &&
+		*req.Options.TransactionDetails != rpc.TransactionDetailsNone &&
+		*req.Options.TransactionDetails != rpc.TransactionDetailsSignatures &&
+		*req.Options.TransactionDetails != rpc.TransactionDetailsAccounts {
+		return fmt.Errorf("unsupported transaction details: %s", *req.Options.TransactionDetails)
 	}
 	return nil
 }
@@ -172,7 +179,7 @@ func parseGetBlockRequest(raw *json.RawMessage) (*GetBlockRequest, error) {
 			if !ok {
 				return nil, fmt.Errorf("transactionDetails must be a string, got %T", transactionDetailsRaw)
 			}
-			out.Options.TransactionDetails = &transactionDetails
+			out.Options.TransactionDetails = (*rpc.TransactionDetailsType)(&transactionDetails)
 		} else {
 			transactionDetails := defaultTransactionDetails()
 			out.Options.TransactionDetails = &transactionDetails
@@ -210,8 +217,8 @@ func defaultEncoding() solana.EncodingType {
 	return solana.EncodingJSON
 }
 
-func defaultTransactionDetails() string {
-	return "full"
+func defaultTransactionDetails() rpc.TransactionDetailsType {
+	return rpc.TransactionDetailsFull
 }
 
 type GetTransactionRequest struct {

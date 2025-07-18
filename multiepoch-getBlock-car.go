@@ -9,6 +9,7 @@ import (
 
 	"github.com/gagliardetto/gsfa-v3/3.3/tooling"
 	"github.com/gagliardetto/solana-go"
+	"github.com/gagliardetto/solana-go/rpc"
 	"github.com/ipfs/go-cid"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/rpcpool/yellowstone-faithful/carreader"
@@ -149,7 +150,7 @@ func (multi *MultiEpoch) handleGetBlock_car(ctx context.Context, conn *requestCo
 		panic(fmt.Errorf("failed to convert nodes to parsed nodes: %w", err))
 	}
 	defer parsedNodes.Put() // return the parsed nodes to the pool
-	parsedNodes.SortByCid()
+	// parsedNodes.SortByCid() // NOTE: already sorted by CIDs in SplitIntoDataAndCids; ToParsedAndCidSlice maintains the same order.
 	tim.time("parsedNodes")
 
 	blocktime := uint64(block.Meta.Blocktime)
@@ -163,11 +164,7 @@ func (multi *MultiEpoch) handleGetBlock_car(ctx context.Context, conn *requestCo
 	tim.time("get entries")
 
 	var rewardsUi *jsonbuilder.ArrayBuilder
-	defer func() {
-		if rewardsUi != nil {
-			rewardsUi.Put() // recycle the rewards UI array
-		}
-	}()
+	defer rewardsUi.Put() // recycle the rewards UI array
 	hasRewards := block.HasRewards()
 	rewardsCid := block.Rewards.(cidlink.Link).Cid
 	if *params.Options.Rewards && hasRewards {
@@ -221,61 +218,82 @@ func (multi *MultiEpoch) handleGetBlock_car(ctx context.Context, conn *requestCo
 	}
 	tim.time("get rewards")
 
-	allTransactions := make([]*jsonbuilder.OrderedJSONObject, 0, parsedNodes.CountTransactions())
-	defer func() {
-		for _, tx := range allTransactions {
-			tx.Put() // recycle the transaction objects
-		}
-	}()
-	{
-		_, buildTxSpan := telemetry.StartSpan(rpcSpanCtx, "GetBlock_BuildTransactions")
-		for transactionNode := range parsedNodes.Transaction() {
-			err := func() error {
-				tx, meta, err := parseTransactionAndMetaFromNode(transactionNode, func(ctx context.Context, wantedCid cid.Cid) (*ipldbindcode.DataFrame, error) {
-					df, err := parsedNodes.DataFrameByCid(wantedCid)
-					if err != nil {
-						return nil, fmt.Errorf("failed to get DataFrame by CID %s: %w", wantedCid, err)
-					}
-					return df, nil
-				})
-				if err != nil {
-					return fmt.Errorf("failed to decode transaction: %v", err)
-				}
+	transactionDetails := *params.Options.TransactionDetails
 
-				out := solanatxmetaparsers.NewEncodedTransactionWithStatusMeta(
-					tx,
-					meta,
-				)
-
-				txUI, err := out.ToUi(*params.Options.Encoding)
-				if err != nil {
-					return fmt.Errorf("failed to encode transaction: %v", err)
-				}
-				out.Meta.Put()
-				putTransactionToPool(tx) // return the transaction to the pool
-				// TODO: include position index in the UI output.
-				// pos, ok := transactionNode.GetPositionIndex()
-				// if ok {
-				// 	txUI.Value("position", pos)
-				// }
-				allTransactions = append(allTransactions, txUI)
-				return nil
-			}()
-			if err != nil {
-				return &jsonrpc2.Error{
-					Code:    jsonrpc2.CodeInternalError,
-					Message: "Internal error",
-				}, fmt.Errorf("failed to build transactions: %w", err)
-			}
-		}
-
-		buildTxSpan.SetAttributes(attribute.Int("num_transactions", len(allTransactions)))
-		buildTxSpan.End()
-	}
-	tim.time("get transactions")
 	response := jsonbuilder.NewObject()
 	defer response.Put() // recycle the response object
-	response.Value("transactions", allTransactions)
+	if transactionDetails != rpc.TransactionDetailsNone {
+		if transactionDetails == rpc.TransactionDetailsSignatures {
+			signatures := make([]string, 0, parsedNodes.CountTransactions())
+			for transactionNode := range parsedNodes.Transaction() {
+				tx, err := transactionNode.GetSolanaTransaction()
+				if err != nil {
+					return &jsonrpc2.Error{
+						Code:    jsonrpc2.CodeInternalError,
+						Message: "Internal error",
+					}, fmt.Errorf("failed to decode Transaction: %v", err)
+				}
+				signatures = append(signatures, tx.Signatures[0].String())
+			}
+			response.StringSlice("signatures", signatures)
+			tim.time("get signatures")
+		}
+		if transactionDetails == rpc.TransactionDetailsAccounts || transactionDetails == rpc.TransactionDetailsFull {
+			allTransactions := make([]*jsonbuilder.OrderedJSONObject, 0, parsedNodes.CountTransactions())
+			defer func() {
+				for _, tx := range allTransactions {
+					tx.Put() // recycle the transaction objects
+				}
+			}()
+			{
+				_, buildTxSpan := telemetry.StartSpan(rpcSpanCtx, "GetBlock_BuildTransactions")
+				for transactionNode := range parsedNodes.Transaction() {
+					err := func() error {
+						tx, meta, err := parseTransactionAndMetaFromNode(transactionNode, func(ctx context.Context, wantedCid cid.Cid) (*ipldbindcode.DataFrame, error) {
+							df, err := parsedNodes.DataFrameByCid(wantedCid)
+							if err != nil {
+								return nil, fmt.Errorf("failed to get DataFrame by CID %s: %w", wantedCid, err)
+							}
+							return df, nil
+						})
+						if err != nil {
+							return fmt.Errorf("failed to decode transaction: %v", err)
+						}
+
+						out := solanatxmetaparsers.NewEncodedTransactionWithStatusMeta(
+							tx,
+							meta,
+						)
+
+						txUI, err := out.ToUi(*params.Options.Encoding, transactionDetails)
+						if err != nil {
+							return fmt.Errorf("failed to encode transaction: %v", err)
+						}
+						out.Meta.Put()
+						putTransactionToPool(tx) // return the transaction to the pool
+						// TODO: include position index in the UI output.
+						// pos, ok := transactionNode.GetPositionIndex()
+						// if ok {
+						// 	txUI.Value("position", pos)
+						// }
+						allTransactions = append(allTransactions, txUI)
+						return nil
+					}()
+					if err != nil {
+						return &jsonrpc2.Error{
+							Code:    jsonrpc2.CodeInternalError,
+							Message: "Internal error",
+						}, fmt.Errorf("failed to build transactions: %w", err)
+					}
+				}
+
+				buildTxSpan.SetAttributes(attribute.Int("num_transactions", len(allTransactions)))
+				buildTxSpan.End()
+			}
+			tim.time("get transactions")
+			response.Value("transactions", allTransactions)
+		}
+	}
 
 	// sort.Slice(allTransactions, func(i, j int) bool {
 	// 	return allTransactions[i].Position < allTransactions[j].Position

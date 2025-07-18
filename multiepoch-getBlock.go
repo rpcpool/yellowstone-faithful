@@ -365,7 +365,7 @@ func (multi *MultiEpoch) handleGetBlock(ctx context.Context, conn *requestContex
 				meta,
 			)
 
-			txUI, err := out.ToUi(*params.Options.Encoding)
+			txUI, err := out.ToUi(*params.Options.Encoding, *params.Options.TransactionDetails)
 			if err != nil {
 				return &jsonrpc2.Error{
 					Code:    jsonrpc2.CodeInternalError,

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gagliardetto/solana-go"
+	"github.com/gagliardetto/solana-go/rpc"
 	"github.com/rpcpool/yellowstone-faithful/compactindexsized"
 	solanatxmetaparsers "github.com/rpcpool/yellowstone-faithful/solana-tx-meta-parsers"
 	"github.com/sourcegraph/jsonrpc2"
@@ -182,7 +183,7 @@ func (multi *MultiEpoch) handleGetTransaction(ctx context.Context, conn *request
 		meta,
 	)
 
-	response, err := out.ToUi(*params.Options.Encoding)
+	response, err := out.ToUi(*params.Options.Encoding, rpc.TransactionDetailsFull)
 	if err != nil {
 		return &jsonrpc2.Error{
 			Code:    jsonrpc2.CodeInternalError,
