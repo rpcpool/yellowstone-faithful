@@ -23,9 +23,7 @@ export const options = {
   ],
   thresholds: {
     http_req_failed: ['rate<0.01'],
-    // The p95 response time threshold has been increased to 3000ms (3s)
-    // to accommodate the observed high latency.
-    http_req_duration: ['p(95)<3000'],
+    http_req_duration: ['p(95)<2000'],
     // The test will fail if the server returns more than 10 unexpected RPC-level errors.
     rpc_errors: ['count<10'],
   },
