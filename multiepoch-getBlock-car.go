@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/gagliardetto/gsfa-v3/3.3/tooling"
 	"github.com/gagliardetto/solana-go"
 	"github.com/gagliardetto/solana-go/rpc"
 	"github.com/ipfs/go-cid"
@@ -17,6 +16,7 @@ import (
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
 	"github.com/rpcpool/yellowstone-faithful/jsonbuilder"
+	"github.com/rpcpool/yellowstone-faithful/nodetools"
 	"github.com/rpcpool/yellowstone-faithful/slottools"
 	solanablockrewards "github.com/rpcpool/yellowstone-faithful/solana-block-rewards"
 	solanatxmetaparsers "github.com/rpcpool/yellowstone-faithful/solana-tx-meta-parsers"
@@ -136,7 +136,7 @@ func (multi *MultiEpoch) handleGetBlock_car(ctx context.Context, conn *requestCo
 	}
 	tim.time("read section from CAR")
 
-	nodes, err := tooling.SplitIntoDataAndCids(section.Bytes())
+	nodes, err := nodetools.SplitIntoDataAndCids(section.Bytes())
 	if err != nil {
 		panic(err)
 	}

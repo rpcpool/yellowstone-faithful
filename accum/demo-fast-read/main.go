@@ -11,11 +11,11 @@ import (
 	"time"
 
 	"github.com/dustin/go-humanize"
-	"github.com/gagliardetto/gsfa-v3/3.3/tooling"
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-car/util"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
+	"github.com/rpcpool/yellowstone-faithful/nodetools"
 )
 
 func main() {
@@ -101,7 +101,7 @@ func main() {
 		fmt.Printf("Parsed %d sections in %s\n", numSections, time.Since(startSplitAt))
 	}
 	startSplitAt = time.Now()
-	nodes, err := tooling.SplitIntoDataAndCids(buffer)
+	nodes, err := nodetools.SplitIntoDataAndCids(buffer)
 	if err != nil {
 		panic(err)
 	}
@@ -109,7 +109,7 @@ func main() {
 	fmt.Printf("Split into %d nodes in %s\n", len(nodes), time.Since(startSplitAt))
 	{
 		startParseEachAt := time.Now()
-		err := nodes.ReadEachConcurrent(func(d *tooling.DataAndCid) error {
+		err := nodes.ReadEachConcurrent(func(d *nodetools.DataAndCid) error {
 			parsed, err := iplddecoders.DecodeAny(d.Data.Bytes())
 			if err != nil {
 				return fmt.Errorf("failed to decode node with CID %s: %w", d.Cid, err)
@@ -127,7 +127,7 @@ func main() {
 		startParseEachAt := time.Now()
 		parsedNodes := make([]ipldbindcode.Node, len(nodes))
 		i := 0
-		err := nodes.ReadEach(func(d *tooling.DataAndCid) error {
+		err := nodes.ReadEach(func(d *nodetools.DataAndCid) error {
 			parsed, err := iplddecoders.DecodeAny(d.Data.Bytes())
 			if err != nil {
 				return fmt.Errorf("failed to decode node with CID %s: %w", d.Cid, err)

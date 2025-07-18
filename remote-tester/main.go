@@ -17,12 +17,12 @@ import (
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/gagliardetto/solana-go"
+	"github.com/gagliardetto/solana-go/rpc"
 	"github.com/rpcpool/yellowstone-faithful/accum"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
 	"github.com/rpcpool/yellowstone-faithful/readasonecar"
 	"github.com/rpcpool/yellowstone-faithful/slottools"
 	solanatxmetaparsers "github.com/rpcpool/yellowstone-faithful/solana-tx-meta-parsers"
-	"github.com/rpcpool/yellowstone-faithful/tooling"
 	"github.com/rpcpool/yellowstone-faithful/uri"
 	"github.com/yudai/gojsondiff"
 	diff "github.com/yudai/gojsondiff"
@@ -117,7 +117,7 @@ func main() {
 	)
 
 	format := solana.EncodingJSON
-	transactionDetails := tooling.TransactionDetailsFull
+	transactionDetails := rpc.TransactionDetailsFull
 
 	uris, err := generateListOfURIs(
 		uris,
