@@ -63,6 +63,9 @@ export function setup() {
   const EPOCH_LEN = 432000;
   const USE_GZIP = __ENV.USE_GZIP === 'true';
   const SEED = __ENV.SEED ? parseInt(__ENV.SEED) : null;
+  const TRANSACTION_DETAILS = __ENV.TRANSACTION_DETAILS || 'none';
+  const REWARDS = __ENV.REWARDS === 'true';
+  const ENCODING = __ENV.ENCODING || 'json';
 
   // The initial PRNG is only used to generate a seed if one isn't provided.
   const initialPrng = new PRNG(SEED);
@@ -144,15 +147,16 @@ export function setup() {
   }
 
   const staticRpcParams = {
-    encoding: 'json',
-    transactionDetails: 'none',
-    rewards: false,
+    encoding: ENCODING,
+    transactionDetails: TRANSACTION_DETAILS,
+    rewards: REWARDS,
   };
+  console.log(`Using RPC parameters: ${JSON.stringify(staticRpcParams)}`);
 
   // The configuration object that will be returned and made available to VUs and handleSummary.
   const config = {
     runID: uuidv4(),
-    k6Version: exec.version,
+    k6Version: exec.version || 'unknown',
     seed: usedSeed,
     rpcUrl: RPC_URL,
     useGzip: USE_GZIP,
@@ -379,6 +383,8 @@ export function handleSummary(data) {
 
   // Access the config from setup_data, which is the correct way.
   const finalConfig = data.setup_data;
+  // remove setup_data so that we don't repeat it twice (configuration and setup_data)
+  delete data.setup_data;
 
   const fullSummary = {
     configuration: finalConfig,
