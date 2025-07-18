@@ -18,13 +18,33 @@ const rpcErrors = new Counter('rpc_errors');
 // A custom trend metric to track the size of the response body in bytes.
 const responseSize = new Trend('response_size');
 
+// details_full_stages is for transactionDetails that put a heavier load on the server,
+// such as 'full' or 'accounts'. This is the default configuration.
+const details_full_stages = [
+  { duration: '30s', target: 100 },
+  { duration: '1m', target: 100 },
+  { duration: '10s', target: 0 },
+];
+
+// details_reduced_stages is for when you can push more because the load per request is lower.
+const details_reduced_stages = [
+  { duration: '30s', target: 400 },
+  { duration: '1m', target: 600 },
+  { duration: '10s', target: 0 },
+];
+
+let selected_stages = details_full_stages;
+if (
+  __ENV.TRANSACTION_DETAILS === 'signatures' ||
+  __ENV.TRANSACTION_DETAILS === undefined ||
+  __ENV.TRANSACTION_DETAILS === 'none'
+) {
+  selected_stages = details_reduced_stages;
+}
+
 // --- k6 Options ---
 export const options = {
-  stages: [
-    { duration: '30s', target: 100 },
-    { duration: '1m', target: 100 },
-    { duration: '10s', target: 0 },
-  ],
+  stages: selected_stages,
   thresholds: {
     http_req_failed: ['rate<0.01'],
     // The p95 response time threshold has been lowered to 2000ms (2s).
