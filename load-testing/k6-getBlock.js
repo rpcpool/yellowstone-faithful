@@ -33,10 +33,13 @@ export const options = {
   },
 };
 
+// This global variable will hold the configuration from the setup function
+// so that it can be accessed in the handleSummary function.
+let setupConfig = {};
+
 // --- Setup Function ---
 // This function runs once before the test starts, initializing configuration
-// and passing it to the virtual users. This prevents the setup logic from
-// running for every VU.
+// and passing it to the virtual users.
 export function setup() {
   const RPC_URL = __ENV.RPC_URL || 'http://127.0.0.1:8899';
   let EPOCHS = __ENV.EPOCHS; // Expects a comma-separated list, e.g., "742,745,750"
@@ -44,6 +47,7 @@ export function setup() {
   const USE_GZIP = __ENV.USE_GZIP === 'true';
 
   let blockRanges = [];
+  let epochSource = 'default';
 
   // If EPOCHS environment variable is not provided, try fetching from the API.
   if (!EPOCHS) {
@@ -58,6 +62,7 @@ export function setup() {
         const responseData = res.json();
         const fetchedEpochs = responseData.epochs; // Access the nested 'epochs' array.
         if (Array.isArray(fetchedEpochs) && fetchedEpochs.length > 0) {
+          epochSource = `API (${epochsApiUrl})`;
           console.log(
             `Successfully fetched ${fetchedEpochs.length} epochs from API.`,
           );
@@ -77,6 +82,8 @@ export function setup() {
         `Failed to fetch epochs from API (status: ${res.status}). Falling back to default block range.`,
       );
     }
+  } else {
+    epochSource = 'Environment Variable (EPOCHS)';
   }
 
   // If a list of epochs is available (from env var or API), calculate the block ranges.
@@ -98,6 +105,7 @@ export function setup() {
 
   // If, after all attempts, blockRanges is still empty, use the hardcoded default.
   if (blockRanges.length === 0) {
+    epochSource = 'Hardcoded Default';
     const minBlock = parseInt(__ENV.MIN_BLOCK || '320544000');
     const maxBlock = parseInt(__ENV.MAX_BLOCK || '320975999');
     blockRanges.push({ min: minBlock, max: maxBlock });
@@ -106,12 +114,16 @@ export function setup() {
     );
   }
 
-  // Return the configuration so it can be used in the VU code.
-  return {
+  // Store the final configuration in the global variable for handleSummary.
+  setupConfig = {
     rpcUrl: RPC_URL,
     blockRanges: blockRanges,
     useGzip: USE_GZIP,
+    epochSource: epochSource,
   };
+
+  // Return the configuration so it can be used in the VU code.
+  return setupConfig;
 }
 
 // --- Main Test Logic ---
@@ -219,7 +231,13 @@ export default function (data) {
 export function handleSummary(data) {
   // Helper function to format bytes into a human-readable string.
   function formatBytes(bytes, decimals = 2) {
-    if (!+bytes) return '0 Bytes';
+    if (
+      bytes === null ||
+      bytes === undefined ||
+      !isFinite(bytes) ||
+      bytes === 0
+    )
+      return '0 Bytes';
     const k = 1024;
     const dm = decimals < 0 ? 0 : decimals;
     const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
@@ -230,7 +248,6 @@ export function handleSummary(data) {
   let customReport = '';
 
   // Use optional chaining (?.) to safely access the nested 'values' property.
-  // This is the most robust way to prevent crashes if the metric data is inconsistent.
   const responseStats = data.metrics.response_size?.values;
 
   // Check if we successfully retrieved the stats object.
@@ -249,11 +266,24 @@ export function handleSummary(data) {
       '\n\n█ HUMAN-READABLE RESPONSE SIZE\n\n  (No response size data was collected, likely due to all requests failing.)';
   }
 
+  // Create the full summary object for JSON output.
+  const fullSummary = {
+    configuration: setupConfig,
+    results: data,
+  };
+
+  // Generate a filename with a timestamp.
+  const timestamp = new Date()
+    .toISOString()
+    .replace(/:/g, '-')
+    .replace(/\..+/, '');
+  const jsonFilename = `summary-${timestamp}.json`;
+
   // Return the standard text summary, appending our custom report to it.
   return {
     stdout:
       textSummary(data, { indent: ' ', enableColors: true }) + customReport,
-    'summary.json': JSON.stringify(data), // Optional: produce a machine-readable JSON summary
+    [jsonFilename]: JSON.stringify(fullSummary, null, 2), // Use a dynamic filename
   };
 }
 
