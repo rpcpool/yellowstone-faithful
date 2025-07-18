@@ -299,32 +299,33 @@ export function handleSummary(data) {
 
   let summary = ['\n\n█ THRESHOLDS\n'];
 
-  // Defensive check to prevent crash if data.thresholds is missing.
-  if (data && data.thresholds && typeof data.thresholds === 'object') {
-    for (const t of Object.keys(data.thresholds)) {
-      const metricName = t.split('{')[0];
-      const metric = data.metrics[metricName];
-      if (metric && metric.thresholds && metric.thresholds[t]) {
-        const threshold = metric.thresholds[t];
-        const pass = threshold.ok;
-        const symbol = pass ? green('✓') : red('✗');
-
-        let valueStr = '';
-        if (metric.type === 'trend') {
-          const pValue = t.match(/p\((\d+\.?\d*)\)/);
-          if (pValue) {
-            valueStr = `p(${pValue[1]})=${formatDuration(
-              metric.values[pValue[0]],
-            )}`;
-          }
-        } else if (metric.type === 'rate') {
-          valueStr = `rate=${(metric.values.rate * 100).toFixed(2)}%`;
-        } else if (metric.type === 'counter') {
-          valueStr = `count=${metric.values.count}`;
-        }
-
+  // Defensive check to prevent crash if data.metrics is missing.
+  if (data && data.metrics) {
+    for (const metricName in data.metrics) {
+      if (data.metrics[metricName].thresholds) {
         summary.push(`\n  ${metricName}`);
-        summary.push(`    ${symbol} '${t}' ${valueStr}`);
+        for (const thresholdName in data.metrics[metricName].thresholds) {
+          const threshold = data.metrics[metricName].thresholds[thresholdName];
+          const pass = threshold.ok;
+          const symbol = pass ? green('✓') : red('✗');
+
+          let valueStr = '';
+          const metric = data.metrics[metricName];
+          if (metric.type === 'trend') {
+            const pValue = thresholdName.match(/p\((\d+\.?\d*)\)/);
+            if (pValue) {
+              valueStr = `p(${pValue[1]})=${formatDuration(
+                metric.values[pValue[0]],
+              )}`;
+            }
+          } else if (metric.type === 'rate') {
+            valueStr = `rate=${(metric.values.rate * 100).toFixed(2)}%`;
+          } else if (metric.type === 'counter') {
+            valueStr = `count=${metric.values.count}`;
+          }
+
+          summary.push(`    ${symbol} '${thresholdName}' ${valueStr}`);
+        }
       }
     }
   }
@@ -388,7 +389,9 @@ export function handleSummary(data) {
     .toISOString()
     .replace(/:/g, '-')
     .replace(/\..+/, '');
-  const jsonFilename = `summary-${finalConfig.runID}-${timestamp}.json`;
+  // Defensive check for runID in case setup_data is also malformed.
+  const runID = finalConfig ? finalConfig.runID : 'unknown-run';
+  const jsonFilename = `summary-${runID}-${timestamp}.json`;
 
   console.log(`\nSaving detailed summary to ${jsonFilename}...`);
 
