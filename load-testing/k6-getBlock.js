@@ -42,7 +42,8 @@ let setupConfig = {};
 // and passing it to the virtual users.
 export function setup() {
   const RPC_URL = __ENV.RPC_URL || 'http://127.0.0.1:8899';
-  let EPOCHS = __ENV.EPOCHS; // Expects a comma-separated list, e.g., "742,745,750"
+  let EPOCHS_RAW = __ENV.EPOCHS; // Expects a comma-separated list, e.g., "742,745,750"
+  let EPOCHS_PARSED = EPOCHS_RAW;
   const EPOCH_LEN = 432000;
   const USE_GZIP = __ENV.USE_GZIP === 'true';
 
@@ -50,7 +51,7 @@ export function setup() {
   let epochSource = 'default';
 
   // If EPOCHS environment variable is not provided, try fetching from the API.
-  if (!EPOCHS) {
+  if (!EPOCHS_PARSED) {
     console.log(
       'EPOCHS environment variable not set. Attempting to fetch from API...',
     );
@@ -66,7 +67,7 @@ export function setup() {
           console.log(
             `Successfully fetched ${fetchedEpochs.length} epochs from API.`,
           );
-          EPOCHS = fetchedEpochs.join(','); // Convert array to comma-separated string to reuse parsing logic
+          EPOCHS_PARSED = fetchedEpochs.join(','); // Convert array to comma-separated string to reuse parsing logic
         } else {
           console.log(
             'API returned no epochs or an invalid format. Falling back to default block range.',
@@ -87,15 +88,15 @@ export function setup() {
   }
 
   // If a list of epochs is available (from env var or API), calculate the block ranges.
-  if (EPOCHS) {
-    const epochList = EPOCHS.split(',');
-    console.log(`Using epochs: ${EPOCHS}. Calculating block ranges...`);
+  if (EPOCHS_PARSED) {
+    const epochList = EPOCHS_PARSED.split(',');
+    console.log(`Using epochs: ${EPOCHS_PARSED}. Calculating block ranges...`);
     epochList.forEach((epochStr) => {
       const epoch = parseInt(epochStr.trim());
       if (!isNaN(epoch)) {
         const minBlock = epoch * EPOCH_LEN;
         const maxBlock = minBlock + EPOCH_LEN - 1;
-        blockRanges.push({ min: minBlock, max: maxBlock });
+        blockRanges.push({ epoch: epoch, min: minBlock, max: maxBlock });
         console.log(
           `  - Added range for epoch ${epoch}: ${minBlock} to ${maxBlock}`,
         );
@@ -108,7 +109,7 @@ export function setup() {
     epochSource = 'Hardcoded Default';
     const minBlock = parseInt(__ENV.MIN_BLOCK || '320544000');
     const maxBlock = parseInt(__ENV.MAX_BLOCK || '320975999');
-    blockRanges.push({ min: minBlock, max: maxBlock });
+    blockRanges.push({ epoch: null, min: minBlock, max: maxBlock });
     console.log(
       `Using hardcoded default block range: ${minBlock} to ${maxBlock}`,
     );
@@ -117,9 +118,11 @@ export function setup() {
   // Store the final configuration in the global variable for handleSummary.
   setupConfig = {
     rpcUrl: RPC_URL,
-    blockRanges: blockRanges,
     useGzip: USE_GZIP,
     epochSource: epochSource,
+    epochsRaw: EPOCHS_RAW || null, // Original env var value
+    epochsUsed: EPOCHS_PARSED, // The list that was actually used
+    blockRanges: blockRanges,
   };
 
   // Return the configuration so it can be used in the VU code.
