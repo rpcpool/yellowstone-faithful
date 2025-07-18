@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/bytedance/sonic"
+	"github.com/valyala/bytebufferpool"
 )
 
 // OrderedJSONObject represents a JSON object that is marshaled progressively.
@@ -137,6 +138,21 @@ func (o *OrderedJSONObject) MarshalJSON() ([]byte, error) {
 	copy(data, o.buf)
 	o.buf = o.buf[:len(o.buf)-1] // Truncate the last byte (the closing brace)
 	return data, nil
+}
+
+func (o *OrderedJSONObject) MarshalJSONToByteBuffer() (*bytebufferpool.ByteBuffer, error) {
+	if o.err != nil {
+		return nil, o.err
+	}
+	outBuf := bytebufferpool.Get()
+	if o.buf == nil {
+		outBuf.B = append(outBuf.B, '{', '}')
+		return outBuf, nil
+	}
+	o.buf = append(o.buf, '}')
+	outBuf.B = append(outBuf.B, o.buf...)
+	o.buf = o.buf[:len(o.buf)-1] // Truncate the last byte (the closing brace)
+	return outBuf, nil
 }
 
 // MarshalJSON completes the JSON array and returns its contents.

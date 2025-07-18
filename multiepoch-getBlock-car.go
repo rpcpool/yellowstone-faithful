@@ -352,7 +352,7 @@ func (multi *MultiEpoch) handleGetBlock_car(ctx context.Context, conn *requestCo
 	}
 	tim.time("get parent block")
 
-	encodedResult, err := response.MarshalJSON()
+	encodedResult, err := response.MarshalJSONToByteBuffer()
 	if err != nil {
 		return &jsonrpc2.Error{
 			Code:    jsonrpc2.CodeInternalError,
@@ -362,8 +362,9 @@ func (multi *MultiEpoch) handleGetBlock_car(ctx context.Context, conn *requestCo
 	conn.ReplyRawMessage(
 		ctx,
 		req.ID,
-		json.RawMessage(encodedResult),
+		json.RawMessage(encodedResult.Bytes()),
 	)
+	bytebufferpool.Put(encodedResult) // return the buffer to the pool
 	tim.time("reply")
 	return nil, nil
 }
