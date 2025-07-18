@@ -21,6 +21,7 @@ import (
 	solanablockrewards "github.com/rpcpool/yellowstone-faithful/solana-block-rewards"
 	solanatxmetaparsers "github.com/rpcpool/yellowstone-faithful/solana-tx-meta-parsers"
 	"github.com/rpcpool/yellowstone-faithful/telemetry"
+	"github.com/rpcpool/yellowstone-faithful/tooling"
 	ytooling "github.com/rpcpool/yellowstone-faithful/tooling"
 	"github.com/sourcegraph/jsonrpc2"
 	"github.com/valyala/bytebufferpool"
@@ -226,14 +227,14 @@ func (multi *MultiEpoch) handleGetBlock_car(ctx context.Context, conn *requestCo
 		if transactionDetails == rpc.TransactionDetailsSignatures {
 			signatures := make([]string, 0, parsedNodes.CountTransactions())
 			for transactionNode := range parsedNodes.Transaction() {
-				tx, err := transactionNode.GetSolanaTransaction()
+				sig, err := tooling.ReadFirstSignature(transactionNode.Data.Data)
 				if err != nil {
 					return &jsonrpc2.Error{
 						Code:    jsonrpc2.CodeInternalError,
 						Message: "Internal error",
 					}, fmt.Errorf("failed to decode Transaction: %v", err)
 				}
-				signatures = append(signatures, tx.Signatures[0].String())
+				signatures = append(signatures, sig.String())
 			}
 			response.StringSlice("signatures", signatures)
 			tim.time("get signatures")

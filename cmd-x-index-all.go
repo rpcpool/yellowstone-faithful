@@ -19,6 +19,7 @@ import (
 	"github.com/rpcpool/yellowstone-faithful/indexmeta"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
 	"github.com/rpcpool/yellowstone-faithful/readasonecar"
+	"github.com/rpcpool/yellowstone-faithful/tooling"
 	"github.com/urfave/cli/v2"
 	"golang.org/x/sync/errgroup"
 	"k8s.io/klog/v2"
@@ -262,7 +263,7 @@ func createAllIndexes(
 					return nil, 0, fmt.Errorf("failed to decode transaction: %w", err)
 				}
 
-				sig, err := readFirstSignature(txNode.Data.Bytes())
+				sig, err := tooling.ReadFirstSignature(txNode.Data.Bytes())
 				if err != nil {
 					return nil, 0, fmt.Errorf("failed to read signature: %w", err)
 				}
@@ -661,7 +662,7 @@ func verifyAllIndexes(
 					return fmt.Errorf("failed to decode transaction: %w", err)
 				}
 
-				sig, err := readFirstSignature(txNode.Data.Bytes())
+				sig, err := tooling.ReadFirstSignature(txNode.Data.Bytes())
 				if err != nil {
 					return fmt.Errorf("failed to read signature: %w", err)
 				}

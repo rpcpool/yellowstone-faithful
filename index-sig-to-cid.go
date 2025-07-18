@@ -8,14 +8,13 @@ import (
 	"time"
 
 	"github.com/dustin/go-humanize"
-	bin "github.com/gagliardetto/binary"
-	"github.com/gagliardetto/solana-go"
 	"github.com/ipfs/go-cid"
 	"github.com/rpcpool/yellowstone-faithful/bucketteer"
 	"github.com/rpcpool/yellowstone-faithful/indexes"
 	"github.com/rpcpool/yellowstone-faithful/indexmeta"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"github.com/rpcpool/yellowstone-faithful/readasonecar"
+	"github.com/rpcpool/yellowstone-faithful/tooling"
 	"k8s.io/klog/v2"
 )
 
@@ -81,7 +80,7 @@ func CreateIndex_sig2cid(
 		ctx,
 		rd,
 		func(c cid.Cid, txNode *ipldbindcode.Transaction) error {
-			sig, err := readFirstSignature(txNode.Data.Bytes())
+			sig, err := tooling.ReadFirstSignature(txNode.Data.Bytes())
 			if err != nil {
 				return fmt.Errorf("failed to read signature: %w", err)
 			}
@@ -150,7 +149,7 @@ func VerifyIndex_sig2cid(ctx context.Context, carPaths []string, indexFilePath s
 		ctx,
 		rd,
 		func(c cid.Cid, txNode *ipldbindcode.Transaction) error {
-			sig, err := readFirstSignature(txNode.Data.Bytes())
+			sig, err := tooling.ReadFirstSignature(txNode.Data.Bytes())
 			if err != nil {
 				return fmt.Errorf("failed to read signature: %w", err)
 			}
@@ -222,7 +221,7 @@ func VerifyIndex_sigExists(ctx context.Context, carPaths []string, indexFilePath
 		ctx,
 		rd,
 		func(c cid.Cid, txNode *ipldbindcode.Transaction) error {
-			sig, err := readFirstSignature(txNode.Data.Bytes())
+			sig, err := tooling.ReadFirstSignature(txNode.Data.Bytes())
 			if err != nil {
 				return fmt.Errorf("failed to read signature: %w", err)
 			}
@@ -246,26 +245,4 @@ func VerifyIndex_sigExists(ctx context.Context, carPaths []string, indexFilePath
 		return fmt.Errorf("failed to verify index; error while iterating over blocks: %w", err)
 	}
 	return nil
-}
-
-func readFirstSignature(buf []byte) (solana.Signature, error) {
-	decoder := bin.NewCompactU16Decoder(buf)
-	numSigs, err := decoder.ReadCompactU16()
-	if err != nil {
-		return solana.Signature{}, err
-	}
-	if numSigs == 0 {
-		return solana.Signature{}, fmt.Errorf("no signatures")
-	}
-
-	// Read the first signature:
-	var sig solana.Signature
-	numRead, err := decoder.Read(sig[:])
-	if err != nil {
-		return solana.Signature{}, err
-	}
-	if numRead != 64 {
-		return solana.Signature{}, fmt.Errorf("unexpected signature length %d", numRead)
-	}
-	return sig, nil
 }

@@ -20,6 +20,7 @@ import (
 	"github.com/rpcpool/yellowstone-faithful/indexmeta"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
 	"github.com/rpcpool/yellowstone-faithful/readasonecar"
+	"github.com/rpcpool/yellowstone-faithful/tooling"
 	concurrently "github.com/tejzpr/ordered-concurrently/v3"
 	"github.com/urfave/cli/v2"
 	"github.com/valyala/bytebufferpool"
@@ -306,7 +307,7 @@ func (w sigToEpochParser) Run(ctx context.Context) interface{} {
 	if err != nil {
 		return fmt.Errorf("error while decoding transaction from nodex %s: %w", w._cid, err)
 	}
-	sig, err := readFirstSignature(decoded.Data.Bytes())
+	sig, err := tooling.ReadFirstSignature(decoded.Data.Bytes())
 	if err != nil {
 		return fmt.Errorf("failed to read signature: %w", err)
 	}
