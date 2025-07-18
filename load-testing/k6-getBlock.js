@@ -34,10 +34,6 @@ export const options = {
   },
 };
 
-// This global variable will hold the configuration from the setup function
-// so that it can be accessed in the handleSummary function.
-let setupConfig = {};
-
 // --- PRNG for Deterministic Runs ---
 // A simple Linear Congruential Generator for seeded random numbers.
 function PRNG(seed) {
@@ -153,8 +149,8 @@ export function setup() {
     rewards: false,
   };
 
-  // Store the final configuration in the global variable for handleSummary.
-  setupConfig = {
+  // The configuration object that will be returned and made available to VUs and handleSummary.
+  const config = {
     runID: uuidv4(),
     k6Version: exec.version,
     seed: usedSeed,
@@ -167,8 +163,7 @@ export function setup() {
     staticRpcParams: staticRpcParams,
   };
 
-  // Return the configuration so it can be used in the VU code.
-  return setupConfig;
+  return config;
 }
 
 // --- Main Test Logic ---
@@ -304,47 +299,52 @@ export function handleSummary(data) {
 
   let summary = ['\n\n█ THRESHOLDS\n'];
 
-  for (const t of Object.keys(data.thresholds)) {
-    const metricName = t.split('{')[0];
-    const metric = data.metrics[metricName];
-    if (metric && metric.thresholds && metric.thresholds[t]) {
-      const threshold = metric.thresholds[t];
-      const pass = threshold.ok;
-      const symbol = pass ? green('✓') : red('✗');
+  // Defensive check to prevent crash if data.thresholds is missing.
+  if (data && data.thresholds && typeof data.thresholds === 'object') {
+    for (const t of Object.keys(data.thresholds)) {
+      const metricName = t.split('{')[0];
+      const metric = data.metrics[metricName];
+      if (metric && metric.thresholds && metric.thresholds[t]) {
+        const threshold = metric.thresholds[t];
+        const pass = threshold.ok;
+        const symbol = pass ? green('✓') : red('✗');
 
-      let valueStr = '';
-      if (metric.type === 'trend') {
-        const pValue = t.match(/p\((\d+\.?\d*)\)/);
-        if (pValue) {
-          valueStr = `p(${pValue[1]})=${formatDuration(
-            metric.values[pValue[0]],
-          )}`;
+        let valueStr = '';
+        if (metric.type === 'trend') {
+          const pValue = t.match(/p\((\d+\.?\d*)\)/);
+          if (pValue) {
+            valueStr = `p(${pValue[1]})=${formatDuration(
+              metric.values[pValue[0]],
+            )}`;
+          }
+        } else if (metric.type === 'rate') {
+          valueStr = `rate=${(metric.values.rate * 100).toFixed(2)}%`;
+        } else if (metric.type === 'counter') {
+          valueStr = `count=${metric.values.count}`;
         }
-      } else if (metric.type === 'rate') {
-        valueStr = `rate=${(metric.values.rate * 100).toFixed(2)}%`;
-      } else if (metric.type === 'counter') {
-        valueStr = `count=${metric.values.count}`;
-      }
 
-      summary.push(`\n  ${metricName}`);
-      summary.push(`    ${symbol} '${t}' ${valueStr}`);
+        summary.push(`\n  ${metricName}`);
+        summary.push(`    ${symbol} '${t}' ${valueStr}`);
+      }
     }
   }
 
   summary.push('\n\n█ TOTAL RESULTS\n');
 
   const checks = data.metrics.checks;
-  summary.push(
-    `\n  checks.........................: ${(
-      (checks.values.passes / (checks.values.passes + checks.values.fails)) *
-      100
-    ).toFixed(2)}%   ${green('✓ ' + checks.values.passes)}   ${red(
-      '✗ ' + checks.values.fails,
-    )}`,
-  );
+  if (checks && checks.values) {
+    summary.push(
+      `\n  checks.........................: ${(
+        (checks.values.passes / (checks.values.passes + checks.values.fails)) *
+        100
+      ).toFixed(2)}%   ${green('✓ ' + checks.values.passes)}   ${red(
+        '✗ ' + checks.values.fails,
+      )}`,
+    );
+  }
 
   for (const [name, metric] of Object.entries(data.metrics)) {
-    if (name === 'checks') continue; // Already handled
+    if (name === 'checks' || !metric.values) continue; // Already handled or no values
     let line = `\n  ${name}......................:`;
     if (metric.type === 'trend') {
       line += ` avg=${formatDuration(metric.values.avg)} min=${formatDuration(
@@ -376,8 +376,11 @@ export function handleSummary(data) {
     );
   }
 
+  // Access the config from setup_data, which is the correct way.
+  const finalConfig = data.setup_data;
+
   const fullSummary = {
-    configuration: setupConfig,
+    configuration: finalConfig,
     results: data,
   };
 
@@ -385,7 +388,9 @@ export function handleSummary(data) {
     .toISOString()
     .replace(/:/g, '-')
     .replace(/\..+/, '');
-  const jsonFilename = `summary-${setupConfig.runID}-${timestamp}.json`;
+  const jsonFilename = `summary-${finalConfig.runID}-${timestamp}.json`;
+
+  console.log(`\nSaving detailed summary to ${jsonFilename}...`);
 
   return {
     stdout: summary.join(''),
