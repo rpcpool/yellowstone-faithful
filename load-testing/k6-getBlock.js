@@ -8,11 +8,13 @@
 
 import http from 'k6/http';
 import { check, sleep } from 'k6';
-import { Counter } from 'k6/metrics';
+import { Counter, Trend } from 'k6/metrics';
 
 // --- Custom Metrics ---
 // A custom counter to specifically track unexpected RPC-level errors.
 const rpcErrors = new Counter('rpc_errors');
+// A custom trend metric to track the size of the response body in bytes.
+const responseSize = new Trend('response_size');
 
 // --- k6 Options ---
 export const options = {
@@ -23,6 +25,7 @@ export const options = {
   ],
   thresholds: {
     http_req_failed: ['rate<0.01'],
+    // The p95 response time threshold has been lowered to 2000ms (2s).
     http_req_duration: ['p(95)<2000'],
     // The test will fail if the server returns more than 10 unexpected RPC-level errors.
     rpc_errors: ['count<10'],
@@ -149,6 +152,9 @@ export default function (data) {
   // 4. Send the POST request.
   const res = http.post(data.rpcUrl, payload, params);
 
+  // Add the response size to our custom trend metric.
+  responseSize.add(res.body.length);
+
   // 5. Perform robust checks on the response.
   const httpSuccess = check(res, {
     'HTTP status is 200': (r) => r.status === 200,
@@ -227,5 +233,13 @@ export default function (data) {
 // 4. To run with a specific list of epochs, overriding the API call:
 //    k6 run -e EPOCHS="742,745,750" k6-getBlock.js
 
-// 5. To run with gzip compression enabled:
-//    k6 run -e USE_GZIP=true k6-getBlock.js
+// --- Correlation Analysis ---
+// To correlate response size and latency, you must export the raw results to a file
+// and analyze it with an external tool (e.g., Python with pandas/matplotlib, R, etc.).
+//
+// 5. Run the test and output to a JSON file:
+//    k6 run --out json=results.json k6-getBlock.js
+//
+// 6. You can then parse `results.json`. Each line is a JSON object. Look for objects
+//    where `type` is "Point" and `metric` is `http_req_duration` or `response_size`.
+//    You can then match these points by their timestamp (`data.time`) to correlate them.
