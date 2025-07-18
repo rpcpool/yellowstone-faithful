@@ -297,6 +297,11 @@ export function handleSummary(data) {
     return `${(ms / 1000).toFixed(2)}s`;
   }
 
+  function formatNumber(num) {
+    if (num === null || num === undefined || !isFinite(num)) return 'N/A';
+    return num.toFixed(2).toLocaleString();
+  }
+
   const green = (text) => `\x1b[32m${text}\x1b[0m`;
   const red = (text) => `\x1b[31m${text}\x1b[0m`;
 
@@ -357,7 +362,12 @@ export function handleSummary(data) {
 
     // Use the correct formatter based on the metric's 'contains' property or name.
     const isDataMetric = metric.contains === 'data' || name === 'response_size';
-    const formatter = isDataMetric ? formatBytes : formatDuration;
+    const isCounterMetric = metric.type === 'counter';
+    const formatter = isDataMetric
+      ? formatBytes
+      : isCounterMetric
+      ? formatNumber
+      : formatDuration;
 
     if (metric.type === 'trend') {
       line += ` avg=${formatter(metric.values.avg)} min=${formatter(
