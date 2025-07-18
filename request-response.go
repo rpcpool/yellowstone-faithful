@@ -58,6 +58,18 @@ func (c *requestContext) Reply(
 	return err
 }
 
+func (c *requestContext) ReplyRawMessage(
+	ctx context.Context,
+	id jsonrpc2.ID,
+	result json.RawMessage,
+) {
+	resp := &jsonrpc2.Response{
+		ID:     id,
+		Result: &result,
+	}
+	replyJSON(c.ctx, http.StatusOK, resp)
+}
+
 func putValueIntoContext(ctx context.Context, key, value any) context.Context {
 	return context.WithValue(ctx, key, value)
 }

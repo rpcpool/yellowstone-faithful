@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -162,6 +163,11 @@ func (multi *MultiEpoch) handleGetBlock_car(ctx context.Context, conn *requestCo
 	tim.time("get entries")
 
 	var rewardsUi *jsonbuilder.ArrayBuilder
+	defer func() {
+		if rewardsUi != nil {
+			rewardsUi.Put() // recycle the rewards UI array
+		}
+	}()
 	hasRewards := block.HasRewards()
 	rewardsCid := block.Rewards.(cidlink.Link).Cid
 	if *params.Options.Rewards && hasRewards {
@@ -216,6 +222,11 @@ func (multi *MultiEpoch) handleGetBlock_car(ctx context.Context, conn *requestCo
 	tim.time("get rewards")
 
 	allTransactions := make([]*jsonbuilder.OrderedJSONObject, 0, parsedNodes.CountTransactions())
+	defer func() {
+		for _, tx := range allTransactions {
+			tx.Put() // recycle the transaction objects
+		}
+	}()
 	{
 		_, buildTxSpan := telemetry.StartSpan(rpcSpanCtx, "GetBlock_BuildTransactions")
 		for transactionNode := range parsedNodes.Transaction() {
@@ -263,6 +274,7 @@ func (multi *MultiEpoch) handleGetBlock_car(ctx context.Context, conn *requestCo
 	}
 	tim.time("get transactions")
 	response := jsonbuilder.NewObject()
+	defer response.Put() // recycle the response object
 	response.Value("transactions", allTransactions)
 
 	// sort.Slice(allTransactions, func(i, j int) bool {
@@ -339,14 +351,19 @@ func (multi *MultiEpoch) handleGetBlock_car(ctx context.Context, conn *requestCo
 		parentSpan.End()
 	}
 	tim.time("get parent block")
-	err = conn.Reply(
+
+	encodedResult, err := response.MarshalJSON()
+	if err != nil {
+		return &jsonrpc2.Error{
+			Code:    jsonrpc2.CodeInternalError,
+			Message: "Internal error",
+		}, fmt.Errorf("failed to encode response: %w", err)
+	}
+	conn.ReplyRawMessage(
 		ctx,
 		req.ID,
-		response,
+		json.RawMessage(encodedResult),
 	)
 	tim.time("reply")
-	if err != nil {
-		return nil, fmt.Errorf("failed to reply: %w", err)
-	}
 	return nil, nil
 }

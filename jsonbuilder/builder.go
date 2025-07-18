@@ -4,58 +4,124 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"sync"
 
 	"github.com/bytedance/sonic"
 )
 
 // OrderedJSONObject represents a JSON object that is marshaled progressively.
 type OrderedJSONObject struct {
-	buf     []byte
 	isFirst bool
 	err     error // Holds the first error encountered.
+	buf     []byte
 }
 
 // ArrayBuilder represents a JSON array that is marshaled progressively.
 type ArrayBuilder struct {
-	buf     []byte
 	isFirst bool
 	err     error // Holds the first error encountered.
+	buf     []byte
+}
+
+type Recyclable interface {
+	Reset() // Resets the builder's buffer, allowing it to be reused.
+	Put()   // Puts the builder back into the pool.
 }
 
 // NewObject creates a new empty OrderedJSONObject, initializing its buffer.
 func NewObject() *OrderedJSONObject {
 	// Start with a reasonable initial capacity to reduce reallocations.
-	buf := make([]byte, 0, 512)
-	buf = append(buf, '{')
-	return &OrderedJSONObject{
-		buf:     buf,
-		isFirst: true,
-	}
+	o := getOrderedJSONObject()
+	o.buf = append(o.buf, '{')
+	o.isFirst = true
+	return o
 }
 
 // Put resets the builder's buffer, allowing it to be reused.
 // Note: This no longer uses an external pool.
-func (o *OrderedJSONObject) Put() {
+func (o *OrderedJSONObject) Reset() {
 	o.buf = o.buf[:0]
 	o.isFirst = true
 	o.err = nil
 }
 
-// NewArray creates a new ArrayBuilder, initializing its buffer.
-func NewArray() *ArrayBuilder {
-	buf := make([]byte, 0, 256)
-	buf = append(buf, '[')
-	return &ArrayBuilder{
-		buf:     buf,
-		isFirst: true,
+func (o *OrderedJSONObject) Put() {
+	if o == nil {
+		return
 	}
+	putOrderedJSONObject(o)
 }
 
-// Put resets the builder's buffer.
-func (a *ArrayBuilder) Put() {
+var _orderefJSONObjectPool = &sync.Pool{
+	New: func() interface{} {
+		return &OrderedJSONObject{
+			buf:     make([]byte, 0, 512), // Initialize with a reasonable capacity.
+			isFirst: true,
+		}
+	},
+}
+
+func putOrderedJSONObject(o *OrderedJSONObject) {
+	if o == nil {
+		return
+	}
+	o.Reset() // Reset the buffer and state.
+	_orderefJSONObjectPool.Put(o)
+}
+
+func getOrderedJSONObject() *OrderedJSONObject {
+	got := _orderefJSONObjectPool.Get().(*OrderedJSONObject)
+	// ASSUMES that it was reset before being put into the pool.
+	return got
+}
+
+var _arrayBuilderPool = &sync.Pool{
+	New: func() interface{} {
+		return &ArrayBuilder{
+			buf:     make([]byte, 0, 256), // Initialize with a reasonable capacity.
+			isFirst: true,
+		}
+	},
+}
+
+func getArrayBuilder() *ArrayBuilder {
+	got := _arrayBuilderPool.Get().(*ArrayBuilder)
+	// ASSUMES that it was reset before being put into the pool.
+	return got
+}
+
+func putArrayBuilder(a *ArrayBuilder) {
+	if a == nil {
+		return
+	}
+	a.Reset() // Reset the buffer and state.
+	_arrayBuilderPool.Put(a)
+}
+
+// NewArray creates a new ArrayBuilder, initializing its buffer.
+func NewArray() *ArrayBuilder {
+	ab := getArrayBuilder()
+	ab.buf = append(ab.buf, '[')
+	ab.isFirst = true
+	// override the runtime finalizer to put the ArrayBuilder back to the pool
+	// runtime.SetFinalizer(ab, func(a *ArrayBuilder) {
+	// 	putArrayBuilder(a) // Reset the ArrayBuilder and return it to the pool.
+	// })
+	return ab
+}
+
+// Reset resets the builder's buffer.
+func (a *ArrayBuilder) Reset() {
 	a.buf = a.buf[:0]
 	a.isFirst = true
 	a.err = nil
+}
+
+func (a *ArrayBuilder) Put() {
+	if a == nil {
+		return
+	}
+	putArrayBuilder(a) // Reset the ArrayBuilder and return it to the pool.
 }
 
 // MarshalJSON completes the JSON object and returns its contents.
