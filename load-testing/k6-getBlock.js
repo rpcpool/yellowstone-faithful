@@ -155,41 +155,49 @@ export default function (data) {
   });
 
   if (httpSuccess) {
-    const body = res.json();
-    // Perform a series of detailed checks on the RPC response body.
-    const rpcSuccess = check(body, {
-      'RPC: no error field OR is a known acceptable error': (b) => {
-        if (!b || !b.error) {
-          return true; // No error field, which is a success.
-        }
-        // Check if the error is the acceptable "skipped slot" error.
-        if (
-          b.error.message &&
-          b.error.message.includes(
-            'was skipped, or missing in long-term storage',
-          )
-        ) {
-          return true; // This is an acceptable error, so the check passes.
-        }
-        return false; // An unexpected error occurred.
-      },
-    });
+    try {
+      const body = res.json();
+      // Perform a series of detailed checks on the RPC response body.
+      const rpcSuccess = check(body, {
+        'RPC: no error field OR is a known acceptable error': (b) => {
+          if (!b || !b.error) {
+            return true; // No error field, which is a success.
+          }
+          // Check if the error is the acceptable "skipped slot" error.
+          if (
+            b.error.message &&
+            b.error.message.includes(
+              'was skipped, or missing in long-term storage',
+            )
+          ) {
+            return true; // This is an acceptable error, so the check passes.
+          }
+          return false; // An unexpected error occurred.
+        },
+      });
 
-    // If the RPC check failed, it means we encountered an *unexpected* error.
-    if (!rpcSuccess) {
-      rpcErrors.add(1);
-      // Log the specific unexpected error for debugging.
-      if (body && body.error) {
-        console.error(
-          `Unexpected RPC Error on block ${randomBlock}: ${JSON.stringify(
-            body.error,
-          )}`,
-        );
-      } else {
-        console.error(
-          `Malformed RPC response on block ${randomBlock}: ${res.body}`,
-        );
+      // If the RPC check failed, it means we encountered an *unexpected* error.
+      if (!rpcSuccess) {
+        rpcErrors.add(1);
+        // Log the specific unexpected error for debugging.
+        if (body && body.error) {
+          console.error(
+            `Unexpected RPC Error on block ${randomBlock}: ${JSON.stringify(
+              body.error,
+            )}`,
+          );
+        } else {
+          console.error(
+            `Malformed RPC response on block ${randomBlock}: ${res.body}`,
+          );
+        }
       }
+    } catch (e) {
+      // This block catches errors from res.json() if the body is not valid JSON.
+      rpcErrors.add(1);
+      console.error(
+        `Failed to parse JSON response for block ${randomBlock}. Error: ${e}. Body: ${res.body}`,
+      );
     }
   } else {
     // If the HTTP request itself failed, count that as an RPC error.
