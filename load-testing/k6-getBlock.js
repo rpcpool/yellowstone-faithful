@@ -343,7 +343,11 @@ export function handleSummary(data) {
     );
   }
 
-  for (const [name, metric] of Object.entries(data.metrics)) {
+  // Get a sorted list of metric names to ensure a consistent order.
+  const sortedMetricNames = Object.keys(data.metrics).sort();
+
+  for (const name of sortedMetricNames) {
+    const metric = data.metrics[name];
     if (name === 'checks' || !metric.values) continue; // Already handled or no values
     let line = `\n  ${name}......................:`;
 
