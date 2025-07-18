@@ -345,13 +345,17 @@ export function handleSummary(data) {
   }
 
   for (const [name, metric] of Object.entries(data.metrics)) {
-    if (name === 'checks' || !metric.values) continue; // Already handled or no values
+    // Skip checks and data metrics (handled separately)
+    if (
+      name === 'checks' ||
+      !metric.values ||
+      metric.contains === 'data' ||
+      name === 'response_size'
+    ) {
+      continue;
+    }
     let line = `\n  ${name}......................:`;
-    if (metric.contains === 'data') {
-      line += ` ${formatBytes(metric.values.count)}   ${formatBytes(
-        metric.values.rate,
-      )}/s`;
-    } else if (metric.type === 'trend') {
+    if (metric.type === 'trend') {
       line += ` avg=${formatDuration(metric.values.avg)} min=${formatDuration(
         metric.values.min,
       )} med=${formatDuration(metric.values.med)} max=${formatDuration(
@@ -371,11 +375,31 @@ export function handleSummary(data) {
     summary.push(line);
   }
 
+  // Create a dedicated section for data-related metrics.
+  summary.push('\n\n█ DATA METRICS (HUMAN-READABLE)\n');
+
+  const dataReceived = data.metrics.data_received;
+  if (dataReceived && dataReceived.values) {
+    summary.push(
+      `\n  data_received......................: ${formatBytes(
+        dataReceived.values.count,
+      )}   ${formatBytes(dataReceived.values.rate)}/s`,
+    );
+  }
+
+  const dataSent = data.metrics.data_sent;
+  if (dataSent && dataSent.values) {
+    summary.push(
+      `\n  data_sent..........................: ${formatBytes(
+        dataSent.values.count,
+      )}   ${formatBytes(dataSent.values.rate)}/s`,
+    );
+  }
+
   const responseStats = data.metrics.response_size?.values;
   if (responseStats) {
-    summary.push('\n\n█ HUMAN-READABLE RESPONSE SIZE\n');
     summary.push(
-      `\n  response_size.......................................................: avg=${formatBytes(
+      `\n  response_size......................: avg=${formatBytes(
         responseStats.avg,
       )} min=${formatBytes(responseStats.min)} med=${formatBytes(
         responseStats.med,
