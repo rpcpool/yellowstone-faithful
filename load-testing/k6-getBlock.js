@@ -9,6 +9,8 @@
 import http from 'k6/http';
 import { check, sleep } from 'k6';
 import { Counter, Trend } from 'k6/metrics';
+import exec from 'k6/execution';
+import { uuidv4 } from 'https://jslib.k6.io/k6-utils/1.6.0/index.js';
 
 // --- Custom Metrics ---
 // A custom counter to specifically track unexpected RPC-level errors.
@@ -36,6 +38,25 @@ export const options = {
 // so that it can be accessed in the handleSummary function.
 let setupConfig = {};
 
+// --- PRNG for Deterministic Runs ---
+// A simple Linear Congruential Generator for seeded random numbers.
+function PRNG(seed) {
+  this.m = 0x80000000; // 2**31
+  this.a = 1103515245;
+  this.c = 12345;
+  this.state = seed ? seed : Math.floor(Math.random() * (this.m - 1));
+
+  this.nextInt = function () {
+    this.state = (this.a * this.state + this.c) % this.m;
+    return this.state;
+  };
+
+  this.random = function () {
+    // returns in range [0,1]
+    return this.nextInt() / (this.m - 1);
+  };
+}
+
 // --- Setup Function ---
 // This function runs once before the test starts, initializing configuration
 // and passing it to the virtual users.
@@ -45,6 +66,18 @@ export function setup() {
   let EPOCHS_PARSED = EPOCHS_RAW;
   const EPOCH_LEN = 432000;
   const USE_GZIP = __ENV.USE_GZIP === 'true';
+  const SEED = __ENV.SEED ? parseInt(__ENV.SEED) : null;
+
+  // The initial PRNG is only used to generate a seed if one isn't provided.
+  const initialPrng = new PRNG(SEED);
+  const usedSeed = initialPrng.state;
+  if (SEED) {
+    console.log(`Using user-provided SEED for PRNG: ${usedSeed}`);
+  } else {
+    console.log(
+      `No SEED provided. Generated a new random seed for PRNG: ${usedSeed}. Use this seed to reproduce the run.`,
+    );
+  }
 
   let blockRanges = [];
   let epochSource = 'default';
@@ -114,14 +147,24 @@ export function setup() {
     );
   }
 
+  const staticRpcParams = {
+    encoding: 'json',
+    transactionDetails: 'none',
+    rewards: false,
+  };
+
   // Store the final configuration in the global variable for handleSummary.
   setupConfig = {
+    runID: uuidv4(),
+    k6Version: exec.version,
+    seed: usedSeed,
     rpcUrl: RPC_URL,
     useGzip: USE_GZIP,
     epochSource: epochSource,
     epochsRaw: EPOCHS_RAW || null, // Original env var value
     epochsUsed: EPOCHS_PARSED, // The list that was actually used
     blockRanges: blockRanges,
+    staticRpcParams: staticRpcParams,
   };
 
   // Return the configuration so it can be used in the VU code.
@@ -131,28 +174,29 @@ export function setup() {
 // --- Main Test Logic ---
 // The `data` parameter receives the object returned from the setup() function.
 export default function (data) {
-  // 1. Select a random epoch range from the configured list.
-  const selectedRange =
-    data.blockRanges[Math.floor(Math.random() * data.blockRanges.length)];
+  // 1. Create a deterministic PRNG for this specific iteration.
+  // The seed is a combination of the main run seed, the VU's unique ID, and the VU's iteration number.
+  // This ensures that VU #5 on its 10th iteration will ALWAYS request the same block,
+  // guaranteeing a reproducible sequence of requests regardless of execution speed.
+  const perIterationSeed =
+    data.seed + exec.vu.idInTest * 1000000 + exec.vu.iterationInScenario;
+  const prng = new PRNG(perIterationSeed);
 
-  // 2. Generate a random block number within that selected range.
+  // 2. Select a random epoch range from the configured list using the deterministic PRNG.
+  const selectedRange =
+    data.blockRanges[Math.floor(prng.random() * data.blockRanges.length)];
+
+  // 3. Generate a random block number within that selected range using the deterministic PRNG.
   const randomBlock =
-    Math.floor(Math.random() * (selectedRange.max - selectedRange.min + 1)) +
+    Math.floor(prng.random() * (selectedRange.max - selectedRange.min + 1)) +
     selectedRange.min;
 
-  // 3. Construct the JSON-RPC payload.
+  // 4. Construct the JSON-RPC payload.
   const payload = JSON.stringify({
     jsonrpc: '2.0',
     id: 1,
     method: 'getBlock',
-    params: [
-      randomBlock,
-      {
-        encoding: 'json',
-        transactionDetails: 'none',
-        rewards: false,
-      },
-    ],
+    params: [randomBlock, data.staticRpcParams],
   });
 
   const params = {
@@ -164,13 +208,13 @@ export default function (data) {
     params.compression = 'gzip';
   }
 
-  // 4. Send the POST request.
+  // 5. Send the POST request.
   const res = http.post(data.rpcUrl, payload, params);
 
   // Add the response size to our custom trend metric.
   responseSize.add(res.body.length);
 
-  // 5. Perform robust checks on the response.
+  // 6. Perform robust checks on the response.
   const httpSuccess = check(res, {
     'HTTP status is 200': (r) => r.status === 200,
   });
@@ -341,7 +385,7 @@ export function handleSummary(data) {
     .toISOString()
     .replace(/:/g, '-')
     .replace(/\..+/, '');
-  const jsonFilename = `summary-${timestamp}.json`;
+  const jsonFilename = `summary-${setupConfig.runID}-${timestamp}.json`;
 
   return {
     stdout: summary.join(''),
@@ -355,7 +399,7 @@ export function handleSummary(data) {
 //    On macOS: brew install k6
 //    On Ubuntu/Debian:
 //      sudo gpg -k
-//      sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+//      sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C4P91D6AC1D69
 //      echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
 //      sudo apt-get update
 //      sudo apt-get install k6
@@ -369,13 +413,16 @@ export function handleSummary(data) {
 // 4. To run with a specific list of epochs, overriding the API call:
 //    k6 run -e EPOCHS="742,745,750" k6-getBlock.js
 
+// 5. To reproduce a specific run, use the SEED from the logs:
+//    k6 run -e SEED=123456789 k6-getBlock.js
+
 // --- Correlation Analysis ---
 // To correlate response size and latency, you must export the raw results to a file
 // and analyze it with an external tool (e.g., Python with pandas/matplotlib, R, etc.).
 //
-// 5. Run the test and output to a JSON file:
+// 6. Run the test and output to a JSON file:
 //    k6 run --out json=results.json k6-getBlock.js
 //
-// 6. You can then parse `results.json`. Each line is a JSON object. Look for objects
+// 7. You can then parse `results.json`. Each line is a JSON object. Look for objects
 //    where `type` is "Point" and `metric` is `http_req_duration` or `response_size`.
 //    You can then match these points by their timestamp (`data.time`) to correlate them.
