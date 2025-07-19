@@ -29,7 +29,7 @@ export const options = {
     'externally-controlled-scenario': {
       executor: 'externally-controlled',
       // Define the total duration of the test. The controller will manage this.
-      duration: '30m',
+      duration: '1h',
       // Define the maximum possible VUs. The controller cannot exceed this.
       maxVUs: 1000,
     },
