@@ -51,7 +51,7 @@ async function k6api(path, method = 'GET', body = null) {
     console.error(`Error calling k6 API at ${url}:`, error.message);
     if (error.cause && error.cause.code === 'ECONNREFUSED') {
       console.error(
-        'Connection refused. Is k6 running in another terminal with the --paused flag?',
+        'Connection refused. Is k6 running in another terminal with the --paused flag? Maybe it reached the end of the test? Try restarting it.',
       );
       process.exit(1);
     }
