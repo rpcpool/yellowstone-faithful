@@ -89,6 +89,7 @@ async function checkLatencyThreshold() {
   const latencyMetric = metricsResponse.data.find(
     (m) => m.id === METRIC_TO_WATCH,
   );
+  const reqsMetric = metricsResponse.data.find((m) => m.id === 'http_reqs');
 
   if (
     !latencyMetric ||
@@ -102,7 +103,13 @@ async function checkLatencyThreshold() {
   }
 
   const p95 = latencyMetric.attributes.sample['p(95)'];
-  console.log(`Current p(95) for ${METRIC_TO_WATCH} is ${p95.toFixed(2)}ms`);
+  const reqsRate = reqsMetric?.attributes?.sample?.rate || 0;
+
+  console.log(
+    `Current p(95) for ${METRIC_TO_WATCH} is ${p95.toFixed(
+      2,
+    )}ms | req/s: ${reqsRate.toFixed(2)}`,
+  );
 
   if (p95 > LATENCY_THRESHOLD_MS) {
     console.error(
