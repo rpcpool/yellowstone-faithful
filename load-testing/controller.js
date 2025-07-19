@@ -6,12 +6,13 @@
 // 2. Incrementally ramp up VUs in steps.
 // 3. After each step, it holds and checks performance metrics.
 // 4. If latency exceeds a threshold, it halves the increment size and continues ramping from the last stable point.
-// 5. Stops the test when finished.
+// 5. When the increment is 1 and a failure occurs, it concludes that the max VUs have been found.
+// 6. Stops the test when finished.
 
 // --- Configuration ---
 const K6_API_URL = 'http://localhost:6565';
 const METRIC_TO_WATCH = 'http_req_duration';
-const LATENCY_THRESHOLD_MS = 2000; // Must match the threshold in the k6 script
+const LATENCY_THRESHOLD_MS = 500; // Must match the threshold in the k6 script
 
 // Configuration for incremental ramp-up
 const INITIAL_VU_INCREMENT = 10; // How many VUs to add in each step initially
@@ -74,36 +75,32 @@ async function setVUs(count) {
 // Helper function to sleep for a given number of milliseconds
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Function to check latency against the threshold
-async function checkLatencyThreshold() {
-  console.log(`Checking latency metrics...`);
+// Helper function to get the current metrics from the k6 API
+async function getMetrics() {
   const metricsResponse = await k6api('/v1/metrics');
-
   if (!metricsResponse || !Array.isArray(metricsResponse.data)) {
-    console.warn(
-      'Metrics array not available in API response. Skipping check.',
-    );
-    return true; // Return true (pass) if we can't get metrics
+    return { p95: null, reqsRate: 0 };
   }
-
   const latencyMetric = metricsResponse.data.find(
     (m) => m.id === METRIC_TO_WATCH,
   );
   const reqsMetric = metricsResponse.data.find((m) => m.id === 'http_reqs');
+  const p95 = latencyMetric?.attributes?.sample?.['p(95)'];
+  const reqsRate = reqsMetric?.attributes?.sample?.rate || 0;
+  return { p95, reqsRate };
+}
 
-  if (
-    !latencyMetric ||
-    !latencyMetric.attributes.sample ||
-    latencyMetric.attributes.sample['p(95)'] === undefined
-  ) {
+// Function to check latency against the threshold
+async function checkLatencyThreshold() {
+  console.log(`Checking latency metrics...`);
+  const { p95, reqsRate } = await getMetrics();
+
+  if (p95 === null) {
     console.warn(
       `Metric '${METRIC_TO_WATCH}' or its p(95) value is not yet available. Skipping check.`,
     );
     return true; // Return true (pass) if the specific metric isn't ready
   }
-
-  const p95 = latencyMetric.attributes.sample['p(95)'];
-  const reqsRate = reqsMetric?.attributes?.sample?.rate || 0;
 
   console.log(
     `Current p(95) for ${METRIC_TO_WATCH} is ${p95.toFixed(
@@ -139,6 +136,7 @@ async function main() {
     return;
   }
   console.log('k6 is running and paused. Starting test...');
+  console.log(`Desired latency threshold is set to ${LATENCY_THRESHOLD_MS}ms.`);
 
   // 2. Resume the test
   await k6api('/v1/status', 'PATCH', {
@@ -148,17 +146,9 @@ async function main() {
   // 3. Execute incremental ramp-up
   let currentVUs = 0;
   let lastKnownGoodVUs = 0;
-  // **NEW**: Use a mutable variable for the increment
   let vuIncrement = INITIAL_VU_INCREMENT;
 
   while (currentVUs < MAX_VUS_TO_TEST) {
-    // Ensure we don't increment by 0
-    if (vuIncrement < 1) {
-      console.log(
-        'VU increment is less than 1. Concluding test as max stable load is likely found.',
-      );
-      break;
-    }
     currentVUs += vuIncrement;
     console.log(
       `\n--- Ramping up to ${currentVUs} VUs (increment: ${vuIncrement}) ---`,
@@ -175,6 +165,15 @@ async function main() {
       console.log(`Step passed. ${currentVUs} VUs is a stable level.`);
       lastKnownGoodVUs = currentVUs;
     } else {
+      // **FIXED LOGIC**: If the increment is already 1 and we fail, we've found the tipping point.
+      if (vuIncrement === 1) {
+        console.log(
+          `Threshold failed at increment 1. Maximum stable load is ${lastKnownGoodVUs} VUs.`,
+        );
+        await setVUs(lastKnownGoodVUs); // Revert to the last good state
+        break; // Exit the main loop
+      }
+
       // Threshold breached, start searching downwards to find a stable point.
       console.error(
         `Threshold failed at ${currentVUs} VUs. Searching for a stable level by decrementing...`,
@@ -212,7 +211,7 @@ async function main() {
         await setVUs(lastKnownGoodVUs);
       }
 
-      // **NEW**: Halve the increment for the next ramp-up attempt
+      // Halve the increment for the next ramp-up attempt
       vuIncrement = Math.ceil(vuIncrement / 2);
       console.log(
         `\n---> Next ramp-up increment will be ${vuIncrement} VUs. <---`,
@@ -229,7 +228,7 @@ async function main() {
   console.log(
     `Holding at final stable point for ${FINAL_STABILITY_HOLD_SECONDS} seconds...`,
   );
-  await sleep(FINAL_STABILITY_HOLD_SECONDS * 1000);
+  await sleep(FINAL_STABILITY_HOLD_SECONDS * 2000);
 
   console.log('Ramping down VUs...');
   await setVUs(0);

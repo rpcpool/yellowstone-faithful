@@ -20,7 +20,7 @@ const responseSize = new Trend('response_size');
 // A dedicated Trend metric for the latency-based back-off logic.
 const vu_latency_trend = new Trend('vu_latency', true);
 
-const LATENCY_THRESHOLD_MS = 2000;
+const LATENCY_THRESHOLD_MS = 500;
 
 // --- k6 Options ---
 export const options = {
