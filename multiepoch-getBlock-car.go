@@ -378,12 +378,12 @@ func (multi *MultiEpoch) handleGetBlock_car(ctx context.Context, conn *requestCo
 			Message: "Internal error",
 		}, fmt.Errorf("failed to encode response: %w", err)
 	}
+	defer bytebufferpool.Put(encodedResult) // return the buffer to the pool
 	conn.ReplyRawMessage(
 		ctx,
 		req.ID,
 		json.RawMessage(encodedResult.Bytes()),
 	)
-	bytebufferpool.Put(encodedResult) // return the buffer to the pool
 	tim.time("reply")
 	return nil, nil
 }
