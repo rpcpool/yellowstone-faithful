@@ -5,7 +5,7 @@
 // 1. Start a paused test.
 // 2. Incrementally ramp up VUs in steps.
 // 3. After each step, it holds and checks performance metrics.
-// 4. If latency exceeds a threshold, it incrementally steps down the VU count to find a stable level.
+// 4. If latency exceeds a threshold, it halves the increment size and continues ramping from the last stable point.
 // 5. Stops the test when finished.
 
 // --- Configuration ---
@@ -14,13 +14,12 @@ const METRIC_TO_WATCH = 'http_req_duration';
 const LATENCY_THRESHOLD_MS = 2000; // Must match the threshold in the k6 script
 
 // Configuration for incremental ramp-up
-const VU_INCREMENT = 10; // How many VUs to add in each step
+const INITIAL_VU_INCREMENT = 10; // How many VUs to add in each step initially
 const HOLD_PER_STEP_SECONDS = 15; // How long to hold at each new VU level before checking metrics
 const MAX_VUS_TO_TEST = 1000; // The maximum number of VUs the controller will attempt to reach
 
 // Configuration for downward search when a threshold fails
 const VU_DECREMENT = 5; // How many VUs to remove when searching down
-// **MODIFIED**: Increased hold time to allow p(95) metric to stabilize after a load change.
 const HOLD_PER_DECREMENT_SECONDS = 15; // How long to hold at each lower VU level
 const FINAL_STABILITY_HOLD_SECONDS = 20; // How long to hold at the final stable point
 
@@ -142,10 +141,21 @@ async function main() {
   // 3. Execute incremental ramp-up
   let currentVUs = 0;
   let lastKnownGoodVUs = 0;
+  // **NEW**: Use a mutable variable for the increment
+  let vuIncrement = INITIAL_VU_INCREMENT;
 
   while (currentVUs < MAX_VUS_TO_TEST) {
-    currentVUs += VU_INCREMENT;
-    console.log(`\n--- Ramping up to ${currentVUs} VUs ---`);
+    // Ensure we don't increment by 0
+    if (vuIncrement < 1) {
+      console.log(
+        'VU increment is less than 1. Concluding test as max stable load is likely found.',
+      );
+      break;
+    }
+    currentVUs += vuIncrement;
+    console.log(
+      `\n--- Ramping up to ${currentVUs} VUs (increment: ${vuIncrement}) ---`,
+    );
     await setVUs(currentVUs);
 
     console.log(
@@ -165,11 +175,11 @@ async function main() {
       let stablePointFound = false;
       let searchVUs = currentVUs;
 
-      while (!stablePointFound && searchVUs > 0) {
+      while (!stablePointFound && searchVUs > lastKnownGoodVUs) {
         searchVUs -= VU_DECREMENT;
-        if (searchVUs <= 0) {
-          searchVUs = 0;
-          break; // Stop if we reach zero
+        if (searchVUs <= lastKnownGoodVUs) {
+          searchVUs = lastKnownGoodVUs;
+          break;
         }
 
         console.log(`\n--- Stepping down to ${searchVUs} VUs ---`);
@@ -185,25 +195,36 @@ async function main() {
           console.log(`Stable point found at ${searchVUs} VUs.`);
           lastKnownGoodVUs = searchVUs;
           stablePointFound = true;
-
-          console.log(
-            `Holding at stable point of ${lastKnownGoodVUs} VUs for ${FINAL_STABILITY_HOLD_SECONDS} seconds...`,
-          );
-          await sleep(FINAL_STABILITY_HOLD_SECONDS * 1000);
         }
       }
 
       if (!stablePointFound) {
-        console.error('Could not find a stable VU level. Ramping down to 0.');
-        lastKnownGoodVUs = 0;
+        console.log(
+          `Could not find a stable point above ${lastKnownGoodVUs} VUs. Reverting to last known good level.`,
+        );
+        await setVUs(lastKnownGoodVUs);
       }
 
-      break; // Exit the main ramp-up loop because the test objective is complete.
+      // **NEW**: Halve the increment for the next ramp-up attempt
+      vuIncrement = Math.ceil(vuIncrement / 2);
+      console.log(
+        `\n---> Next ramp-up increment will be ${vuIncrement} VUs. <---`,
+      );
+      // Reset currentVUs to the last stable point to continue ramping up from there
+      currentVUs = lastKnownGoodVUs;
     }
   }
 
-  // 4. Ramp down and stop the test
-  console.log('\nTest sequence finished. Ramping down VUs.');
+  // 4. Hold at the final stable point and then ramp down
+  console.log(
+    `\nTest sequence finished. Final stable load was ${lastKnownGoodVUs} VUs.`,
+  );
+  console.log(
+    `Holding at final stable point for ${FINAL_STABILITY_HOLD_SECONDS} seconds...`,
+  );
+  await sleep(FINAL_STABILITY_HOLD_SECONDS * 1000);
+
+  console.log('Ramping down VUs...');
   await setVUs(0);
   console.log('Stopping test...');
   await k6api('/v1/status', 'PATCH', {
