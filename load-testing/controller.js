@@ -85,8 +85,13 @@ async function getMetrics() {
   );
   const reqsMetric = metricsResponse.data.find((m) => m.id === 'http_reqs');
   const p95 = latencyMetric?.attributes?.sample?.['p(95)'];
+  const avg = latencyMetric?.attributes?.sample?.avg;
+  const max = latencyMetric?.attributes?.sample?.max;
+  const med = latencyMetric?.attributes?.sample?.med;
+  const min = latencyMetric?.attributes?.sample?.min;
+  const p90 = latencyMetric?.attributes?.sample?.['p(90)'];
   const reqsRate = reqsMetric?.attributes?.sample?.rate || 0;
-  return { p95, reqsRate };
+  return { p95, reqsRate, avg, max, med, min, p90 };
 }
 
 // Main controller logic
@@ -123,7 +128,7 @@ async function main() {
       console.log(`Holding for ${HOLD_PER_STEP_SECONDS} seconds...`);
       await sleep(HOLD_PER_STEP_SECONDS * 1000);
 
-      const { p95, reqsRate } = await getMetrics();
+      const { p95, reqsRate, avg, max, med, min, p90 } = await getMetrics();
 
       if (p95 === null) {
         console.warn(`Metric '${METRIC_TO_WATCH}' not available. Holding...`);
@@ -133,7 +138,11 @@ async function main() {
       console.log(
         `Current p(95) for ${METRIC_TO_WATCH} is ${p95.toFixed(
           2,
-        )}ms | req/s: ${reqsRate.toFixed(2)}`,
+        )}ms (avg=${avg.toFixed(2)}ms, max=${max.toFixed(
+          2,
+        )}ms, med=${med.toFixed(2)}ms, min=${min.toFixed(
+          2,
+        )}ms, p(90)=${p90.toFixed(2)}ms) | req/s=${reqsRate.toFixed(2)}`,
       );
 
       if (p95 < LATENCY_THRESHOLD_MS) {
@@ -196,6 +205,16 @@ async function main() {
   }
 }
 
+// catch error, and if this is a Ctrl+C, then stop the test
+process.on('SIGINT', async () => {
+  console.log('\nReceived SIGINT (Ctrl+C). Stopping test gracefully...');
+  await setVUs(0);
+  await k6api('/v1/status', 'PATCH', {
+    data: { attributes: { stopped: true } },
+  });
+  console.log('Test stopped. Exiting controller.');
+  process.exit(0);
+});
 main().catch((err) => {
   console.error('Controller script failed:', err);
 });
