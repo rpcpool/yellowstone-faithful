@@ -149,7 +149,7 @@ func newCmd_rpc() *cli.Command {
 			}
 			// Only start the profiler if the server address is provided.
 			if pyroscopeServerAddress != "" {
-				log.Printf("Pyroscope profiling is ENABLED. Connecting to %s\n", pyroscopeServerAddress)
+				log.Printf("Pyroscope profiling is ENABLED. Connecting to pyroscope server at %s\n", pyroscopeServerAddress)
 
 				// Set up runtime mutex and block profiling to get more detailed insights.
 				runtime.SetMutexProfileFraction(5)
