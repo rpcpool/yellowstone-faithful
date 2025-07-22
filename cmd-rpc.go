@@ -166,7 +166,7 @@ func newCmd_rpc() *cli.Command {
 				_, err = pyroscope.Start(pyroscope.Config{
 					ApplicationName: "yellowstone-faithful",
 					ServerAddress:   pyroscopeServerAddress,
-					Logger:          pyroscope.StandardLogger,
+					Logger:          nil, // disable logging.
 					Tags: map[string]string{
 						"hostname": hostname,
 						"service":  "yellowstone-faithful/rpc",
