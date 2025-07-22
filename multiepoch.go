@@ -16,6 +16,7 @@ import (
 	"github.com/grafana/pyroscope-go"
 	"github.com/libp2p/go-reuseport"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/rpcpool/yellowstone-faithful/compactindexsized"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"github.com/rpcpool/yellowstone-faithful/metrics"
 	old_faithful_grpc "github.com/rpcpool/yellowstone-faithful/old-faithful-proto/old-faithful-grpc"
@@ -239,6 +240,8 @@ func (m *MultiEpoch) ListenAndServe(ctx context.Context, listenOn string, lsConf
 	handler = fasthttp.CompressHandler(handler)
 
 	klog.Infof("RPC server listening on %s", listenOn)
+	// to see prometheus metrics visit listenOn/metrics
+	klog.Infof("Prometheus metrics available at %s/metrics", listenOn)
 
 	s := &fasthttp.Server{
 		Handler:            handler,
@@ -438,7 +441,11 @@ func newMultiEpochHandler(handler *MultiEpoch, lsConf *ListenerConfig) func(ctx 
 		errorResp, err := handler.handleRequest(setRequestIDToContext(reqCtx, reqID), rqCtx, &rpcRequest)
 		if err != nil {
 			telemetry.RecordError(span, err, "Failed to handle JSON-RPC request")
-			klog.Errorf("[%s] failed to handle %q: %v", reqID, sanitizeMethod(method), err)
+			if errors.Is(err, compactindexsized.ErrNotFound) {
+				metrics.ErrBlockNotFound.Inc()
+			} else {
+				klog.Errorf("[%s] failed to handle %q: %v", reqID, sanitizeMethod(method), err)
+			}
 		}
 		if errorResp != nil {
 			metrics.MethodToSuccessOrFailure.WithLabelValues(sanitizeMethod(method), "failure").Inc()

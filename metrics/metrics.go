@@ -99,3 +99,10 @@ var latencyBuckets = []float64{
 	// then 10-60 with increments of 5
 	15, 20, 25, 30, 35, 40, 45, 50, 55, 60,
 }
+
+var ErrBlockNotFound = promauto.NewCounter(
+	prometheus.CounterOpts{
+		Name: "err_block_not_found",
+		Help: "A block was not found because either skipped or not available in current set of epochs",
+	},
+)
