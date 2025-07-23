@@ -10,6 +10,7 @@ import (
 	"github.com/ipfs/go-cid"
 	cbor "github.com/ipfs/go-ipld-cbor"
 	carv1 "github.com/ipld/go-car"
+	"github.com/ipld/go-car/util"
 	"github.com/rpcpool/yellowstone-faithful/readahead"
 	"github.com/valyala/bytebufferpool"
 )
@@ -119,6 +120,9 @@ func (cr *PrefetchingCarReader) readNode(withData bool) (cid.Cid, *bytebufferpoo
 	dataLen := int(sectionLen - uint64(cidLen))
 	if dataLen < 0 {
 		return c, nil, 0, errors.New("malformed car; section length is smaller than CID length")
+	}
+	if dataLen > int(util.MaxAllowedSectionSize) {
+		return c, nil, 0, fmt.Errorf("section length %d exceeds maximum allowed size %d", dataLen, util.MaxAllowedSectionSize)
 	}
 
 	var data *bytebufferpool.ByteBuffer
