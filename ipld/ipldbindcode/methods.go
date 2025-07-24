@@ -227,7 +227,7 @@ func (decoded *Transaction) Signatures() ([]solana.Signature, error) {
 }
 
 func (decoded *Transaction) Signature() (solana.Signature, error) {
-	return readFirstSignature(decoded.Data.Bytes())
+	return tooling.ReadFirstSignature(decoded.Data.Bytes())
 }
 
 func readAllSignatures(buf []byte) ([]solana.Signature, error) {
@@ -255,31 +255,6 @@ func readAllSignatures(buf []byte) ([]solana.Signature, error) {
 		}
 	}
 	return sigs, nil
-}
-
-func readFirstSignature(buf []byte) (solana.Signature, error) {
-	decoder := bin.NewCompactU16Decoder(buf)
-	numSigs, err := decoder.ReadCompactU16()
-	if err != nil {
-		return solana.Signature{}, err
-	}
-	if numSigs == 0 {
-		return solana.Signature{}, fmt.Errorf("no signatures")
-	}
-	// check that there is at least 64 bytes left:
-	if decoder.Remaining() < 64 {
-		return solana.Signature{}, fmt.Errorf("not enough bytes left to read a signature")
-	}
-
-	var sig solana.Signature
-	numRead, err := decoder.Read(sig[:])
-	if err != nil {
-		return sig, err
-	}
-	if numRead != 64 {
-		return sig, fmt.Errorf("unexpected signature length %d", numRead)
-	}
-	return sig, nil
 }
 
 // GetBlockHeight returns the 'block_height' field, which indicates

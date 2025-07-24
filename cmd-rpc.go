@@ -115,7 +115,6 @@ func newCmd_rpc() *cli.Command {
 				Destination: &lotusAPIAddress,
 			},
 			&cli.StringFlag{
-				// PYROSCOPE_SERVER_ADDRESS
 				Name:        "pyroscope-server-address",
 				Usage:       "Address of the Pyroscope server for profiling",
 				Value:       "", // If empty, profiling is not enabled
