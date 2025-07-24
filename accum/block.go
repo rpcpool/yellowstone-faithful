@@ -167,12 +167,13 @@ func (obj ObjectWithMetadata) RawSection() ([]byte, error) {
 	// length = len(cid) + len(data)
 	// section = leb128(length) || cid || data
 
+	cidBytes := obj.Cid.Bytes()
 	dataBytes := obj.ObjectData.Bytes()
-	sectionLen := len(obj.Cid.Bytes()) + len(dataBytes)
+	sectionLen := len(cidBytes) + len(dataBytes)
 	// write uvarint length of the section
 	buf = append(buf, leb128.FromUInt64(uint64(sectionLen))...)
 	// write cid
-	buf = append(buf, obj.Cid.Bytes()...)
+	buf = append(buf, cidBytes...)
 	// write data
 	buf = append(buf, dataBytes...)
 	return buf, nil
