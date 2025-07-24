@@ -226,7 +226,6 @@ func SplitIntoDataAndCids(sections []byte) (DataAndCidSlice, error) {
 		node.Data.Write(sections[dataStart:dataEnd])
 		{
 			if dataEnd > len(sections) {
-				spew.Dump(len(nodes))
 				return nil, fmt.Errorf("dataEnd %d is out of bounds for data length %d", dataEnd, len(sections))
 			}
 		}
@@ -234,4 +233,29 @@ func SplitIntoDataAndCids(sections []byte) (DataAndCidSlice, error) {
 		sections = sections[dataEnd:]
 	}
 	return nodes, nil
+}
+
+func (d DataAndCidSlice) Blocks() ([]*ParsedAndCid, error) {
+	blocks := make([]*ParsedAndCid, 0, len(d))
+	for _, dataAndCid := range d {
+		if dataAndCid == nil || dataAndCid.Data == nil {
+			return nil, fmt.Errorf("nil DataAndCid or Data in DataAndCidSlice")
+		}
+		kind, err := iplddecoders.GetKind(dataAndCid.Data.Bytes())
+		if err != nil {
+			return nil, fmt.Errorf("failed to get kind for CID %s: %w", dataAndCid.Cid, err)
+		}
+		if kind != iplddecoders.KindBlock {
+			continue
+		}
+		block, err := iplddecoders.DecodeBlock(dataAndCid.Data.Bytes())
+		if err != nil {
+			return nil, fmt.Errorf("failed to decode block with CID %s: %w", dataAndCid.Cid, err)
+		}
+		parsed := getParsedAndCid()
+		parsed.Cid = dataAndCid.Cid
+		parsed.Data = block
+		blocks = append(blocks, parsed)
+	}
+	return blocks, nil
 }
