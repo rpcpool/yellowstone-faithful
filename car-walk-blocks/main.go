@@ -142,7 +142,7 @@ func openURI(pathOrURL string) (io.ReadCloser, *atomic.Uint64, error) {
 	}
 	{
 		client := NewClient(nil)
-		stream, err := client.GetStream(pathOrURL)
+		stream, err := NewResilientStream(client, pathOrURL, 3, time.Second*5)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to get stream from %q: %w", pathOrURL, err)
 		}
@@ -215,32 +215,131 @@ type Client struct {
 // If no httpClient is provided, a default one with a 30-second timeout is used.
 func NewClient(httpClient *http.Client) *Client {
 	if httpClient == nil {
-		httpClient = &http.Client{}
+		httpClient = &http.Client{
+			// do dual stack, try http2 first, then http1
+			Transport: &http.Transport{
+				ForceAttemptHTTP2:     true,
+				DisableKeepAlives:     false,
+				IdleConnTimeout:       30 * time.Second,
+				MaxIdleConns:          100,
+				MaxIdleConnsPerHost:   100,
+				DisableCompression:    false,
+				ExpectContinueTimeout: 1 * time.Second,
+			},
+		}
 	}
 	return &Client{httpClient: httpClient}
 }
 
-// GetStream performs an HTTP GET request and returns the response body as an io.ReadCloser.
-// The caller is responsible for closing the returned stream.
-// This method is memory-efficient as it does not buffer the entire response body.
-func (c *Client) GetStream(url string) (io.ReadCloser, error) {
+// GetStream makes a GET request, returns the body and the response.
+func (c *Client) GetStream(url string, offset int64) (io.ReadCloser, *http.Response, error) {
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
+		return nil, nil, err
 	}
-
+	if offset > 0 {
+		req.Header.Set("Range", fmt.Sprintf("bytes=%d-", offset))
+	}
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("http get failed: %w", err)
+		return nil, nil, err
+	}
+	return resp.Body, resp, nil
+}
+
+// ResilientStream is an io.ReadCloser that automatically retries on read errors.
+type ResilientStream struct {
+	client     *Client
+	url        string
+	maxRetries int
+	retryDelay time.Duration
+
+	stream io.ReadCloser
+	offset int64 // Total bytes successfully read through this reader
+}
+
+// NewResilientStream creates and initializes a stream that will attempt to recover.
+func NewResilientStream(c *Client, url string, retries int, delay time.Duration) (*ResilientStream, error) {
+	rs := &ResilientStream{
+		client:     c,
+		url:        url,
+		maxRetries: retries,
+		retryDelay: delay,
+		offset:     0,
 	}
 
-	// Check for a successful status code.
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		// The body must be closed to release the connection,
-		// even if the status code indicates an error.
-		resp.Body.Close()
-		return nil, fmt.Errorf("request failed with status: %s", resp.Status)
+	// Make the initial connection.
+	if err := rs.reconnect(); err != nil {
+		return nil, fmt.Errorf("initial connection failed: %w", err)
+	}
+	return rs, nil
+}
+
+// reconnect handles the logic of establishing or re-establishing the stream.
+func (rs *ResilientStream) reconnect() error {
+	if rs.stream != nil {
+		rs.stream.Close() // Close the old, broken stream.
 	}
 
-	return resp.Body, nil
+	stream, resp, err := rs.client.GetStream(rs.url, rs.offset)
+	if err != nil {
+		return err
+	}
+
+	// Verify the server's response.
+	// This approach assumes the server correctly supports Range requests.
+	if (rs.offset > 0 && resp.StatusCode != http.StatusPartialContent) || (rs.offset == 0 && resp.StatusCode != http.StatusOK) {
+		stream.Close()
+		return fmt.Errorf("received unexpected status: %s", resp.Status)
+	}
+
+	rs.stream = stream
+	return nil
+}
+
+// Read implements the io.Reader interface. This is where the retry logic lives.
+func (rs *ResilientStream) Read(p []byte) (n int, err error) {
+	if rs.stream == nil {
+		return 0, io.ErrClosedPipe
+	}
+
+	// Attempt the initial read.
+	n, err = rs.stream.Read(p)
+	rs.offset += int64(n)
+
+	// If there's an error (and it's not a clean EOF), start the retry process.
+	if err != nil && err != io.EOF {
+		fmt.Fprintf(os.Stderr, "\nRead error: %v. Attempting to recover...\n", err)
+
+		for i := 0; i < rs.maxRetries; i++ {
+			time.Sleep(rs.retryDelay)
+			fmt.Fprintf(os.Stderr, "Retry %d/%d... ", i+1, rs.maxRetries)
+
+			if reconErr := rs.reconnect(); reconErr != nil {
+				fmt.Fprintf(os.Stderr, "reconnect failed: %v\n", reconErr)
+				continue // Move to the next retry attempt.
+			}
+
+			fmt.Fprint(os.Stderr, "reconnected. Retrying read... ")
+			n, err = rs.stream.Read(p) // Try reading from the new stream.
+			rs.offset += int64(n)
+
+			if err == nil {
+				fmt.Fprintln(os.Stderr, "read successful.")
+				return n, nil // Success, exit the retry loop and return data.
+			}
+		}
+		// If all retries fail, return the last error.
+		return n, fmt.Errorf("read failed after %d retries: %w", rs.maxRetries, err)
+	}
+
+	return n, err
+}
+
+// Close closes the underlying stream.
+func (rs *ResilientStream) Close() error {
+	if rs.stream == nil {
+		return nil
+	}
+	return rs.stream.Close()
 }
