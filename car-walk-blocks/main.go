@@ -8,11 +8,14 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
 	"os"
+	"os/signal"
 	"sync/atomic"
 	"time"
 
 	"github.com/davecgh/go-spew/spew"
+	"github.com/dustin/go-humanize"
 	"github.com/rpcpool/yellowstone-faithful/carreader"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"github.com/rpcpool/yellowstone-faithful/nodetools"
@@ -31,29 +34,45 @@ func main() {
 	slog.Info("Going to walk each block in the CAR file",
 		"car", carpath,
 	)
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, os.Kill)
 	defer cancel()
 
 	highestSlotCar := new(atomic.Uint64)
 	numBlocksReadCar := new(atomic.Uint64)
+	startedAt := time.Now()
+
+	reader, bytecounter, err := openURI(carpath)
+	if err != nil {
+		slog.Error("Failed to open CAR file", "error", err, "carpath", carpath)
+		return
+	}
 	go func() {
 		ticker := time.NewTicker(time.Millisecond * 500)
 		defer ticker.Stop()
 		for {
 			select {
 			case <-ticker.C:
-				fmt.Printf("Blocks read from CAR file '%s': %d blocks, Highest Slot: %d\r", carpath, numBlocksReadCar.Load(), highestSlotCar.Load())
+				fmt.Printf(
+					"Walking '%s': %s blocks, Highest Slot: %s, Elapsed %s%s\r",
+					carpath,
+					humanize.Comma(int64(numBlocksReadCar.Load())),
+					humanize.Comma(int64(highestSlotCar.Load())),
+					time.Since(startedAt).Round(time.Second),
+					func() string {
+						if bytecounter != nil {
+							return fmt.Sprintf(", Read: %s", humanize.Bytes(bytecounter.Load()))
+						}
+						return ""
+					}(),
+				)
 			case <-ctx.Done():
 				slog.Info("Stopping progress reporting")
+				signal.Reset(os.Interrupt)
 				return
 			}
 		}
 	}()
-	reader, err := openURI(carpath)
-	if err != nil {
-		slog.Error("Failed to open CAR file", "error", err, "carpath", carpath)
-		return
-	}
+
 	walker, err := NewBlockWalker(reader, func(dag *nodetools.DataAndCidSlice) error {
 		select {
 		case <-ctx.Done():
@@ -107,13 +126,31 @@ func main() {
 	cancel()
 }
 
-func openURI(pathOrURL string) (io.ReadCloser, error) {
+func openURI(pathOrURL string) (io.ReadCloser, *atomic.Uint64, error) {
 	uri_ := uri.New(pathOrURL)
 	if uri_.IsZero() || !uri_.IsValid() || (!uri_.IsFile() && !uri_.IsWeb()) {
-		return nil, fmt.Errorf("invalid path or URL: %s", pathOrURL)
+		return nil, nil, fmt.Errorf("invalid path or URL: %s", pathOrURL)
 	}
 	if uri_.IsFile() {
-		return os.Open(pathOrURL)
+		rc, err := os.Open(pathOrURL)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to open file %q: %w", pathOrURL, err)
+		}
+		bytecounter := new(atomic.Uint64)
+		countingReader := NewCountingReader(rc, bytecounter)
+		return io.NopCloser(bufio.NewReaderSize(countingReader, MiB*50)), bytecounter, nil
+	}
+	{
+		client := NewClient(nil)
+		stream, err := client.GetStream(pathOrURL)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to get stream from %q: %w", pathOrURL, err)
+		}
+		bytecounter := new(atomic.Uint64)
+		countingReader := NewCountingReader(stream, bytecounter)
+		buf := bufio.NewReaderSize(countingReader, MiB*50)
+		return io.NopCloser(buf), bytecounter, nil
+		// return stream, nil
 	}
 	{
 		rfspc, byteLen, err := splitcarfetcher.NewRemoteHTTPFileAsIoReaderAt(
@@ -121,10 +158,37 @@ func openURI(pathOrURL string) (io.ReadCloser, error) {
 			pathOrURL,
 		)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create remote file split car reader from %q: %w", pathOrURL, err)
+			return nil, nil, fmt.Errorf("failed to create remote file split car reader from %q: %w", pathOrURL, err)
 		}
 		sr := io.NewSectionReader(rfspc, 0, byteLen)
-		return io.NopCloser(bufio.NewReaderSize(sr, MiB*50)), nil
+		return io.NopCloser(bufio.NewReaderSize(sr, MiB*50)), nil, nil
+	}
+}
+
+type CountingReader struct {
+	reader io.Reader
+	count  *atomic.Uint64
+}
+
+func (cr *CountingReader) Read(p []byte) (n int, err error) {
+	n, err = cr.reader.Read(p)
+	if n > 0 {
+		cr.count.Add(uint64(n))
+	}
+	return n, err
+}
+
+func (cr *CountingReader) Close() error {
+	if closer, ok := cr.reader.(io.Closer); ok {
+		return closer.Close()
+	}
+	return nil
+}
+
+func NewCountingReader(reader io.Reader, count *atomic.Uint64) *CountingReader {
+	return &CountingReader{
+		reader: reader,
+		count:  count,
 	}
 }
 
@@ -140,4 +204,43 @@ func NewBlockWalker(readCloser io.ReadCloser, callback func(*nodetools.DataAndCi
 		return nil, fmt.Errorf("failed to create prefetching car reader: %w", err)
 	}
 	return nodetools.NewBlockDagFromReader(rd, callback), nil
+}
+
+// Client is a wrapper around http.Client for streaming large files.
+type Client struct {
+	httpClient *http.Client
+}
+
+// NewClient creates a new streaming client.
+// If no httpClient is provided, a default one with a 30-second timeout is used.
+func NewClient(httpClient *http.Client) *Client {
+	if httpClient == nil {
+		httpClient = &http.Client{}
+	}
+	return &Client{httpClient: httpClient}
+}
+
+// GetStream performs an HTTP GET request and returns the response body as an io.ReadCloser.
+// The caller is responsible for closing the returned stream.
+// This method is memory-efficient as it does not buffer the entire response body.
+func (c *Client) GetStream(url string) (io.ReadCloser, error) {
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("http get failed: %w", err)
+	}
+
+	// Check for a successful status code.
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		// The body must be closed to release the connection,
+		// even if the status code indicates an error.
+		resp.Body.Close()
+		return nil, fmt.Errorf("request failed with status: %s", resp.Status)
+	}
+
+	return resp.Body, nil
 }
