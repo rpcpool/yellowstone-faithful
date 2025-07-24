@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -89,6 +90,11 @@ func main() {
 	spew.Dump(walker.Header())
 
 	if err := walker.Do(); err != nil {
+		if errors.Is(err, io.EOF) {
+			slog.Info("Reached end of CAR file", "carpath", carpath)
+			cancel()
+			return
+		}
 		slog.Error("Error processing CAR file", "error", err, "carpath", carpath, "numBlocksRead", numBlocksReadCar.Load(), "highestSlot", highestSlotCar.Load())
 		cancel()
 		return
