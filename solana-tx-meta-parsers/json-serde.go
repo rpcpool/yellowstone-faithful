@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	"github.com/gagliardetto/solana-go"
-	"github.com/mr-tron/base58"
 	"github.com/rpcpool/yellowstone-faithful/jsonbuilder"
 	transaction_status_meta_serde_agave "github.com/rpcpool/yellowstone-faithful/parse_legacy_transaction_status_meta"
 )
@@ -147,7 +146,7 @@ func SerdeTransactionStatusMetaToUi(meta *transaction_status_meta_serde_agave.St
 											accounts.AddUint8(account) // TODO: check if this marshals to array of numbers
 										}
 									})
-									uiCompiledInstruction.String("data", base58.Encode(instruction.Instruction.Data[:]))
+									uiCompiledInstruction.Base58("data", (instruction.Instruction.Data[:]))
 									// NOTE: stackHeight is only present in protobuf encoding.
 									// if instruction.Instruction.StackHeight != nil {
 									// 	uiCompiledInstruction.Uint("stackHeight", uint64(*instruction.Instruction.StackHeight))
@@ -343,7 +342,7 @@ func SerdeTransactionStatusMetaToUi(meta *transaction_status_meta_serde_agave.St
 					"returnData",
 					func(o *jsonbuilder.OrderedJSONObject) {
 						pid := solana.PublicKeyFromBytes(meta.ReturnData.ProgramId[:])
-						o.String("programId", pid.String())
+						o.Base58("programId", pid[:])
 						o.ArrayFunc("data", func(arr *jsonbuilder.ArrayBuilder) {
 							arr.AddString(base64.StdEncoding.EncodeToString(meta.ReturnData.Data[:]))
 							arr.AddString("base64")

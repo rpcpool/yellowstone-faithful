@@ -3,7 +3,6 @@ package solanatxmetaparsers
 import (
 	"github.com/gagliardetto/solana-go"
 	"github.com/gagliardetto/solana-go/rpc"
-	"github.com/mr-tron/base58"
 	"github.com/rpcpool/yellowstone-faithful/jsonbuilder"
 )
 
@@ -61,7 +60,7 @@ func TransactionToUi(
 								arr.AddUint(uint64(account))
 							}
 						})
-						ins.String("data", base58.Encode(instruction.Data))
+						ins.Base58("data", (instruction.Data))
 						ins.Null("stackHeight")
 					}
 					arr.AddObject(ins)

@@ -6,6 +6,8 @@ replace github.com/anjor/carlet => github.com/rpcpool/carlet v0.0.4
 
 replace github.com/ipfs/go-cid => github.com/rpcpool/go-cid v0.5.1
 
+replace github.com/mr-tron/base58 => github.com/rpcpool/base58 v1.2.1
+
 require (
 	github.com/benbjohnson/clock v1.3.5 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0

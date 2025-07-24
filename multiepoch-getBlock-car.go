@@ -225,7 +225,7 @@ func (multi *MultiEpoch) handleGetBlock_car(ctx context.Context, conn *requestCo
 	defer response.Put() // recycle the response object
 	if transactionDetails != rpc.TransactionDetailsNone {
 		if transactionDetails == rpc.TransactionDetailsSignatures {
-			signatures := make([]string, 0, parsedNodes.CountTransactions())
+			signatures := make([][]byte, 0, parsedNodes.CountTransactions())
 			for transactionNode := range parsedNodes.Transaction() {
 				sig, err := tooling.ReadFirstSignature(transactionNode.Data.Data)
 				if err != nil {
@@ -234,9 +234,9 @@ func (multi *MultiEpoch) handleGetBlock_car(ctx context.Context, conn *requestCo
 						Message: "Internal error",
 					}, fmt.Errorf("failed to decode Transaction: %v", err)
 				}
-				signatures = append(signatures, sig.String())
+				signatures = append(signatures, sig[:])
 			}
-			response.StringSlice("signatures", signatures)
+			response.Base58Slice("signatures", signatures)
 			tim.time("get signatures")
 		}
 		if transactionDetails == rpc.TransactionDetailsAccounts || transactionDetails == rpc.TransactionDetailsFull {

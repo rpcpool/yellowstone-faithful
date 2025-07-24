@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/bytedance/sonic"
+	"github.com/mr-tron/base58"
 	"github.com/valyala/bytebufferpool"
 )
 
@@ -203,6 +204,35 @@ func (o *OrderedJSONObject) String(key, value string) *OrderedJSONObject {
 	}
 	o.writeKey(key)
 	o.buf = appendString(o.buf, value)
+	return o
+}
+
+func (o *OrderedJSONObject) Base58(key string, value []byte) *OrderedJSONObject {
+	if o.err != nil {
+		return o
+	}
+	o.writeKey(key)
+	o.buf = append(o.buf, '"')
+	o.buf = base58.Append(o.buf, value)
+	o.buf = append(o.buf, '"')
+	return o
+}
+
+func (o *OrderedJSONObject) Base58Slice(key string, values [][]byte) *OrderedJSONObject {
+	if o.err != nil {
+		return o
+	}
+	o.writeKey(key)
+	o.buf = append(o.buf, '[')
+	for i, value := range values {
+		if i > 0 {
+			o.buf = append(o.buf, ',')
+		}
+		o.buf = append(o.buf, '"')
+		o.buf = base58.Append(o.buf, value)
+		o.buf = append(o.buf, '"')
+	}
+	o.buf = append(o.buf, ']')
 	return o
 }
 
