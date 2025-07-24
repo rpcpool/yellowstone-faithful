@@ -52,7 +52,8 @@ func (d DataAndCidSlice) GetByCid(c cid.Cid) (*DataAndCid, bool) {
 // DataAndCidSlice.SortByCid sorts the DataAndCidSlice by CID.
 func (d DataAndCidSlice) SortByCid() {
 	sort.Slice(d, func(i, j int) bool {
-		return bytes.Compare(d[i].Cid.Bytes(), d[j].Cid.Bytes()) < 0
+		// return bytes.Compare(d[i].Cid.Bytes(), d[j].Cid.Bytes()) < 0
+		return d[i].Cid.Cmp(&d[j].Cid) < 0
 	})
 }
 
@@ -99,7 +100,8 @@ func (d DataAndCidSlice) ReadEachConcurrent(f func(d *DataAndCid) error) error {
 func (d DataAndCidSlice) ByCid(c cid.Cid) (*DataAndCid, bool) {
 	// do binary search for the CID
 	i := sort.Search(len(d), func(i int) bool {
-		return bytes.Compare(d[i].Cid.Bytes(), c.Bytes()) >= 0
+		// return bytes.Compare(d[i].Cid.Bytes(), c.Bytes()) >= 0
+		return d[i].Cid.Cmp(&c) >= 0
 	})
 	if i < len(d) && d[i].Cid.Equals(c) {
 		return d[i], true

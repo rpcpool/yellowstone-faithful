@@ -1,7 +1,6 @@
 package nodetools
 
 import (
-	"bytes"
 	"fmt"
 	"sort"
 	"sync"
@@ -89,7 +88,8 @@ func (d ParsedAndCidSlice) LinearGetByCid(c cid.Cid) (*ParsedAndCid, bool) {
 // func (d DataAndCidSlice)SortByCid() {
 func (d ParsedAndCidSlice) SortByCid() {
 	sort.Slice(d, func(i, j int) bool {
-		return bytes.Compare(d[i].Cid.Bytes(), d[j].Cid.Bytes()) < 0
+		// return bytes.Compare(d[i].Cid.Bytes(), d[j].Cid.Bytes()) < 0
+		return d[i].Cid.Cmp(&d[j].Cid) < 0
 	})
 }
 
@@ -97,7 +97,8 @@ func (d ParsedAndCidSlice) SortByCid() {
 func (d ParsedAndCidSlice) ByCid(c cid.Cid) (*ParsedAndCid, bool) {
 	// do binary search for the CID
 	i := sort.Search(len(d), func(i int) bool {
-		return bytes.Compare(d[i].Cid.Bytes(), c.Bytes()) >= 0
+		// return bytes.Compare(d[i].Cid.Bytes(), c.Bytes()) >= 0
+		return d[i].Cid.Cmp(&c) >= 0
 	})
 	if i < len(d) && d[i].Cid.Equals(c) {
 		return d[i], true
