@@ -8,7 +8,6 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-car/util"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
@@ -131,32 +130,7 @@ func (d DataAndCidSlice) Reset() {
 			(d)[i] = nil // avoid memory leaks
 		}
 	}
-	if cap(d) > 0 && len(d) == 0 { // if the slice is empty, reset it
-		d = (d)[:0:0] // Reset the slice to zero length
-	} else if cap(d) > 0 && len(d) > 0 { // if the slice is not empty, reset it to zero length
-		d = (d)[:0] // Reset the slice to zero length
-	} else {
-		// If the slice is nil or has no capacity, we don't need to reset it.
-		// This is a common pattern in Go to avoid memory leaks.
-		// If we don't reset the slice, it will keep the underlying array and
-		// the memory will not be released.
-		// This is a common pattern in Go to avoid memory leaks.
-		// continue
-	}
 	d = (d)[:0]
-	// Reset the slice to avoid memory leaks.
-	// This is important to avoid memory leaks.
-	// If we don't reset the slice, it will keep the underlying array and
-	// the memory will not be released.
-	// This is a common pattern in Go to avoid memory leaks.
-	if cap(d) > 0 {
-		d = (d)[:0:0] // Reset the slice to zero length
-	}
-	// Put the slice back to the pool.
-	// This is important to avoid memory leaks.
-	// If we don't put the slice back to the pool, it will keep the underlying array
-	// and the memory will not be released.
-	// This is a common pattern in Go to avoid memory leaks.
 }
 
 // Put recycles DataAndCidSlice, releasing it back to the pool.
