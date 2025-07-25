@@ -848,9 +848,14 @@ func (multi *MultiEpoch) StreamBlocks(params *old_faithful_grpc.StreamBlocksRequ
 	if params.EndSlot != nil {
 		endSlot = *params.EndSlot
 	}
-	accountInclude, err := stringSliceToPublicKeySlice(params.Filter.AccountInclude)
-	if err != nil {
-		return status.Errorf(codes.InvalidArgument, "Failed to parse accountInclude: %v", err)
+	
+	var accountInclude []solana.PublicKey
+	if params.Filter != nil && len(params.Filter.AccountInclude) > 0 {
+		var err error
+		accountInclude, err = stringSliceToPublicKeySlice(params.Filter.AccountInclude)
+		if err != nil {
+			return status.Errorf(codes.InvalidArgument, "Failed to parse accountInclude: %v", err)
+		}
 	}
 
 	filterFunc := func(block *old_faithful_grpc.BlockResponse) bool {
