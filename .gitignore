@@ -6,3 +6,4 @@ _site
 /target
 
 .zed
+__pycache__
