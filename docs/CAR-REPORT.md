@@ -1,10 +1,11 @@
 | Epoch #  | CAR  | CAR SHA256  | CAR filesize | tx meta check | poh check | Indices | Indices Size | Filecoin Deals | Slots
 |---|---|---|---|---|---|---|---|---|---|
-|824|epoch is|ongoing||||||||
+|825|epoch is|ongoing||||||||
+| 824 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | 823 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | 822 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | 821 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| 820 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| 820 | [epoch-820.car](https://files.old-faithful.net/820/epoch-820.car) | [8930b9b](https://files.old-faithful.net/820/epoch-820.sha256) | 770 GB | [✅](https://files.old-faithful.net/820/tx-metadata-check.log) | [✅](https://files.old-faithful.net/820/poh-check.log) | ✅ | 80 GB | ❌ | [820.slots.txt](https://files.old-faithful.net/820/820.slots.txt) |
 | 819 | [epoch-819.car](https://files.old-faithful.net/819/epoch-819.car) | [fa01eef](https://files.old-faithful.net/819/epoch-819.sha256) | 829 GB | [✅](https://files.old-faithful.net/819/tx-metadata-check.log) | [✅](https://files.old-faithful.net/819/poh-check.log) | ✅ | 85 GB | ❌ | [819.slots.txt](https://files.old-faithful.net/819/819.slots.txt) |
 | 818 | [epoch-818.car](https://files.old-faithful.net/818/epoch-818.car) | [d4b2a2c](https://files.old-faithful.net/818/epoch-818.sha256) | 824 GB | [✅](https://files.old-faithful.net/818/tx-metadata-check.log) | [✅](https://files.old-faithful.net/818/poh-check.log) | ✅ | 83 GB | ❌ | [818.slots.txt](https://files.old-faithful.net/818/818.slots.txt) |
 | 817 | [epoch-817.car](https://files.old-faithful.net/817/epoch-817.car) | [45436f4](https://files.old-faithful.net/817/epoch-817.sha256) | 811 GB | [✅](https://files.old-faithful.net/817/tx-metadata-check.log) | [✅](https://files.old-faithful.net/817/poh-check.log) | ✅ | 82 GB | ❌ | [817.slots.txt](https://files.old-faithful.net/817/817.slots.txt) |
@@ -825,7 +826,7 @@
 | 2 | [epoch-2.car](https://files.old-faithful.net/2/epoch-2.car) | [54bba04](https://files.old-faithful.net/2/epoch-2.sha256) | 14 GB | [★](https://files.old-faithful.net/2/tx-metadata-check.log) | [✅](https://files.old-faithful.net/2/poh-check.log) | ✅ | 6 GB | [✅](https://filecoin-car-storage-cdn.b-cdn.net/2/deals.csv) | [2.slots.txt](https://files.old-faithful.net/2/2.slots.txt) |
 | 1 | [epoch-1.car](https://files.old-faithful.net/1/epoch-1.car) | [611ca99](https://files.old-faithful.net/1/epoch-1.sha256) | 8 GB | [★](https://files.old-faithful.net/1/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1/poh-check.log) | ✅ | 6 GB | [✅](https://filecoin-car-storage-cdn.b-cdn.net/1/deals.csv) | [1.slots.txt](https://files.old-faithful.net/1/1.slots.txt) |
 | 0 | [epoch-0.car](https://files.old-faithful.net/0/epoch-0.car) | [3c6347f](https://files.old-faithful.net/0/epoch-0.sha256) | 4 GB | [★](https://files.old-faithful.net/0/tx-metadata-check.log) | [✅](https://files.old-faithful.net/0/poh-check.log) | ✅ | 6 GB | [✅](https://filecoin-car-storage-cdn.b-cdn.net/0/deals.csv) | [0.slots.txt](https://files.old-faithful.net/0/0.slots.txt) |
-| **Total** | 820 | (4 behind) | 337 TB | - | - | - | 41 TB | - | - |
+| **Total** | 821 | (4 behind) | 338 TB | - | - | - | 41 TB | - | - |
 
 ★ = tx meta validation skipped (epochs 0-10 where tx meta wasn't enabled yet)
 
@@ -839,7 +840,7 @@
 - Epoch 50: failed tx meta check
 - Epoch 208: failed POH check, failed tx meta check
 - Epoch 542: failed POH check
-- Epoch 820: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size
 - Epoch 821: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size
 - Epoch 822: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size
 - Epoch 823: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size
+- Epoch 824: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size
