@@ -267,6 +267,14 @@ func (n Block) GetBlockHeight() (uint64, bool) {
 	return uint64(**n.Meta.Block_height), true
 }
 
+func (n Block) GetRewards() (cid.Cid, bool) {
+	rewardsCid := n.Rewards.(cidlink.Link).Cid
+	if rewardsCid.Equals(dummycid.DummyCID) {
+		return cid.Cid{}, false
+	}
+	return rewardsCid, true
+}
+
 // DataFrame.MarshalJSON implements the json.Marshaler interface.
 func (n DataFrame) MarshalJSON() ([]byte, error) {
 	out := new(strings.Builder)

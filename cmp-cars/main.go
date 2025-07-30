@@ -36,8 +36,11 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	producerIDCar1 := ProducerID("car1")
+	producerIDCar2 := ProducerID("car2")
+
 	printMUTEX := &sync.Mutex{}
-	mismatchCallback := func(tuples []Tuple) {
+	mismatchCallback := func(tuples TupleSlice) {
 		printMUTEX.Lock()
 		defer printMUTEX.Unlock()
 		fmt.Println("🚨 🚨 🚨")
@@ -46,21 +49,124 @@ func main() {
 		fmt.Printf("SLOT: %d\n", tuples[0].Slot)
 		fmt.Printf("Hashes:\n")
 		for _, t := range tuples {
-			fmt.Printf("  -> From CAR '%s': Slot=%d, Hash=%s, Value='%s'\n", t.ProducerID, t.Slot, t.Hash, spew.Sdump(t.Value))
+			fmt.Printf("  -> From CAR '%s': Slot=%d, Hash=%s\n", t.ProducerID, t.Slot, t.Hash)
 		}
-		spew.Dump(tuples)
+		// spew.Dump(tuples)
+		{
+			if len(tuples) != 2 {
+				panic(fmt.Sprintf("Expected exactly two tuples, but got %d", len(tuples)))
+			}
+			if tuples[0].ProducerID == tuples[1].ProducerID {
+				panic(fmt.Sprintf("Expected tuples from different producers, but got both from '%s'", tuples[0].ProducerID))
+			}
+			if tuples[0].Slot != tuples[1].Slot {
+				panic(fmt.Sprintf("Expected tuples with the same SLOT, but got %d and %d", tuples[0].Slot, tuples[1].Slot))
+			}
+			dagProducer1Wrapper, err := tuples.GetSingleByProducerID(producerIDCar1)
+			if err != nil {
+				panic(fmt.Sprintf("Failed to get single tuple for producer '%s': %v", producerIDCar1, err))
+			}
+			dagProducer2Wrapper, err := tuples.GetSingleByProducerID(producerIDCar2)
+			if err != nil {
+				panic(fmt.Sprintf("Failed to get single tuple for producer '%s': %v", producerIDCar2, err))
+			}
+			dagCar1 := dagProducer1Wrapper.Value.(*nodetools.DataAndCidSlice)
+			dagCar2 := dagProducer2Wrapper.Value.(*nodetools.DataAndCidSlice)
+			if dagCar1.IsEmpty() || dagCar2.IsEmpty() {
+				panic(fmt.Sprintf("Expected non-empty DataAndCidSlice for both producers, but got empty for one or both: %s, %s", producerIDCar1, producerIDCar2))
+			}
+			// sort the CIDs for better readability.
+			dagCar1.SortByCid()
+			dagCar2.SortByCid()
+
+			parsedDag1, err := dagCar1.ToParsedAndCidSlice()
+			if err != nil {
+				panic(fmt.Sprintf("Failed to convert DataAndCidSlice to ParsedAndCidSlice for producer '%s': %v", producerIDCar1, err))
+			}
+			parsedDag2, err := dagCar2.ToParsedAndCidSlice()
+			if err != nil {
+				panic(fmt.Sprintf("Failed to convert DataAndCidSlice to ParsedAndCidSlice for producer '%s': %v", producerIDCar2, err))
+			}
+			{
+
+				block1, err := parsedDag1.BlockByCid(dagProducer1Wrapper.Hash)
+				if err != nil {
+					panic(fmt.Sprintf("Failed to get block by CID for producer '%s': %v", producerIDCar1, err))
+				}
+				if block1 == nil {
+					panic(fmt.Sprintf("Expected to find block for producer '%s' with CID %s, but got nil", producerIDCar1, dagProducer1Wrapper.Hash))
+				}
+				block2, err := parsedDag2.BlockByCid(dagProducer2Wrapper.Hash)
+				if err != nil {
+					panic(fmt.Sprintf("Failed to get block by CID for producer '%s': %v", producerIDCar2, err))
+				}
+				if block2 == nil {
+					panic(fmt.Sprintf("Expected to find block for producer '%s' with CID %s, but got nil", producerIDCar2, dagProducer2Wrapper.Hash))
+				}
+				spew.Dump(block1)
+				spew.Dump(block2)
+				{
+					if block1.HasRewards() != block2.HasRewards() {
+						// print a warning if the reward status differs.
+						slog.Warn("Reward status differs between blocks",
+							"producer1", producerIDCar1,
+							"producer2", producerIDCar2,
+							"hasRewards1", block1.HasRewards(),
+							"hasRewards2", block2.HasRewards(),
+						)
+					} else {
+						rewards1Cid, hasRewards1 := block1.GetRewards()
+						rewards2Cid, hasRewards2 := block2.GetRewards()
+						if hasRewards1 != hasRewards2 {
+							slog.Warn("Reward CIDs differ between blocks",
+								"producer1", producerIDCar1,
+								"producer2", producerIDCar2,
+								"hasRewards1", hasRewards1,
+								"hasRewards2", hasRewards2,
+							)
+						}
+						if hasRewards1 && hasRewards2 && !rewards1Cid.Equals(rewards2Cid) {
+							slog.Warn("Reward CIDs differ between blocks",
+								"producer1", producerIDCar1,
+								"producer2", producerIDCar2,
+								"rewards1Cid", rewards1Cid,
+								"rewards2Cid", rewards2Cid,
+							)
+							{
+								rewards1, err := getParsedRewards(parsedDag1, rewards1Cid)
+								if err != nil {
+									panic(fmt.Sprintf("Failed to get parsed rewards by CID %s for block %d for car1: %v", rewards1Cid, block1.Slot, err))
+								}
+								rewards2, err := getParsedRewards(parsedDag2, rewards2Cid)
+								if err != nil {
+									panic(fmt.Sprintf("Failed to get parsed rewards by CID %s for block %d for car2: %v", rewards2Cid, block2.Slot, err))
+								}
+								// Print the rewards data for both producers.
+								fmt.Printf("Rewards for producer '%s':\n", producerIDCar1)
+								fmt.Printf("  -> Rewards CID: %s\n", rewards1Cid)
+								fmt.Printf("  -> Rewards Data: %s\n", spew.Sdump(rewards1))
+								fmt.Printf("Rewards for producer '%s':\n", producerIDCar2)
+								fmt.Printf("  -> Rewards CID: %s\n", rewards2Cid)
+								fmt.Printf("  -> Rewards Data: %s\n", spew.Sdump(rewards2))
+							}
+						}
+					}
+				}
+			}
+
+		}
 		fmt.Println("🚨 🚨 🚨")
 	}
 
 	matcher := NewMatcher(ctx, 2, 10_000, mismatchCallback)
 
 	// Register producers and get their dedicated emitter functions.
-	emitter1, err := matcher.RegisterProducer("car1")
+	emitter1, err := matcher.RegisterProducer(producerIDCar1)
 	if err != nil {
 		panic(fmt.Sprintf("Fatal: Failed to register producer for first CAR file: %v", err))
 	}
 
-	emitter2, err := matcher.RegisterProducer("car2")
+	emitter2, err := matcher.RegisterProducer(producerIDCar2)
 	if err != nil {
 		panic(fmt.Sprintf("Fatal: Failed to register producer for second CAR file: %v", err))
 	}
@@ -111,19 +217,26 @@ func main() {
 			slog.Error("Failed to get blocks from DataAndCidSlice", "error", err, "carpath", carpath1)
 			panic(fmt.Sprintf("Fatal: Failed to get blocks from DataAndCidSlice: %v", err))
 		}
-		for _, wrapper := range blocks {
-			// Emit each block to the matcher using the emitter function.
-			block := wrapper.Data.(*ipldbindcode.Block)
-			highestSlotCar1.Store(uint64(block.Slot))
-			emitter1(uint64(block.Slot), wrapper.Cid, block)
-			{
-				// if we are ahead of the highest slot of the second CAR file, we slow down for a bit.
-				if highestSlotCar1.Load() > highestSlotCar2.Load()+1000 {
-					time.Sleep(50 * time.Millisecond)
-				}
-			}
-			numBlocksReadCar1.Add(1)
+		if len(blocks) != 1 {
+			slog.Warn("Expected exactly one block, but got more",
+				"numBlocks", len(blocks),
+				"carpath", carpath1,
+			)
+			return fmt.Errorf("expected exactly one block, but got %d", len(blocks))
 		}
+		blockWrapper := blocks[0]
+
+		// Emit each block to the matcher using the emitter function.
+		block := blockWrapper.Data.(*ipldbindcode.Block)
+		highestSlotCar1.Store(uint64(block.Slot))
+		emitter1(uint64(block.Slot), blockWrapper.Cid, dag)
+		{
+			// if we are ahead of the highest slot of the second CAR file, we slow down for a bit.
+			if highestSlotCar1.Load() > highestSlotCar2.Load()+1000 {
+				time.Sleep(50 * time.Millisecond)
+			}
+		}
+		numBlocksReadCar1.Add(1)
 		// dag.Put() // NOTE:
 		return nil // No action needed for the first CAR file
 	})
@@ -144,19 +257,25 @@ func main() {
 			slog.Error("Failed to get blocks from DataAndCidSlice", "error", err, "carpath", carpath2)
 			return err
 		}
-		for _, wrapper := range blocks {
-			// Emit each block to the matcher using the emitter function.
-			block := wrapper.Data.(*ipldbindcode.Block)
-			highestSlotCar2.Store(uint64(block.Slot))
-			emitter2(uint64(block.Slot), wrapper.Cid, block)
-			{
-				// if we are ahead of the highest slot of the first CAR file, we slow down for a bit.
-				if highestSlotCar2.Load() > highestSlotCar1.Load()+1000 {
-					time.Sleep(50 * time.Millisecond)
-				}
-			}
-			numBlocksReadCar2.Add(1)
+		if len(blocks) != 1 {
+			slog.Warn("Expected exactly one block, but got more",
+				"numBlocks", len(blocks),
+				"carpath", carpath2,
+			)
+			return fmt.Errorf("expected exactly one block, but got %d", len(blocks))
 		}
+		blockWrapper := blocks[0]
+		// Emit each block to the matcher using the emitter function.
+		block := blockWrapper.Data.(*ipldbindcode.Block)
+		highestSlotCar2.Store(uint64(block.Slot))
+		emitter2(uint64(block.Slot), blockWrapper.Cid, dag)
+		{
+			// if we are ahead of the highest slot of the first CAR file, we slow down for a bit.
+			if highestSlotCar2.Load() > highestSlotCar1.Load()+1000 {
+				time.Sleep(50 * time.Millisecond)
+			}
+		}
+		numBlocksReadCar2.Add(1)
 		// dag.Put() // NOTE:
 		return nil // No action needed for the second CAR file
 	})

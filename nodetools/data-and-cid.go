@@ -211,6 +211,7 @@ func SplitIntoDataAndCids(sections []byte) (DataAndCidSlice, error) {
 	return nodes, nil
 }
 
+// Blocks returns a slice of ParsedAndCid for all blocks in the DataAndCidSlice.
 func (d DataAndCidSlice) Blocks() ([]*ParsedAndCid, error) {
 	blocks := make([]*ParsedAndCid, 0, len(d))
 	for _, dataAndCid := range d {

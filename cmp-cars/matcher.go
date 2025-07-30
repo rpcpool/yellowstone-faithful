@@ -21,9 +21,42 @@ type Tuple struct {
 	ProducerID ProducerID
 }
 
+type TupleSlice []Tuple
+
+// GetProducerIDs returns a slice of unique producer IDs from the TupleSlice.
+func (ts TupleSlice) GetProducerIDs() []ProducerID {
+	idSet := make(map[ProducerID]struct{})
+	for _, t := range ts {
+		idSet[t.ProducerID] = struct{}{}
+	}
+	ids := make([]ProducerID, 0, len(idSet))
+	for id := range idSet {
+		ids = append(ids, id)
+	}
+	return ids
+}
+
+// GetSingleByProducerID retrieves a single tuple by its producer ID.
+// It returns an error if there are multiple tuples for the same ID.
+func (ts TupleSlice) GetSingleByProducerID(id ProducerID) (*Tuple, error) {
+	var found *Tuple
+	for _, t := range ts {
+		if t.ProducerID == id {
+			if found != nil {
+				return nil, fmt.Errorf("multiple tuples found for producer ID '%s'", id)
+			}
+			found = &t
+		}
+	}
+	if found == nil {
+		return nil, fmt.Errorf("no tuple found for producer ID '%s'", id)
+	}
+	return found, nil
+}
+
 // MismatchCallback is the function signature for the callback that is executed
 // when a set of tuples with the same ID have different hashes.
-type MismatchCallback func(tuples []Tuple)
+type MismatchCallback func(tuples TupleSlice)
 
 // Emitter is a function returned to a registered producer.
 // Calling this function sends a tuple to the matcher.
