@@ -24,7 +24,7 @@ type TransactionWithSlot struct {
 	Error          error
 	Transaction    *solana.Transaction
 	Metadata       *solanatxmetaparsers.TransactionStatusMetaContainer
-	MetadataPieces []MetadataPieceSectionRef // Used for multipiece metadata
+	MetadataPieces MetadataPieceSectionRefs // Used for multipiece metadata
 }
 
 // TransactionWithSlot.GetTotalOffsetAndLengthAndCount returns the total offset and length of the transaction and its metadata pieces.
