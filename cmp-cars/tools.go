@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"sort"
 
 	"github.com/ipfs/go-cid"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
@@ -34,4 +35,13 @@ func getParsedRewards(parsedDag nodetools.ParsedAndCidSlice, rewardsCid cid.Cid)
 		return nil, fmt.Errorf("failed to decode Rewards: %v", err)
 	}
 	return actualRewards, nil
+}
+
+func sortRewardsByPubkey(rewards *confirmed_block.Rewards) {
+	// Sort rewards by Pubkey for consistent output.
+	if rewards != nil && rewards.Rewards != nil {
+		sort.Slice(rewards.Rewards, func(i, j int) bool {
+			return rewards.Rewards[i].Pubkey < rewards.Rewards[j].Pubkey
+		})
+	}
 }

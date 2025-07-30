@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -14,15 +15,19 @@ import (
 	"github.com/ipld/go-car"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"github.com/rpcpool/yellowstone-faithful/nodetools"
+	diff "github.com/yudai/gojsondiff"
+	"github.com/yudai/gojsondiff/formatter"
 )
 
 func main() {
 	var (
-		carpath1 string
-		carpath2 string
+		carpath1   string
+		carpath2   string
+		diffFormat string
 	)
 	flag.StringVar(&carpath1, "car1", "", "Path to the first CAR file")
 	flag.StringVar(&carpath2, "car2", "", "Path to the second CAR file")
+	flag.StringVar(&diffFormat, "format", "ascii", "Output format for differences (ascii or delta)")
 	flag.Parse()
 	if carpath1 == "" || carpath2 == "" {
 		flag.Usage()
@@ -141,13 +146,70 @@ func main() {
 								if err != nil {
 									panic(fmt.Sprintf("Failed to get parsed rewards by CID %s for block %d for car2: %v", rewards2Cid, block2.Slot, err))
 								}
-								// Print the rewards data for both producers.
-								fmt.Printf("Rewards for producer '%s':\n", producerIDCar1)
-								fmt.Printf("  -> Rewards CID: %s\n", rewards1Cid)
-								fmt.Printf("  -> Rewards Data: %s\n", spew.Sdump(rewards1))
-								fmt.Printf("Rewards for producer '%s':\n", producerIDCar2)
-								fmt.Printf("  -> Rewards CID: %s\n", rewards2Cid)
-								fmt.Printf("  -> Rewards Data: %s\n", spew.Sdump(rewards2))
+								sortRewardsByPubkey(rewards1)
+								sortRewardsByPubkey(rewards2)
+								{
+									// Print the rewards data for both producers.
+									fmt.Printf("Rewards for producer '%s':\n", producerIDCar1)
+									fmt.Printf("  -> Rewards CID: %s\n", rewards1Cid)
+									// fmt.Printf("  -> Rewards Data: %s\n", spew.Sdump(rewards1))
+									fmt.Printf("Rewards for producer '%s':\n", producerIDCar2)
+									fmt.Printf("  -> Rewards CID: %s\n", rewards2Cid)
+									// fmt.Printf("  -> Rewards Data: %s\n", spew.Sdump(rewards2))
+								}
+								{
+									rewards1Json, err := json.Marshal(rewards1)
+									if err != nil {
+										panic(fmt.Sprintf("Failed to marshal rewards1 to JSON: %v", err))
+									}
+									rewards2Json, err := json.Marshal(rewards2)
+									if err != nil {
+										panic(fmt.Sprintf("Failed to marshal rewards2 to JSON: %v", err))
+									}
+									differ := diff.New()
+									d, err := differ.Compare(rewards1Json, (rewards2Json))
+									if err != nil {
+										panic(fmt.Sprintf("Failed to compare rewards JSON: %v", err))
+									}
+									if d.Modified() {
+										fmt.Println("Rewards JSON contents differ:")
+										{
+											var diffString string
+											switch diffFormat {
+											case "ascii":
+												{
+													var aJson map[string]interface{}
+													json.Unmarshal(rewards1Json, &aJson)
+
+													config := formatter.AsciiFormatterConfig{
+														ShowArrayIndex: true,
+														Coloring:       true,
+													}
+
+													formatter := formatter.NewAsciiFormatter(aJson, config)
+													diffString, err = formatter.Format(d)
+													if err != nil {
+														// No error can occur
+													}
+												}
+											case "delta":
+												{
+													formatter := formatter.NewDeltaFormatter()
+													diffString, err = formatter.Format(d)
+													if err != nil {
+														// No error can occur
+													}
+												}
+											default:
+												panic(fmt.Sprintf("Unknown diff format: %s", diffFormat))
+											}
+											fmt.Printf("Differences:\n%s\n", diffString)
+										}
+									} else {
+										fmt.Println("Rewards JSON contents are identical.")
+									}
+								}
+
 							}
 						}
 					}
