@@ -16,16 +16,19 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+// DEPRECATED: Use nodetools instead.
 func NewReader(reader readasonecar.CarReader) *Reader {
 	return &Reader{
 		reader: reader,
 	}
 }
 
+// DEPRECATED: Use nodetools instead.
 type Reader struct {
 	reader readasonecar.CarReader
 }
 
+// DEPRECATED: Use nodetools instead.
 // ReadUntilBlock reads the CAR file until it finds a block.
 func (r *Reader) ReadUntilBlock(
 	skipKinds iplddecoders.KindSlice,
