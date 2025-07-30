@@ -149,15 +149,6 @@ func main() {
 								sortRewardsByPubkey(rewards1)
 								sortRewardsByPubkey(rewards2)
 								{
-									// Print the rewards data for both producers.
-									fmt.Printf("Rewards for producer '%s':\n", producerIDCar1)
-									fmt.Printf("  -> Rewards CID: %s\n", rewards1Cid)
-									// fmt.Printf("  -> Rewards Data: %s\n", spew.Sdump(rewards1))
-									fmt.Printf("Rewards for producer '%s':\n", producerIDCar2)
-									fmt.Printf("  -> Rewards CID: %s\n", rewards2Cid)
-									// fmt.Printf("  -> Rewards Data: %s\n", spew.Sdump(rewards2))
-								}
-								{
 									rewards1Json, err := json.Marshal(rewards1)
 									if err != nil {
 										panic(fmt.Sprintf("Failed to marshal rewards1 to JSON: %v", err))
@@ -165,6 +156,16 @@ func main() {
 									rewards2Json, err := json.Marshal(rewards2)
 									if err != nil {
 										panic(fmt.Sprintf("Failed to marshal rewards2 to JSON: %v", err))
+									}
+									{
+										// Print the rewards data for both producers.
+										fmt.Printf("Rewards for producer '%s':\n", producerIDCar1)
+										fmt.Printf("  -> Rewards CID: %s\n", rewards1Cid)
+										fmt.Printf("  -> Rewards Data: %s\n", string(rewards1Json))
+										//
+										fmt.Printf("Rewards for producer '%s':\n", producerIDCar2)
+										fmt.Printf("  -> Rewards CID: %s\n", rewards2Cid)
+										fmt.Printf("  -> Rewards Data: %s\n", string(rewards2Json))
 									}
 									differ := diff.New()
 									d, err := differ.Compare(rewards1Json, (rewards2Json))
