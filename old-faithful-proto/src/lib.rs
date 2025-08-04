@@ -124,6 +124,7 @@ mod solana {
                 fee,
                 pre_balances,
                 post_balances,
+                cost_units: None,
                 inner_instructions: None,
                 log_messages: None,
                 pre_token_balances: None,
