@@ -1,8 +1,0 @@
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: car-processing-config
-data:
-  REDIS_HOST: car-processing-redis-master.{{ .Release.Namespace }}.svc.cluster.local
-  REDIS_PORT: "6379"
-  LIST: {{ .Values.ingest.redis.list }}

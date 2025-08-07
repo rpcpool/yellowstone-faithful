@@ -1,0 +1,5 @@
+# Test configuration with only local storage (no network calls)
+
+[[storage]]
+type = "local"
+path = "./test-storage"
