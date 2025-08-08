@@ -1,0 +1,188 @@
+name: Go Linting
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - '**.go'
+      - 'go.mod'
+      - 'go.sum'
+      - '.golangci.yml'
+      - '.github/workflows/lint-go.yml'
+  push:
+    branches: [ main ]
+    paths:
+      - '**.go'
+      - 'go.mod'
+      - 'go.sum'
+      - '.golangci.yml'
+      - '.github/workflows/lint-go.yml'
+
+permissions:
+  contents: read
+  pull-requests: read
+  checks: write
+
+jobs:
+  lint:
+    name: Go Linting
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.1'
+          check-latest: true
+
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Cache golangci-lint
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/golangci-lint
+          key: ${{ runner.os }}-golangci-lint-${{ hashFiles('.golangci.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-golangci-lint-
+
+      - name: Download Go modules
+        run: go mod download
+
+      - name: Verify Go modules
+        run: go mod verify
+
+      - name: Check Go formatting
+        run: |
+          if [ "$(gofmt -s -l . | wc -l)" -gt 0 ]; then
+            echo "The following files are not properly formatted:"
+            gofmt -s -l .
+            echo ""
+            echo "Please run 'gofmt -s -w .' to fix the formatting issues."
+            exit 1
+          fi
+
+      - name: Run go vet
+        run: go vet ./...
+
+      - name: Install staticcheck
+        run: go install honnef.co/go/tools/cmd/staticcheck@latest
+
+      - name: Run staticcheck
+        run: staticcheck ./...
+
+      - name: Install gosec
+        run: go install github.com/securecodewarrior/gosec/v2/cmd/gosec@latest
+
+      - name: Run gosec security scanner
+        run: gosec -fmt sarif -out gosec-results.sarif -exclude-dir=third_party -exclude-dir=vendor ./...
+        continue-on-error: true
+
+      - name: Upload gosec results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: gosec-results.sarif
+
+      - name: Install golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          args: --timeout=10m --config=.golangci.yml --issues-exit-code=1
+          only-new-issues: false
+          skip-cache: false
+          skip-save-cache: false
+
+  formatting-check:
+    name: Code Formatting Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.1'
+
+      - name: Check gofmt
+        run: |
+          if [ "$(gofmt -s -l . | grep -v vendor/ | grep -v third_party/ | wc -l)" -gt 0 ]; then
+            echo "❌ The following files are not properly formatted:"
+            gofmt -s -l . | grep -v vendor/ | grep -v third_party/
+            echo ""
+            echo "Please run the following command to fix formatting issues:"
+            echo "gofmt -s -w \$(find . -name '*.go' -not -path './vendor/*' -not -path './third_party/*')"
+            exit 1
+          else
+            echo "✅ All Go files are properly formatted"
+          fi
+
+      - name: Check goimports
+        run: |
+          go install golang.org/x/tools/cmd/goimports@latest
+          if [ "$(goimports -l . | grep -v vendor/ | grep -v third_party/ | wc -l)" -gt 0 ]; then
+            echo "❌ The following files have import issues:"
+            goimports -l . | grep -v vendor/ | grep -v third_party/
+            echo ""
+            echo "Please run the following command to fix import issues:"
+            echo "goimports -w \$(find . -name '*.go' -not -path './vendor/*' -not -path './third_party/*')"
+            exit 1
+          else
+            echo "✅ All Go files have correct imports"
+          fi
+
+  dependency-check:
+    name: Dependency Analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.1'
+
+      - name: Check for unused dependencies
+        run: |
+          go install github.com/dominikh/go-tools/cmd/unused@latest
+          unused ./...
+
+      - name: Run go mod tidy check
+        run: |
+          go mod tidy
+          if [ -n "$(git status --porcelain go.mod go.sum)" ]; then
+            echo "❌ go.mod or go.sum is not up to date"
+            echo "Please run 'go mod tidy' and commit the changes"
+            git diff go.mod go.sum
+            exit 1
+          else
+            echo "✅ go.mod and go.sum are up to date"
+          fi
+
+      - name: Verify no forbidden packages
+        run: |
+          # Check for common problematic packages
+          FORBIDDEN_IMPORTS=$(grep -r "import.*fmt" --include="*.go" . | grep -v "_test.go" | grep -v "// OK:" | head -20) || true
+          if [ -n "$FORBIDDEN_IMPORTS" ]; then
+            echo "⚠️  Found fmt imports in non-test files (consider using structured logging):"
+            echo "$FORBIDDEN_IMPORTS"
+          fi

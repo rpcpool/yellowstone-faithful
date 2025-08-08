@@ -6,3 +6,12 @@ _site
 /target
 
 .zed
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+*.pyo
+
+test-logs/

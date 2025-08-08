@@ -1,0 +1,84 @@
+name: Web3.js Tests
+
+on:
+  push:
+    paths:
+      - 'tests/web3/**'
+      - '.github/workflows/tests-web3.yml'
+  pull_request:
+    paths:
+      - 'tests/web3/**'
+      - '.github/workflows/tests-web3.yml'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x]
+        
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+          
+      - name: Cache npm dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            tests/web3/node_modules
+            ~/.npm
+          key: ${{ runner.os }}-node-${{ matrix.node-version }}-${{ hashFiles('tests/web3/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-${{ matrix.node-version }}-
+            ${{ runner.os }}-node-
+            
+      - name: Install dependencies
+        working-directory: tests/web3
+        run: |
+          npm ci
+        env:
+          CI: true
+          
+      - name: Run tests with coverage
+        working-directory: tests/web3
+        run: |
+          npm test -- --coverage --coverageReporters=json-summary --coverageReporters=lcov --coverageReporters=text --collectCoverage=true
+        timeout-minutes: 10
+        env:
+          CI: true
+        
+      - name: Display test results summary
+        if: always()
+        working-directory: tests/web3
+        run: |
+          if [ -f coverage/coverage-summary.json ]; then
+            echo "Coverage Summary:"
+            cat coverage/coverage-summary.json
+          fi
+          
+      - name: Upload test results
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: test-results-node-${{ matrix.node-version }}
+          path: |
+            tests/web3/coverage/
+          retention-days: 30
+          
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        if: success()
+        with:
+          file: tests/web3/coverage/lcov.info
+          directory: tests/web3/coverage/
+          flags: web3-tests
+          name: web3-tests-node-${{ matrix.node-version }}
+          fail_ci_if_error: false
