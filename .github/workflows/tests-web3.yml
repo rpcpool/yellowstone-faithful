@@ -27,30 +27,35 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
-          cache: 'npm'
+          cache: 'pnpm'
           
       - name: Cache npm dependencies
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |
             tests/web3/node_modules
-            ~/.npm
+            ~/.pnpm-store
           key: ${{ runner.os }}-node-${{ matrix.node-version }}-${{ hashFiles('tests/web3/package.json') }}
           restore-keys: |
             ${{ runner.os }}-node-${{ matrix.node-version }}-
             ${{ runner.os }}-node-
             
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+          
       - name: Install dependencies
         working-directory: tests/web3
         run: |
-          npm ci
+          pnpm install --frozen-lockfile
         env:
           CI: true
           
       - name: Run tests with coverage
         working-directory: tests/web3
         run: |
-          npm test -- --coverage --coverageReporters=json-summary --coverageReporters=lcov --coverageReporters=text --collectCoverage=true
+          pnpm test -- --coverage --coverageReporters=json-summary --coverageReporters=lcov --coverageReporters=text --collectCoverage=true
         timeout-minutes: 10
         env:
           CI: true
@@ -65,7 +70,7 @@ jobs:
           fi
           
       - name: Upload test results
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         if: always()
         with:
           name: test-results-node-${{ matrix.node-version }}
@@ -74,7 +79,7 @@ jobs:
           retention-days: 30
           
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@v4
         if: success()
         with:
           file: tests/web3/coverage/lcov.info
