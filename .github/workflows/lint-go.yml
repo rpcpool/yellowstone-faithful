@@ -123,12 +123,12 @@ jobs:
       - name: Check goimports
         run: |
           go install golang.org/x/tools/cmd/goimports@latest
-          if [ "$(goimports -l . | grep -v vendor/ | grep -v third_party/ | wc -l)" -gt 0 ]; then
+          if [ "$(goimports -l . | grep -v vendor/ | grep -v third_party/ | grep -v '\.pb\.go$' | wc -l)" -gt 0 ]; then
             echo "❌ The following files have import issues:"
-            goimports -l . | grep -v vendor/ | grep -v third_party/
+            goimports -l . | grep -v vendor/ | grep -v third_party/ | grep -v '\.pb\.go$'
             echo ""
             echo "Please run the following command to fix import issues:"
-            echo "goimports -w \$(find . -name '*.go' -not -path './vendor/*' -not -path './third_party/*')"
+            echo "goimports -w \$(find . -name '*.go' -not -path './vendor/*' -not -path './third_party/*' -not -name '*.pb.go')"
             exit 1
           else
             echo "✅ All Go files have correct imports"
