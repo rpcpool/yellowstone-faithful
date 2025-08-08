@@ -279,7 +279,9 @@ func (n *DataFrame) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &aux); err != nil {
 		return err
 	}
-	n.Data.FromString(aux.Data)
+	if err := n.Data.FromString(aux.Data); err != nil {
+		return err
+	}
 	if aux.Hash != "" {
 		hash, err := strconv.ParseUint(aux.Hash, 10, 64)
 		if err != nil {
