@@ -68,15 +68,3 @@ func (it *IfThen) Err() error {
 	return it.failedAt
 }
 
-func example_if_then() error {
-	chain := New()
-	return chain.
-		Thenf("Step 1", func() error {
-			// Do something
-			return nil
-		}).
-		Thenf("Step 2", func() error {
-			// Do something else
-			return nil
-		}).Err()
-}
