@@ -17,6 +17,7 @@ from botocore.exceptions import ClientError
 from botocore.config import Config
 
 import datetime
+import requests
 
 
 from prometheus_client import CollectorRegistry, write_to_textfile, Gauge, Counter
@@ -30,6 +31,62 @@ from triton_upload_clients import BunnyCDNClient, S3Client
 logging.basicConfig(level=logging.INFO)
 
 fields = ['provider', 'deal_uuid', 'file_name', 'url', 'commp_piece_cid', 'file_size', 'padded_size', 'payload_cid']
+
+def get_current_epoch():
+    """Get the current chain epoch from Filecoin RPC"""
+    try:
+        rpc_endpoint = environ.get('FILECOIN_RPC_ENDPOINT', 'https://api.node.glif.io')
+        
+        payload = {
+            "jsonrpc": "2.0",
+            "method": "Filecoin.ChainHead",
+            "params": [],
+            "id": 1
+        }
+        
+        response = requests.post(rpc_endpoint, json=payload, timeout=10)
+        response.raise_for_status()
+        
+        result = response.json()
+        if 'result' in result and 'Height' in result['result']:
+            return result['result']['Height']
+        else:
+            logging.error(f"Unexpected response format from ChainHead: {result}")
+            return None
+            
+    except Exception as e:
+        logging.error(f"Failed to get current epoch: {e}")
+        return None
+
+def get_deal_info_on_chain(chain_deal_id):
+    """Get deal information from chain using deal ID"""
+    try:
+        rpc_endpoint = environ.get('FILECOIN_RPC_ENDPOINT', 'https://api.node.glif.io')
+        
+        payload = {
+            "jsonrpc": "2.0",
+            "method": "Filecoin.StateMarketStorageDeal",
+            "params": [int(chain_deal_id), None],
+            "id": 1
+        }
+        
+        response = requests.post(rpc_endpoint, json=payload, timeout=10)
+        response.raise_for_status()
+        
+        result = response.json()
+        if 'result' in result and 'Proposal' in result['result']:
+            proposal = result['result']['Proposal']
+            return {
+                'startEpoch': proposal.get('StartEpoch'),
+                'endEpoch': proposal.get('EndEpoch')
+            }
+        else:
+            logging.debug(f"Could not get deal info for chain deal ID {chain_deal_id}")
+            return None
+            
+    except Exception as e:
+        logging.debug(f"Failed to get on-chain deal info for {chain_deal_id}: {e}")
+        return None
 
 if __name__ == '__main__':
     try:
@@ -76,6 +133,11 @@ if __name__ == '__main__':
         g_provider_sealing_failure = Counter('storage_provider_sealing_failure', 'Provider sealing failures', ['provider'], registry=registry)
         deal_summary = []
 
+        # Get current epoch once at the beginning
+        current_epoch = get_current_epoch()
+        if current_epoch is None:
+            logging.warning("Could not get current epoch from chain, expiry checks will be skipped")
+
         for epoch in epochs:
             epoch_registry = CollectorRegistry()
             g_deals = Gauge('epoch_deals', 'Deals', ['epoch'], registry=epoch_registry)
@@ -88,6 +150,7 @@ if __name__ == '__main__':
             g_deal_sealing_status = Gauge('epoch_deals_sealing_status', 'Deal sealing status', ['epoch', 'status'], registry=epoch_registry)
             g_deals_failed_loading = Gauge('epoch_deals_loading_failed', 'Deals failed loading', ['epoch','error'], registry=epoch_registry)
             g_epoch_info = Gauge('warehouse_epoch_info', 'Epoch info', ['epoch', 'epoch_root_cid', 'index_root_cid'], registry=epoch_registry)
+            g_expired_deals = Gauge('epoch_expired_deals', 'Expired deals', ['epoch'], registry=epoch_registry)
 
             epoch_pieces = {}
             regular_pieces = 0
@@ -164,6 +227,7 @@ if __name__ == '__main__':
             deal_providers = []
 
             fully_replicated_pieces = 0
+            expired_deals_count = 0
 
             for deal in reader:
                 params = {
@@ -208,6 +272,27 @@ if __name__ == '__main__':
                     if res['provider'] not in deal_providers:
                         deal_providers.append(res['provider'])
 
+                    # Check if deal is expired
+                    is_expired = False
+                    deal_info = None
+                    
+                    if current_epoch is not None and 'chainDealId' in res and res['chainDealId']:
+                        deal_info = get_deal_info_on_chain(res['chainDealId'])
+                        if deal_info and deal_info['endEpoch']:
+                            is_expired = current_epoch > deal_info['endEpoch']
+                            if is_expired:
+                                expired_deals_count += 1
+                                logging.info(f"Deal {res['dealUuid']} is expired (current epoch: {current_epoch}, end epoch: {deal_info['endEpoch']})")
+                                # Mark expired deals as failed
+                                res['status'] = 'Expired'
+                                res['statusMessage'] = f"Deal expired at epoch {deal_info['endEpoch']}, current epoch: {current_epoch}"
+                    
+                    # Add deal info to the response
+                    if deal_info:
+                        res['startEpoch'] = deal_info.get('startEpoch')
+                        res['endEpoch'] = deal_info.get('endEpoch')
+                        res['isExpired'] = is_expired
+
                     g_deals.labels(epoch=epoch).inc()
                     g_deal_status.labels(epoch=epoch, status=res['status']).inc()
                     g_deal_sealing_status.labels(epoch=epoch, status=res['sealingStatus']).inc()
@@ -218,7 +303,8 @@ if __name__ == '__main__':
                         logging.error("commp_piece_cid not found in deal status: " + res['dealUuid'])
                         g_invalid_deals.labels(epoch=epoch).inc()
                     else:
-                        if res['status'] == 'IndexedAndAnnounced':
+                        # Only count successful deals for replication if not expired
+                        if res['status'] == 'IndexedAndAnnounced' and not is_expired:
                             # We consider indexed and announced deals to be succesffull
                             if deal['commp_piece_cid'] in epoch_pieces: # should already be in peices because we loaded from metadata.csv
                                 epoch_pieces[deal['commp_piece_cid']] += 1
@@ -238,8 +324,13 @@ if __name__ == '__main__':
                     fully_replicated_pieces += 1
 
             g_providers.labels(epoch=epoch).set(len(deal_providers))
+            g_expired_deals.labels(epoch=epoch).set(expired_deals_count)
+            
+            # Log summary for this epoch
+            if expired_deals_count > 0:
+                logging.info(f"Epoch {epoch}: Found {expired_deals_count} expired deals out of {len(deal_status)} total deals")
 
-            status_fields = ["chainDealId", "clientWallet", "dealUuid", "label", "provider", "publishCid", "sealingStatus", "status", "statusMessage", "error"]
+            status_fields = ["chainDealId", "clientWallet", "dealUuid", "label", "provider", "publishCid", "sealingStatus", "status", "statusMessage", "error", "startEpoch", "endEpoch", "isExpired"]
 
             write_to_textfile(f'/var/lib/node_exporter/deals_{epoch}.prom', epoch_registry)
 
