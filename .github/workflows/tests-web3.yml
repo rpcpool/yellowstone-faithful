@@ -23,13 +23,18 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 8
+          
       - name: Setup Node.js ${{ matrix.node-version }}
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
           cache: 'pnpm'
           
-      - name: Cache npm dependencies
+      - name: Cache pnpm dependencies
         uses: actions/cache@v4
         with:
           path: |
@@ -40,11 +45,6 @@ jobs:
             ${{ runner.os }}-node-${{ matrix.node-version }}-
             ${{ runner.os }}-node-
             
-      - name: Install pnpm
-        uses: pnpm/action-setup@v2
-        with:
-          version: 8
-          
       - name: Install dependencies
         working-directory: tests/web3
         run: |
