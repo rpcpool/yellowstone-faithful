@@ -67,4 +67,3 @@ func (it *IfThen) Err() error {
 	}
 	return it.failedAt
 }
-

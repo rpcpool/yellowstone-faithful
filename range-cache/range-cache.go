@@ -33,7 +33,6 @@ func (r Range) contains(r2 Range) bool {
 	return r[0] <= r2[0] && r[1] >= r2[1]
 }
 
-
 // NewRangeCache creates a new RangeCache.
 func NewRangeCache(
 	size int64,
