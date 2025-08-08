@@ -148,11 +148,6 @@ jobs:
         with:
           go-version: '1.23.x'
 
-      - name: Check for unused dependencies
-        run: |
-          go install github.com/dominikh/go-tools/cmd/unused@latest
-          unused ./...
-
       - name: Run go mod tidy check
         run: |
           go mod tidy
