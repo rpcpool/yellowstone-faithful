@@ -305,13 +305,6 @@ func ParseTransactionError(v any) (map[string]any, error) {
 			default:
 				return nil, fmt.Errorf("unknown instruction error type: %d", instructionErrorType)
 			}
-
-			return map[string]any{
-				transactionErrorTypeName: []any{
-					errorCode,
-					instructionErrorTypeName,
-				},
-			}, nil
 		default:
 			return map[string]any{
 				transactionErrorTypeName: []any{
