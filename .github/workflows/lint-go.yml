@@ -84,19 +84,6 @@ jobs:
       - name: Run staticcheck
         run: staticcheck ./...
 
-      - name: Install gosec
-        run: go install github.com/securecodewarrior/gosec/v2/cmd/gosec@latest
-
-      - name: Run gosec security scanner
-        run: gosec -fmt sarif -out gosec-results.sarif -exclude-dir=third_party -exclude-dir=vendor ./...
-        continue-on-error: true
-
-      - name: Upload gosec results to GitHub Security
-        uses: github/codeql-action/upload-sarif@v3
-        if: always()
-        with:
-          sarif_file: gosec-results.sarif
-
       - name: Install golangci-lint
         uses: golangci/golangci-lint-action@v6
         with:

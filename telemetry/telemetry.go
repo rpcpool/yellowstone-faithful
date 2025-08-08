@@ -42,17 +42,17 @@ func InitTelemetry(ctx context.Context, serviceName string) (func(), error) {
 	// Set up the exporter
 	var exporter sdktrace.SpanExporter
 	otlpEndpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
-	
+
 	if otlpEndpoint != "" {
 		// Configure OTLP exporter
 		ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		defer cancel()
-		
+
 		conn, err := grpc.DialContext(ctx, otlpEndpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
 		if err != nil {
 			return nil, err
 		}
-		
+
 		exporter, err = otlptrace.New(
 			ctx,
 			otlptracegrpc.NewClient(

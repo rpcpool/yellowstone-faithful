@@ -183,7 +183,7 @@ func (multi *MultiEpoch) handleGetTransaction(ctx context.Context, conn *request
 	{
 		conn.ctx.Response.Header.Set("DAG-Root-CID", transactionCid.String())
 	}
-	
+
 	// Start span for parsing transaction and metadata
 	_, parseSpan := telemetry.StartSpan(ctx, "GetTransaction_ParseTransactionMeta")
 	tx, meta, err := parseTransactionAndMetaFromNode(transactionNode, epochHandler.GetDataFrameByCid)
