@@ -205,14 +205,14 @@ func (multi *MultiEpoch) handleGetSignaturesForAddress(ctx context.Context, conn
 
 	// The response is an array of objects: [{signature: string}]
 	response := make([]map[string]any, countTransactions(foundTransactions))
-	
+
 	// Start span for parsing transactions
 	var parseSpan trace.Span
 	if !signaturesOnly {
 		_, parseSpan = telemetry.StartSpan(ctx, "GetSignaturesForAddress_ParseTransactions")
 		parseSpan.SetAttributes(attribute.Int("transaction_count", countTransactions(foundTransactions)))
 	}
-	
+
 	numBefore := 0
 	for ei := range foundTransactions {
 		epoch := ei
@@ -271,7 +271,7 @@ func (multi *MultiEpoch) handleGetSignaturesForAddress(ctx context.Context, conn
 					}
 					slot := uint64(transactionNode.Slot)
 					response[ii]["slot"] = slot
-					
+
 					// Start span for getting block time
 					_, btSpan := telemetry.StartSpan(ctx, "GetSignaturesForAddress_GetBlockTime")
 					btSpan.SetAttributes(attribute.Int64("slot", int64(slot)))
@@ -294,15 +294,15 @@ func (multi *MultiEpoch) handleGetSignaturesForAddress(ctx context.Context, conn
 		}
 		numBefore += len(sigs)
 	}
-	
+
 	// End the parse span if it was started
 	if parseSpan != nil {
 		parseSpan.End()
 	}
-	
+
 	// Record signature count metric
 	metrics.SignatureCountPerRequest.WithLabelValues("getSignaturesForAddress").Observe(float64(len(response)))
-	
+
 	// reply with the data
 	err = conn.Reply(
 		ctx,

@@ -38,6 +38,27 @@ compile-windows:
 	GOOS=windows GOARCH=amd64 go build -ldflags="$(BASE_LD_FLAGS)" -o ./bin/windows/amd64/faithful-cli_windows_amd64.exe .
 test:
 	go test -v ./...
+test-coverage:
+	go test -v -coverprofile=coverage.out ./...
+	go tool cover -html=coverage.out -o coverage.html
+	@echo "Coverage report generated: coverage.html"
+test-race:
+	go test -v -race ./...
+test-integration:
+	go test -v -tags=integration ./...
+lint:
+	golangci-lint run
+fmt-check:
+	@if [ "$$(gofmt -l .)" != "" ]; then \
+		echo "Code is not formatted. Please run 'go fmt ./...'" && \
+		gofmt -l . && \
+		exit 1; \
+	fi
+	@echo "Code formatting is correct"
+ci-test: fmt-check lint test-coverage test-race
+	@echo "All CI tests passed"
+ci-quick: fmt-check test
+	@echo "Quick CI checks passed"
 bindcode: install-deps
 	ipld schema codegen \
 		--generator=go-bindnode \

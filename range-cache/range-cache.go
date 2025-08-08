@@ -33,14 +33,6 @@ func (r Range) contains(r2 Range) bool {
 	return r[0] <= r2[0] && r[1] >= r2[1]
 }
 
-func (r Range) isContainedIn(r2 Range) bool {
-	return r2.contains(r)
-}
-
-func (r Range) isValidFor(size int64) bool {
-	return r[0] >= 0 && r[1] <= size && r[0] <= r[1]
-}
-
 // NewRangeCache creates a new RangeCache.
 func NewRangeCache(
 	size int64,
@@ -159,7 +151,7 @@ func (rc *RangeCache) GetRange(ctx context.Context, start, ln int64) ([]byte, er
 		_, err := rc.remoteFetcher(v, start)
 		if err == nil {
 			cloned := clone(v)
-			rc.setRange(ctx, start, ln, cloned)
+			_ = rc.setRange(ctx, start, ln, cloned) // Ignore error - cache update failure is not critical
 		}
 		return v, err
 	})

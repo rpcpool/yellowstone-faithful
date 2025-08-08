@@ -305,17 +305,3 @@ func max(a, b int64) int64 {
 	}
 	return b
 }
-
-func getFileSize(path string) int {
-	file, err := os.Open(path)
-	if err != nil {
-		panic(err)
-	}
-	defer file.Close()
-	fileInfo, err := file.Stat()
-	if err != nil {
-		panic(err)
-	}
-	fileSize := fileInfo.Size()
-	return int(fileSize)
-}

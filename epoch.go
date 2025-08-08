@@ -690,7 +690,7 @@ func (s *Epoch) ReadAtFromCar(ctx context.Context, offset uint64, length uint64)
 		attribute.Int64("offset", int64(offset)),
 		attribute.Int64("length", int64(length)),
 	)
-	
+
 	if s.localCarReader == nil {
 		// try remote reader
 		if s.remoteCarReader == nil {
@@ -700,7 +700,7 @@ func (s *Epoch) ReadAtFromCar(ctx context.Context, offset uint64, length uint64)
 		return readSectionFromReaderAt(s.remoteCarReader, offset, length)
 	}
 	span.SetAttributes(attribute.String("reader_type", "local"))
-	
+
 	// Get reader and seek to offset, then read node.
 	dr, err := s.localCarReader.DataReader()
 	if err != nil {
@@ -809,7 +809,7 @@ func (ser *Epoch) FindCidFromSlot(ctx context.Context, slot uint64) (o cid.Cid, 
 	ctx, span := telemetry.StartSpan(ctx, "Index_LookupSlotToCid")
 	defer span.End()
 	span.SetAttributes(attribute.Int64("slot", int64(slot)))
-	
+
 	startedAt := time.Now()
 	defer func() {
 		klog.V(4).Infof("Found CID for slot %d in %s: %s", slot, time.Since(startedAt), o)
@@ -824,7 +824,7 @@ func (ser *Epoch) FindCidFromSlot(ctx context.Context, slot uint64) (o cid.Cid, 
 		metrics.CacheHitMissTotal.WithLabelValues("slot_to_cid", "hit").Inc()
 		return c, nil
 	}
-	
+
 	span.SetAttributes(attribute.Bool("cache_hit", false))
 	metrics.CacheHitMissTotal.WithLabelValues("slot_to_cid", "miss").Inc()
 	found, err := ser.slotToCidIndex.Get(slot)
@@ -848,7 +848,7 @@ func (ser *Epoch) FindOffsetAndSizeFromCid(ctx context.Context, cid cid.Cid) (os
 	ctx, span := telemetry.StartSpan(ctx, "Index_LookupCidToOffsetAndSize")
 	defer span.End()
 	span.SetAttributes(attribute.String("cid", cid.String()))
-	
+
 	startedAt := time.Now()
 	defer func() {
 		if os != nil {
@@ -867,7 +867,7 @@ func (ser *Epoch) FindOffsetAndSizeFromCid(ctx context.Context, cid cid.Cid) (os
 		metrics.CacheHitMissTotal.WithLabelValues("cid_to_offset_and_size", "hit").Inc()
 		return osi, nil
 	}
-	
+
 	span.SetAttributes(attribute.Bool("cache_hit", false))
 	metrics.CacheHitMissTotal.WithLabelValues("cid_to_offset_and_size", "miss").Inc()
 
@@ -933,7 +933,7 @@ func (ser *Epoch) GetEntryByCid(ctx context.Context, wantedCid cid.Cid) (*ipldbi
 	ctx, span := telemetry.StartSpan(ctx, "GetEntryByCid")
 	defer span.End()
 	span.SetAttributes(attribute.String("cid", wantedCid.String()))
-	
+
 	data, err := ser.GetNodeByCid(ctx, wantedCid)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find node by cid %s: %w", wantedCid, err)
@@ -951,7 +951,7 @@ func (ser *Epoch) GetTransactionByCid(ctx context.Context, wantedCid cid.Cid) (*
 	ctx, span := telemetry.StartSpan(ctx, "GetTransactionByCid")
 	defer span.End()
 	span.SetAttributes(attribute.String("cid", wantedCid.String()))
-	
+
 	data, err := ser.GetNodeByCid(ctx, wantedCid)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find node by cid %s: %w", wantedCid, err)

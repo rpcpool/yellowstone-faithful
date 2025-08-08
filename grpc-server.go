@@ -848,7 +848,7 @@ func (multi *MultiEpoch) StreamBlocks(params *old_faithful_grpc.StreamBlocksRequ
 	if params.EndSlot != nil {
 		endSlot = *params.EndSlot
 	}
-	
+
 	var accountInclude []solana.PublicKey
 	if params.Filter != nil && len(params.Filter.AccountInclude) > 0 {
 		var err error
