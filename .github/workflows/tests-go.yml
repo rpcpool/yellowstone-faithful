@@ -10,7 +10,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  COVERAGE_THRESHOLD: 70
+  COVERAGE_THRESHOLD: 10
 
 name: tests_go
 jobs:

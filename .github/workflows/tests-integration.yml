@@ -311,6 +311,7 @@ jobs:
     - name: Collect integration test results
       if: always()
       run: |
+        mkdir -p /tmp/faithful-logs
         echo "=== INTEGRATION TEST SUMMARY ===" | tee /tmp/faithful-logs/test-summary.log
         echo "Date: $(date)" | tee -a /tmp/faithful-logs/test-summary.log
         echo "Commit: $GITHUB_SHA" | tee -a /tmp/faithful-logs/test-summary.log
