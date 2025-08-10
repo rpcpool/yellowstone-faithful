@@ -40,6 +40,15 @@ jobs:
         toolchain: ${{ env.RUST_VERSION }}
         target: x86_64-unknown-linux-gnu
 
+    - name: Install cbindgen
+      run: |
+        if ! command -v cbindgen &> /dev/null; then
+          echo "Installing cbindgen..."
+          cargo install cbindgen
+        else
+          echo "cbindgen already installed"
+        fi
+
     - name: Install system dependencies
       run: |
         sudo apt-get update
@@ -72,6 +81,7 @@ jobs:
         path: |
           ~/.cargo/registry
           ~/.cargo/git
+          ~/.cargo/bin
           jsonparsed/target
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
         restore-keys: |
