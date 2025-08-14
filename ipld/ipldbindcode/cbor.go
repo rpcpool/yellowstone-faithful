@@ -168,10 +168,44 @@ func (x *Subset) MarshalCBOR() ([]byte, error) {
 	}
 	// arr.Set(3, cbor.Tag{Number: 0x99, Content: blocks})
 	{
-		arr.Set(3, blocks)
+		a, err := EncodeArrayWith16BitLen(blocks...)
+		if err != nil {
+			return nil, fmt.Errorf("EncodeArrayWith16BitLen error: %w", err)
+		}
+		arr.Set(3, cbor.RawMessage(a))
 	}
 	// arr.Set(3, blocks)
 	return encodeCBOR(arr)
+}
+
+func EncodeArrayWith16BitLen(values ...any) ([]byte, error) {
+	// 1) Encode each item individually to CBOR.
+	var items []cbor.RawMessage
+	for _, v := range values {
+		b, err := cbor.Marshal(v) // uses default options
+		if err != nil {
+			return nil, fmt.Errorf("cbor.Marshal error: %w", err)
+		}
+		items = append(items, b)
+	}
+
+	// 2) Build the array header: 0x99 = two-byte array length
+	//    Then write length as big-endian uint16.
+	length := len(items) // number of array elements
+	header := []byte{
+		0x99,
+		byte(length >> 8),
+		byte(length),
+	}
+
+	// 3) Concatenate header + item bytes
+	result := make([]byte, 0, len(header))
+	result = append(result, header...)
+	for _, it := range items {
+		result = append(result, it...)
+	}
+
+	return result, nil
 }
 
 func (x *Subset) UnmarshalCBOR(data []byte) error {

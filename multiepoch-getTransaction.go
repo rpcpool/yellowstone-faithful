@@ -9,7 +9,10 @@ import (
 
 	"github.com/gagliardetto/solana-go"
 	"github.com/rpcpool/yellowstone-faithful/compactindexsized"
+	solanatxmetaparsers "github.com/rpcpool/yellowstone-faithful/solana-tx-meta-parsers"
+	"github.com/rpcpool/yellowstone-faithful/telemetry"
 	"github.com/sourcegraph/jsonrpc2"
+	"go.opentelemetry.io/otel/attribute"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"k8s.io/klog/v2"
@@ -127,8 +130,12 @@ func (multi *MultiEpoch) handleGetTransaction(ctx context.Context, conn *request
 
 	sig := params.Signature
 
+	// Start span for finding epoch from signature
+	epochLookupCtx, epochLookupSpan := telemetry.StartSpan(ctx, "GetTransaction_FindEpochFromSignature")
+	epochLookupSpan.SetAttributes(attribute.String("signature", sig.String()))
 	startedEpochLookupAt := time.Now()
-	epochNumber, err := multi.findEpochNumberFromSignature(ctx, sig)
+	epochNumber, err := multi.findEpochNumberFromSignature(epochLookupCtx, sig)
+	epochLookupSpan.End()
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
 			// solana just returns null here in case of transaction not found: {"jsonrpc":"2.0","result":null,"id":1}
@@ -152,7 +159,14 @@ func (multi *MultiEpoch) handleGetTransaction(ctx context.Context, conn *request
 		}, fmt.Errorf("failed to get handler for epoch %d: %w", epochNumber, err)
 	}
 
-	transactionNode, transactionCid, err := epochHandler.GetTransaction(WithSubrapghPrefetch(ctx, true), sig)
+	// Start span for getting transaction from epoch
+	txRetrievalCtx, txRetrievalSpan := telemetry.StartSpan(ctx, "GetTransaction_GetTransactionFromEpoch")
+	txRetrievalSpan.SetAttributes(
+		attribute.Int64("epoch", int64(epochNumber)),
+		attribute.String("signature", sig.String()),
+	)
+	transactionNode, transactionCid, err := epochHandler.GetTransaction(WithSubrapghPrefetch(txRetrievalCtx, true), sig)
+	txRetrievalSpan.End()
 	if err != nil {
 		if errors.Is(err, compactindexsized.ErrNotFound) {
 			// NOTE: solana just returns null here in case of transaction not found: {"jsonrpc":"2.0","result":null,"id":1}
@@ -170,18 +184,48 @@ func (multi *MultiEpoch) handleGetTransaction(ctx context.Context, conn *request
 		conn.ctx.Response.Header.Set("DAG-Root-CID", transactionCid.String())
 	}
 
-	var response GetTransactionResponse
+	// Start span for parsing transaction and metadata
+	_, parseSpan := telemetry.StartSpan(ctx, "GetTransaction_ParseTransactionMeta")
+	tx, meta, err := parseTransactionAndMetaFromNode(transactionNode, epochHandler.GetDataFrameByCid)
+	parseSpan.End()
+	if err != nil {
+		return &jsonrpc2.Error{
+			Code:    jsonrpc2.CodeInternalError,
+			Message: "Internal error",
+		}, fmt.Errorf("failed to decode transaction: %w", err)
+	}
+	out := solanatxmetaparsers.NewEncodedTransactionWithStatusMeta(
+		tx,
+		meta,
+	)
 
-	response.Slot = ptrToUint64(uint64(transactionNode.Slot))
+	response, err := out.ToUi(*params.Options.Encoding)
+	if err != nil {
+		return &jsonrpc2.Error{
+			Code:    jsonrpc2.CodeInternalError,
+			Message: "Internal error",
+		}, fmt.Errorf("failed to encode transaction: %w", err)
+	}
+
+	response.Value("slot", transactionNode.Slot)
 	{
+		// Start span for getting block time
+		_, blocktimeSpan := telemetry.StartSpan(ctx, "GetTransaction_GetBlockTime")
+		blocktimeSpan.SetAttributes(attribute.Int64("slot", int64(transactionNode.Slot)))
 		blocktimeIndex := epochHandler.GetBlocktimeIndex()
 		if blocktimeIndex != nil {
 			blocktime, err := blocktimeIndex.Get(uint64(transactionNode.Slot))
+			blocktimeSpan.End()
 			if err != nil {
 				return nil, status.Errorf(codes.Internal, "Failed to get block: %v", err)
 			}
-			response.Blocktime = &blocktime
+			if blocktime == 0 {
+				response.Value("blockTime", nil)
+			} else {
+				response.Value("blockTime", blocktime)
+			}
 		} else {
+			blocktimeSpan.End()
 			return &jsonrpc2.Error{
 				Code:    jsonrpc2.CodeInternalError,
 				Message: "Internal error",
@@ -192,41 +236,14 @@ func (multi *MultiEpoch) handleGetTransaction(ctx context.Context, conn *request
 	{
 		pos, ok := transactionNode.GetPositionIndex()
 		if ok {
-			response.Position = uint64(pos)
+			response.Value("position", pos)
 		}
-		tx, meta, err := parseTransactionAndMetaFromNode(transactionNode, epochHandler.GetDataFrameByCid)
-		if err != nil {
-			return &jsonrpc2.Error{
-				Code:    jsonrpc2.CodeInternalError,
-				Message: "Internal error",
-			}, fmt.Errorf("failed to decode transaction: %w", err)
-		}
-		response.Signatures = tx.Signatures
-		if tx.Message.IsVersioned() {
-			response.Version = tx.Message.GetVersion() - 1
-		} else {
-			response.Version = "legacy"
-		}
-
-		encodedTx, encodedMeta, err := encodeTransactionResponseBasedOnWantedEncoding(*params.Options.Encoding, tx, meta)
-		if err != nil {
-			return &jsonrpc2.Error{
-				Code:    jsonrpc2.CodeInternalError,
-				Message: "Internal error",
-			}, fmt.Errorf("failed to encode transaction: %w", err)
-		}
-		response.Transaction = encodedTx
-		response.Meta = encodedMeta
 	}
-
 	// reply with the data
 	err = conn.Reply(
 		ctx,
 		req.ID,
 		response,
-		func(m map[string]any) map[string]any {
-			return adaptTransactionMetaToExpectedOutput(m)
-		},
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to reply: %w", err)

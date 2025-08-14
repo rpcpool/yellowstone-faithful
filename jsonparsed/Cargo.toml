@@ -1,0 +1,22 @@
+[package]
+name = "transaction-status-ffi"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+# If you only wanted shared lib, you'd use only "cdylib".
+# If you only wanted static lib, you'd use only "staticlib".
+# This demo shows both.
+crate-type = ["staticlib", "cdylib"]
+
+[dependencies]
+serde_json = { workspace = true }
+solana-transaction-status = { workspace = true }
+solana-sdk = { workspace = true }
+solana-message = { workspace = true }
+solana-pubkey = { workspace = true }
+solana-program = { workspace = true }
+
+[package.metadata.docs.rs]
+targets = ["x86_64-unknown-linux-gnu"]

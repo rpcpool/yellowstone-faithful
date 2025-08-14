@@ -24,7 +24,7 @@ class FaithfulDataReport:
     def __init__(self):
         self.host = "https://files.old-faithful.net"
         self.deals_host = "https://filecoin-car-storage-cdn.b-cdn.net"
-        self.txmeta_first_epoch = 92
+        self.txmeta_first_epoch = 10
         self.issues = []  # Track issues for summary report
         self.index_files = [
             "mainnet-cid-to-offset-and-size.index",
@@ -34,6 +34,10 @@ class FaithfulDataReport:
             "mainnet-slot-to-blocktime.index",
             "gsfa.index.tar.zstd"
         ]
+        # Add tracking variables for totals
+        self.total_car_count = 0
+        self.total_car_size = 0
+        self.total_indices_size = 0
         
     async def check_url(self, session: aiohttp.ClientSession, url: str) -> bool:
         try:
@@ -191,7 +195,6 @@ class FaithfulDataReport:
         # Construct slots.txt URL
         slots_url = f"{self.host}/{epoch}/{epoch}.slots.txt"
 
-
         return EpochData(
             epoch=epoch,
             car=car_url,
@@ -209,31 +212,39 @@ class FaithfulDataReport:
         )
 
     def format_row(self, data: EpochData) -> str:
-        car_cell = f"[epoch-{data.epoch}.car]({data.car})" if data.car != "n/a" else "✗"
-        sha_cell = f"[{data.sha[:7]}]({data.sha_url})" if data.sha != "n/a" else "✗"
-        size_cell = f"{data.size} GB" if data.size != "n/a" else "✗"
+        car_cell = f"[epoch-{data.epoch}.car]({data.car})" if data.car != "n/a" else "❌"
+        sha_cell = f"[{data.sha[:7]}]({data.sha_url})" if data.sha != "n/a" else "❌"
+        size_cell = f"{data.size} GB" if data.size != "n/a" else "❌"
         
+        # Update totals
+        if data.car != "n/a":
+            self.total_car_count += 1
+        if data.size != "n/a":
+            self.total_car_size += int(data.size)
+        if data.indices_size != "n/a":
+            self.total_indices_size += int(data.indices_size)
+
         # Special handling for earlier epochs txmeta validation
         if 0 <= data.epoch < self.txmeta_first_epoch and data.txmeta != "n/a":
             txmeta_cell = f"[★]({data.txmeta_url})"
         else:
-            txmeta_cell = f"[✗]({data.txmeta_url})" if data.txmeta != "n/a" and not validate_txmeta_output(data.txmeta) else \
-                         f"[✓]({data.txmeta_url})" if data.txmeta != "n/a" else "✗"
+            txmeta_cell = f"[❌]({data.txmeta_url})" if data.txmeta != "n/a" and not validate_txmeta_output(data.txmeta) else \
+                         f"[✅]({data.txmeta_url})" if data.txmeta != "n/a" else "❌"
 
         # epoch 208 POH validation is handled differently
         if data.epoch == 208 and data.poh != "n/a":
             poh_cell = f"[★★]({data.poh_url})"
         elif data.poh != "n/a" and not validate_poh_output(data.poh):
-            poh_cell = f"[✗]({data.poh_url})"
+            poh_cell = f"[❌]({data.poh_url})"
         elif data.poh != "n/a":
-            poh_cell = f"[✓]({data.poh_url})"
+            poh_cell = f"[✅]({data.poh_url})"
         else:
-            poh_cell = "✗"
+            poh_cell = "❌"
 
-        indices_cell = "✓" if data.indices != "n/a" else "✗"
-        indices_size_cell = f"{data.indices_size} GB" if data.indices_size != "n/a" else "✗"
-        deals_cell = f"[✓]({data.deals})" if data.deals != "n/a" else "✗"
-        slots_cell = f"[{data.epoch}.slots.txt]({data.slots_url})" if data.slots_url != "n/a" else "✗"
+        indices_cell = "✅" if data.indices != "n/a" else "❌"
+        indices_size_cell = f"{data.indices_size} GB" if data.indices_size != "n/a" else "❌"
+        deals_cell = f"[✅]({data.deals})" if data.deals != "n/a" else "❌"
+        slots_cell = f"[{data.epoch}.slots.txt]({data.slots_url})" if data.slots_url != "n/a" else "❌"
 
         # Track issues for summary report
         issues = []
@@ -272,7 +283,7 @@ class FaithfulDataReport:
         print("|%s|epoch is|ongoing||||||||" % current_epoch)
 
         # concurrency levels
-        chunk_size = 20  
+        chunk_size = 50  
         
         async with aiohttp.ClientSession() as session:
             for i in range(0, len(epochs), chunk_size):
@@ -284,6 +295,13 @@ class FaithfulDataReport:
                 # Print results in order
                 for result in results:
                     print(self.format_row(result))
+
+        # Print totals row
+        car_size_tb = int(round(self.total_car_size / 1024, 0))
+        indices_size_tb = int(round(self.total_indices_size / 1024, 0))
+        total_epochs = len(epochs)
+        missing_cars = total_epochs - self.total_car_count
+        print(f"| **Total** | {self.total_car_count} | ({missing_cars} behind) | {car_size_tb:,} TB | - | - | - | {indices_size_tb:,} TB | - | - |")
 
         print("\n★ = tx meta validation skipped (epochs 0-%s where tx meta wasn't enabled yet)" % self.txmeta_first_epoch)
         print("\n★★ = epoch 208 POH validation is handled differently, see more in https://docs.old-faithful.net/validation")

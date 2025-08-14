@@ -32,9 +32,12 @@ import (
 	"github.com/rpcpool/yellowstone-faithful/indexmeta"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
+	"github.com/rpcpool/yellowstone-faithful/metrics"
 	"github.com/rpcpool/yellowstone-faithful/radiance/genesis"
 	splitcarfetcher "github.com/rpcpool/yellowstone-faithful/split-car-fetcher"
+	"github.com/rpcpool/yellowstone-faithful/telemetry"
 	"github.com/urfave/cli/v2"
+	"go.opentelemetry.io/otel/attribute"
 	"k8s.io/klog/v2"
 )
 
@@ -154,7 +157,7 @@ func NewEpochFromConfig(
 			if err != nil {
 				return nil, fmt.Errorf("failed to open cid-to-offset index: %w", err)
 			}
-			if config.Indexes.CidToOffsetAndSize.URI.IsRemoteWeb() {
+			if config.Indexes.CidToOffsetAndSize.URI.IsWeb() {
 				cidToOffsetIndex.Prefetch(true)
 			}
 			ep.deprecated_cidToOffsetIndex = cidToOffsetIndex
@@ -173,7 +176,7 @@ func NewEpochFromConfig(
 			if err != nil {
 				return nil, fmt.Errorf("failed to open cid-to-offset index: %w", err)
 			}
-			if config.Indexes.CidToOffsetAndSize.URI.IsRemoteWeb() {
+			if config.Indexes.CidToOffsetAndSize.URI.IsWeb() {
 				cidToOffsetAndSizeIndex.Prefetch(true)
 			}
 			ep.cidToOffsetAndSizeIndex = cidToOffsetAndSizeIndex
@@ -199,7 +202,7 @@ func NewEpochFromConfig(
 		if err != nil {
 			return nil, fmt.Errorf("failed to open slot-to-cid index: %w", err)
 		}
-		if config.Indexes.SlotToCid.URI.IsRemoteWeb() {
+		if config.Indexes.SlotToCid.URI.IsWeb() {
 			slotToCidIndex.Prefetch(true)
 		}
 		ep.slotToCidIndex = slotToCidIndex
@@ -229,7 +232,7 @@ func NewEpochFromConfig(
 		if err != nil {
 			return nil, fmt.Errorf("failed to open sig-to-cid index: %w", err)
 		}
-		if config.Indexes.SigToCid.URI.IsRemoteWeb() {
+		if config.Indexes.SigToCid.URI.IsWeb() {
 			sigToCidIndex.Prefetch(true)
 		}
 		ep.sigToCidIndex = sigToCidIndex
@@ -649,9 +652,10 @@ func (s *Epoch) prefetchSubgraph(ctx context.Context, wantedCid cid.Cid) error {
 }
 
 func (s *Epoch) GetNodeByCid(ctx context.Context, wantedCid cid.Cid) ([]byte, error) {
+	cache := s.GetCache()
 	{
 		// try from cache
-		data, err, has := s.GetCache().GetRawCarObject(wantedCid)
+		data, err, has := cache.GetRawCarObject(wantedCid)
 		if err != nil {
 			return nil, err
 		}
@@ -664,7 +668,7 @@ func (s *Epoch) GetNodeByCid(ctx context.Context, wantedCid cid.Cid) ([]byte, er
 		data, err := s.lassieFetcher.GetNodeByCid(ctx, wantedCid)
 		if err == nil {
 			// put in cache
-			s.GetCache().PutRawCarObject(wantedCid, data)
+			cache.PutRawCarObject(wantedCid, data)
 			return data, nil
 		}
 		return nil, fmt.Errorf("failed to get node from lassie for CID %s: %w", wantedCid, err)
@@ -679,13 +683,24 @@ func (s *Epoch) GetNodeByCid(ctx context.Context, wantedCid cid.Cid) ([]byte, er
 }
 
 func (s *Epoch) ReadAtFromCar(ctx context.Context, offset uint64, length uint64) ([]byte, error) {
+	// Start span for CAR read
+	ctx, span := telemetry.StartSpan(ctx, "CAR_Read")
+	defer span.End()
+	span.SetAttributes(
+		attribute.Int64("offset", int64(offset)),
+		attribute.Int64("length", int64(length)),
+	)
+
 	if s.localCarReader == nil {
 		// try remote reader
 		if s.remoteCarReader == nil {
 			return nil, fmt.Errorf("no CAR reader available")
 		}
+		span.SetAttributes(attribute.String("reader_type", "remote"))
 		return readSectionFromReaderAt(s.remoteCarReader, offset, length)
 	}
+	span.SetAttributes(attribute.String("reader_type", "local"))
+
 	// Get reader and seek to offset, then read node.
 	dr, err := s.localCarReader.DataReader()
 	if err != nil {
@@ -790,22 +805,33 @@ func parseNodeFromSection(section []byte, wantedCid *cid.Cid) ([]byte, error) {
 }
 
 func (ser *Epoch) FindCidFromSlot(ctx context.Context, slot uint64) (o cid.Cid, e error) {
+	// Start span for index lookup
+	ctx, span := telemetry.StartSpan(ctx, "Index_LookupSlotToCid")
+	defer span.End()
+	span.SetAttributes(attribute.Int64("slot", int64(slot)))
+
 	startedAt := time.Now()
 	defer func() {
 		klog.V(4).Infof("Found CID for slot %d in %s: %s", slot, time.Since(startedAt), o)
 	}()
 
+	cache := ser.GetCache()
 	// try from cache
-	if c, err, has := ser.GetCache().GetSlotToCid(slot); err != nil {
+	if c, err, has := cache.GetSlotToCid(slot); err != nil {
 		return cid.Undef, err
 	} else if has {
+		span.SetAttributes(attribute.Bool("cache_hit", true))
+		metrics.CacheHitMissTotal.WithLabelValues("slot_to_cid", "hit").Inc()
 		return c, nil
 	}
+
+	span.SetAttributes(attribute.Bool("cache_hit", false))
+	metrics.CacheHitMissTotal.WithLabelValues("slot_to_cid", "miss").Inc()
 	found, err := ser.slotToCidIndex.Get(slot)
 	if err != nil {
 		return cid.Undef, err
 	}
-	ser.GetCache().PutSlotToCid(slot, found)
+	cache.PutSlotToCid(slot, found)
 	return found, nil
 }
 
@@ -818,6 +844,11 @@ func (ser *Epoch) FindCidFromSignature(ctx context.Context, sig solana.Signature
 }
 
 func (ser *Epoch) FindOffsetAndSizeFromCid(ctx context.Context, cid cid.Cid) (os *indexes.OffsetAndSize, e error) {
+	// Start span for index lookup
+	ctx, span := telemetry.StartSpan(ctx, "Index_LookupCidToOffsetAndSize")
+	defer span.End()
+	span.SetAttributes(attribute.String("cid", cid.String()))
+
 	startedAt := time.Now()
 	defer func() {
 		if os != nil {
@@ -828,11 +859,17 @@ func (ser *Epoch) FindOffsetAndSizeFromCid(ctx context.Context, cid cid.Cid) (os
 	}()
 
 	// try from cache
-	if osi, err, has := ser.GetCache().GetCidToOffsetAndSize(cid); err != nil {
+	cache := ser.GetCache()
+	if osi, err, has := cache.GetCidToOffsetAndSize(cid); err != nil {
 		return nil, err
 	} else if has {
+		span.SetAttributes(attribute.Bool("cache_hit", true))
+		metrics.CacheHitMissTotal.WithLabelValues("cid_to_offset_and_size", "hit").Inc()
 		return osi, nil
 	}
+
+	span.SetAttributes(attribute.Bool("cache_hit", false))
+	metrics.CacheHitMissTotal.WithLabelValues("cid_to_offset_and_size", "miss").Inc()
 
 	if ser.config.IsDeprecatedIndexes() {
 		offset, err := ser.deprecated_cidToOffsetIndex.Get(cid)
@@ -853,7 +890,7 @@ func (ser *Epoch) FindOffsetAndSizeFromCid(ctx context.Context, cid cid.Cid) (os
 			Offset: offset,
 			Size:   size,
 		}
-		ser.GetCache().PutCidToOffsetAndSize(cid, found)
+		cache.PutCidToOffsetAndSize(cid, found)
 		return found, nil
 	}
 
@@ -861,7 +898,7 @@ func (ser *Epoch) FindOffsetAndSizeFromCid(ctx context.Context, cid cid.Cid) (os
 	if err != nil {
 		return nil, err
 	}
-	ser.GetCache().PutCidToOffsetAndSize(cid, found)
+	cache.PutCidToOffsetAndSize(cid, found)
 	return found, nil
 }
 
@@ -892,6 +929,11 @@ func (ser *Epoch) GetBlock(ctx context.Context, slot uint64) (*ipldbindcode.Bloc
 }
 
 func (ser *Epoch) GetEntryByCid(ctx context.Context, wantedCid cid.Cid) (*ipldbindcode.Entry, error) {
+	// Start span for entry retrieval
+	ctx, span := telemetry.StartSpan(ctx, "GetEntryByCid")
+	defer span.End()
+	span.SetAttributes(attribute.String("cid", wantedCid.String()))
+
 	data, err := ser.GetNodeByCid(ctx, wantedCid)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find node by cid %s: %w", wantedCid, err)
@@ -905,6 +947,11 @@ func (ser *Epoch) GetEntryByCid(ctx context.Context, wantedCid cid.Cid) (*ipldbi
 }
 
 func (ser *Epoch) GetTransactionByCid(ctx context.Context, wantedCid cid.Cid) (*ipldbindcode.Transaction, error) {
+	// Start span for transaction retrieval
+	ctx, span := telemetry.StartSpan(ctx, "GetTransactionByCid")
+	defer span.End()
+	span.SetAttributes(attribute.String("cid", wantedCid.String()))
+
 	data, err := ser.GetNodeByCid(ctx, wantedCid)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find node by cid %s: %w", wantedCid, err)

@@ -17,3 +17,7 @@ nano demo-plugin/src/plugin-config.json
 
 # Run the demo
 cargo run /path/to/epoch-NNN.car demo-plugin/src/plugin-config.json
+
+or 
+
+cargo run https://files.old-faithful.net/NNN/epoch-NNN.car demo-plugin/src/plugin-config.json

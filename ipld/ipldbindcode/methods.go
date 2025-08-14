@@ -13,6 +13,7 @@ import (
 	"github.com/gagliardetto/solana-go"
 	"github.com/ipfs/go-cid"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	"github.com/rpcpool/yellowstone-faithful/dummycid"
 )
 
 // DataFrame.HasHash returns whether the 'Hash' field is present.
@@ -278,7 +279,9 @@ func (n *DataFrame) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &aux); err != nil {
 		return err
 	}
-	n.Data.FromString(aux.Data)
+	if err := n.Data.FromString(aux.Data); err != nil {
+		return err
+	}
 	if aux.Hash != "" {
 		hash, err := strconv.ParseUint(aux.Hash, 10, 64)
 		if err != nil {
@@ -334,4 +337,10 @@ func (n SlotMeta) Equivalent(other SlotMeta) bool {
 		return false
 	}
 	return true
+}
+
+// Block.HasRewards
+func (n Block) HasRewards() bool {
+	hasRewards := !n.Rewards.(cidlink.Link).Cid.Equals(dummycid.DummyCID)
+	return hasRewards
 }

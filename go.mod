@@ -1,20 +1,20 @@
 module github.com/rpcpool/yellowstone-faithful
 
-go 1.21
+go 1.23.0
 
-toolchain go1.21.4
+toolchain go1.24.1
 
 replace github.com/anjor/carlet => github.com/rpcpool/carlet v0.0.4
 
 require (
 	github.com/benbjohnson/clock v1.3.5 // indirect
-	github.com/cespare/xxhash/v2 v2.2.0
+	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/davecgh/go-spew v1.1.1
 	github.com/dustin/go-humanize v1.0.1
 	github.com/filecoin-project/go-data-transfer/v2 v2.0.0-rc7 // indirect
 	github.com/filecoin-project/go-state-types v0.10.0 // indirect
 	github.com/gagliardetto/binary v0.8.0
-	github.com/gagliardetto/solana-go v1.10.0
+	github.com/gagliardetto/solana-go v1.12.0
 	github.com/google/uuid v1.6.0
 	github.com/hannahhoward/go-pubsub v1.0.0 // indirect
 	github.com/ipfs/go-blockservice v0.5.0 // indirect
@@ -40,15 +40,15 @@ require (
 	github.com/multiformats/go-multicodec v0.9.0
 	github.com/multiformats/go-multihash v0.2.3 // indirect
 	github.com/sourcegraph/jsonrpc2 v0.2.0
-	github.com/stretchr/testify v1.8.4
+	github.com/stretchr/testify v1.10.0
 	github.com/urfave/cli/v2 v2.25.7
 	github.com/vbauerster/mpb/v8 v8.2.1
-	go.opentelemetry.io/otel v1.16.0 // indirect
-	go.opentelemetry.io/otel/trace v1.16.0 // indirect
+	go.opentelemetry.io/otel v1.35.0
+	go.opentelemetry.io/otel/trace v1.35.0
 	go.uber.org/multierr v1.11.0 // indirect
-	golang.org/x/net v0.22.0 // indirect
-	golang.org/x/sync v0.6.0
-	google.golang.org/protobuf v1.33.0
+	golang.org/x/net v0.39.0 // indirect
+	golang.org/x/sync v0.13.0
+	google.golang.org/protobuf v1.36.5
 	k8s.io/klog/v2 v2.90.1
 )
 
@@ -81,8 +81,13 @@ require (
 	github.com/tidwall/hashmap v1.8.1
 	github.com/valyala/fasthttp v1.47.0
 	github.com/ybbus/jsonrpc/v3 v3.1.5
+	github.com/yudai/gojsondiff v1.0.0
+	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.35.0
+	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.35.0
+	go.opentelemetry.io/otel/exporters/stdout/stdouttrace v1.35.0
+	go.opentelemetry.io/otel/sdk v1.35.0
 	golang.org/x/exp v0.0.0-20231006140011-7918f672742d
-	google.golang.org/grpc v1.64.0
+	google.golang.org/grpc v1.71.0
 	gopkg.in/yaml.v2 v2.4.0
 	gopkg.in/yaml.v3 v3.0.1
 )
@@ -99,6 +104,7 @@ require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bep/debounce v1.2.1 // indirect
 	github.com/blendle/zapdriver v1.3.1 // indirect
+	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cespare/xxhash v1.1.0 // indirect
 	github.com/containerd/cgroups v1.1.0 // indirect
 	github.com/coreos/go-systemd/v22 v22.5.0 // indirect
@@ -119,7 +125,7 @@ require (
 	github.com/flynn/noise v1.0.0 // indirect
 	github.com/francoispqt/gojay v1.2.13 // indirect
 	github.com/gagliardetto/treeout v0.1.4 // indirect
-	github.com/go-logr/logr v1.2.4 // indirect
+	github.com/go-logr/logr v1.4.2 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-task/slim-sprig v0.0.0-20230315185526-52ccab3ef572 // indirect
 	github.com/godbus/dbus/v5 v5.1.0 // indirect
@@ -127,6 +133,7 @@ require (
 	github.com/google/gopacket v1.1.19 // indirect
 	github.com/google/pprof v0.0.0-20231023181126-ff6d637d2a7b // indirect
 	github.com/gorilla/websocket v1.5.0 // indirect
+	github.com/grpc-ecosystem/grpc-gateway/v2 v2.26.1 // indirect
 	github.com/hannahhoward/cbor-gen-for v0.0.0-20230214144701-5d17c9d5243c // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
@@ -182,6 +189,7 @@ require (
 	github.com/multiformats/go-multibase v0.2.0 // indirect
 	github.com/multiformats/go-multistream v0.5.0 // indirect
 	github.com/multiformats/go-varint v0.0.7 // indirect
+	github.com/onsi/ginkgo v1.16.5 // indirect
 	github.com/onsi/ginkgo/v2 v2.13.0 // indirect
 	github.com/opencontainers/runtime-spec v1.1.0 // indirect
 	github.com/opentracing/opentracing-go v1.2.0 // indirect
@@ -199,7 +207,9 @@ require (
 	github.com/quic-go/webtransport-go v0.6.0 // indirect
 	github.com/raulk/go-watchdog v1.3.0 // indirect
 	github.com/rivo/uniseg v0.4.4 // indirect
+	github.com/rogpeppe/go-internal v1.14.1 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
+	github.com/sergi/go-diff v1.3.2-0.20230802210424-5b0b94c5c0d3 // indirect
 	github.com/spaolacci/murmur3 v1.1.0 // indirect
 	github.com/streamingfast/logging v0.0.0-20230608130331-f22c91403091 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
@@ -207,22 +217,26 @@ require (
 	github.com/whyrusleeping/cbor-gen v0.0.0-20230818171029-f91ae536ca25 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	github.com/xrash/smetrics v0.0.0-20201216005158-039620a65673 // indirect
+	github.com/yudai/golcs v0.0.0-20170316035057-ecda9a501e82 // indirect
+	github.com/yudai/pp v2.0.1+incompatible // indirect
 	github.com/zeebo/xxh3 v1.0.2 // indirect
-	go.mongodb.org/mongo-driver v1.11.2 // indirect
-	go.opentelemetry.io/otel/metric v1.16.0 // indirect
+	go.mongodb.org/mongo-driver v1.17.3 // indirect
+	go.opentelemetry.io/auto/sdk v1.1.0 // indirect
+	go.opentelemetry.io/otel/metric v1.35.0 // indirect
+	go.opentelemetry.io/proto/otlp v1.5.0 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
 	go.uber.org/dig v1.17.1 // indirect
 	go.uber.org/fx v1.20.1 // indirect
 	go.uber.org/mock v0.3.0 // indirect
 	go.uber.org/ratelimit v0.2.0 // indirect
 	go.uber.org/zap v1.26.0 // indirect
-	golang.org/x/crypto v0.21.0 // indirect
-	golang.org/x/mod v0.13.0 // indirect
-	golang.org/x/sys v0.18.0 // indirect
-	golang.org/x/term v0.18.0 // indirect
-	golang.org/x/text v0.14.0 // indirect
+	golang.org/x/crypto v0.37.0 // indirect
+	golang.org/x/mod v0.21.0 // indirect
+	golang.org/x/sys v0.32.0 // indirect
+	golang.org/x/term v0.31.0 // indirect
+	golang.org/x/text v0.24.0 // indirect
 	golang.org/x/time v0.0.0-20191024005414-555d28b269f0 // indirect
-	golang.org/x/tools v0.14.0 // indirect
+	golang.org/x/tools v0.26.0 // indirect
 	golang.org/x/xerrors v0.0.0-20220907171357-04be3eba64a2 // indirect
 	google.golang.org/genproto v0.0.0-20230110181048-76db0878b65f // indirect
 	lukechampine.com/blake3 v1.2.1 // indirect
