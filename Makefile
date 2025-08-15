@@ -10,11 +10,24 @@ build-rust-wrapper:
 	cd jsonparsed && cargo build --release --lib --target=x86_64-unknown-linux-gnu --target-dir=target
 	cbindgen ./jsonparsed -o jsonparsed/lib/transaction_status.h --lang c
 	echo "build-rust-wrapper done"
+build-rust-wrapper-aarch64-apple-darwin:
+	rm -rf jsonparsed/lib
+	cd jsonparsed && cargo build --release --lib --target=aarch64-apple-darwin --target-dir=target
+	cbindgen ./jsonparsed -o jsonparsed/lib/transaction_status.h --lang c
+	echo "build-rust-wrapper done"
 jsonParsed-linux: build-rust-wrapper
 	# build faithful-cli with jsonParsed format support via ffi (rust)
 	rm -rf ./bin/faithful-cli_jsonParsed
 	# static linking:
 	cp jsonparsed/target/x86_64-unknown-linux-gnu/release/libtransaction_status_ffi.a ./jsonparsed/lib/libsolana_transaction_status_wrapper.a
+	LD_FLAGS="$(BASE_LD_FLAGS) -extldflags -static"
+	go build -ldflags=$(LD_FLAGS) -tags ffi -o ./bin/faithful-cli_jsonParsed .
+	echo "SUCCESS: built old-faithful with jsonParsed format support via ffi (rust)"
+jsonParsed-aarch64-apple-darwin: build-rust-wrapper-aarch64-apple-darwin
+	# build faithful-cli with jsonParsed format support via ffi (rust)
+	rm -rf ./bin/faithful-cli_jsonParsed
+	# static linking:
+	cp jsonparsed/target/aarch64-apple-darwin/release/libtransaction_status_ffi.a ./jsonparsed/lib/libsolana_transaction_status_wrapper.a
 	LD_FLAGS="$(BASE_LD_FLAGS) -extldflags -static"
 	go build -ldflags=$(LD_FLAGS) -tags ffi -o ./bin/faithful-cli_jsonParsed .
 	echo "SUCCESS: built old-faithful with jsonParsed format support via ffi (rust)"
