@@ -65,6 +65,15 @@ func (final *EncodedTransactionWithStatusMeta) ToUi(encoding solana.EncodingType
 			if err != nil {
 				return nil, fmt.Errorf("failed to serialize (serde) transaction status meta: %w", err)
 			}
+
+			// Parse inner instructions if JSONParsed encoding is used
+			if encoding == solana.EncodingJSONParsed && jsonparsed.IsEnabled() {
+				rawJsonMeta, err = final.addParsedInnerInstructions(rawJsonMeta)
+				if err != nil {
+					return nil, fmt.Errorf("failed to add parsed inner instructions: %w", err)
+				}
+			}
+
 			resp.Raw("meta", rawJsonMeta)
 		}
 		if final.Meta.IsProtobuf() {
@@ -73,6 +82,15 @@ func (final *EncodedTransactionWithStatusMeta) ToUi(encoding solana.EncodingType
 			if err != nil {
 				return nil, fmt.Errorf("failed to serialize (protobuf) transaction status meta: %w", err)
 			}
+
+			// Parse inner instructions if JSONParsed encoding is used
+			if encoding == solana.EncodingJSONParsed && jsonparsed.IsEnabled() {
+				rawJsonMeta, err = final.addParsedInnerInstructions(rawJsonMeta)
+				if err != nil {
+					return nil, fmt.Errorf("failed to add parsed inner instructions: %w", err)
+				}
+			}
+
 			resp.Raw("meta", rawJsonMeta)
 		}
 	} else {
@@ -191,10 +209,8 @@ func (final *EncodedTransactionWithStatusMeta) ToUi(encoding solana.EncodingType
 
 				resp.Value(
 					"transaction",
-					final.Transaction,
+					parsedTx,
 				)
-
-				// TODO: must parse also inner instructions?????
 			}
 		default:
 			return nil, fmt.Errorf("unknown encoding: %s", encoding)
@@ -210,6 +226,171 @@ func (final *EncodedTransactionWithStatusMeta) ToUi(encoding solana.EncodingType
 		}
 	}
 	return resp, nil
+}
+
+// addParsedInnerInstructions adds parsed inner instructions to the metadata JSON
+func (final *EncodedTransactionWithStatusMeta) addParsedInnerInstructions(metaJSON json.RawMessage) (json.RawMessage, error) {
+	// Unmarshal the existing meta JSON
+	var metaMap map[string]interface{}
+	if err := json.Unmarshal(metaJSON, &metaMap); err != nil {
+		return metaJSON, fmt.Errorf("failed to unmarshal meta JSON: %w", err)
+	}
+
+	// Check if innerInstructions exist in the meta
+	innerInstructionsRaw, exists := metaMap["innerInstructions"]
+	if !exists || innerInstructionsRaw == nil {
+		return metaJSON, nil // No inner instructions to parse
+	}
+
+	// Type assert to []interface{}
+	innerInstructionsList, ok := innerInstructionsRaw.([]interface{})
+	if !ok {
+		return metaJSON, nil // Wrong type, skip parsing
+	}
+
+	// Parse each inner instruction group
+	parsedInnerInstructions := make([]interface{}, 0, len(innerInstructionsList))
+	for _, innerInstructionGroupRaw := range innerInstructionsList {
+		innerInstructionGroup, ok := innerInstructionGroupRaw.(map[string]interface{})
+		if !ok {
+			parsedInnerInstructions = append(parsedInnerInstructions, innerInstructionGroupRaw)
+			continue
+		}
+
+		// Get the index
+		index := innerInstructionGroup["index"]
+
+		// Get instructions array
+		instructionsRaw, exists := innerInstructionGroup["instructions"]
+		if !exists {
+			parsedInnerInstructions = append(parsedInnerInstructions, innerInstructionGroupRaw)
+			continue
+		}
+
+		instructionsList, ok := instructionsRaw.([]interface{})
+		if !ok {
+			parsedInnerInstructions = append(parsedInnerInstructions, innerInstructionGroupRaw)
+			continue
+		}
+
+		// Parse each instruction in the group
+		parsedInstructions := make([]interface{}, 0, len(instructionsList))
+		for _, instructionRaw := range instructionsList {
+			instruction, ok := instructionRaw.(map[string]interface{})
+			if !ok {
+				parsedInstructions = append(parsedInstructions, instructionRaw)
+				continue
+			}
+
+			// Convert the instruction map to a CompiledInstruction
+			parsedInstruction, err := final.parseInnerInstruction(instruction)
+			if err != nil {
+				// If parsing fails, keep the original instruction
+				parsedInstructions = append(parsedInstructions, instructionRaw)
+				continue
+			}
+
+			parsedInstructions = append(parsedInstructions, parsedInstruction)
+		}
+
+		// Create the parsed inner instruction group
+		parsedInnerInstructionGroup := map[string]interface{}{
+			"index":        index,
+			"instructions": parsedInstructions,
+		}
+		parsedInnerInstructions = append(parsedInnerInstructions, parsedInnerInstructionGroup)
+	}
+
+	// Update the meta map with parsed inner instructions
+	metaMap["innerInstructions"] = parsedInnerInstructions
+
+	// Marshal back to JSON
+	updatedMetaJSON, err := json.Marshal(metaMap)
+	if err != nil {
+		return metaJSON, fmt.Errorf("failed to marshal updated meta: %w", err)
+	}
+
+	return updatedMetaJSON, nil
+}
+
+// parseInnerInstruction parses a single inner instruction
+func (final *EncodedTransactionWithStatusMeta) parseInnerInstruction(instruction map[string]interface{}) (interface{}, error) {
+	// Extract programIdIndex
+	programIdIndexRaw, exists := instruction["programIdIndex"]
+	if !exists {
+		return instruction, nil
+	}
+
+	programIdIndex, ok := programIdIndexRaw.(float64)
+	if !ok {
+		return instruction, nil
+	}
+
+	// Extract accounts
+	accountsRaw, exists := instruction["accounts"]
+	if !exists {
+		return instruction, nil
+	}
+
+	accountsList, ok := accountsRaw.([]interface{})
+	if !ok {
+		return instruction, nil
+	}
+
+	accounts := make([]uint16, 0, len(accountsList))
+	for _, accRaw := range accountsList {
+		acc, ok := accRaw.(float64)
+		if !ok {
+			continue
+		}
+		accounts = append(accounts, uint16(acc))
+	}
+
+	// Extract data
+	dataRaw, exists := instruction["data"]
+	if !exists {
+		return instruction, nil
+	}
+
+	dataStr, ok := dataRaw.(string)
+	if !ok {
+		return instruction, nil
+	}
+
+	// Decode base58 data
+	data, err := base58.Decode(dataStr)
+	if err != nil {
+		return instruction, nil
+	}
+
+	// Create a CompiledInstruction
+	compiledInst := solana.CompiledInstruction{
+		ProgramIDIndex: uint16(programIdIndex),
+		Accounts:       accounts,
+		Data:           data,
+	}
+
+	// Parse the instruction
+	parsedInstructionJSON, err := compiledInstructionsToJsonParsed(final.Transaction, compiledInst, final.Meta)
+	if err != nil {
+		// If parsing fails, return the original instruction
+		return instruction, nil
+	}
+
+	// Unmarshal the parsed JSON to return as an interface{}
+	var parsedInstruction interface{}
+	if err := json.Unmarshal(parsedInstructionJSON, &parsedInstruction); err != nil {
+		return instruction, nil
+	}
+
+	// Add stackHeight if it was in the original instruction
+	if stackHeightRaw, exists := instruction["stackHeight"]; exists {
+		if parsedMap, ok := parsedInstruction.(map[string]interface{}); ok {
+			parsedMap["stackHeight"] = stackHeightRaw
+		}
+	}
+
+	return parsedInstruction, nil
 }
 
 // #[repr(u8)]
@@ -280,6 +461,7 @@ func compiledInstructionsToJsonParsed(
 	}
 
 	parsedInstructionJSON, err := instrParams.ParseInstruction()
+
 	if err != nil || parsedInstructionJSON == nil || !strings.HasPrefix(strings.TrimSpace(string(parsedInstructionJSON)), "{") {
 		nonParseadInstructionJSON := map[string]any{
 			"accounts": func() []string {
