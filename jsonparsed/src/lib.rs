@@ -218,7 +218,14 @@ pub unsafe extern "C" fn parse_instruction(bytes: *const u8, len: usize) -> Resp
     }
 }
 
-// Add this new function to free the memory allocated by parse_instruction
+/// Frees memory allocated by parse_instruction.
+/// 
+/// # Safety
+/// 
+/// * `ptr` must be a valid pointer returned by `parse_instruction` 
+/// * `len` must be the exact length returned by `parse_instruction`
+/// * `ptr` must not be used after calling this function
+/// * This function must be called exactly once for each pointer returned by `parse_instruction`
 #[no_mangle]
 pub unsafe extern "C" fn free_response(ptr: *mut u8, len: usize) {
     if !ptr.is_null() {
