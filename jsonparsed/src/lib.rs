@@ -79,7 +79,7 @@ pub unsafe extern "C" fn parse_instruction(bytes: *const u8, len: usize) -> Resp
                         dyn_wri_index, error
                     );
                     response.extend_from_slice(error.as_bytes());
-                    
+
                     // FIX: Convert to boxed slice to prevent deallocation
                     let boxed = response.into_boxed_slice();
                     let len = boxed.len();
@@ -167,7 +167,7 @@ pub unsafe extern "C" fn parse_instruction(bytes: *const u8, len: usize) -> Resp
             let error = parsed.err().unwrap();
             let error = format!("{:?}", error);
             response.extend_from_slice(error.as_bytes());
-            
+
             // FIX: Convert to boxed slice to prevent deallocation
             let boxed = response.into_boxed_slice();
             let len = boxed.len();
@@ -205,7 +205,7 @@ pub unsafe extern "C" fn parse_instruction(bytes: *const u8, len: usize) -> Resp
             let boxed = response.into_boxed_slice();
             let len = boxed.len();
             let ptr = Box::into_raw(boxed) as *mut u8;
-            
+
             // println!("[rust] {:?}", Instant::now() - started_at);
             Response {
                 buf: Buffer {

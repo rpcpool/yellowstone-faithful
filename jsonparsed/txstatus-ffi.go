@@ -16,9 +16,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	bin "github.com/gagliardetto/binary"
 	"strings"
 	"unsafe"
+
+	bin "github.com/gagliardetto/binary"
 )
 
 func (inst Parameters) ParseInstruction() (json.RawMessage, error) {
