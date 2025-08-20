@@ -388,7 +388,7 @@ func (final *EncodedTransactionWithStatusMeta) parseInnerInstruction(instruction
 
 	// Check program ID index
 	if int(programIdIndex) >= totalAccounts {
-		fmt.Printf("WARNING: Program ID index %d >= total accounts %d\n", programIdIndex, totalAccounts)
+		fmt.Printf("WARNING: Program ID index %d >= total accounts %d\n", int(programIdIndex), totalAccounts)
 		return instruction, nil
 	}
 
