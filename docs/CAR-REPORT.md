@@ -2,7 +2,7 @@
 |---|---|---|---|---|---|---|---|---|---|
 |836|epoch is|ongoing||||||||
 | 835 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| 834 | [epoch-834.car](https://files.old-faithful.net/834/epoch-834.car) | [eedf144](https://files.old-faithful.net/834/epoch-834.sha256) | 635 GB | [✅](https://files.old-faithful.net/834/tx-metadata-check.log) | [✅](https://files.old-faithful.net/834/poh-check.log) | ❌ | 62 GB | ❌ | [834.slots.txt](https://files.old-faithful.net/834/834.slots.txt) |
+| 834 | [epoch-834.car](https://files.old-faithful.net/834/epoch-834.car) | [eedf144](https://files.old-faithful.net/834/epoch-834.sha256) | 635 GB | [✅](https://files.old-faithful.net/834/tx-metadata-check.log) | [✅](https://files.old-faithful.net/834/poh-check.log) | ✅ | 67 GB | ❌ | [834.slots.txt](https://files.old-faithful.net/834/834.slots.txt) |
 | 833 | [epoch-833.car](https://files.old-faithful.net/833/epoch-833.car) | [a51b193](https://files.old-faithful.net/833/epoch-833.sha256) | 746 GB | [✅](https://files.old-faithful.net/833/tx-metadata-check.log) | [✅](https://files.old-faithful.net/833/poh-check.log) | ✅ | 78 GB | ❌ | [833.slots.txt](https://files.old-faithful.net/833/833.slots.txt) |
 | 832 | [epoch-832.car](https://files.old-faithful.net/832/epoch-832.car) | [5958857](https://files.old-faithful.net/832/epoch-832.sha256) | 741 GB | [✅](https://files.old-faithful.net/832/tx-metadata-check.log) | [✅](https://files.old-faithful.net/832/poh-check.log) | ✅ | 78 GB | ❌ | [832.slots.txt](https://files.old-faithful.net/832/832.slots.txt) |
 | 831 | [epoch-831.car](https://files.old-faithful.net/831/epoch-831.car) | [1ab097e](https://files.old-faithful.net/831/epoch-831.sha256) | 725 GB | [✅](https://files.old-faithful.net/831/tx-metadata-check.log) | [✅](https://files.old-faithful.net/831/poh-check.log) | ✅ | 77 GB | ❌ | [831.slots.txt](https://files.old-faithful.net/831/831.slots.txt) |
@@ -851,6 +851,4 @@
 - Epoch 50: failed tx meta check
 - Epoch 208: failed POH check, failed tx meta check
 - Epoch 542: failed POH check
-- Epoch 834: missing index file: mainnet-sig-exists.index
-- Epoch 834: missing indices
 - Epoch 835: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size
