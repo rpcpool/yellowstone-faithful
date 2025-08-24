@@ -105,25 +105,39 @@ func (multi *MultiEpoch) handleGetBlock_car(ctx context.Context, conn *requestCo
 		conn.ctx.Response.Header.Set("DAG-Root-CID", childCid.String())
 	}
 
-	parentSlot := uint64(block.Meta.Parent_slot)
+	parentSlot := block.GetParentSlot()
 	parentIsInPreviousEpoch := slottools.ParentIsInPreviousEpoch(parentSlot, (slot))
-	_ = parentIsInPreviousEpoch
-	// now we know the parent slot;
 	// TODO: the parent object might be in the previous epoch, so we need to handle that case.
-	parentCid, err := epochHandler.FindCidFromSlot(ctx, parentSlot)
-	if err != nil {
-		if errors.Is(err, compactindexsized.ErrNotFound) {
-			return nil, fmt.Errorf("parent slot %d was skipped, or missing in long-term storage", parentSlot)
+
+	offsetParent, parentCid, err := func() (uint64, cid.Cid, error) {
+		if parentSlot == 0 {
+			return 0, cid.Cid{}, nil // genesis has no parent
 		}
-	}
-	if parentCid == cid.Undef {
-		return nil, fmt.Errorf("parent CID for slot %d is undefined", parentSlot)
-	}
-	parentOas, err := epochHandler.FindOffsetAndSizeFromCid(ctx, parentCid)
+		if parentIsInPreviousEpoch {
+			return 0, cid.Cid{}, nil
+		}
+		parentCid, err := epochHandler.FindCidFromSlot(ctx, parentSlot)
+		if err != nil {
+			if errors.Is(err, compactindexsized.ErrNotFound) {
+				return 0, cid.Cid{}, fmt.Errorf("parent slot %d was skipped, or missing in long-term storage", parentSlot)
+			}
+		}
+		if parentCid == cid.Undef {
+			return 0, cid.Cid{}, fmt.Errorf("parent CID for slot %d is undefined", parentSlot)
+		}
+		parentOas, err := epochHandler.FindOffsetAndSizeFromCid(ctx, parentCid)
+		if err != nil {
+			return 0, cid.Cid{}, fmt.Errorf("failed to find offset for parent CID %s: %w", parentCid, err)
+		}
+		offsetParent := parentOas.Offset
+		return offsetParent, parentCid, nil
+	}()
 	if err != nil {
-		return nil, fmt.Errorf("failed to find offset for parent CID %s: %w", parentCid, err)
+		return &jsonrpc2.Error{
+			Code:    jsonrpc2.CodeInternalError,
+			Message: "Failed to get block",
+		}, fmt.Errorf("failed to get parent offset: %w", err)
 	}
-	offsetParent := parentOas.Offset
 	totalSize := oasChild.Offset + oasChild.Size - offsetParent
 	const (
 		KiB = 1024
@@ -354,6 +368,8 @@ func (multi *MultiEpoch) handleGetBlock_car(ctx context.Context, conn *requestCo
 			// TODO: handle the case when the parent is in a different epoch.
 			if slot != 0 {
 				klog.V(4).Infof("parent slot is in a different epoch, not implemented yet (can't get previousBlockhash)")
+				// is previous epoch available?
+				// if yes, get the parent block from there
 			}
 		}
 		parentSpan.End()
