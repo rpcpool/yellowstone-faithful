@@ -939,7 +939,7 @@ func (multi *MultiEpoch) processSlotTransactions(
 		return status.Errorf(codes.Internal, "Failed to compile filter: %v", err)
 	}
 
-	if filter == nil || len(filter.AccountInclude) == 0 || !gsfaReadersLoaded {
+	{
 		klog.V(4).Infof("Using the old faithful method for streaming transactions from slots %d to %d", startSlot, endSlot)
 
 		for slot := startSlot; slot <= endSlot; slot++ {
