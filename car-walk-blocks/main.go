@@ -50,7 +50,7 @@ func main() {
 	var includeRewards bool
 	flag.StringVar(&carpath, "car", "", "Path to the CAR file")
 	flag.StringVar((*string)(&encoding), "encoding", "base64", "Transaction encoding (base64|json|jsonParsed)")
-	flag.StringVar((*string)(&transactionDetails), "tx-details", "signatures", "Transaction details level (none|signatures|full)")
+	flag.StringVar((*string)(&transactionDetails), "details", "signatures", "Transaction details level (none|signatures|full)")
 	flag.BoolVar(&includeRewards, "rewards", false, "Include rewards in the output")
 	flag.Parse()
 	if carpath == "" {
