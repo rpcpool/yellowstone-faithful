@@ -10,6 +10,7 @@ import (
 	"github.com/gagliardetto/solana-go"
 	"github.com/gagliardetto/solana-go/rpc"
 	"github.com/rpcpool/yellowstone-faithful/compactindexsized"
+	"github.com/rpcpool/yellowstone-faithful/nodetools"
 	solanatxmetaparsers "github.com/rpcpool/yellowstone-faithful/solana-tx-meta-parsers"
 	"github.com/sourcegraph/jsonrpc2"
 	"google.golang.org/grpc/codes"
@@ -171,7 +172,7 @@ func (multi *MultiEpoch) handleGetTransaction(ctx context.Context, conn *request
 	{
 		conn.ctx.Response.Header.Set("DAG-Root-CID", transactionCid.String())
 	}
-	tx, meta, err := parseTransactionAndMetaFromNode(transactionNode, epochHandler.GetDataFrameByCid)
+	tx, meta, err := nodetools.ParseTransactionAndMetaFromNode(transactionNode, epochHandler.GetDataFrameByCid)
 	if err != nil {
 		return &jsonrpc2.Error{
 			Code:    jsonrpc2.CodeInternalError,

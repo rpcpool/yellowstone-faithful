@@ -1,10 +1,21 @@
 package solanablockrewards
 
 import (
+	"sort"
+
 	transaction_status_meta_serde_agave "github.com/rpcpool/yellowstone-faithful/parse_legacy_transaction_status_meta"
 	"github.com/rpcpool/yellowstone-faithful/third_party/solana_proto/confirmed_block"
 	"google.golang.org/protobuf/proto"
 )
+
+func SortRewardsByPubkey(rewards *confirmed_block.Rewards) {
+	// Sort rewards by Pubkey for consistent output.
+	if rewards != nil && rewards.Rewards != nil {
+		sort.Slice(rewards.Rewards, func(i, j int) bool {
+			return rewards.Rewards[i].Pubkey < rewards.Rewards[j].Pubkey
+		})
+	}
+}
 
 func ParseRewards(buf []byte) (*confirmed_block.Rewards, error) {
 	protobufRewards, err := ParseRewardsProtobuf(buf)

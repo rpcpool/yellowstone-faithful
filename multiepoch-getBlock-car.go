@@ -22,7 +22,7 @@ import (
 	solanatxmetaparsers "github.com/rpcpool/yellowstone-faithful/solana-tx-meta-parsers"
 	"github.com/rpcpool/yellowstone-faithful/telemetry"
 	"github.com/rpcpool/yellowstone-faithful/tooling"
-	ytooling "github.com/rpcpool/yellowstone-faithful/tooling"
+	txpool "github.com/rpcpool/yellowstone-faithful/tx-pool"
 	"github.com/sourcegraph/jsonrpc2"
 	"github.com/valyala/bytebufferpool"
 	"go.opentelemetry.io/otel/attribute"
@@ -169,33 +169,7 @@ func (multi *MultiEpoch) handleGetBlock_car(ctx context.Context, conn *requestCo
 	hasRewards := block.HasRewards()
 	rewardsCid := block.Rewards.(cidlink.Link).Cid
 	if *params.Options.Rewards && hasRewards {
-		rewardsNode, err := parsedNodes.RewardsByCid(rewardsCid)
-		if err != nil {
-			return &jsonrpc2.Error{
-				Code:    jsonrpc2.CodeInternalError,
-				Message: "Internal error",
-			}, fmt.Errorf("failed to decode Rewards: %v", err)
-		}
-		rewardsBuf, err := ipldbindcode.LoadDataFromDataFrames(&rewardsNode.Data, func(ctx context.Context, wantedCid cid.Cid) (*ipldbindcode.DataFrame, error) {
-			df, err := parsedNodes.DataFrameByCid(wantedCid)
-			return df, err
-		})
-		if err != nil {
-			return &jsonrpc2.Error{
-				Code:    jsonrpc2.CodeInternalError,
-				Message: "Internal error",
-			}, fmt.Errorf("failed to load Rewards dataFrames: %v", err)
-		}
-
-		uncompressedRewards, err := ytooling.DecompressZstd(rewardsBuf)
-		if err != nil {
-			return &jsonrpc2.Error{
-				Code:    jsonrpc2.CodeInternalError,
-				Message: "Internal error",
-			}, fmt.Errorf("failed to decompress Rewards: %v", err)
-		}
-		// try decoding as protobuf
-		actualRewards, err := solanablockrewards.ParseRewards(uncompressedRewards)
+		actualRewards, err := nodetools.GetParsedRewards(parsedNodes, rewardsCid)
 		if err != nil {
 			slog.Error(
 				"failed to parse block rewards",
@@ -203,6 +177,10 @@ func (multi *MultiEpoch) handleGetBlock_car(ctx context.Context, conn *requestCo
 				"rewards_cid", rewardsCid.String(),
 				"error", err,
 			)
+			return &jsonrpc2.Error{
+				Code:    jsonrpc2.CodeInternalError,
+				Message: "Internal error",
+			}, fmt.Errorf("failed to get parsed rewards by CID %s: %v", rewardsCid, err)
 		} else {
 			// encode rewards as JSON, then decode it as a map
 			rewards, _, err := solanablockrewards.RewardsToUi(actualRewards)
@@ -248,9 +226,9 @@ func (multi *MultiEpoch) handleGetBlock_car(ctx context.Context, conn *requestCo
 			}()
 			{
 				_, buildTxSpan := telemetry.StartSpan(rpcSpanCtx, "GetBlock_BuildTransactions")
-				for transactionNode := range parsedNodes.Transaction() {
+				for _, transactionNode := range parsedNodes.SortedTransactions() {
 					err := func() error {
-						tx, meta, err := parseTransactionAndMetaFromNode(transactionNode, func(ctx context.Context, wantedCid cid.Cid) (*ipldbindcode.DataFrame, error) {
+						tx, meta, err := nodetools.ParseTransactionAndMetaFromNode(transactionNode, func(ctx context.Context, wantedCid cid.Cid) (*ipldbindcode.DataFrame, error) {
 							df, err := parsedNodes.DataFrameByCid(wantedCid)
 							if err != nil {
 								return nil, fmt.Errorf("failed to get DataFrame by CID %s: %w", wantedCid, err)
@@ -271,7 +249,7 @@ func (multi *MultiEpoch) handleGetBlock_car(ctx context.Context, conn *requestCo
 							return fmt.Errorf("failed to encode transaction: %v", err)
 						}
 						out.Meta.Put()
-						putTransactionToPool(tx) // return the transaction to the pool
+						txpool.Put(tx) // return the transaction to the pool
 						// TODO: include position index in the UI output.
 						// pos, ok := transactionNode.GetPositionIndex()
 						// if ok {

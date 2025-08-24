@@ -315,6 +315,8 @@ func (d ParsedAndCidSlice) AnyByCid(c cid.Cid) (ipldbindcode.Node, error) {
 	return any.Data, nil
 }
 
+// SortedTransactions returns all transactions in the ParsedAndCidSlice, sorted
+// by their position index if available (position in the block).
 func (d ParsedAndCidSlice) SortedTransactions() []*ipldbindcode.Transaction {
 	var transactions []*ipldbindcode.Transaction
 	for _, item := range d {

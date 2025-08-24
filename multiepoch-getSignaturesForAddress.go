@@ -11,6 +11,7 @@ import (
 	"github.com/rpcpool/yellowstone-faithful/indexes"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
+	"github.com/rpcpool/yellowstone-faithful/nodetools"
 	"github.com/rpcpool/yellowstone-faithful/slottools"
 	"github.com/sourcegraph/jsonrpc2"
 	"k8s.io/klog/v2"
@@ -224,7 +225,7 @@ func (multi *MultiEpoch) handleGetSignaturesForAddress(ctx context.Context, conn
 
 				{
 					{
-						tx, meta, err := parseTransactionAndMetaFromNode(transactionNode, ser.GetDataFrameByCid)
+						tx, meta, err := nodetools.ParseTransactionAndMetaFromNode(transactionNode, ser.GetDataFrameByCid)
 						if err == nil {
 							e, hasErr, err := meta.GetTxError()
 							if err != nil {

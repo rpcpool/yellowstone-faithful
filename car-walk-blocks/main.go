@@ -11,28 +11,71 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/dustin/go-humanize"
+	"github.com/gagliardetto/solana-go"
+	"github.com/gagliardetto/solana-go/rpc"
+	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/rpcpool/yellowstone-faithful/carreader"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
+	"github.com/rpcpool/yellowstone-faithful/jsonbuilder"
 	"github.com/rpcpool/yellowstone-faithful/nodetools"
+	"github.com/rpcpool/yellowstone-faithful/slottools"
+	solanablockrewards "github.com/rpcpool/yellowstone-faithful/solana-block-rewards"
+	solanatxmetaparsers "github.com/rpcpool/yellowstone-faithful/solana-tx-meta-parsers"
 	splitcarfetcher "github.com/rpcpool/yellowstone-faithful/split-car-fetcher"
+	"github.com/rpcpool/yellowstone-faithful/tooling"
+	txpool "github.com/rpcpool/yellowstone-faithful/tx-pool"
 	"github.com/rpcpool/yellowstone-faithful/uri"
+	"github.com/valyala/bytebufferpool"
+	"k8s.io/klog/v2"
 )
+
+func isAnyOf(str string, options ...string) bool {
+	for _, option := range options {
+		if str == option {
+			return true
+		}
+	}
+	return false
+}
 
 func main() {
 	var carpath string
+	var encoding solana.EncodingType
+	var transactionDetails rpc.TransactionDetailsType
+	var includeRewards bool
 	flag.StringVar(&carpath, "car", "", "Path to the CAR file")
+	flag.StringVar((*string)(&encoding), "encoding", "base64", "Transaction encoding (base64|json|jsonParsed)")
+	flag.StringVar((*string)(&transactionDetails), "tx-details", "signatures", "Transaction details level (none|signatures|full)")
+	flag.BoolVar(&includeRewards, "rewards", false, "Include rewards in the output")
 	flag.Parse()
 	if carpath == "" {
 		flag.Usage()
 		return
 	}
-	slog.Info("Going to walk each block in the CAR file",
+	if !isAnyOf(string(encoding), "base58", "base64", "json", "jsonParsed") {
+		slog.Error("Invalid encoding specified. Supported values are: base58, base64, json, jsonParsed", "got", encoding)
+		return
+	}
+	if !isAnyOf(string(transactionDetails), "none", "signatures", "full", "accounts") {
+		slog.Error("Invalid transaction details level specified. Supported values are: none, signatures, full, accounts", "got", transactionDetails)
+		return
+	}
+
+	// default slog to stderr
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	})))
+
+	slog.Info("Going to walk each block in the CAR file and print as JSON line",
 		"car", carpath,
+		"encoding", encoding,
+		"tx-details", transactionDetails,
+		"include-rewards", includeRewards,
 	)
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, os.Kill)
 	defer cancel()
@@ -52,17 +95,17 @@ func main() {
 		for {
 			select {
 			case <-ticker.C:
-				fmt.Printf(
-					"Walking '%s': %s blocks, Highest Slot: %s, Elapsed %s%s\r",
-					carpath,
-					humanize.Comma(int64(numBlocksReadCar.Load())),
-					humanize.Comma(int64(highestSlotCar.Load())),
-					time.Since(startedAt).Round(time.Second),
-					func() string {
+				slog.Info(
+					"Progress report",
+					"blocksRead", humanize.Comma(int64(numBlocksReadCar.Load())),
+					"highestSlot", humanize.Comma(int64(highestSlotCar.Load())),
+					"elapsed", time.Since(startedAt).Round(time.Second),
+					"car", carpath,
+					"readBytes", func() string {
 						if bytecounter != nil {
-							return fmt.Sprintf(", Read: %s", humanize.Bytes(bytecounter.Load()))
+							return humanize.Bytes(bytecounter.Load())
 						}
-						return ""
+						return "N/A"
 					}(),
 				)
 			case <-ctx.Done():
@@ -72,14 +115,27 @@ func main() {
 			}
 		}
 	}()
+	slotToBlockHash := make(map[uint64]solana.Hash)
+	mu := &sync.RWMutex{}
+	getBlockHash := func(slot uint64) (solana.Hash, bool) {
+		mu.RLock()
+		defer mu.RUnlock()
+		hash, ok := slotToBlockHash[slot]
+		return hash, ok
+	}
+	setBlockHash := func(slot uint64, hash solana.Hash) {
+		mu.Lock()
+		defer mu.Unlock()
+		slotToBlockHash[slot] = hash
+	}
 
-	walker, err := NewBlockWalker(reader, func(dag *nodetools.DataAndCidSlice) error {
+	walker, err := NewBlockWalker(reader, func(singleBlockDag *nodetools.DataAndCidSlice) error {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
 		}
-		blocks, err := dag.Blocks()
+		blocks, err := singleBlockDag.Blocks()
 		if err != nil {
 			slog.Error("Failed to get blocks from DataAndCidSlice", "error", err, "carpath", carpath)
 			panic(fmt.Sprintf("Fatal: Failed to get blocks from DataAndCidSlice: %v", err))
@@ -88,25 +144,203 @@ func main() {
 			slog.Error("Expected exactly one block in DataAndCidSlice", "numBlocks", len(blocks), "carpath", carpath)
 			panic(fmt.Sprintf("Fatal: Expected exactly one block in DataAndCidSlice, got %d", len(blocks)))
 		}
-		for _, wrapper := range blocks {
-			block := wrapper.Data.(*ipldbindcode.Block)
-			highestSlotCar.Store(uint64(block.Slot))
-			numBlocksReadCar.Add(1)
-		}
-		dag.SortByCid()
-		parsed, err := dag.ToParsedAndCidSlice()
+		block := blocks[0].Data.(*ipldbindcode.Block)
+		slot := block.GetSlot()
+		parentSlot := block.GetParentSlot()
+		epochNumber := slottools.CalcEpochForSlot(slot)
+
+		highestSlotCar.Store(uint64(block.Slot))
+		numBlocksReadCar.Add(1)
+
+		singleBlockDag.SortByCid()
+		parsedNodes, err := singleBlockDag.ToParsedAndCidSlice()
 		if err != nil {
 			panic(err)
 		}
-		_ = parsed
-		// dag.Put() // NOTE:
+		_ = parsedNodes
+		defer func() {
+			// NOTE: If you use this dag BEYOND this function, you need to remove this line, and call dag.Put() yourself later.
+			singleBlockDag.Put()
+			parsedNodes.Put()
+		}()
+		response := jsonbuilder.NewObject()
+		defer response.Put() // recycle the response object
+		{
+			if transactionDetails != rpc.TransactionDetailsNone {
+				if transactionDetails == rpc.TransactionDetailsSignatures {
+					signatures := make([][]byte, 0, parsedNodes.CountTransactions())
+					for transactionNode := range parsedNodes.Transaction() {
+						sig, err := tooling.ReadFirstSignature(transactionNode.Data.Data)
+						if err != nil {
+							panic(fmt.Sprintf("Fatal: Failed to read first signature from transaction: %v", err))
+						}
+						signatures = append(signatures, sig[:])
+					}
+					response.Base58Slice("signatures", signatures)
+				}
+				if transactionDetails == rpc.TransactionDetailsAccounts || transactionDetails == rpc.TransactionDetailsFull {
+					allTransactions := make([]*jsonbuilder.OrderedJSONObject, 0, parsedNodes.CountTransactions())
+					defer func() {
+						for _, tx := range allTransactions {
+							tx.Put() // recycle the transaction objects
+						}
+					}()
+					{
+						transactions := parsedNodes.SortedTransactions()
+						for _, transactionNode := range transactions {
+							tx, meta, err := nodetools.GetTransactionAndMeta(parsedNodes, transactionNode)
+							if err != nil {
+								slog.Error("Failed to get transaction and meta from node", "error", err, "carpath", carpath)
+								panic(fmt.Sprintf("Fatal: Failed to get transaction and meta from node: %v", err))
+							}
+							_ = tx
+							_ = meta
+							{
+								out := solanatxmetaparsers.NewEncodedTransactionWithStatusMeta(
+									tx,
+									meta,
+								)
+
+								txUI, err := out.ToUi(encoding, transactionDetails)
+								if err != nil {
+									return fmt.Errorf("failed to encode transaction: %v", err)
+								}
+								{
+									txUI.Uint("slot", slot)
+									if block.Meta.Blocktime == 0 {
+										txUI.Null("blockTime")
+									} else {
+										txUI.Int("blockTime", block.GetBlocktime())
+									}
+								}
+								out.Meta.Put()
+								txpool.Put(tx) // return the transaction to the pool
+								// TODO: include position index in the UI output.
+								// pos, ok := transactionNode.GetPositionIndex()
+								// if ok {
+								// 	txUI.Value("position", pos)
+								// }
+								allTransactions = append(allTransactions, txUI)
+							}
+						}
+					}
+					response.Value("transactions", allTransactions)
+				}
+			}
+
+			// sort.Slice(allTransactions, func(i, j int) bool {
+			// 	return allTransactions[i].Position < allTransactions[j].Position
+			// })
+
+			response.Uint("slot", slot) // NOTE: adding this because the block itself doesn't have the slot in its fields.
+			if slot == 0 {
+				response.Uint("blockHeight", 0)
+
+				// NOTE: this applies only to the genesis block
+				blockZeroBlocktime := uint64(1584368940)
+				response.Uint("blockTime", blockZeroBlocktime)
+				response.Uint("parentSlot", uint64(0))
+
+				blockZeroBlockHash := "4sGjMW1sUnHzSxGspuhpqLDx6wiyjNtZAMdL4VZHirAn"
+				response.String("previousBlockhash", blockZeroBlockHash)
+			} else {
+				response.Uint("parentSlot", parentSlot)
+				{
+					blockHeight, ok := block.GetBlockHeight()
+					if ok {
+						response.Uint("blockHeight", blockHeight)
+					} else {
+						response.Null("blockHeight")
+					}
+				}
+			}
+			blocktime := block.GetBlocktime()
+			if blocktime != 0 {
+				response.Int("blockTime", blocktime)
+			}
+			lastEntryCid := block.Entries[len(block.Entries)-1]
+			lastEntry, err := parsedNodes.EntryByCid(lastEntryCid.(cidlink.Link).Cid)
+			if err != nil {
+				panic(fmt.Sprintf("Fatal: Failed to get last entry by CID: %v", err))
+			}
+			lastEntryHash := solana.HashFromBytes(lastEntry.Hash)
+			response.String("blockhash", lastEntryHash.String())
+			setBlockHash(slot, lastEntryHash)
+			var rewardsUi *jsonbuilder.ArrayBuilder
+			defer rewardsUi.Put() // recycle the rewards UI array
+			hasRewards := block.HasRewards()
+			rewardsCid := block.Rewards.(cidlink.Link).Cid
+			if includeRewards && hasRewards {
+				actualRewards, err := nodetools.GetParsedRewards(parsedNodes, rewardsCid)
+				if err != nil {
+					slog.Error(
+						"failed to parse block rewards",
+						"block", slot,
+						"rewards_cid", rewardsCid.String(),
+						"error", err,
+					)
+					panic(fmt.Sprintf("Fatal: failed to parse block rewards for block %d, rewards CID %s: %v", slot, rewardsCid.String(), err))
+				} else {
+					// encode rewards as JSON, then decode it as a map
+					rewards, _, err := solanablockrewards.RewardsToUi(actualRewards)
+					if err != nil {
+						slog.Error(
+							"failed to encode block rewards to UI format",
+							"block", slot,
+							"rewards_cid", rewardsCid.String(),
+							"error", err,
+						)
+						panic(fmt.Sprintf("Fatal: failed to encode block rewards to UI format for block %d, rewards CID %s: %v", slot, rewardsCid.String(), err))
+					}
+					rewardsUi = rewards
+				}
+			} else {
+				klog.V(4).Infof("rewards not requested or not available")
+			}
+			if rewardsUi != nil {
+				response.Array("rewards", rewardsUi)
+			} else {
+				response.EmptyArray("rewards")
+			}
+			{
+				if (parentSlot != 0 || slot == 1) && slottools.CalcEpochForSlot(parentSlot) == epochNumber {
+					parentHash, ok := getBlockHash(parentSlot)
+					if ok {
+						response.String("previousBlockhash", parentHash.String())
+					} else {
+						response.Null("previousBlockhash")
+					}
+				} else {
+					// TODO: handle the case when the parent is in a different epoch.
+					if slot != 0 {
+						klog.V(4).Infof("parent slot is in a different epoch, not implemented yet (can't get previousBlockhash)")
+					}
+				}
+			}
+
+			encodedResult, err := response.MarshalJSONToByteBuffer()
+			if err != nil {
+				panic(fmt.Sprintf("Fatal: Failed to encode block JSON: %v", err))
+			}
+			defer bytebufferpool.Put(encodedResult) // return the buffer to the pool
+			// print as a single line
+			encodedResult.WriteByte('\n')
+			_, _ = os.Stdout.Write(encodedResult.Bytes())
+		}
+
 		return nil
 	})
 	if err != nil {
 		slog.Error("Failed to create BlockDAG for CAR file", "error", err, "carpath", carpath)
 		panic(fmt.Sprintf("Fatal: Failed to create BlockDAG for CAR file: %v", err))
 	}
-	spew.Dump(walker.Header())
+	header := walker.Header()
+	slog.Info(
+		"CAR header info",
+		"car", carpath,
+		"roots", header.Roots,
+		"version", header.Version,
+	)
 
 	if err := walker.Do(); err != nil {
 		if errors.Is(err, io.EOF) {

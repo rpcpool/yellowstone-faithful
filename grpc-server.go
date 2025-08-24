@@ -24,6 +24,7 @@ import (
 	"github.com/rpcpool/yellowstone-faithful/indexes"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
+	"github.com/rpcpool/yellowstone-faithful/nodetools"
 	old_faithful_grpc "github.com/rpcpool/yellowstone-faithful/old-faithful-proto/old-faithful-grpc"
 	"github.com/rpcpool/yellowstone-faithful/slottools"
 	solanatxmetaparsers "github.com/rpcpool/yellowstone-faithful/solana-tx-meta-parsers"
@@ -1068,7 +1069,7 @@ func (multi *MultiEpoch) processSlotTransactions(
 						}
 
 						txStartTime := time.Now()
-						tx, meta, err := parseTransactionAndMetaFromNode(txn, epochHandler.GetDataFrameByCid)
+						tx, meta, err := nodetools.ParseTransactionAndMetaFromNode(txn, epochHandler.GetDataFrameByCid)
 						klog.V(5).Infof("Parsing transaction for account %s took %s", pKey.String(), time.Since(txStartTime))
 						if err != nil {
 							return status.Errorf(codes.Internal, "Failed to parse transaction from node: %v", err)

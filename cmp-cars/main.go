@@ -15,6 +15,7 @@ import (
 	"github.com/ipld/go-car"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"github.com/rpcpool/yellowstone-faithful/nodetools"
+	solanablockrewards "github.com/rpcpool/yellowstone-faithful/solana-block-rewards"
 	diff "github.com/yudai/gojsondiff"
 	"github.com/yudai/gojsondiff/formatter"
 )
@@ -138,16 +139,16 @@ func main() {
 								"rewards2Cid", rewards2Cid,
 							)
 							{
-								rewards1, err := getParsedRewards(parsedDag1, rewards1Cid)
+								rewards1, err := nodetools.GetParsedRewards(parsedDag1, rewards1Cid)
 								if err != nil {
 									panic(fmt.Sprintf("Failed to get parsed rewards by CID %s for block %d for car1: %v", rewards1Cid, block1.Slot, err))
 								}
-								rewards2, err := getParsedRewards(parsedDag2, rewards2Cid)
+								rewards2, err := nodetools.GetParsedRewards(parsedDag2, rewards2Cid)
 								if err != nil {
 									panic(fmt.Sprintf("Failed to get parsed rewards by CID %s for block %d for car2: %v", rewards2Cid, block2.Slot, err))
 								}
-								sortRewardsByPubkey(rewards1)
-								sortRewardsByPubkey(rewards2)
+								solanablockrewards.SortRewardsByPubkey(rewards1)
+								solanablockrewards.SortRewardsByPubkey(rewards2)
 								{
 									rewards1Json, err := json.Marshal(rewards1)
 									if err != nil {

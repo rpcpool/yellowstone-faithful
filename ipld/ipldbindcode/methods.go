@@ -557,3 +557,33 @@ func (e Entry) Node() {}
 func (t Transaction) Node() {}
 
 func (d DataFrame) Node() {}
+
+// GetSlot returns the slot of the block.
+func (b *Block) GetSlot() uint64 {
+	if b == nil {
+		return 0
+	}
+	return uint64(b.Slot)
+}
+
+// GetBlocktime returns the blocktime of the block.
+func (m *SlotMeta) GetBlocktime() int64 {
+	if m == nil {
+		return 0
+	}
+	return int64(m.Blocktime)
+}
+
+func (b *Block) GetParentSlot() uint64 {
+	if b == nil || b.Meta.Parent_slot == 0 {
+		return 0
+	}
+	return uint64(b.Meta.Parent_slot)
+}
+
+func (b *Block) GetBlocktime() int64 {
+	if b == nil || b.Meta.Blocktime == 0 {
+		return 0
+	}
+	return int64(b.Meta.Blocktime)
+}
