@@ -18,7 +18,7 @@ type (
 	}
 )
 
-// ParsedAndCid.Reset resets the ParsedAndCid to its zero value.
+// Reset resets the ParsedAndCid to its zero value.
 func (p *ParsedAndCid) Reset() {
 	if p == nil {
 		return
@@ -26,10 +26,11 @@ func (p *ParsedAndCid) Reset() {
 	p.Cid = cid.Undef // Reset the CID to avoid memory leaks.
 	if p.Data != nil {
 		iplddecoders.PutAny(p.Data) // recycle the Data
-		p.Data = nil                // Reset the Data to avoid memory leaks.
+		p.Data = nil
 	}
 }
 
+// Put recycles the ParsedAndCid, releasing it back to the pool.
 func (p *ParsedAndCid) Put() {
 	if p == nil {
 		return
@@ -106,22 +107,24 @@ func (d ParsedAndCidSlice) ByCid(c cid.Cid) (*ParsedAndCid, bool) {
 	return nil, false
 }
 
-// Put recycles ParsedAndCidSlice, releasing it back to the pool.
-func (d ParsedAndCidSlice) Reset() {
-	if len(d) == 0 {
-		return // nothing to do
-	}
-	for i := range d {
-		(d)[i].Put() // reset each ParsedAndCid
-	}
-	if cap(d) > 0 && len(d) == 0 { // if the slice is empty, reset it
-		d = (d)[:0:0] // Reset the slice to zero length
-	} else if cap(d) > 0 && len(d) > 0 { // if the slice is not empty, reset it to zero length
-		d = (d)[:0] // Reset the slice to zero length
-	} else {
-		// If the slice is nil or has no capacity, we don't need to reset it.
+// Reset resets the ParsedAndCidSlice to an empty slice, recycling all ParsedAndCid elements.
+func (d *ParsedAndCidSlice) Reset() {
+	if d == nil {
 		return
 	}
+	if len(*d) == 0 {
+		if cap(*d) > 0 {
+			*d = (*d)[:0:0]
+		}
+		return
+	}
+	for i := range *d {
+		if (*d)[i] != nil {
+			(*d)[i].Put() // recycle each ParsedAndCid
+			(*d)[i] = nil
+		}
+	}
+	*d = (*d)[:0]
 }
 
 func (d *ParsedAndCidSlice) Put() {

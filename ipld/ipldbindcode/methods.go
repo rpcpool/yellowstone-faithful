@@ -398,7 +398,7 @@ func (n Block) HasRewards() bool {
 	return hasRewards
 }
 
-// List__Link.Reset() resets the List__Link to an empty state.
+// Reset resets the List__Link to an empty state.
 func (l *List__Link) Reset() {
 	if l == nil {
 		return
@@ -406,7 +406,7 @@ func (l *List__Link) Reset() {
 	*l = (*l)[:0] // Reset the slice to an empty state.
 }
 
-// Epoch.Reset resets the Epoch to an empty state.
+// Reset resets the Epoch to an empty state.
 func (e *Epoch) Reset() {
 	if e == nil {
 		return
@@ -416,7 +416,7 @@ func (e *Epoch) Reset() {
 	e.Subsets.Reset() // Reset the slice to an empty state.
 }
 
-// Subset.Reset resets the Subset to an empty state.
+// Reset resets the Subset to an empty state.
 func (s *Subset) Reset() {
 	if s == nil {
 		return
@@ -427,7 +427,7 @@ func (s *Subset) Reset() {
 	s.Blocks.Reset() // Reset the slice to an empty state.
 }
 
-// List__Shredding.Reset resets the List__Shredding to an empty state.
+// Reset resets the List__Shredding to an empty state.
 func (l *List__Shredding) Reset() {
 	if l == nil {
 		return
@@ -435,7 +435,7 @@ func (l *List__Shredding) Reset() {
 	*l = (*l)[:0] // Reset the slice to an empty state.
 }
 
-// Block.Reset resets the Block to an empty state.
+// Reset resets the Block to an empty state.
 func (b *Block) Reset() {
 	if b == nil {
 		return
@@ -448,7 +448,7 @@ func (b *Block) Reset() {
 	b.Rewards = cidlink.Link{Cid: dummycid.DummyCID} // Reset the Rewards to a dummy CID.
 }
 
-// Rewards.Reset resets the Rewards to an empty state.
+// Reset resets the Rewards to an empty state.
 func (r *Rewards) Reset() {
 	if r == nil {
 		return
@@ -458,7 +458,7 @@ func (r *Rewards) Reset() {
 	r.Data.Reset() // Reset the DataFrame to an empty state.
 }
 
-// SlotMeta.Reset resets the SlotMeta to an empty state.
+// Reset resets the SlotMeta to an empty state.
 func (s *SlotMeta) Reset() {
 	if s == nil {
 		return
@@ -469,7 +469,7 @@ func (s *SlotMeta) Reset() {
 	s.Block_height = nil           // Reset the pointer to nil.
 }
 
-// Shredding.Reset resets the Shredding to an empty state.
+// Reset resets the Shredding to an empty state.
 func (s *Shredding) Reset() {
 	if s == nil {
 		return
@@ -478,7 +478,7 @@ func (s *Shredding) Reset() {
 	s.ShredEndIdx = 0
 }
 
-// Entry.Reset resets the Entry to an empty state.
+// Reset resets the Entry to an empty state.
 func (e *Entry) Reset() {
 	if e == nil {
 		return
@@ -489,7 +489,7 @@ func (e *Entry) Reset() {
 	e.Transactions.Reset() // Reset the slice to an empty state.
 }
 
-// DataFrame.Reset resets the DataFrame to an empty state.
+// Reset resets the DataFrame to an empty state.
 func (d *DataFrame) Reset() {
 	if d == nil {
 		return
@@ -510,7 +510,7 @@ func (d *DataFrame) Reset() {
 	}
 }
 
-// Transaction.Reset resets the Transaction to an empty state.
+// Reset resets the Transaction to an empty state.
 func (t *Transaction) Reset() {
 	if t == nil {
 		return

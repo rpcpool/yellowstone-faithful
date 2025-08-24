@@ -124,15 +124,24 @@ func (d DataAndCidSlice) ToParsedAndCidSlice() (ParsedAndCidSlice, error) {
 	return parsed, nil
 }
 
-// *DataAndCidSlice.Reset resets the DataAndCidSlice to an empty slice.
-func (d DataAndCidSlice) Reset() {
-	for i := range d {
-		if (d)[i] != nil {
-			(d)[i].Put() // recycle each DataAndCid
-			(d)[i] = nil // avoid memory leaks
+// Reset resets the DataAndCidSlice to an empty slice, recycling all DataAndCid elements.
+func (d *DataAndCidSlice) Reset() {
+	if d == nil {
+		return
+	}
+	if len(*d) == 0 {
+		if cap(*d) > 0 {
+			*d = (*d)[:0:0]
+		}
+		return
+	}
+	for i := range *d {
+		if (*d)[i] != nil {
+			(*d)[i].Put() // recycle each DataAndCid
+			(*d)[i] = nil
 		}
 	}
-	d = (d)[:0]
+	*d = (*d)[:0]
 }
 
 // Put recycles DataAndCidSlice, releasing it back to the pool.
@@ -161,7 +170,7 @@ func putDataAndCid(d *DataAndCid) {
 	dataAndCidPool.Put(d)
 }
 
-// DataAndCid.Reset resets the DataAndCid to its zero value.
+// Reset resets the DataAndCid to its zero value.
 func (d *DataAndCid) Reset() {
 	if d == nil {
 		return
@@ -169,10 +178,11 @@ func (d *DataAndCid) Reset() {
 	d.Cid = cid.Undef // Reset the CID to avoid memory leaks.
 	if d.Data != nil {
 		bytebufferpool.Put(d.Data) // recycle the Data
-		d.Data = nil               // Reset the Data to avoid memory leaks.
+		d.Data = nil
 	}
 }
 
+// Put recycles the DataAndCid, releasing it back to the pool.
 func (d *DataAndCid) Put() {
 	if d == nil {
 		return
