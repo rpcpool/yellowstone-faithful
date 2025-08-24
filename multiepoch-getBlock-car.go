@@ -125,6 +125,17 @@ func (multi *MultiEpoch) handleGetBlock_car(ctx context.Context, conn *requestCo
 	}
 	offsetParent := parentOas.Offset
 	totalSize := oasChild.Offset + oasChild.Size - offsetParent
+	const (
+		KiB = 1024
+		MiB = 1024 * KiB
+		GiB = 1024 * MiB
+	)
+	if totalSize > GiB*2 {
+		return &jsonrpc2.Error{
+			Code:    jsonrpc2.CodeInternalError,
+			Message: "Internal error",
+		}, fmt.Errorf("block section too large: %d bytes", totalSize)
+	}
 	reader, err := epochHandler.GetEpochReaderAt()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get epoch reader: %w", err)
