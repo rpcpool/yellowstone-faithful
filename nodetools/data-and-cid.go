@@ -130,9 +130,6 @@ func (d *DataAndCidSlice) Reset() {
 		return
 	}
 	if len(*d) == 0 {
-		if cap(*d) > 0 {
-			*d = (*d)[:0:0]
-		}
 		return
 	}
 	for i := range *d {
