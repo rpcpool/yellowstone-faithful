@@ -921,6 +921,7 @@ func (multi *MultiEpoch) StreamTransactions(params *old_faithful_grpc.StreamTran
 	return multi.processSlotTransactions(ctx, ser, startSlot, endSlot, params.Filter, gsfaReader, gsfaReadersLoaded)
 }
 
+//nolint:all
 func (multi *MultiEpoch) processSlotTransactions(
 	ctx context.Context,
 	ser old_faithful_grpc.OldFaithful_StreamTransactionsServer,
