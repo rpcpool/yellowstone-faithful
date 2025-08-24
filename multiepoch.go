@@ -441,7 +441,7 @@ func newMultiEpochHandler(handler *MultiEpoch, lsConf *ListenerConfig) func(ctx 
 		errorResp, err := handler.handleRequest(setRequestIDToContext(reqCtx, reqID), rqCtx, &rpcRequest)
 		if err != nil {
 			telemetry.RecordError(span, err, "Failed to handle JSON-RPC request")
-			if errors.Is(err, compactindexsized.ErrNotFound) {
+			if errors.Is(err, compactindexsized.ErrNotFound) || strings.Contains(err.Error(), "not found") {
 				metrics.ErrBlockNotFound.Inc()
 			} else {
 				klog.Errorf("[%s] failed to handle %q: %v", reqID, sanitizeMethod(method), err)
