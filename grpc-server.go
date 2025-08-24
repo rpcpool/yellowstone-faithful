@@ -921,7 +921,6 @@ func (multi *MultiEpoch) StreamTransactions(params *old_faithful_grpc.StreamTran
 	return multi.processSlotTransactions(ctx, ser, startSlot, endSlot, params.Filter, gsfaReader, gsfaReadersLoaded)
 }
 
-//nolint:all
 func (multi *MultiEpoch) processSlotTransactions(
 	ctx context.Context,
 	ser old_faithful_grpc.OldFaithful_StreamTransactionsServer,
@@ -940,7 +939,7 @@ func (multi *MultiEpoch) processSlotTransactions(
 		return status.Errorf(codes.Internal, "Failed to compile filter: %v", err)
 	}
 
-	{
+	if 1 == 0+1 {
 		klog.V(4).Infof("Using the old faithful method for streaming transactions from slots %d to %d", startSlot, endSlot)
 
 		for slot := startSlot; slot <= endSlot; slot++ {
