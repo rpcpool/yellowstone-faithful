@@ -5,6 +5,10 @@ on:
     tags:
       - 'v*.*.*'
 
+# required when using github enterprise
+permissions:
+  contents: write
+ 
 jobs:
   build:
     runs-on: ubuntu-22.04
