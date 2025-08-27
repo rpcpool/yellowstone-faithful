@@ -3,6 +3,7 @@ members = [
     "geyser-plugin-runner",
     "geyser-plugin-runner/demo-plugin",
     "jsonparsed",
+    "orchestrator",
 ]
 resolver = "2"
 
