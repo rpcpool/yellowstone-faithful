@@ -91,7 +91,7 @@ func (f *StreamTransactionsFilterExecutable) CompileExclusion() (assertionSlice,
 			if allAccounts.ContainsAll(f.AccountRequired) {
 				return false // All required accounts were found, so we do not exclude this transaction
 			}
-			return false // All required accounts were found, so we do not exclude this transaction
+			return true // Not all required accounts were found, so we exclude this transaction
 		})
 	}
 	// If no assertions were added, we return an empty slice
