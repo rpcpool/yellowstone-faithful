@@ -103,32 +103,50 @@ impl<R: Read + Seek> Bucket<R> {
         Ok(self.descriptor.unmarshal_entry(&buf))
     }
 
+    /// Helper to load all entries in the bucket into memory
+    fn load_all_entries(&mut self) -> Result<Vec<Entry>, CompactIndexError> {
+        let num_entries = self.descriptor.header.num_entries as usize;
+        let stride = self.descriptor.stride as usize;
+        let total_size = num_entries * stride;
+        let mut buf = vec![0u8; total_size];
+        self.reader.seek(SeekFrom::Start(self.offset))?;
+        self.reader.read_exact(&mut buf)?;
+        let mut entries = Vec::with_capacity(num_entries);
+        for i in 0..num_entries {
+            let start = i * stride;
+            let end = start + stride;
+            let entry_buf = &buf[start..end];
+            entries.push(self.descriptor.unmarshal_entry(entry_buf));
+        }
+        Ok(entries)
+    }
+
     /// Lookup a key in the bucket using Eytzinger binary search
     pub fn lookup(&mut self, key: &[u8]) -> Result<Vec<u8>, CompactIndexError> {
         let target = self.descriptor.header.hash(key);
         let max = self.descriptor.header.num_entries as usize;
-        
+        let entries = self.load_all_entries()?;
+
         // Eytzinger binary search
         let mut index = 0;
         while index < max {
-            let entry = self.load_entry(index)?;
-            
+            let entry = &entries[index];
+
             if entry.hash == target {
-                return Ok(entry.value);
+                return Ok(entry.value.clone());
             }
-            
+
             // Navigate the Eytzinger tree
             index = (index << 1) | 1;
             if entry.hash < target {
                 index += 1;
             }
-            
+
             // Check if we've gone out of bounds
             if index >= max {
                 break;
             }
         }
-        
         Err(CompactIndexError::NotFound)
     }
 }
