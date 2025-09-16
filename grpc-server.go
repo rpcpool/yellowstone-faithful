@@ -903,6 +903,12 @@ func (multi *MultiEpoch) StreamTransactions(params *old_faithful_grpc.StreamTran
 	if params.EndSlot != nil {
 		endSlot = *params.EndSlot
 	}
+
+	// Validate that at least one filter is provided
+	if !hasValidTransactionFilter(params.Filter) {
+		return status.Errorf(codes.InvalidArgument, "At least one filter must be specified (vote, failed, account_include, account_exclude, or account_required)")
+	}
+
 	gsfaReader, epochNums := multi.getGsfaReadersInEpochDescendingOrderForSlotRange(ctx, startSlot, endSlot)
 	wantedEpochs := slottools.CalcEpochsForSlotRange(startSlot, endSlot)
 	klog.V(4).Infof("Streaming transactions from slots %d to %d, epochs %v", startSlot, endSlot, wantedEpochs)
@@ -1138,8 +1144,6 @@ func (multi *MultiEpoch) processSlotTransactions(
 	case <-ctx.Done():
 		klog.V(5).Infof("Context done while checking errors")
 		return ctx.Err()
-	default:
-		klog.V(5).Infof("No errors found in channel")
 	}
 	klog.V(5).Infof("Error check completed in %s", time.Since(errCheckStartTime))
 	// Flush after all processing is done
@@ -1280,4 +1284,19 @@ func (b *txBuffer) flush(ser old_faithful_grpc.OldFaithful_StreamTransactionsSer
 		delete(b.items, slot)
 	}
 	return nil
+}
+
+// hasValidTransactionFilter checks if the filter contains at least one valid constraint.
+// Returns true if the filter has at least one meaningful constraint set.
+func hasValidTransactionFilter(filter *old_faithful_grpc.StreamTransactionsFilter) bool {
+	if filter == nil {
+		return false
+	}
+
+	// Check if any filter field is set
+	return filter.Vote != nil ||
+		filter.Failed != nil ||
+		len(filter.AccountInclude) > 0 ||
+		len(filter.AccountExclude) > 0 ||
+		len(filter.AccountRequired) > 0
 }
