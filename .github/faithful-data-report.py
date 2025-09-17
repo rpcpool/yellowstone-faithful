@@ -10,12 +10,13 @@ class EpochData:
     car: str = "n/a"
     sha: str = "n/a"
     sha_url: str = "n/a"
+    b3: str = "n/a"
+    b3_url: str = "n/a"
     size: str = "n/a"
     poh: str = "n/a"
     poh_url: str = "n/a"
     txmeta: str = "n/a"
     txmeta_url: str = "n/a"
-    deals: str = "n/a"
     indices: str = "n/a"
     indices_size: str = "n/a"
     slots_url: str = "n/a"
@@ -23,7 +24,6 @@ class EpochData:
 class FaithfulDataReport:
     def __init__(self):
         self.host = "https://files.old-faithful.net"
-        self.deals_host = "https://filecoin-car-storage-cdn.b-cdn.net"
         self.txmeta_first_epoch = 10
         self.issues = []  # Track issues for summary report
         self.index_files = [
@@ -153,26 +153,10 @@ class FaithfulDataReport:
         
         return str(total_size) if total_size > 0 else "n/a"
 
-    async def get_deals(self, session: aiohttp.ClientSession, epoch: int) -> str:
-        # Check both possible filenames for deals
-        deals_url = f"{self.deals_host}/{epoch}/deals.csv"
-        deals_metadata_url = f"{self.deals_host}/{epoch}/deals-metadata.csv"
-        
-        # check deals.csv
-        deals_content = await self.fetch_text(session, deals_url)
-        if deals_content and len(deals_content.splitlines()) > 1:
-            return deals_url
-            
-        # check deals-metadata.csv (recent change)
-        deals_metadata_content = await self.fetch_text(session, deals_metadata_url)
-        if deals_metadata_content and len(deals_metadata_content.splitlines()) > 1:
-            return deals_metadata_url
-
-        return "n/a"
-
     async def get_epoch_data(self, session: aiohttp.ClientSession, epoch: int) -> EpochData:
         car_url = f"{self.host}/{epoch}/epoch-{epoch}.car"
         sha_url = f"{self.host}/{epoch}/epoch-{epoch}.sha256"
+        b3_url = f"{self.host}/{epoch}/epoch-{epoch}.b3sum"
         poh_url = f"{self.host}/{epoch}/poh-check.log"
         txmeta_url = f"{self.host}/{epoch}/tx-metadata-check.log"
 
@@ -182,14 +166,14 @@ class FaithfulDataReport:
             return EpochData(epoch=epoch)
 
         # Gather all data concurrently
-        sha, size, poh, txmeta, indices, indices_size, deals = await asyncio.gather(
+        sha, size, poh, txmeta, indices, indices_size, b3 = await asyncio.gather(
             self.fetch_text(session, sha_url),
             self.get_size(session, car_url),
             self.fetch_text(session, poh_url),
             self.fetch_text(session, txmeta_url),
             self.get_indices(session, epoch),
             self.get_indices_size(session, epoch),
-            self.get_deals(session, epoch)
+            self.fetch_text(session, b3_url),
         )
 
         # Construct slots.txt URL
@@ -200,12 +184,13 @@ class FaithfulDataReport:
             car=car_url,
             sha=sha if sha else "n/a",
             sha_url=sha_url,
+            b3=b3 if b3 else "n/a",
+            b3_url=b3_url,
             size=size,
             poh=poh if poh else "n/a",
             poh_url=poh_url,
             txmeta=txmeta if txmeta else "n/a",
             txmeta_url=txmeta_url,
-            deals=deals,
             indices=indices,
             indices_size=indices_size,
             slots_url=slots_url
@@ -215,7 +200,7 @@ class FaithfulDataReport:
         car_cell = f"[epoch-{data.epoch}.car]({data.car})" if data.car != "n/a" else "❌"
         sha_cell = f"[{data.sha[:7]}]({data.sha_url})" if data.sha != "n/a" else "❌"
         size_cell = f"{data.size} GB" if data.size != "n/a" else "❌"
-        
+        b3_cell = f"[{data.b3[:7]}]({data.b3_url})" if data.b3 != "n/a" else "❌"
         # Update totals
         if data.car != "n/a":
             self.total_car_count += 1
@@ -243,7 +228,6 @@ class FaithfulDataReport:
 
         indices_cell = "✅" if data.indices != "n/a" else "❌"
         indices_size_cell = f"{data.indices_size} GB" if data.indices_size != "n/a" else "❌"
-        deals_cell = f"[✅]({data.deals})" if data.deals != "n/a" else "❌"
         slots_cell = f"[{data.epoch}.slots.txt]({data.slots_url})" if data.slots_url != "n/a" else "❌"
 
         # Track issues for summary report
@@ -251,19 +235,20 @@ class FaithfulDataReport:
         if data.car == "n/a": issues.append("missing CAR")
         if data.sha == "n/a": issues.append("missing SHA")
         if data.size == "n/a": issues.append("missing size")
+        # POH cannot be validated for epoch 208, 
+        # see more in https://docs.old-faithful.net/validation
         if data.poh == "n/a": issues.append("missing POH check")
-        elif not validate_poh_output(data.poh): issues.append("failed POH check")
+        elif not validate_poh_output(data.poh) and data.epoch != 208: issues.append("failed POH check")
         if data.txmeta == "n/a": issues.append("missing tx meta check")
         elif not validate_txmeta_output(data.txmeta) and not (0 <= data.epoch < self.txmeta_first_epoch):
             issues.append("failed tx meta check")
         if data.indices == "n/a": issues.append("missing indices")
         if data.indices_size == "n/a": issues.append("missing indices size")
-        #if data.deals == "n/a": issues.append("missing deals")
         
         if issues:
             self.issues.append((data.epoch, issues))
 
-        return f"| {data.epoch} | {car_cell} | {sha_cell} | {size_cell} | {txmeta_cell} | {poh_cell} | {indices_cell} | {indices_size_cell} | {deals_cell} | {slots_cell} |"
+        return f"| {data.epoch} | {car_cell} | {sha_cell} | {b3_cell} | {size_cell} | {txmeta_cell} | {poh_cell} | {indices_cell} | {indices_size_cell} | {slots_cell} |"
 
     async def get_current_epoch(self) -> int:
         async with aiohttp.ClientSession() as session:
@@ -276,11 +261,11 @@ class FaithfulDataReport:
 
     async def run(self):
         current_epoch = await self.get_current_epoch()
-        epochs = range((current_epoch-1), -1, -1)  # descending order
+        epochs = range((current_epoch-1), 0, -1)  # descending order
 
-        print("| Epoch #  | CAR  | CAR SHA256  | CAR filesize | tx meta check | poh check | Indices | Indices Size | Filecoin Deals | Slots")
+        print("| Epoch #  | CAR  | CAR SHA256 | CAR B3 | CAR filesize | tx meta check | poh check | Indices | Indices Size | Slots |")
         print("|---|---|---|---|---|---|---|---|---|---|")
-        print("|%s|epoch is|ongoing||||||||" % current_epoch)
+        print("|%s|ongoing|-|-|-|-|-|-|-|-|" % current_epoch)
 
         # concurrency levels
         chunk_size = 50  
@@ -301,7 +286,7 @@ class FaithfulDataReport:
         indices_size_tb = int(round(self.total_indices_size / 1024, 0))
         total_epochs = len(epochs)
         missing_cars = total_epochs - self.total_car_count
-        print(f"| **Total** | {self.total_car_count} | ({missing_cars} behind) | {car_size_tb:,} TB | - | - | - | {indices_size_tb:,} TB | - | - |")
+        print(f"| **Total** | {self.total_car_count} | ({missing_cars} behind) | - | {car_size_tb:,} TB | - | - | - | {indices_size_tb:,} TB | - |")
 
         print("\n★ = tx meta validation skipped (epochs 0-%s where tx meta wasn't enabled yet)" % self.txmeta_first_epoch)
         print("\n★★ = epoch 208 POH validation is handled differently, see more in https://docs.old-faithful.net/validation")
