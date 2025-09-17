@@ -261,7 +261,7 @@ class FaithfulDataReport:
 
     async def run(self):
         current_epoch = await self.get_current_epoch()
-        epochs = range((current_epoch-1), 0, -1)  # descending order
+        epochs = range((current_epoch-1), -1, -1)  # descending order
 
         print("| Epoch #  | CAR  | CAR SHA256 | CAR B3 | CAR filesize | tx meta check | poh check | Indices | Indices Size | Slots |")
         print("|---|---|---|---|---|---|---|---|---|---|")
