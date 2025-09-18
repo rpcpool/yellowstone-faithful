@@ -6,8 +6,8 @@ package compactindex36
 // - The values it indexes are 36-bit values instead of 8-bit values. This allows to index CIDs (in particular sha256+CBOR CIDs) directly.
 
 import (
+	"crypto/rand"
 	"math"
-	"math/rand"
 	"sort"
 	"testing"
 

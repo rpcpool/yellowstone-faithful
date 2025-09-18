@@ -5,7 +5,10 @@ package jsonparsed
 
 /*
 #cgo LDFLAGS: -L./lib -lsolana_transaction_status_wrapper -lm -ldl
+#include <stdlib.h>
 #include "./lib/transaction_status.h"
+
+typedef unsigned char u_char;
 */
 import "C"
 
@@ -13,10 +16,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"time"
+	"strings"
 	"unsafe"
 
-	"github.com/davecgh/go-spew/spew"
 	bin "github.com/gagliardetto/binary"
 )
 
@@ -33,20 +35,41 @@ func (inst Parameters) ParseInstruction() (json.RawMessage, error) {
 	cs := (*C.u_char)(C.CBytes(buf.Bytes()))
 	defer C.free(unsafe.Pointer(cs))
 
-	startedParsingAt := time.Now()
 	got := C.parse_instruction(cs, C.ulong(len(buf.Bytes())))
-	if got.status == 0 {
-		debugln("[golang] got status (OK):", got.status)
-	} else {
-		debugln("[golang] got status (ERR):", got.status)
-	}
-	debugln("[golang] got parsed instruction in:", time.Since(startedParsingAt))
 
 	parsedInstructionJSON := C.GoBytes(unsafe.Pointer(got.buf.data), C.int(got.buf.len))
-	debugln("[golang] got parsed instruction as json:", spew.Sdump(parsedInstructionJSON))
-	debugln("[golang] got parsed instruction as json:", string(parsedInstructionJSON))
+	// Free the Rust-allocated memory
+	C.free_response(got.buf.data, C.ulong(got.buf.len))
+
+	// Check if the response is all zeros
+	allZeros := true
+	for _, b := range parsedInstructionJSON {
+		if b != 0 {
+			allZeros = false
+			break
+		}
+	}
+
+	if allZeros {
+		fmt.Printf("[golang] WARNING: Response is all zeros for program %s\n", inst.ProgramID.String())
+		// Return nil to trigger the fallback to unparsed format
+		return nil, fmt.Errorf("parser returned empty response")
+	}
+
+	// Check if it's valid JSON
+	jsonStr := string(parsedInstructionJSON)
+	if !strings.HasPrefix(strings.TrimSpace(jsonStr), "{") && !strings.HasPrefix(strings.TrimSpace(jsonStr), "[") {
+		return nil, fmt.Errorf("parser returned non-JSON response")
+	}
 
 	return parsedInstructionJSON, nil
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 // IsEnabled returns true if the library was build with the necessary

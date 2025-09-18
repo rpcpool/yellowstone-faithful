@@ -1,8 +1,8 @@
 package compactindex
 
 import (
+	"crypto/rand"
 	"math"
-	"math/rand"
 	"sort"
 	"testing"
 

@@ -10,9 +10,9 @@ import (
 	"time"
 
 	"github.com/ipfs/go-cid"
+	splitcarfetcher "github.com/rpcpool/yellowstone-faithful/split-car-fetcher"
 	"github.com/urfave/cli/v2"
 	"k8s.io/klog/v2"
-	splitcarfetcher "github.com/rpcpool/yellowstone-faithful/split-car-fetcher"
 )
 
 func newCmd_TestRetrievability() *cli.Command {
@@ -21,23 +21,23 @@ func newCmd_TestRetrievability() *cli.Command {
 		Usage: "Test retrievability of CIDs from Filecoin network",
 		Flags: append([]cli.Flag{
 			&cli.StringFlag{
-				Name:     "input",
-				Aliases:  []string{"i"},
-				Usage:    "Input file containing CIDs (one per line), use '-' for stdin",
+				Name:    "input",
+				Aliases: []string{"i"},
+				Usage:   "Input file containing CIDs (one per line), use '-' for stdin",
 			},
 			&cli.StringFlag{
-				Name:    "deals-csv",
-				Usage:   "Deals CSV file to extract CIDs from (alternative to --input)",
+				Name:  "deals-csv",
+				Usage: "Deals CSV file to extract CIDs from (alternative to --input)",
 			},
 			&cli.StringFlag{
-				Name:    "cid-type",
-				Usage:   "Which CIDs to test from deals.csv: 'piece', 'payload', or 'both' (default: both)",
-				Value:   "both",
+				Name:  "cid-type",
+				Usage: "Which CIDs to test from deals.csv: 'piece', 'payload', or 'both' (default: both)",
+				Value: "both",
 			},
 			&cli.StringFlag{
-				Name:    "method",
-				Usage:   "Retrieval method: 'lassie', 'http', or 'both' (default: both)",
-				Value:   "both",
+				Name:  "method",
+				Usage: "Retrieval method: 'lassie', 'http', or 'both' (default: both)",
+				Value: "both",
 			},
 			&cli.StringFlag{
 				Name:    "output",
@@ -112,7 +112,7 @@ func testRetrievabilityAction(cctx *cli.Context) error {
 
 	// Initialize deal registry if needed for HTTP method
 	var dealRegistry *splitcarfetcher.DealRegistry
-	if (method == "http" || method == "both") {
+	if method == "http" || method == "both" {
 		if dealsCSV == "" {
 			return fmt.Errorf("--deals-csv is required when using HTTP retrieval method")
 		}
@@ -147,7 +147,7 @@ func setupOutputWriter(outputFile string) (*os.File, error) {
 	if outputFile == "-" {
 		return os.Stdout, nil
 	}
-	
+
 	outputWriter, err := os.Create(outputFile)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create output file: %w", err)
@@ -166,13 +166,13 @@ func processCIDs(ctx context.Context, lassieWrapper *lassieWrapper, dealRegistry
 		}
 
 		results := testCIDRetrievabilityWithMethods(ctx, lassieWrapper, dealRegistry, cidStr, timeout, method)
-		
+
 		// Write results to CSV
 		for _, result := range results {
-			fmt.Fprintf(outputWriter, "%s,%s,%t,%s,%s\n", 
-				result.CID, 
+			fmt.Fprintf(outputWriter, "%s,%s,%t,%s,%s\n",
+				result.CID,
 				result.Method,
-				result.Retrievable, 
+				result.Retrievable,
 				result.Duration.String(),
 				escapeCSV(result.Error))
 			logResult(result, verbose)
@@ -243,7 +243,7 @@ func testCIDRetrievability(ctx context.Context, lassie *lassieWrapper, cidStr st
 
 	// Attempt to fetch just the block (not the entire DAG)
 	_, err = lassie.GetNodeByCid(timeoutCtx, parsedCID)
-	
+
 	result.Duration = time.Since(start)
 
 	if err != nil {
@@ -294,7 +294,7 @@ func testCIDRetrievabilityHTTP(ctx context.Context, dealRegistry *splitcarfetche
 
 	// Attempt to fetch data via HTTP
 	err = testHTTPRetrievability(timeoutCtx, deal.URL)
-	
+
 	result.Duration = time.Since(start)
 
 	if err != nil {
@@ -339,7 +339,7 @@ func testHTTPRetrievability(ctx context.Context, url string) error {
 
 func readCIDsFromInput(inputFile string) ([]string, error) {
 	var reader *bufio.Scanner
-	
+
 	if inputFile == "-" {
 		reader = bufio.NewScanner(os.Stdin)
 	} else {
@@ -353,22 +353,22 @@ func readCIDsFromInput(inputFile string) ([]string, error) {
 
 	var cids []string
 	lineNum := 0
-	
+
 	for reader.Scan() {
 		lineNum++
 		line := strings.TrimSpace(reader.Text())
-		
+
 		// Skip empty lines and comments
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-		
+
 		// Validate CID format
 		if _, err := cid.Parse(line); err != nil {
 			klog.Warningf("Skipping invalid CID on line %d: %s (%v)", lineNum, line, err)
 			continue
 		}
-		
+
 		cids = append(cids, line)
 	}
 

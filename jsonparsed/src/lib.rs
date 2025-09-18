@@ -79,12 +79,15 @@ pub unsafe extern "C" fn parse_instruction(bytes: *const u8, len: usize) -> Resp
                         dyn_wri_index, error
                     );
                     response.extend_from_slice(error.as_bytes());
-                    let data = response.as_mut_ptr();
-                    let len = response.len();
+
+                    // FIX: Convert to boxed slice to prevent deallocation
+                    let boxed = response.into_boxed_slice();
+                    let len = boxed.len();
+                    let ptr = Box::into_raw(boxed) as *mut u8;
 
                     return Response {
                         buf: Buffer {
-                            data: unsafe { data.add(32) },
+                            data: ptr.add(32),
                             len: len - 32,
                         },
                         status: 1,
@@ -164,12 +167,15 @@ pub unsafe extern "C" fn parse_instruction(bytes: *const u8, len: usize) -> Resp
             let error = parsed.err().unwrap();
             let error = format!("{:?}", error);
             response.extend_from_slice(error.as_bytes());
-            let data = response.as_mut_ptr();
-            let len = response.len();
+
+            // FIX: Convert to boxed slice to prevent deallocation
+            let boxed = response.into_boxed_slice();
+            let len = boxed.len();
+            let ptr = Box::into_raw(boxed) as *mut u8;
 
             Response {
                 buf: Buffer {
-                    data: unsafe { data.add(32) },
+                    data: ptr.add(32),
                     len: len - 32,
                 },
                 status: 1,
@@ -195,17 +201,38 @@ pub unsafe extern "C" fn parse_instruction(bytes: *const u8, len: usize) -> Resp
             let mut response = vec![0; 32];
             response.extend_from_slice(&parsed_json);
 
-            let data = response.as_mut_ptr();
-            let len = response.len();
+            // FIX: Convert to boxed slice to prevent deallocation
+            let boxed = response.into_boxed_slice();
+            let len = boxed.len();
+            let ptr = Box::into_raw(boxed) as *mut u8;
+
             // println!("[rust] {:?}", Instant::now() - started_at);
             Response {
                 buf: Buffer {
-                    data: unsafe { data.add(32) },
+                    data: ptr.add(32),
                     len: len - 32,
                 },
                 status: 0,
             }
         }
+    }
+}
+
+/// Frees memory allocated by parse_instruction.
+/// # Safety
+/// * `ptr` must be a valid pointer returned by `parse_instruction`
+/// * `len` must be the exact length returned by `parse_instruction`
+/// * `ptr` must not be used after calling this function
+/// * This function must be called exactly once for each pointer returned by `parse_instruction`
+#[no_mangle]
+pub unsafe extern "C" fn free_response(ptr: *mut u8, len: usize) {
+    if !ptr.is_null() {
+        // Reconstruct the box from the original pointer (before the 32-byte offset)
+        let original_ptr = ptr.sub(32);
+        let original_len = len + 32;
+        let slice = std::slice::from_raw_parts_mut(original_ptr, original_len);
+        let _ = Box::from_raw(slice);
+        // Box is dropped here, freeing the memory
     }
 }
 
