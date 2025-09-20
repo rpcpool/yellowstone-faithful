@@ -181,6 +181,11 @@ impl<'de> serde::Deserialize<'de> for Buffer {
 }
 
 pub const MAX_ALLOWED_SECTION_SIZE: usize = 32 << 20; // 32MiB
+pub const ZSTD_MAGIC: [u8; 4] = [0x28, 0xb5, 0x2f, 0xfd];
+
+pub fn is_zstd_compressed(data: &[u8]) -> bool {
+    data.len() >= 4 && data[0..4] == ZSTD_MAGIC
+}
 
 pub fn decompress_zstd(data: Vec<u8>) -> Result<Vec<u8>, Box<dyn Error>> {
     let mut decoder = zstd::Decoder::new(&data[..])?;
