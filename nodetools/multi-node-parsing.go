@@ -12,7 +12,6 @@ import (
 	solanatxmetaparsers "github.com/rpcpool/yellowstone-faithful/solana-tx-meta-parsers"
 	"github.com/rpcpool/yellowstone-faithful/third_party/solana_proto/confirmed_block"
 	"github.com/rpcpool/yellowstone-faithful/tooling"
-	ytooling "github.com/rpcpool/yellowstone-faithful/tooling"
 	txpool "github.com/rpcpool/yellowstone-faithful/tx-pool"
 	"k8s.io/klog/v2"
 )
@@ -29,7 +28,7 @@ func GetParsedRewards(parsedDag ParsedAndCidSlice, rewardsCid cid.Cid) (*confirm
 	if err != nil {
 		return nil, fmt.Errorf("failed to load Rewards dataFrames: %v", err)
 	}
-	uncompressedRewards, err := ytooling.DecompressZstd(rewardsBuf)
+	uncompressedRewards, err := tooling.DecompressZstd(rewardsBuf)
 	if err != nil {
 		return nil, fmt.Errorf("failed to decompress Rewards: %v", err)
 	}
@@ -38,6 +37,25 @@ func GetParsedRewards(parsedDag ParsedAndCidSlice, rewardsCid cid.Cid) (*confirm
 		return nil, fmt.Errorf("failed to decode Rewards: %v", err)
 	}
 	return actualRewards, nil
+}
+
+func GetRawRewards(parsedDag ParsedAndCidSlice, rewardsCid cid.Cid) ([]byte, error) {
+	rewardsNode1, err := parsedDag.RewardsByCid(rewardsCid)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get rewards node by cid: %v", err)
+	}
+	rewardsBuf, err := ipldbindcode.LoadDataFromDataFrames(&rewardsNode1.Data, func(ctx context.Context, wantedCid cid.Cid) (*ipldbindcode.DataFrame, error) {
+		df, err := parsedDag.DataFrameByCid(wantedCid)
+		return df, err
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to load Rewards dataFrames: %v", err)
+	}
+	uncompressedRewards, err := tooling.DecompressZstd(rewardsBuf)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decompress Rewards: %v", err)
+	}
+	return uncompressedRewards, nil
 }
 
 func GetTransactionAndMeta(
@@ -96,4 +114,37 @@ func ParseTransactionAndMetaFromNode(
 		}
 	}
 	return
+}
+
+func GetRawTransactionAndMeta(
+	parsedDag ParsedAndCidSlice,
+	txNode *ipldbindcode.Transaction,
+) ([]byte, []byte, error) {
+	txBuf, err := ipldbindcode.LoadDataFromDataFrames(&txNode.Data, func(ctx context.Context, wantedCid cid.Cid) (*ipldbindcode.DataFrame, error) {
+		df, err := parsedDag.DataFrameByCid(wantedCid)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get DataFrame by CID %s: %w", wantedCid, err)
+		}
+		return df, nil
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to load transaction dataFrames: %w", err)
+	}
+
+	metaBufCompressed, err := ipldbindcode.LoadDataFromDataFrames(&txNode.Metadata, func(ctx context.Context, wantedCid cid.Cid) (*ipldbindcode.DataFrame, error) {
+		df, err := parsedDag.DataFrameByCid(wantedCid)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get DataFrame by CID %s: %w", wantedCid, err)
+		}
+		return df, nil
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to load metadata dataFrames: %w", err)
+	}
+	uncompressedMeta, err := tooling.DecompressZstd(metaBufCompressed)
+	if err != nil {
+		klog.Errorf("failed to decompress metadata: %v", err)
+		return nil, nil, err
+	}
+	return txBuf, uncompressedMeta, nil
 }

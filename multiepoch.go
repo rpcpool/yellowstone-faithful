@@ -245,7 +245,7 @@ func (m *MultiEpoch) ListenAndServe(ctx context.Context, listenOn string, lsConf
 
 	s := &fasthttp.Server{
 		Handler:            handler,
-		MaxRequestBodySize: 1024 * 1024,
+		MaxRequestBodySize: MiB,
 	}
 	go func() {
 		// listen for context cancellation

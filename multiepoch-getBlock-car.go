@@ -29,6 +29,12 @@ import (
 	"k8s.io/klog/v2"
 )
 
+const (
+	KiB = 1024
+	MiB = 1024 * KiB
+	GiB = 1024 * MiB
+)
+
 func (multi *MultiEpoch) handleGetBlock_car(ctx context.Context, conn *requestContext, req *jsonrpc2.Request) (*jsonrpc2.Error, error) {
 	// Start top-level span
 	rpcSpanCtx, rpcSpan := telemetry.StartSpan(ctx, "jsonrpc.GetBlock")
@@ -78,7 +84,6 @@ func (multi *MultiEpoch) handleGetBlock_car(ctx context.Context, conn *requestCo
 			}, fmt.Errorf("failed to get block: %w", err)
 		}
 	}
-	_ = childCid // TODO: use this CID to prefetch the block data
 	// Find CAR file oasChild for CID in index.
 	oasChild, err := epochHandler.FindOffsetAndSizeFromCid(ctx, childCid)
 	if err != nil {
@@ -92,7 +97,6 @@ func (multi *MultiEpoch) handleGetBlock_car(ctx context.Context, conn *requestCo
 			Message: "Failed to get block",
 		}, fmt.Errorf("failed to get block data: %w", err)
 	}
-	_ = childData // TODO: use this data to prefetch the block data
 	block, err := iplddecoders.DecodeBlock(childData.Bytes())
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode block: %w", err)
@@ -111,10 +115,10 @@ func (multi *MultiEpoch) handleGetBlock_car(ctx context.Context, conn *requestCo
 
 	offsetParent, parentCid, err := func() (uint64, cid.Cid, error) {
 		if parentSlot == 0 {
-			return 0, cid.Cid{}, nil // genesis has no parent
+			return epochHandler.carHeaderSize, cid.Cid{}, nil // genesis has no parent
 		}
 		if parentIsInPreviousEpoch {
-			return 0, cid.Cid{}, nil
+			return epochHandler.carHeaderSize, cid.Cid{}, nil
 		}
 		parentCid, err := epochHandler.FindCidFromSlot(ctx, parentSlot)
 		if err != nil {
@@ -139,11 +143,7 @@ func (multi *MultiEpoch) handleGetBlock_car(ctx context.Context, conn *requestCo
 		}, fmt.Errorf("failed to get parent offset: %w", err)
 	}
 	totalSize := oasChild.Offset + oasChild.Size - offsetParent
-	const (
-		KiB = 1024
-		MiB = 1024 * KiB
-		GiB = 1024 * MiB
-	)
+
 	if totalSize > GiB*2 {
 		return &jsonrpc2.Error{
 			Code:    jsonrpc2.CodeInternalError,
@@ -164,7 +164,10 @@ func (multi *MultiEpoch) handleGetBlock_car(ctx context.Context, conn *requestCo
 
 	nodes, err := nodetools.SplitIntoDataAndCids(section.Bytes())
 	if err != nil {
-		panic(err)
+		return &jsonrpc2.Error{
+			Code:    jsonrpc2.CodeInternalError,
+			Message: "Failed to parse block",
+		}, fmt.Errorf("failed to split section into nodes: %w", err)
 	}
 	defer nodes.Put() // return the nodes to the pool
 	nodes.SortByCid()
@@ -173,7 +176,10 @@ func (multi *MultiEpoch) handleGetBlock_car(ctx context.Context, conn *requestCo
 
 	parsedNodes, err := nodes.ToParsedAndCidSlice()
 	if err != nil {
-		panic(fmt.Errorf("failed to convert nodes to parsed nodes: %w", err))
+		return &jsonrpc2.Error{
+			Code:    jsonrpc2.CodeInternalError,
+			Message: "Failed to parse block",
+		}, fmt.Errorf("failed to parse nodes: %w", err)
 	}
 	defer parsedNodes.Put() // return the parsed nodes to the pool
 	// parsedNodes.SortByCid() // NOTE: already sorted by CIDs in SplitIntoDataAndCids; ToParsedAndCidSlice maintains the same order.
