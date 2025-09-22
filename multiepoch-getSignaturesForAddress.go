@@ -11,9 +11,13 @@ import (
 	"github.com/rpcpool/yellowstone-faithful/indexes"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
+	"github.com/rpcpool/yellowstone-faithful/metrics"
 	"github.com/rpcpool/yellowstone-faithful/nodetools"
 	"github.com/rpcpool/yellowstone-faithful/slottools"
+	"github.com/rpcpool/yellowstone-faithful/telemetry"
 	"github.com/sourcegraph/jsonrpc2"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"k8s.io/klog/v2"
 )
 
@@ -49,13 +53,13 @@ func (ser *MultiEpoch) getGsfaReadersInEpochDescendingOrderForSlotRange(ctx cont
 	ser.mu.RLock()
 	defer ser.mu.RUnlock()
 
-	startEpoch := slottools.CalcEpochForSlot(startSlot)
-	endEpoch := slottools.CalcEpochForSlot(endSlot)
-
-	epochs := make([]*Epoch, 0, endEpoch-startEpoch+1)
-	for _, epoch := range ser.epochs {
-		if epoch.Epoch() >= startEpoch && epoch.Epoch() <= endEpoch {
+	wantedEpochs := slottools.CalcEpochsForSlotRange(startSlot, endSlot)
+	epochs := make([]*Epoch, 0, len(wantedEpochs))
+	for _, wantedEpoch := range wantedEpochs {
+		if epoch, ok := ser.epochs[wantedEpoch]; ok {
 			epochs = append(epochs, epoch)
+		} else {
+			klog.Warningf("epoch %d not found in multiepoch", wantedEpoch)
 		}
 	}
 
@@ -149,8 +153,14 @@ func (multi *MultiEpoch) handleGetSignaturesForAddress(ctx context.Context, conn
 	}
 
 	// Get the transactions:
+	// Start span for searching epochs
+	searchCtx, searchSpan := telemetry.StartSpan(ctx, "GetSignaturesForAddress_SearchEpochs")
+	searchSpan.SetAttributes(
+		attribute.String("address", pk.String()),
+		attribute.Int("limit", limit),
+	)
 	foundTransactions, err := gsfaMulti.GetBeforeUntil(
-		ctx,
+		searchCtx,
 		pk,
 		limit,
 		params.Before,
@@ -174,6 +184,7 @@ func (multi *MultiEpoch) handleGetSignaturesForAddress(ctx context.Context, conn
 			return decoded, nil
 		},
 	)
+	searchSpan.End()
 	if err != nil {
 		return &jsonrpc2.Error{
 			Code:    jsonrpc2.CodeInternalError,
@@ -195,6 +206,14 @@ func (multi *MultiEpoch) handleGetSignaturesForAddress(ctx context.Context, conn
 
 	// The response is an array of objects: [{signature: string}]
 	response := make([]map[string]any, countTransactions(foundTransactions))
+
+	// Start span for parsing transactions
+	var parseSpan trace.Span
+	if !signaturesOnly {
+		_, parseSpan = telemetry.StartSpan(ctx, "GetSignaturesForAddress_ParseTransactions")
+		parseSpan.SetAttributes(attribute.Int("transaction_count", countTransactions(foundTransactions)))
+	}
+
 	numBefore := 0
 	for ei := range foundTransactions {
 		epoch := ei
@@ -253,11 +272,16 @@ func (multi *MultiEpoch) handleGetSignaturesForAddress(ctx context.Context, conn
 					}
 					slot := uint64(transactionNode.Slot)
 					response[ii]["slot"] = slot
+
+					// Start span for getting block time
+					_, btSpan := telemetry.StartSpan(ctx, "GetSignaturesForAddress_GetBlockTime")
+					btSpan.SetAttributes(attribute.Int64("slot", int64(slot)))
 					if blockTime := getBlockTime(slot, ser); blockTime != 0 {
 						response[ii]["blockTime"] = blockTime
 					} else {
 						response[ii]["blockTime"] = nil
 					}
+					btSpan.End()
 					response[ii]["confirmationStatus"] = "finalized"
 				}
 				return nil
@@ -271,6 +295,15 @@ func (multi *MultiEpoch) handleGetSignaturesForAddress(ctx context.Context, conn
 		}
 		numBefore += len(sigs)
 	}
+
+	// End the parse span if it was started
+	if parseSpan != nil {
+		parseSpan.End()
+	}
+
+	// Record signature count metric
+	metrics.SignatureCountPerRequest.WithLabelValues("getSignaturesForAddress").Observe(float64(len(response)))
+
 	// reply with the data
 	err = conn.Reply(
 		ctx,

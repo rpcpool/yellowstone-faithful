@@ -32,7 +32,7 @@ func TraceExecutionTime(ctx context.Context, name string, fn func() error) error
 func TraceFunctionExecution(ctx context.Context, name string) (context.Context, trace.Span, func()) {
 	ctx, span := StartSpan(ctx, name)
 	start := time.Now()
-	
+
 	return ctx, span, func() {
 		elapsed := time.Since(start)
 		span.SetAttributes(attribute.Int64("execution_time_ms", elapsed.Milliseconds()))

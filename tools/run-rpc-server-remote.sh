@@ -44,9 +44,14 @@ fi
 CID_URL=https://files.old-faithful.net/${EPOCH}/epoch-${EPOCH}.cid
 EPOCH_CID=$($READ_COMMAND $CID_URL)
 
-EPOCH_CONFIG_URL=https://files.old-faithful.net/${EPOCH}/epoch-${EPOCH}.yml
+# This might be bash only, but ok
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 
-wget -q ${EPOCH_CONFIG_URL} -O epoch-${EPOCH}.yml
+# Check if the config file exists locally or create it
+if [ ! -f "epoch-${EPOCH}.yml" ]; then
+    echo "Epoch config file missing, creating it"
+    $SCRIPT_DIR/generate-config-http.sh $EPOCH
+fi
 
 set -x
 faithful-cli rpc --listen ":7999" \

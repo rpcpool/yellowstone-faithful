@@ -304,7 +304,7 @@ func (s *JSONBuilderTestSuite) TestChainedConditionals() {
 			o.ApplyIf(1 == 2, func(o *OrderedJSONObject) {
 				o.String("nope", "no")
 			}).
-				ApplyIf(2 == 2, func(o *OrderedJSONObject) {
+				ApplyIf(true, func(o *OrderedJSONObject) {
 					o.String("yes", "yes")
 				})
 		})

@@ -8,10 +8,10 @@ import (
 
 func TestReadCIDsFromInput(t *testing.T) {
 	tests := []struct {
-		name           string
-		input          string
-		expectedCIDs   []string
-		expectedError  bool
+		name          string
+		input         string
+		expectedCIDs  []string
+		expectedError bool
 	}{
 		{
 			name: "valid CIDs",
@@ -151,10 +151,10 @@ func TestEscapeCSV(t *testing.T) {
 
 func TestSetupOutputWriter(t *testing.T) {
 	tests := []struct {
-		name        string
-		outputFile  string
+		name         string
+		outputFile   string
 		expectStdout bool
-		expectError bool
+		expectError  bool
 	}{
 		{
 			name:         "stdout",

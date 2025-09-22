@@ -4,6 +4,7 @@ members = [
     "geyser-plugin-runner/demo-plugin",
     "jsonparsed",
 ]
+exclude = ["rust-compactindex"]
 resolver = "2"
 
 [workspace.dependencies]

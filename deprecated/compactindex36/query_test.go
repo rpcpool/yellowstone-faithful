@@ -2,8 +2,8 @@ package compactindex36
 
 import (
 	"bytes"
+	"crypto/rand"
 	"errors"
-	"math/rand"
 	"testing"
 
 	"github.com/stretchr/testify/assert"

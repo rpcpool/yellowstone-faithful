@@ -217,7 +217,7 @@ func askForConfirmation(message string, args ...any) bool {
 	var response string
 	_, err := fmt.Scanln(&response)
 	if err != nil {
-		return askForConfirmation(message)
+		return askForConfirmation(message, args...)
 	}
 	if isStringAnyOf(response, "y", "Y", "yes", "Yes", "YES") {
 		return true

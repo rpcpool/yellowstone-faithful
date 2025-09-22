@@ -12,7 +12,9 @@ import (
 	"github.com/rpcpool/yellowstone-faithful/compactindexsized"
 	"github.com/rpcpool/yellowstone-faithful/nodetools"
 	solanatxmetaparsers "github.com/rpcpool/yellowstone-faithful/solana-tx-meta-parsers"
+	"github.com/rpcpool/yellowstone-faithful/telemetry"
 	"github.com/sourcegraph/jsonrpc2"
+	"go.opentelemetry.io/otel/attribute"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"k8s.io/klog/v2"
@@ -130,8 +132,12 @@ func (multi *MultiEpoch) handleGetTransaction(ctx context.Context, conn *request
 
 	sig := params.Signature
 
+	// Start span for finding epoch from signature
+	epochLookupCtx, epochLookupSpan := telemetry.StartSpan(ctx, "GetTransaction_FindEpochFromSignature")
+	epochLookupSpan.SetAttributes(attribute.String("signature", sig.String()))
 	startedEpochLookupAt := time.Now()
-	epochNumber, err := multi.findEpochNumberFromSignature(ctx, sig)
+	epochNumber, err := multi.findEpochNumberFromSignature(epochLookupCtx, sig)
+	epochLookupSpan.End()
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
 			// solana just returns null here in case of transaction not found: {"jsonrpc":"2.0","result":null,"id":1}
@@ -155,7 +161,14 @@ func (multi *MultiEpoch) handleGetTransaction(ctx context.Context, conn *request
 		}, fmt.Errorf("failed to get handler for epoch %d: %w", epochNumber, err)
 	}
 
-	transactionNode, transactionCid, err := epochHandler.GetTransaction(WithSubrapghPrefetch(ctx, true), sig)
+	// Start span for getting transaction from epoch
+	txRetrievalCtx, txRetrievalSpan := telemetry.StartSpan(ctx, "GetTransaction_GetTransactionFromEpoch")
+	txRetrievalSpan.SetAttributes(
+		attribute.Int64("epoch", int64(epochNumber)),
+		attribute.String("signature", sig.String()),
+	)
+	transactionNode, transactionCid, err := epochHandler.GetTransaction(WithSubrapghPrefetch(txRetrievalCtx, true), sig)
+	txRetrievalSpan.End()
 	if err != nil {
 		if errors.Is(err, compactindexsized.ErrNotFound) {
 			// NOTE: solana just returns null here in case of transaction not found: {"jsonrpc":"2.0","result":null,"id":1}
@@ -172,7 +185,11 @@ func (multi *MultiEpoch) handleGetTransaction(ctx context.Context, conn *request
 	{
 		conn.ctx.Response.Header.Set("DAG-Root-CID", transactionCid.String())
 	}
+
+	// Start span for parsing transaction and metadata
+	_, parseSpan := telemetry.StartSpan(ctx, "GetTransaction_ParseTransactionMeta")
 	tx, meta, err := nodetools.ParseTransactionAndMetaFromNode(transactionNode, epochHandler.GetDataFrameByCid)
+	parseSpan.End()
 	if err != nil {
 		return &jsonrpc2.Error{
 			Code:    jsonrpc2.CodeInternalError,
@@ -194,9 +211,13 @@ func (multi *MultiEpoch) handleGetTransaction(ctx context.Context, conn *request
 
 	response.Uint("slot", uint64(transactionNode.Slot))
 	{
+		// Start span for getting block time
+		_, blocktimeSpan := telemetry.StartSpan(ctx, "GetTransaction_GetBlockTime")
+		blocktimeSpan.SetAttributes(attribute.Int64("slot", int64(transactionNode.Slot)))
 		blocktimeIndex := epochHandler.GetBlocktimeIndex()
 		if blocktimeIndex != nil {
 			blocktime, err := blocktimeIndex.Get(uint64(transactionNode.Slot))
+			blocktimeSpan.End()
 			if err != nil {
 				return nil, status.Errorf(codes.Internal, "Failed to get block: %v", err)
 			}
@@ -206,6 +227,7 @@ func (multi *MultiEpoch) handleGetTransaction(ctx context.Context, conn *request
 				response.Int("blockTime", blocktime)
 			}
 		} else {
+			blocktimeSpan.End()
 			return &jsonrpc2.Error{
 				Code:    jsonrpc2.CodeInternalError,
 				Message: "Internal error",
