@@ -26,7 +26,6 @@ import (
 	"github.com/rpcpool/yellowstone-faithful/slottools"
 	solanablockrewards "github.com/rpcpool/yellowstone-faithful/solana-block-rewards"
 	solanatxmetaparsers "github.com/rpcpool/yellowstone-faithful/solana-tx-meta-parsers"
-	splitcarfetcher "github.com/rpcpool/yellowstone-faithful/split-car-fetcher"
 	"github.com/rpcpool/yellowstone-faithful/tooling"
 	txpool "github.com/rpcpool/yellowstone-faithful/tx-pool"
 	"github.com/rpcpool/yellowstone-faithful/uri"
@@ -386,17 +385,17 @@ func openURI(pathOrURL string) (io.ReadCloser, *atomic.Uint64, error) {
 		return io.NopCloser(buf), bytecounter, nil
 		// return stream, nil
 	}
-	{
-		rfspc, byteLen, err := splitcarfetcher.NewRemoteHTTPFileAsIoReaderAt(
-			context.Background(),
-			pathOrURL,
-		)
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to create remote file split car reader from %q: %w", pathOrURL, err)
-		}
-		sr := io.NewSectionReader(rfspc, 0, byteLen)
-		return io.NopCloser(bufio.NewReaderSize(sr, MiB*50)), nil, nil
-	}
+	// {
+	// 	rfspc, byteLen, err := splitcarfetcher.NewRemoteHTTPFileAsIoReaderAt(
+	// 		context.Background(),
+	// 		pathOrURL,
+	// 	)
+	// 	if err != nil {
+	// 		return nil, nil, fmt.Errorf("failed to create remote file split car reader from %q: %w", pathOrURL, err)
+	// 	}
+	// 	sr := io.NewSectionReader(rfspc, 0, byteLen)
+	// 	return io.NopCloser(bufio.NewReaderSize(sr, MiB*50)), nil, nil
+	// }
 }
 
 type CountingReader struct {
