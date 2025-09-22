@@ -45,6 +45,13 @@ func Uint64FromLEBytes(buf []byte) uint64 {
 	return binary.LittleEndian.Uint64(buf)
 }
 
+func ParentIsInPreviousEpoch(parentSlot uint64, childSlot uint64) bool {
+	// If the parent slot is less than the start of the current epoch,
+	// then it must be in the previous epoch.
+	epochStart := CalcEpochForSlot(childSlot) * EpochLen
+	return parentSlot < epochStart
+}
+
 func CalcEpochsForSlotRange(startSlot, endSlot uint64) []uint64 {
 	epochStart := CalcEpochForSlot(startSlot)
 	epochEnd := CalcEpochForSlot(endSlot)

@@ -3,6 +3,7 @@ package solanatxmetaparsers
 import (
 	"errors"
 	"fmt"
+	"sync"
 
 	"github.com/gagliardetto/solana-go"
 	serde_agave "github.com/rpcpool/yellowstone-faithful/parse_legacy_transaction_status_meta"
@@ -13,7 +14,7 @@ import (
 
 type TransactionStatusMetaContainer struct {
 	vProtobuf *confirmed_block.TransactionStatusMeta
-	vSerde    *serde_agave.TransactionStatusMeta
+	vSerde    *serde_agave.StoredTransactionStatusMeta
 }
 
 // HasMeta returns true if the container holds a value.
@@ -42,7 +43,7 @@ func (c *TransactionStatusMetaContainer) GetProtobuf() *confirmed_block.Transact
 }
 
 // GetSerde returns the contained latest serde format value.
-func (c *TransactionStatusMetaContainer) GetSerde() *serde_agave.TransactionStatusMeta {
+func (c *TransactionStatusMetaContainer) GetSerde() *serde_agave.StoredTransactionStatusMeta {
 	return c.vSerde
 }
 
@@ -126,17 +127,57 @@ func serdePubkeySliceToBytesSlice(serdePubkeys []serde_agave.Pubkey) [][]byte {
 	return bytesSlice
 }
 
+var confirmed_blockTransactionStatusMetaPool = &sync.Pool{
+	New: func() any {
+		return &confirmed_block.TransactionStatusMeta{}
+	},
+}
+
+func getConfirmedBlockTransactionStatusMeta() *confirmed_block.TransactionStatusMeta {
+	if v := confirmed_blockTransactionStatusMetaPool.Get(); v != nil {
+		return v.(*confirmed_block.TransactionStatusMeta)
+	}
+	return &confirmed_block.TransactionStatusMeta{}
+}
+
+func PutConfirmedBlockTransactionStatusMeta(meta *confirmed_block.TransactionStatusMeta) {
+	if meta == nil {
+		return
+	}
+	meta.Reset()
+	{
+		meta.Err = nil
+		meta.Fee = 0
+		meta.PreBalances = nil
+		meta.PostBalances = nil
+		meta.InnerInstructions = nil
+		meta.InnerInstructionsNone = false
+		meta.LogMessages = nil
+		meta.LogMessagesNone = false
+		meta.PreTokenBalances = nil
+		meta.PostTokenBalances = nil
+		meta.Rewards = nil
+		meta.LoadedWritableAddresses = nil
+		meta.LoadedReadonlyAddresses = nil
+		meta.ReturnData = nil
+		meta.ReturnDataNone = false
+		meta.ComputeUnitsConsumed = nil
+		meta.CostUnits = nil
+	}
+	confirmed_blockTransactionStatusMetaPool.Put(meta)
+}
+
 func ParseTransactionStatusMeta(buf []byte) (*confirmed_block.TransactionStatusMeta, error) {
-	var status confirmed_block.TransactionStatusMeta
-	err := proto.Unmarshal(buf, &status)
+	status := getConfirmedBlockTransactionStatusMeta()
+	err := proto.Unmarshal(buf, status)
 	if err != nil {
 		return nil, err
 	}
-	return &status, nil
+	return status, nil
 }
 
-func ParseTransactionStatusMeta_Serde(buf []byte) (*serde_agave.TransactionStatusMeta, error) {
-	legacyStatus, err := serde_agave.BincodeDeserializeTransactionStatusMeta(buf)
+func ParseTransactionStatusMeta_Serde(buf []byte) (*serde_agave.StoredTransactionStatusMeta, error) {
+	legacyStatus, err := serde_agave.BincodeDeserializeStoredTransactionStatusMeta(buf)
 	if err != nil {
 		if errors.Is(err, serde_agave.ErrSomeBytesNotRead) {
 			return &legacyStatus, nil
@@ -175,8 +216,21 @@ func ParseTransactionStatusMetaContainer(buf []byte) (*TransactionStatusMetaCont
 	switch val := whatever.(type) {
 	case *confirmed_block.TransactionStatusMeta:
 		container.vProtobuf = val
-	case *serde_agave.TransactionStatusMeta:
+	case *serde_agave.StoredTransactionStatusMeta:
 		container.vSerde = val
 	}
 	return container, nil
+}
+
+// TransactionStatusMetaContainer.Put()
+func (c *TransactionStatusMetaContainer) Put() {
+	if c.vProtobuf != nil {
+		PutConfirmedBlockTransactionStatusMeta(c.vProtobuf)
+		c.vProtobuf = nil
+	}
+	if c.vSerde != nil {
+		// TODO: Implement serde cleanup.
+		// serde_agave.PutTransactionStatusMeta(c.vSerde)
+		// c.vSerde = nil
+	}
 }

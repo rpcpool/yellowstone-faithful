@@ -67,7 +67,7 @@ func DecodeEpoch(epochRaw []byte) (*ipldbindcode.Epoch, error) {
 }
 
 func _DecodeEpochFast(epochRaw []byte) (*ipldbindcode.Epoch, error) {
-	epoch := ipldbindcode.Epoch{}
+	epoch := GetEpoch()
 	err := epoch.UnmarshalCBOR(epochRaw)
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode Epoch node: %w", err)
@@ -75,7 +75,7 @@ func _DecodeEpochFast(epochRaw []byte) (*ipldbindcode.Epoch, error) {
 	if epoch.Kind != int(KindEpoch) {
 		return nil, fmt.Errorf("expected Epoch node, got %s", Kind(epoch.Kind))
 	}
-	return &epoch, nil
+	return epoch, nil
 }
 
 func _DecodeEpochClassic(epochRaw []byte) (*ipldbindcode.Epoch, error) {
@@ -95,7 +95,7 @@ func DecodeSubset(subsetRaw []byte) (*ipldbindcode.Subset, error) {
 }
 
 func _DecodeSubsetFast(subsetRaw []byte) (*ipldbindcode.Subset, error) {
-	subset := ipldbindcode.Subset{}
+	subset := GetSubset()
 	err := subset.UnmarshalCBOR(subsetRaw)
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode Subset node: %w", err)
@@ -103,7 +103,7 @@ func _DecodeSubsetFast(subsetRaw []byte) (*ipldbindcode.Subset, error) {
 	if subset.Kind != int(KindSubset) {
 		return nil, fmt.Errorf("expected Subset node, got %s", Kind(subset.Kind))
 	}
-	return &subset, nil
+	return subset, nil
 }
 
 func _DecodeSubsetClassic(subsetRaw []byte) (*ipldbindcode.Subset, error) {
@@ -123,7 +123,7 @@ func DecodeBlock(blockRaw []byte) (*ipldbindcode.Block, error) {
 }
 
 func _DecodeBlockFast(blockRaw []byte) (*ipldbindcode.Block, error) {
-	block := ipldbindcode.Block{}
+	block := GetBlock()
 	err := block.UnmarshalCBOR(blockRaw)
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode Block node: %w", err)
@@ -131,7 +131,7 @@ func _DecodeBlockFast(blockRaw []byte) (*ipldbindcode.Block, error) {
 	if block.Kind != int(KindBlock) {
 		return nil, fmt.Errorf("expected Block node, got %s", Kind(block.Kind))
 	}
-	return &block, nil
+	return block, nil
 }
 
 func _DecodeBlockClassic(blockRaw []byte) (*ipldbindcode.Block, error) {
@@ -151,7 +151,7 @@ func DecodeEntry(entryRaw []byte) (*ipldbindcode.Entry, error) {
 }
 
 func _DecodeEntryFast(entryRaw []byte) (*ipldbindcode.Entry, error) {
-	entry := ipldbindcode.Entry{}
+	entry := GetEntry()
 	err := entry.UnmarshalCBOR(entryRaw)
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode Entry node: %w", err)
@@ -159,7 +159,7 @@ func _DecodeEntryFast(entryRaw []byte) (*ipldbindcode.Entry, error) {
 	if entry.Kind != int(KindEntry) {
 		return nil, fmt.Errorf("expected Entry node, got %s", Kind(entry.Kind))
 	}
-	return &entry, nil
+	return entry, nil
 }
 
 func _DecodeEntryClassic(entryRaw []byte) (*ipldbindcode.Entry, error) {
@@ -179,7 +179,7 @@ func DecodeTransaction(transactionRaw []byte) (*ipldbindcode.Transaction, error)
 }
 
 func _DecodeTransactionFast(transactionRaw []byte) (*ipldbindcode.Transaction, error) {
-	transaction := ipldbindcode.Transaction{}
+	transaction := GetTransaction()
 	err := transaction.UnmarshalCBOR(transactionRaw)
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode Transaction node: %w", err)
@@ -187,7 +187,7 @@ func _DecodeTransactionFast(transactionRaw []byte) (*ipldbindcode.Transaction, e
 	if transaction.Kind != int(KindTransaction) {
 		return nil, fmt.Errorf("expected Transaction node, got %s", Kind(transaction.Kind))
 	}
-	return &transaction, nil
+	return transaction, nil
 }
 
 func _DecodeTransactionClassic(transactionRaw []byte) (*ipldbindcode.Transaction, error) {
@@ -207,7 +207,7 @@ func DecodeRewards(rewardsRaw []byte) (*ipldbindcode.Rewards, error) {
 }
 
 func _DecodeRewardsFast(rewardsRaw []byte) (*ipldbindcode.Rewards, error) {
-	rewards := ipldbindcode.Rewards{}
+	rewards := GetRewards()
 	err := rewards.UnmarshalCBOR(rewardsRaw)
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode Rewards node: %w", err)
@@ -215,7 +215,7 @@ func _DecodeRewardsFast(rewardsRaw []byte) (*ipldbindcode.Rewards, error) {
 	if rewards.Kind != int(KindRewards) {
 		return nil, fmt.Errorf("expected Rewards node, got %s", Kind(rewards.Kind))
 	}
-	return &rewards, nil
+	return rewards, nil
 }
 
 func _DecodeRewardsClassic(rewardsRaw []byte) (*ipldbindcode.Rewards, error) {
@@ -235,7 +235,7 @@ func DecodeDataFrame(dataFrameRaw []byte) (*ipldbindcode.DataFrame, error) {
 }
 
 func _DecodeDataFrameFast(dataFrameRaw []byte) (*ipldbindcode.DataFrame, error) {
-	dataFrame := ipldbindcode.DataFrame{}
+	dataFrame := GetDataFrame()
 	err := dataFrame.UnmarshalCBOR(dataFrameRaw)
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode DataFrame node: %w", err)
@@ -243,7 +243,7 @@ func _DecodeDataFrameFast(dataFrameRaw []byte) (*ipldbindcode.DataFrame, error) 
 	if dataFrame.Kind != int(KindDataFrame) {
 		return nil, fmt.Errorf("expected DataFrame node, got %s", Kind(dataFrame.Kind))
 	}
-	return &dataFrame, nil
+	return dataFrame, nil
 }
 
 func _DecodeDataFrameClassic(dataFrameRaw []byte) (*ipldbindcode.DataFrame, error) {
@@ -258,7 +258,7 @@ func _DecodeDataFrameClassic(dataFrameRaw []byte) (*ipldbindcode.DataFrame, erro
 	return &dataFrame, nil
 }
 
-func DecodeAny(anyRaw []byte) (any, error) {
+func DecodeAny(anyRaw []byte) (ipldbindcode.Node, error) {
 	kind, err := GetKind(anyRaw)
 	if err != nil {
 		return nil, err

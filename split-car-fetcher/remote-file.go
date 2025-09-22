@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/goware/urlx"
-	rangecache "github.com/rpcpool/yellowstone-faithful/range-cache"
 )
 
 // NewRemoteHTTPFileAsIoReaderAt returns a ReaderAtCloser for a remote file.
@@ -30,20 +29,10 @@ func NewRemoteHTTPFileAsIoReaderAt(ctx context.Context, url string) (ReaderAtClo
 		contentLength: contentLength,
 		client:        NewHTTPClient(),
 	}
-	parsedURL, err := urlx.Parse(url)
+	_, err = urlx.Parse(url)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, fmt.Errorf("failed to parse URL %q: %w", url, err)
 	}
-	name := parsedURL.Path
-
-	rc := rangecache.NewRangeCache(
-		contentLength,
-		name,
-		func(p []byte, off int64) (n int, err error) {
-			return remoteReadAt(rr.client, rr.url, p, off)
-		})
-	rc.StartCacheGC(ctx, 1*time.Minute)
-	rr.ca = rc
 
 	return rr, contentLength, nil
 }
@@ -52,13 +41,12 @@ type HTTPSingleFileRemoteReaderAt struct {
 	url           string
 	contentLength int64
 	client        *http.Client
-	ca            *rangecache.RangeCache
 }
 
 // Close implements io.Closer.
 func (r *HTTPSingleFileRemoteReaderAt) Close() error {
 	r.client.CloseIdleConnections()
-	return r.ca.Close()
+	return nil
 }
 
 // Size returns the size of the file.
@@ -92,11 +80,16 @@ func (r *HTTPSingleFileRemoteReaderAt) ReadAt(p []byte, off int64) (n int, err e
 	if off >= r.contentLength {
 		return 0, io.EOF
 	}
-	v, err := r.ca.GetRange(context.Background(), off, int64(len(p)))
+	n, err = remoteReadAt(r.client, r.url, p, off)
 	if err != nil {
-		return 0, err
+		return n, fmt.Errorf("failed to read remote file at offset %d: %w", off, err)
 	}
-	n = copy(p, v)
+	if n == 0 {
+		return 0, io.EOF
+	}
+	if n < 0 {
+		return 0, fmt.Errorf("negative read count: %d", n)
+	}
 	if n < len(p) {
 		return n, io.ErrUnexpectedEOF
 	}

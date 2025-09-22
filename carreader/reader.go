@@ -185,27 +185,27 @@ func ReadNodeInfoWithData(br *bufio.Reader) (cid.Cid, uint64, []byte, error) {
 }
 
 func ReadSectionLength(r *bufio.Reader) (uint64, uint64, error) {
-	if _, err := r.Peek(1); err != nil { // no more blocks, likely clean io.EOF
-		if errors.Is(err, io.ErrNoProgress) {
+	if _, err := r.Peek(1); err != nil {
+		if errors.Is(err, io.EOF) || errors.Is(err, io.ErrNoProgress) {
 			return 0, 0, io.EOF
-		}
-		return 0, 0, fmt.Errorf("failed to peek: %w", err)
-	}
-
-	br := byteReaderWithCounter{r, 0}
-	l, err := binary.ReadUvarint(&br)
-	if err != nil {
-		if errors.Is(err, io.EOF) {
-			return 0, 0, io.ErrUnexpectedEOF // don't silently pretend this is a clean EOF
 		}
 		return 0, 0, err
 	}
 
-	if l > uint64(util.MaxAllowedSectionSize) { // Don't OOM
-		return 0, 0, errors.New("malformed car; header is bigger than util.MaxAllowedSectionSize")
+	brc := &byteReaderWithCounter{r, 0}
+	l, err := binary.ReadUvarint(brc)
+	if err != nil {
+		if errors.Is(err, io.EOF) {
+			return 0, 0, io.ErrUnexpectedEOF
+		}
+		return 0, 0, err
 	}
 
-	return l, br.Offset, nil
+	if l > uint64(util.MaxAllowedSectionSize) {
+		return 0, 0, fmt.Errorf("section size %d is larger than max allowed %d", l, util.MaxAllowedSectionSize)
+	}
+
+	return l, brc.Offset, nil
 }
 
 type byteReaderWithCounter struct {

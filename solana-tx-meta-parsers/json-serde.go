@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	"github.com/gagliardetto/solana-go"
-	"github.com/mr-tron/base58"
 	"github.com/rpcpool/yellowstone-faithful/jsonbuilder"
 	transaction_status_meta_serde_agave "github.com/rpcpool/yellowstone-faithful/parse_legacy_transaction_status_meta"
 )
@@ -17,7 +16,7 @@ import (
 
 // TransactionStatusMeta.MarshalJSON implements the json.Marshaler interface
 // and is used to serialize the TransactionStatusMeta struct into JSON format.
-func SerdeTransactionStatusMetaToUi(meta *transaction_status_meta_serde_agave.TransactionStatusMeta) (json.RawMessage, error) {
+func SerdeTransactionStatusMetaToUi(meta *transaction_status_meta_serde_agave.StoredTransactionStatusMeta) (json.RawMessage, error) {
 	// Create a new JSON object
 	// #[serde(rename_all = "camelCase")]
 	resp := jsonbuilder.NewObject()
@@ -57,12 +56,12 @@ func SerdeTransactionStatusMetaToUi(meta *transaction_status_meta_serde_agave.Tr
 	{
 		// .preBalances
 		// pub pre_balances: Vec<u64>,
-		resp.Value("preBalances", meta.PreBalances)
+		resp.UintSlice("preBalances", meta.PreBalances)
 	}
 	{
 		// .postBalances
 		// pub post_balances: Vec<u64>,
-		resp.Value("postBalances", meta.PostBalances)
+		resp.UintSlice("postBalances", meta.PostBalances)
 	}
 	{
 		// .innerInstructions
@@ -147,7 +146,7 @@ func SerdeTransactionStatusMetaToUi(meta *transaction_status_meta_serde_agave.Tr
 											accounts.AddUint8(account) // TODO: check if this marshals to array of numbers
 										}
 									})
-									uiCompiledInstruction.String("data", base58.Encode(instruction.Instruction.Data[:]))
+									uiCompiledInstruction.Base58("data", (instruction.Instruction.Data[:]))
 									// NOTE: stackHeight is only present in protobuf encoding.
 									// if instruction.Instruction.StackHeight != nil {
 									// 	uiCompiledInstruction.Uint("stackHeight", uint64(*instruction.Instruction.StackHeight))
@@ -343,7 +342,7 @@ func SerdeTransactionStatusMetaToUi(meta *transaction_status_meta_serde_agave.Tr
 					"returnData",
 					func(o *jsonbuilder.OrderedJSONObject) {
 						pid := solana.PublicKeyFromBytes(meta.ReturnData.ProgramId[:])
-						o.String("programId", pid.String())
+						o.Base58("programId", pid[:])
 						o.ArrayFunc("data", func(arr *jsonbuilder.ArrayBuilder) {
 							arr.AddString(base64.StdEncoding.EncodeToString(meta.ReturnData.Data[:]))
 							arr.AddString("base64")
@@ -377,7 +376,7 @@ func SerdeTransactionStatusMetaToUi(meta *transaction_status_meta_serde_agave.Tr
 }
 
 func _serde_TransactionTokenBalanceToUiTransactionTokenBalance(
-	tokenBalance transaction_status_meta_serde_agave.TransactionTokenBalance,
+	tokenBalance transaction_status_meta_serde_agave.StoredTransactionTokenBalance,
 	arr *jsonbuilder.ArrayBuilder,
 ) {
 	// #[serde(rename_all = "camelCase")]
@@ -428,12 +427,12 @@ func _serde_TransactionTokenBalanceToUiTransactionTokenBalance(
 		uiPostTokenBalance.Uint("accountIndex", uint64(tokenBalance.AccountIndex))
 		uiPostTokenBalance.String("mint", tokenBalance.Mint)
 		uiPostTokenBalance.ObjectFunc("uiTokenAmount", func(o *jsonbuilder.OrderedJSONObject) {
-			if tokenBalance.UiTokenAmount.UiAmount != nil {
-				o.Float("uiAmount", *tokenBalance.UiTokenAmount.UiAmount)
+			{
+				o.Float("uiAmount", tokenBalance.UiTokenAmount.UiAmount)
 			}
 			o.Uint8("decimals", tokenBalance.UiTokenAmount.Decimals)
-			o.String("amount", tokenBalance.UiTokenAmount.Amount)
-			o.String("uiAmountString", tokenBalance.UiTokenAmount.UiAmountString)
+			o.String("amount", string(tokenBalance.UiTokenAmount.Amount))
+			// o.String("uiAmountString", tokenBalance.UiTokenAmount.UiAmountString)// TODO: parse and format
 		})
 		if tokenBalance.Owner != "" {
 			uiPostTokenBalance.String("owner", tokenBalance.Owner)

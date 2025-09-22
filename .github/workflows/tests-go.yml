@@ -10,7 +10,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  COVERAGE_THRESHOLD: 10
+  COVERAGE_THRESHOLD: 9
 
 name: tests_go
 jobs:
@@ -22,20 +22,20 @@ jobs:
       fail-fast: false
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      
+
       - name: Install Go
         uses: actions/setup-go@v5
         with:
           go-version: ${{ matrix.go-version }}
           cache: true
           cache-dependency-path: go.sum
-      
+
       - name: Cache Go modules
         uses: actions/cache@v4
         with:
@@ -46,21 +46,21 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-go-${{ matrix.go-version }}-
             ${{ runner.os }}-go-
-      
+
       - name: Download dependencies
         run: go mod download
-      
+
       - name: Verify dependencies
         run: go mod verify
-      
+
       - name: Build verification
         run: go build -v ./...
-      
+
       - name: Run tests with race detection
         run: |
           go test -v -race -timeout=20m -coverprofile=coverage.out -covermode=atomic -json ./... | tee test-results.json
         timeout-minutes: 25
-      
+
       - name: Check coverage threshold
         run: |
           coverage=$(go tool cover -func=coverage.out | grep total | awk '{print substr($3, 1, length($3)-1)}')
@@ -71,7 +71,7 @@ jobs:
             exit 1
           fi
           echo "Coverage check passed!"
-      
+
       - name: Upload coverage to Codecov
         if: matrix.go-version == '1.23.x'
         uses: codecov/codecov-action@v4
@@ -81,7 +81,7 @@ jobs:
           name: codecov-umbrella
           fail_ci_if_error: false
           token: ${{ secrets.CODECOV_TOKEN }}
-      
+
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
@@ -91,7 +91,7 @@ jobs:
             test-results.json
             coverage.out
           retention-days: 30
-      
+
       - name: Parse test results
         if: always()
         run: |

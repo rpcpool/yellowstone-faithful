@@ -59,13 +59,14 @@ func carCountItemsByFirstByte(carPath ...string) (map[byte]uint64, *ipldbindcode
 	startedCountAt := time.Now()
 	var epochObject *ipldbindcode.Epoch
 	for {
-		_, _, nodeData, err := rd.NextNodeBytes()
+		_, _, buf, err := rd.NextNodeBytes()
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				break
 			}
 			return nil, nil, err
 		}
+		nodeData := buf.Bytes()
 		// the first data byte is the block type (after the CBOR tag)
 		firstDataByte := nodeData[1]
 		counts[firstDataByte]++

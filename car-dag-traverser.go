@@ -398,22 +398,23 @@ func FindBlocksFromReader(
 	callback func(cid.Cid, *ipldbindcode.Block) error,
 ) error {
 	for {
-		block, err := reader.Next()
+		_cid, _, buf, err := reader.NextNodeBytes()
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				break
 			}
 			return err
 		}
+		rawData := buf.Bytes()
 		{
-			if block.RawData()[1] != byte(iplddecoders.KindBlock) {
+			if rawData[1] != byte(iplddecoders.KindBlock) {
 				continue
 			}
-			decoded, err := iplddecoders.DecodeBlock(block.RawData())
+			decoded, err := iplddecoders.DecodeBlock(rawData)
 			if err != nil {
 				continue
 			}
-			err = callback(block.Cid(), decoded)
+			err = callback(_cid, decoded)
 			if err != nil {
 				if err == ErrStopIteration {
 					return nil
@@ -523,22 +524,23 @@ func FindTransactionsFromReader(
 	callback func(cid.Cid, *ipldbindcode.Transaction) error,
 ) error {
 	for {
-		block, err := reader.Next()
+		_cid, _, buf, err := reader.NextNodeBytes()
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				break
 			}
 			return err
 		}
+		rawData := buf.Bytes()
 		{
-			if block.RawData()[1] != byte(iplddecoders.KindTransaction) {
+			if rawData[1] != byte(iplddecoders.KindTransaction) {
 				continue
 			}
-			decoded, err := iplddecoders.DecodeTransaction(block.RawData())
+			decoded, err := iplddecoders.DecodeTransaction(rawData)
 			if err != nil {
 				continue
 			}
-			err = callback(block.Cid(), decoded)
+			err = callback(_cid, decoded)
 			if err != nil {
 				return err
 			}

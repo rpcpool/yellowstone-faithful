@@ -44,6 +44,7 @@ func main() {
 		Description: "CLI to get, manage and interact with the Solana blockchain data stored in a CAR file or on Filecoin/IPFS.",
 		Flags:       NewKlogFlagSet(),
 		Before: func(cctx *cli.Context) error {
+			printVersionAsJson()
 			return nil
 		},
 		Action: nil,

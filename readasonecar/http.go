@@ -42,7 +42,7 @@ func OpenURL(url string) (*Container, error) {
 		return nil, fmt.Errorf("failed to create remote file split car reader from %q: %w", url, err)
 	}
 	sr := io.NewSectionReader(rfspc, 0, byteLen) // *io.SectionReader
-	cr, err := carreader.New(io.NopCloser(sr))
+	cr, err := carreader.NewPrefetching(io.NopCloser(sr))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create car reader from %q: %w", url, err)
 	}

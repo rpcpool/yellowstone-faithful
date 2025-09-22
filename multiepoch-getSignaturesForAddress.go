@@ -12,6 +12,7 @@ import (
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
 	"github.com/rpcpool/yellowstone-faithful/metrics"
+	"github.com/rpcpool/yellowstone-faithful/nodetools"
 	"github.com/rpcpool/yellowstone-faithful/slottools"
 	"github.com/rpcpool/yellowstone-faithful/telemetry"
 	"github.com/sourcegraph/jsonrpc2"
@@ -243,7 +244,7 @@ func (multi *MultiEpoch) handleGetSignaturesForAddress(ctx context.Context, conn
 
 				{
 					{
-						tx, meta, err := parseTransactionAndMetaFromNode(transactionNode, ser.GetDataFrameByCid)
+						tx, meta, err := nodetools.ParseTransactionAndMetaFromNode(transactionNode, ser.GetDataFrameByCid)
 						if err == nil {
 							e, hasErr, err := meta.GetTxError()
 							if err != nil {
@@ -254,7 +255,7 @@ func (multi *MultiEpoch) handleGetSignaturesForAddress(ctx context.Context, conn
 								response[ii]["err"] = nil
 							}
 
-							memoData := getMemoInstructionDataFromTransaction(&tx)
+							memoData := getMemoInstructionDataFromTransaction(tx)
 							if memoData != nil {
 								response[ii]["memo"] = string(memoData)
 							}
