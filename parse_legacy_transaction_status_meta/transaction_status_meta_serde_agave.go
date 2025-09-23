@@ -4805,7 +4805,7 @@ func DeserializeStoredTransactionStatusMeta(deserializer serde.Deserializer) (St
 	if val, err := deserialize_option_vector_InnerInstructions(deserializer); err == nil {
 		obj.InnerInstructions = val
 	} else {
-		return obj, fmt.Errorf("Failed to deserialize InnerInstructions: %w", err)
+		return obj, nil
 	}
 	if val, err := deserialize_option_vector_str(deserializer); err == nil {
 		obj.LogMessages = val
