@@ -45,6 +45,7 @@ It supports the following flags:
 NOTES:
 
 - By default, the RPC server doesn't support the `jsonParsed` format. You need to build the RPC server with the `make jsonParsed-linux` flag to enable this.
+- The RPC server does not require write permissions to the epoch files and will happily operate with read only permissions, which lends well to horizontal scaling of RPC nodes
 
 ## Epoch configuration files
 
