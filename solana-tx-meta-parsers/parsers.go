@@ -224,6 +224,9 @@ func ParseTransactionStatusMetaContainer(buf []byte) (*TransactionStatusMetaCont
 
 // TransactionStatusMetaContainer.Put()
 func (c *TransactionStatusMetaContainer) Put() {
+	if c == nil {
+		return
+	}
 	if c.vProtobuf != nil {
 		PutConfirmedBlockTransactionStatusMeta(c.vProtobuf)
 		c.vProtobuf = nil

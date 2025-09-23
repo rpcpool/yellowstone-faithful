@@ -2742,17 +2742,17 @@ func DeserializeReward(deserializer serde.Deserializer) (Reward, error) {
 	if val, err := deserializer.DeserializeU64(); err == nil {
 		obj.PostBalance = val
 	} else {
-		return obj, err
+		return obj, nil
 	}
 	if val, err := deserialize_option_RewardType(deserializer); err == nil {
 		obj.RewardType = val
 	} else {
-		return obj, err
+		return obj, nil
 	}
 	if val, err := deserialize_option_u8(deserializer); err == nil {
 		obj.Commission = val
 	} else {
-		return obj, err
+		return obj, nil
 	}
 	deserializer.DecreaseContainerDepth()
 	return obj, nil
@@ -4805,7 +4805,7 @@ func DeserializeStoredTransactionStatusMeta(deserializer serde.Deserializer) (St
 	if val, err := deserialize_option_vector_InnerInstructions(deserializer); err == nil {
 		obj.InnerInstructions = val
 	} else {
-		return obj, fmt.Errorf("Failed to deserialize InnerInstructions: %w", err)
+		return obj, nil
 	}
 	if val, err := deserialize_option_vector_str(deserializer); err == nil {
 		obj.LogMessages = val
@@ -5667,6 +5667,41 @@ func (obj StoredConfirmedBlockRewards) BincodeSerialize() ([]byte, error) {
 	return serializer.GetBytes(), nil
 }
 
+type Rewards []*Reward
+
+func BincodeDeserializeRewards(input []byte) (Rewards, error) {
+	if input == nil {
+		return nil, fmt.Errorf("Cannot deserialize null array")
+	}
+	deserializer := bincode.NewDeserializer(input)
+	obj, err := DeserializeRewards(deserializer)
+	if err == nil && deserializer.GetBufferOffset() < uint64(len(input)) {
+		return obj, nil
+	}
+	return obj, err
+}
+
+func DeserializeRewards(deserializer serde.Deserializer) (Rewards, error) {
+	var obj Rewards
+	if err := deserializer.IncreaseContainerDepth(); err != nil {
+		return nil, err
+	}
+	length, err := deserializer.DeserializeLen()
+	if err != nil {
+		return nil, err
+	}
+	obj = make([]*Reward, length)
+	for i := range obj {
+		if val, err := DeserializeReward(deserializer); err == nil {
+			obj[i] = &val
+		} else {
+			return nil, fmt.Errorf("Failed to deserialize Reward[%d]: %w", i, err)
+		}
+	}
+	deserializer.DecreaseContainerDepth()
+	return obj, nil
+}
+
 func DeserializeStoredConfirmedBlockRewards(deserializer serde.Deserializer) (*StoredConfirmedBlockRewards, error) {
 	var obj StoredConfirmedBlockRewards
 	if err := deserializer.IncreaseContainerDepth(); err != nil {
@@ -5695,7 +5730,7 @@ func BincodeDeserializeStoredConfirmedBlockRewards(input []byte) (*StoredConfirm
 	deserializer := bincode.NewDeserializer(input)
 	obj, err := DeserializeStoredConfirmedBlockRewards(deserializer)
 	if err == nil && deserializer.GetBufferOffset() < uint64(len(input)) {
-		return obj, fmt.Errorf("Some input bytes were not read")
+		return obj, nil
 	}
 	return obj, err
 }
@@ -5757,7 +5792,7 @@ func BincodeDeserializeStoredConfirmedBlockReward(input []byte) (StoredConfirmed
 	deserializer := bincode.NewDeserializer(input)
 	obj, err := DeserializeStoredConfirmedBlockReward(deserializer)
 	if err == nil && deserializer.GetBufferOffset() < uint64(len(input)) {
-		return obj, fmt.Errorf("Some input bytes were not read")
+		return obj, nil
 	}
 	return obj, err
 }

@@ -90,12 +90,12 @@ func (me *MultiEpoch) GetVersion(context.Context, *old_faithful_grpc.VersionRequ
 }
 
 func (multi *MultiEpoch) GetBlock(ctx context.Context, params *old_faithful_grpc.BlockRequest) (*old_faithful_grpc.BlockResponse, error) {
-	// Create a span for this operation
 	ctx, span := telemetry.StartSpan(ctx, "GetBlock")
 	defer span.End()
 	span.SetAttributes(attribute.Int64("slot", int64(params.Slot)))
 
-	// find the epoch that contains the requested slot
+	nogc := DontGC(ctx)
+
 	slot := params.Slot
 	epochNumber := slottools.CalcEpochForSlot(slot)
 	span.SetAttributes(attribute.Int64("epoch_number", int64(epochNumber)))
@@ -217,8 +217,10 @@ func (multi *MultiEpoch) GetBlock(ctx context.Context, params *old_faithful_grpc
 	lastEntryHash := solana.HashFromBytes(lastEntry.Hash)
 	tim.time("get entries")
 
-	resp := &old_faithful_grpc.BlockResponse{
-		Slot: uint64(block.Slot),
+	resp := old_faithful_grpc.GetBlockResponse()
+	resp.Slot = uint64(block.Slot)
+	if !nogc {
+		defer old_faithful_grpc.PutBlockResponse(resp) // return to pool
 	}
 
 	hasRewards := block.HasRewards()
@@ -247,18 +249,18 @@ func (multi *MultiEpoch) GetBlock(ctx context.Context, params *old_faithful_grpc
 	}
 	tim.time("get rewards")
 
-	var allTransactions []*old_faithful_grpc.Transaction
+	allTransactions := make([]*old_faithful_grpc.Transaction, 0, parsedNodes.CountTransactions())
 
 	{
 		_, buildTxSpan := telemetry.StartSpan(ctx, "BuildTransactionsResponse")
 
 		for _, transactionNode := range parsedNodes.SortedTransactions() {
-			err := func() error {
+			{
 				tx, meta, err := nodetools.GetRawTransactionAndMeta(parsedNodes, transactionNode)
 				if err != nil {
-					return fmt.Errorf("failed to decode transaction: %v", err)
+					return nil, status.Errorf(codes.Internal, "Failed to get transaction: %v", err)
 				}
-				txResp := new(old_faithful_grpc.Transaction)
+				txResp := old_faithful_grpc.GetTransaction()
 				txResp.Transaction = tx
 				txResp.Meta = meta
 
@@ -267,10 +269,9 @@ func (multi *MultiEpoch) GetBlock(ctx context.Context, params *old_faithful_grpc
 					txResp.Index = ptrToUint64(uint64(pos))
 				}
 				allTransactions = append(allTransactions, txResp)
-				return nil
-			}()
-			if err != nil {
-				return nil, status.Errorf(codes.Internal, "Failed to build transactions: %v", err)
+				if !nogc {
+					defer old_faithful_grpc.PutTransaction(txResp) // return to pool
+				}
 			}
 		}
 
@@ -673,13 +674,14 @@ func (multi *MultiEpoch) StreamBlocks(params *old_faithful_grpc.StreamBlocksRequ
 		default:
 		}
 
-		block, err := multi.GetBlock(ctx, &old_faithful_grpc.BlockRequest{Slot: slot})
+		block, err := multi.GetBlock(WithDontGC(ctx), &old_faithful_grpc.BlockRequest{Slot: slot})
 		if err != nil {
 			if status.Code(err) == codes.NotFound {
 				continue // is this the right thing to do?
 			}
 			return err
 		}
+		defer old_faithful_grpc.PutBlockResponse(block) // return to pool
 
 		if filterFunc(block) {
 			if err := ser.Send(block); err != nil {
@@ -755,13 +757,14 @@ func (multi *MultiEpoch) processSlotTransactions(
 			default:
 			}
 
-			block, err := multi.GetBlock(ctx, &old_faithful_grpc.BlockRequest{Slot: slot})
+			block, err := multi.GetBlock(WithDontGC(ctx), &old_faithful_grpc.BlockRequest{Slot: slot})
 			if err != nil {
 				if status.Code(err) == codes.NotFound {
 					continue // This block is not available, skip it (either skipped or not available)
 				}
 				return err
 			}
+			defer old_faithful_grpc.PutBlockResponse(block) // return to pool
 
 			for _, tx := range block.Transactions {
 				txn, err := solana.TransactionFromBytes(tx.GetTransaction())

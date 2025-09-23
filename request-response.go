@@ -84,6 +84,22 @@ func WithSubrapghPrefetch(ctx context.Context, yesNo bool) context.Context {
 	return putValueIntoContext(ctx, "prefetch", yesNo)
 }
 
+func WithDontGC(ctx context.Context) context.Context {
+	return putValueIntoContext(ctx, "dont_gc", true)
+}
+
+func DontGC(ctx context.Context) bool {
+	v := getValueFromContext(ctx, "dont_gc")
+	if v == nil {
+		return false
+	}
+	dontGC, ok := v.(bool)
+	if !ok {
+		return false
+	}
+	return dontGC
+}
+
 type GetBlockRequest struct {
 	Slot    uint64 `json:"slot"`
 	Options struct {
