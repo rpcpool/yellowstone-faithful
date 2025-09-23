@@ -5695,7 +5695,7 @@ func BincodeDeserializeStoredConfirmedBlockRewards(input []byte) (*StoredConfirm
 	deserializer := bincode.NewDeserializer(input)
 	obj, err := DeserializeStoredConfirmedBlockRewards(deserializer)
 	if err == nil && deserializer.GetBufferOffset() < uint64(len(input)) {
-		return obj, fmt.Errorf("Some input bytes were not read")
+		return obj, nil
 	}
 	return obj, err
 }
@@ -5757,7 +5757,7 @@ func BincodeDeserializeStoredConfirmedBlockReward(input []byte) (StoredConfirmed
 	deserializer := bincode.NewDeserializer(input)
 	obj, err := DeserializeStoredConfirmedBlockReward(deserializer)
 	if err == nil && deserializer.GetBufferOffset() < uint64(len(input)) {
-		return obj, fmt.Errorf("Some input bytes were not read")
+		return obj, nil
 	}
 	return obj, err
 }
