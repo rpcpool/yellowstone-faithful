@@ -102,7 +102,7 @@ func SerdeRewardsToProtobuf(rewards transaction_status_meta_serde_agave.Rewards)
 					case *transaction_status_meta_serde_agave.RewardType__Staking:
 						return confirmed_block.RewardType_Staking
 					default:
-						return 0
+						return confirmed_block.RewardType_Unspecified
 					}
 				}()
 			}
