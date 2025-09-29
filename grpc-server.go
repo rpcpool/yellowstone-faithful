@@ -909,6 +909,12 @@ func (multi *MultiEpoch) StreamTransactions(params *old_faithful_grpc.StreamTran
 		return status.Errorf(codes.InvalidArgument, "At least one filter must be specified (vote, failed, account_include, account_exclude, or account_required)")
 	}
 
+	// Validate account addresses early to catch invalid ones before processing
+	if err := validateAccountFilters(params.Filter); err != nil {
+		klog.Errorf("Invalid account filter provided: %v", err)
+		return status.Errorf(codes.InvalidArgument, "Invalid account filter: %v", err)
+	}
+
 	gsfaReader, epochNums := multi.getGsfaReadersInEpochDescendingOrderForSlotRange(ctx, startSlot, endSlot)
 	wantedEpochs := slottools.CalcEpochsForSlotRange(startSlot, endSlot)
 	klog.V(4).Infof("Streaming transactions from slots %d to %d, epochs %v", startSlot, endSlot, wantedEpochs)
@@ -936,14 +942,19 @@ func (multi *MultiEpoch) processSlotTransactions(
 	gsfaReader *gsfa.GsfaReaderMultiepoch,
 	gsfaReadersLoaded bool,
 ) error {
+	klog.V(4).Infof("Processing StreamTransactions request from slot %d to %d with filter", startSlot, endSlot)
 	compilableFilter, err := fromStreamTransactionsFilter(filter)
 	if err != nil {
+		klog.Errorf("Failed to parse StreamTransactions filter: %v", err)
 		return status.Errorf(codes.InvalidArgument, "Failed to parse filter: %v", err)
 	}
+	klog.V(4).Info("Successfully parsed StreamTransactions filter, compiling exclusion rules")
 	filterOut, err := compilableFilter.CompileExclusion()
 	if err != nil {
+		klog.Errorf("Failed to compile StreamTransactions filter: %v", err)
 		return status.Errorf(codes.Internal, "Failed to compile filter: %v", err)
 	}
+	klog.V(4).Info("Successfully compiled StreamTransactions filter exclusion rules")
 
 	if 1 == 0+1 {
 		klog.V(4).Infof("Using the old faithful method for streaming transactions from slots %d to %d", startSlot, endSlot)
@@ -979,7 +990,9 @@ func (multi *MultiEpoch) processSlotTransactions(
 					return status.Errorf(codes.Internal, "Failed to parse transaction meta: %v", err)
 				}
 
-				if !filterOut.Do(txn, meta) {
+				shouldExclude := filterOut.Do(txn, meta)
+				klog.V(5).Infof("Filter evaluation for transaction: shouldExclude=%v", shouldExclude)
+				if !shouldExclude {
 
 					txResp := new(old_faithful_grpc.TransactionResponse)
 					txResp.Transaction = new(old_faithful_grpc.Transaction)
@@ -1090,7 +1103,9 @@ func (multi *MultiEpoch) processSlotTransactions(
 							return status.Errorf(codes.Internal, "Failed to parse transaction from node: %v", err)
 						}
 
-						if !filterOut.Do(&tx, meta) {
+						shouldExcludeTx := filterOut.Do(&tx, meta)
+						klog.V(5).Infof("Filter evaluation for GSFA transaction: shouldExclude=%v", shouldExcludeTx)
+						if !shouldExcludeTx {
 							txResp := new(old_faithful_grpc.TransactionResponse)
 							txResp.Transaction = new(old_faithful_grpc.Transaction)
 							{
@@ -1299,4 +1314,34 @@ func hasValidTransactionFilter(filter *old_faithful_grpc.StreamTransactionsFilte
 		len(filter.AccountInclude) > 0 ||
 		len(filter.AccountExclude) > 0 ||
 		len(filter.AccountRequired) > 0
+}
+
+// validateAccountFilters validates that all account addresses in filters are valid base58 public keys
+func validateAccountFilters(filter *old_faithful_grpc.StreamTransactionsFilter) error {
+	if filter == nil {
+		return nil
+	}
+
+	// Validate account_include addresses
+	for i, account := range filter.AccountInclude {
+		if _, err := solana.PublicKeyFromBase58(account); err != nil {
+			return fmt.Errorf("invalid account_include[%d] '%s': %w", i, account, err)
+		}
+	}
+
+	// Validate account_exclude addresses
+	for i, account := range filter.AccountExclude {
+		if _, err := solana.PublicKeyFromBase58(account); err != nil {
+			return fmt.Errorf("invalid account_exclude[%d] '%s': %w", i, account, err)
+		}
+	}
+
+	// Validate account_required addresses
+	for i, account := range filter.AccountRequired {
+		if _, err := solana.PublicKeyFromBase58(account); err != nil {
+			return fmt.Errorf("invalid account_required[%d] '%s': %w", i, account, err)
+		}
+	}
+
+	return nil
 }
