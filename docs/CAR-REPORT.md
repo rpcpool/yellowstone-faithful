@@ -2,7 +2,7 @@
 |---|---|---|---|---|---|---|---|---|---|
 |856|ongoing|-|-|-|-|-|-|-|-|
 | 855 | [epoch-855.car](https://files.old-faithful.net/855/epoch-855.car) | [769f4e1](https://files.old-faithful.net/855/epoch-855.sha256) | [1007da0](https://files.old-faithful.net/855/epoch-855.b3sum) | 501 GB | [✅](https://files.old-faithful.net/855/tx-metadata-check.log) | [✅](https://files.old-faithful.net/855/poh-check.log) | ✅ | 55 GB | [855.slots.txt](https://files.old-faithful.net/855/855.slots.txt) |
-| 854 | [epoch-854.car](https://files.old-faithful.net/854/epoch-854.car) | [8b430e7](https://files.old-faithful.net/854/epoch-854.sha256) | [a29c61a](https://files.old-faithful.net/854/epoch-854.b3sum) | 562 GB | [✅](https://files.old-faithful.net/854/tx-metadata-check.log) | [✅](https://files.old-faithful.net/854/poh-check.log) | ❌ | 40 GB | [854.slots.txt](https://files.old-faithful.net/854/854.slots.txt) |
+| 854 | [epoch-854.car](https://files.old-faithful.net/854/epoch-854.car) | [8b430e7](https://files.old-faithful.net/854/epoch-854.sha256) | [a29c61a](https://files.old-faithful.net/854/epoch-854.b3sum) | 562 GB | [✅](https://files.old-faithful.net/854/tx-metadata-check.log) | [✅](https://files.old-faithful.net/854/poh-check.log) | ✅ | 61 GB | [854.slots.txt](https://files.old-faithful.net/854/854.slots.txt) |
 | 853 | [epoch-853.car](https://files.old-faithful.net/853/epoch-853.car) | [e70097f](https://files.old-faithful.net/853/epoch-853.sha256) | [e870d6f](https://files.old-faithful.net/853/epoch-853.b3sum) | 594 GB | [✅](https://files.old-faithful.net/853/tx-metadata-check.log) | [✅](https://files.old-faithful.net/853/poh-check.log) | ✅ | 64 GB | [853.slots.txt](https://files.old-faithful.net/853/853.slots.txt) |
 | 852 | [epoch-852.car](https://files.old-faithful.net/852/epoch-852.car) | [19c8510](https://files.old-faithful.net/852/epoch-852.sha256) | [45aab0e](https://files.old-faithful.net/852/epoch-852.b3sum) | 555 GB | [✅](https://files.old-faithful.net/852/tx-metadata-check.log) | [✅](https://files.old-faithful.net/852/poh-check.log) | ✅ | 60 GB | [852.slots.txt](https://files.old-faithful.net/852/852.slots.txt) |
 | 851 | [epoch-851.car](https://files.old-faithful.net/851/epoch-851.car) | [ef49002](https://files.old-faithful.net/851/epoch-851.sha256) | [c087efe](https://files.old-faithful.net/851/epoch-851.b3sum) | 585 GB | [✅](https://files.old-faithful.net/851/tx-metadata-check.log) | [✅](https://files.old-faithful.net/851/poh-check.log) | ✅ | 64 GB | [851.slots.txt](https://files.old-faithful.net/851/851.slots.txt) |
@@ -870,5 +870,3 @@
 - Epoch 49: failed tx meta check
 - Epoch 50: failed tx meta check
 - Epoch 208: failed tx meta check
-- Epoch 854: missing index file: mainnet-sig-to-cid.index
-- Epoch 854: missing indices
