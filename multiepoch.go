@@ -13,8 +13,10 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/goware/urlx"
+	"github.com/grafana/pyroscope-go"
 	"github.com/libp2p/go-reuseport"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/rpcpool/yellowstone-faithful/compactindexsized"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"github.com/rpcpool/yellowstone-faithful/metrics"
 	old_faithful_grpc "github.com/rpcpool/yellowstone-faithful/old-faithful-proto/old-faithful-grpc"
@@ -238,10 +240,12 @@ func (m *MultiEpoch) ListenAndServe(ctx context.Context, listenOn string, lsConf
 	handler = fasthttp.CompressHandler(handler)
 
 	klog.Infof("RPC server listening on %s", listenOn)
+	// to see prometheus metrics visit listenOn/metrics
+	klog.Infof("Prometheus metrics available at %s/metrics", listenOn)
 
 	s := &fasthttp.Server{
 		Handler:            handler,
-		MaxRequestBodySize: 1024 * 1024,
+		MaxRequestBodySize: MiB,
 	}
 	go func() {
 		// listen for context cancellation
@@ -355,14 +359,16 @@ func newMultiEpochHandler(handler *MultiEpoch, lsConf *ListenerConfig) func(ctx 
 			}
 		}
 		// read request body
-		body := reqCtx.Request.Body()
-
+		body, err := getRequestBody(reqCtx)
+		if err != nil {
+			reqCtx.Error("Error decompressing request body", fasthttp.StatusInternalServerError)
+			return
+		}
 		reqCtx.Response.Header.Set("X-Request-ID", reqID)
 
 		// parse request
 		var rpcRequest jsonrpc2.Request
 		if err := fasterJson.Unmarshal(body, &rpcRequest); err != nil {
-			klog.Errorf("[%s] failed to parse request body: %v", err)
 			replyJSON(reqCtx, http.StatusBadRequest, jsonrpc2.Response{
 				Error: &jsonrpc2.Error{
 					Code:    jsonrpc2.CodeParseError,
@@ -436,7 +442,11 @@ func newMultiEpochHandler(handler *MultiEpoch, lsConf *ListenerConfig) func(ctx 
 		errorResp, err := handler.handleRequest(setRequestIDToContext(reqCtx, reqID), rqCtx, &rpcRequest)
 		if err != nil {
 			telemetry.RecordError(span, err, "Failed to handle JSON-RPC request")
-			klog.Errorf("[%s] failed to handle %q: %v", reqID, sanitizeMethod(method), err)
+			if errors.Is(err, compactindexsized.ErrNotFound) || strings.Contains(err.Error(), "not found") {
+				metrics.ErrBlockNotFound.Inc()
+			} else {
+				klog.Errorf("[%s] failed to handle %q: %v", reqID, sanitizeMethod(method), err)
+			}
 		}
 		if errorResp != nil {
 			metrics.MethodToSuccessOrFailure.WithLabelValues(sanitizeMethod(method), "failure").Inc()
@@ -473,6 +483,28 @@ func newMultiEpochHandler(handler *MultiEpoch, lsConf *ListenerConfig) func(ctx 
 			return
 		}
 		metrics.MethodToSuccessOrFailure.WithLabelValues(sanitizeMethod(method), "success").Inc()
+	}
+}
+
+// getRequestBody checks if the request body is compressed and decompresses it.
+// It returns the raw body if no compression is specified.
+func getRequestBody(ctx *fasthttp.RequestCtx) ([]byte, error) {
+	// Get the Content-Encoding header
+	encoding := string(ctx.Request.Header.ContentEncoding())
+
+	switch encoding {
+	case "gzip":
+		// Decompress gzip content
+		return ctx.Request.BodyGunzip()
+	case "deflate":
+		// Decompress deflate content
+		return ctx.Request.BodyInflate()
+	case "br":
+		// Decompress brotli content
+		return ctx.Request.BodyUnbrotli()
+	default:
+		// If no or unknown encoding, return the raw body
+		return ctx.Request.Body(), nil
 	}
 }
 
@@ -552,36 +584,57 @@ func isValidLocalMethod(method string) bool {
 }
 
 // jsonrpc2.RequestHandler interface
-func (ser *MultiEpoch) handleRequest(ctx context.Context, conn *requestContext, req *jsonrpc2.Request) (*jsonrpc2.Error, error) {
+func (ser *MultiEpoch) handleRequest(ctx context.Context, conn *requestContext, req *jsonrpc2.Request) (jerr *jsonrpc2.Error, err error) {
 	switch req.Method {
 	case "getBlock":
 		spanCtx, span := telemetry.StartSpan(ctx, "jsonrpc.handleGetBlock")
 		defer span.End()
-		return ser.handleGetBlock(spanCtx, conn, req)
+		pyroscope.TagWrapper(context.Background(), pyroscope.Labels("rpc_method", "getBlock"), func(ctx context.Context) {
+			jerr, err = ser.handleGetBlock(spanCtx, conn, req)
+		})
+		return jerr, err
 	case "getTransaction":
 		spanCtx, span := telemetry.StartSpan(ctx, "jsonrpc.handleGetTransaction")
 		defer span.End()
-		return ser.handleGetTransaction(spanCtx, conn, req)
+		pyroscope.TagWrapper(context.Background(), pyroscope.Labels("rpc_method", "getTransaction"), func(ctx context.Context) {
+			jerr, err = ser.handleGetTransaction(spanCtx, conn, req)
+		})
+		return jerr, err
 	case "getSignaturesForAddress":
 		spanCtx, span := telemetry.StartSpan(ctx, "jsonrpc.handleGetSignaturesForAddress")
 		defer span.End()
-		return ser.handleGetSignaturesForAddress(spanCtx, conn, req)
+		pyroscope.TagWrapper(context.Background(), pyroscope.Labels("rpc_method", "getSignaturesForAddress"), func(ctx context.Context) {
+			jerr, err = ser.handleGetSignaturesForAddress(spanCtx, conn, req)
+		})
+		return jerr, err
 	case "getBlockTime":
 		spanCtx, span := telemetry.StartSpan(ctx, "jsonrpc.handleGetBlockTime")
 		defer span.End()
-		return ser.handleGetBlockTime(spanCtx, conn, req)
+		pyroscope.TagWrapper(context.Background(), pyroscope.Labels("rpc_method", "getBlockTime"), func(ctx context.Context) {
+			jerr, err = ser.handleGetBlockTime(spanCtx, conn, req)
+		})
+		return jerr, err
 	case "getGenesisHash":
 		spanCtx, span := telemetry.StartSpan(ctx, "jsonrpc.handleGetGenesisHash")
 		defer span.End()
-		return ser.handleGetGenesisHash(spanCtx, conn, req)
+		pyroscope.TagWrapper(context.Background(), pyroscope.Labels("rpc_method", "getGenesisHash"), func(ctx context.Context) {
+			jerr, err = ser.handleGetGenesisHash(spanCtx, conn, req)
+		})
+		return jerr, err
 	case "getFirstAvailableBlock":
 		spanCtx, span := telemetry.StartSpan(ctx, "jsonrpc.handleGetFirstAvailableBlock")
 		defer span.End()
-		return ser.handleGetFirstAvailableBlock(spanCtx, conn, req)
+		pyroscope.TagWrapper(context.Background(), pyroscope.Labels("rpc_method", "getFirstAvailableBlock"), func(ctx context.Context) {
+			jerr, err = ser.handleGetFirstAvailableBlock(spanCtx, conn, req)
+		})
+		return jerr, err
 	case "getSlot":
 		spanCtx, span := telemetry.StartSpan(ctx, "jsonrpc.handleGetSlot")
 		defer span.End()
-		return ser.handleGetSlot(spanCtx, conn, req)
+		pyroscope.TagWrapper(context.Background(), pyroscope.Labels("rpc_method", "getSlot"), func(ctx context.Context) {
+			jerr, err = ser.handleGetSlot(spanCtx, conn, req)
+		})
+		return jerr, err
 	default:
 		return &jsonrpc2.Error{
 			Code:    jsonrpc2.CodeMethodNotFound,

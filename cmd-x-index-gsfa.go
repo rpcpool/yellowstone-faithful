@@ -2,17 +2,22 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sync/atomic"
 	"time"
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/dustin/go-humanize"
+
 	"github.com/ipfs/go-cid"
 	"github.com/rpcpool/yellowstone-faithful/accum"
+	"github.com/rpcpool/yellowstone-faithful/carreader"
 	"github.com/rpcpool/yellowstone-faithful/gsfa"
 	"github.com/rpcpool/yellowstone-faithful/indexes"
 	"github.com/rpcpool/yellowstone-faithful/indexmeta"
@@ -22,12 +27,16 @@ import (
 	"github.com/rpcpool/yellowstone-faithful/readasonecar"
 	"github.com/rpcpool/yellowstone-faithful/slottools"
 	"github.com/urfave/cli/v2"
+	"golang.org/x/sync/errgroup"
 	"k8s.io/klog/v2"
+
+	"github.com/gagliardetto/solana-go"
 )
 
 func newCmd_Index_gsfa() *cli.Command {
 	var epoch uint64
 	var network indexes.Network
+	var pubkeysExclude solana.PublicKeySlice
 	return &cli.Command{
 		Name:        "gsfa",
 		Description: "Create GSFA index from a CAR file",
@@ -70,7 +79,7 @@ func newCmd_Index_gsfa() *cli.Command {
 			},
 			&cli.StringFlag{
 				Name:  "tmp-dir",
-				Usage: "temporary directory to use for storing intermediate files; WILL BE DELETED",
+				Usage: "temporary directory to use for storing intermediate files",
 				Value: os.TempDir(),
 			},
 			&cli.StringSliceFlag{
@@ -85,6 +94,25 @@ func newCmd_Index_gsfa() *cli.Command {
 				Name:  "require-tx-metadata",
 				Usage: "Require transaction metadata to be present in the CAR file",
 				Value: true,
+			},
+			&cli.BoolFlag{
+				Name:  "sigverify",
+				Usage: "Verify signatures of transactions",
+				Value: true,
+			},
+			&cli.StringSliceFlag{
+				Name:  "exclude-pubkey",
+				Usage: "Exclude transactions that contain these public keys in their account keys",
+				Action: func(c *cli.Context, v []string) error {
+					for _, pk := range v {
+						parsed, err := solana.PublicKeyFromBase58(pk)
+						if err != nil {
+							return fmt.Errorf("failed to parse public key %q: %w", pk, err)
+						}
+						pubkeysExclude = append(pubkeysExclude, parsed)
+					}
+					return nil
+				},
 			},
 		},
 		Action: func(c *cli.Context) error {
@@ -104,7 +132,15 @@ func newCmd_Index_gsfa() *cli.Command {
 				klog.Exit("Please provide an --index-dir=<dir to store the index>")
 			}
 			if ok, err := isDirectory(indexDir); err != nil {
-				return fmt.Errorf("error checking index-dir %q: %w", indexDir, err)
+				if errors.Is(err, os.ErrNotExist) {
+					if err := os.MkdirAll(indexDir, 0o755); err != nil {
+						return fmt.Errorf("failed to create index-dir: %w", err)
+					} else {
+						klog.Infof("Created index-dir: %s", indexDir)
+					}
+				} else {
+					return err
+				}
 			} else if !ok {
 				return fmt.Errorf("index-dir is not a directory")
 			}
@@ -121,25 +157,37 @@ func newCmd_Index_gsfa() *cli.Command {
 				network,
 			))
 			klog.Infof("Creating gsfa index dir at %s", gsfaIndexDir)
-			err = os.Mkdir(gsfaIndexDir, 0o755)
-			if err != nil {
-				return fmt.Errorf("failed to create index dir: %w", err)
+			if fileExists, err := isFileOrDirExists(gsfaIndexDir); err != nil {
+				return fmt.Errorf("failed to check if gsfa index dir exists: %w", err)
+			} else if fileExists {
+				if isNonEmpty, err := isDirNonEmpty(gsfaIndexDir); err != nil {
+					return fmt.Errorf("failed to check if gsfa index dir is non-empty: %w", err)
+				} else if isNonEmpty {
+					return fmt.Errorf("gsfa index dir already exists and is not empty: %s", gsfaIndexDir)
+				}
+			} else {
+				err = os.Mkdir(gsfaIndexDir, 0o755)
+				if err != nil {
+					return fmt.Errorf("failed to create gsfa index dir: %w", err)
+				}
 			}
 
 			meta := indexmeta.Meta{}
-			if err := meta.AddUint64(indexmeta.MetadataKey_Epoch, epoch); err != nil {
-				return fmt.Errorf("failed to add epoch to sig_exists index metadata: %w", err)
-			}
-			if err := meta.AddCid(indexmeta.MetadataKey_RootCid, rootCID); err != nil {
-				return fmt.Errorf("failed to add root cid to sig_exists index metadata: %w", err)
-			}
-			if err := meta.AddString(indexmeta.MetadataKey_Network, string(network)); err != nil {
-				return fmt.Errorf("failed to add network to sig_exists index metadata: %w", err)
+			{
+				if err := meta.AddUint64(indexmeta.MetadataKey_Epoch, epoch); err != nil {
+					return fmt.Errorf("failed to add epoch to sig_exists index metadata: %w", err)
+				}
+				if err := meta.AddCid(indexmeta.MetadataKey_RootCid, rootCID); err != nil {
+					return fmt.Errorf("failed to add root cid to sig_exists index metadata: %w", err)
+				}
+				if err := meta.AddString(indexmeta.MetadataKey_Network, string(network)); err != nil {
+					return fmt.Errorf("failed to add network to sig_exists index metadata: %w", err)
+				}
 			}
 			tmpDir := c.String("tmp-dir")
-			tmpDir = filepath.Join(tmpDir, fmt.Sprintf("yellowstone-faithful-gsfa-%d", time.Now().UnixNano()))
-			if err := os.MkdirAll(tmpDir, 0o755); err != nil {
-				return fmt.Errorf("failed to create tmp dir: %w", err)
+			tmpDir, err = os.MkdirTemp(tmpDir, "gsfa_indexer_*")
+			if err != nil {
+				return fmt.Errorf("failed to create temporary directory: %w", err)
 			}
 			indexW, err := gsfa.NewGsfaWriter(
 				gsfaIndexDir,
@@ -170,6 +218,21 @@ func newCmd_Index_gsfa() *cli.Command {
 			numMissingMetadata.Store(0)
 
 			requireTxMetadata := c.Bool("require-tx-metadata")
+
+			if len(pubkeysExclude) > 0 {
+				slog.Info("Excluding transactions with the following public keys:", "pubkeys", pubkeysExclude)
+			}
+
+			numTransactionsWithMoreThanOnePieceForMetadata := new(atomic.Uint64)
+			defer func() {
+				n := numTransactionsWithMoreThanOnePieceForMetadata.Load()
+				if n > 0 {
+					slog.Info(
+						"num transactions with more than one piece for metadata",
+						"num", numTransactionsWithMoreThanOnePieceForMetadata.Load(),
+					)
+				}
+			}()
 			accum := accum.NewObjectAccumulator(
 				rd,
 				iplddecoders.KindBlock,
@@ -179,6 +242,10 @@ func newCmd_Index_gsfa() *cli.Command {
 					iplddecoders.KindRewards,
 				),
 				func(parent *accum.ObjectWithMetadata, children accum.ObjectsWithMetadata) error {
+					defer func() {
+						carreader.PutBuffer(parent.ObjectData)
+						children.Put()
+					}()
 					numSlots++
 					numObjects := len(children) + 1
 					if numObjects > int(numMaxObjects) {
@@ -186,11 +253,12 @@ func newCmd_Index_gsfa() *cli.Command {
 					}
 
 					if parent == nil {
-						transactions, err := accum.ObjectsToTransactionsAndMetadata(&ipldbindcode.Block{
-							Meta: ipldbindcode.SlotMeta{
-								Blocktime: 0,
-							},
-						}, children)
+						transactions, err := accum.ObjectsToTransactionsAndMetadata(
+							&ipldbindcode.Block{
+								Meta: ipldbindcode.SlotMeta{
+									Blocktime: 0,
+								},
+							}, children)
 						if err != nil {
 							return fmt.Errorf("error while converting objects to transactions: %w", err)
 						}
@@ -201,28 +269,44 @@ func newCmd_Index_gsfa() *cli.Command {
 					}
 
 					// decode the block:
-					block, err := iplddecoders.DecodeBlock(parent.ObjectData)
+					block, err := iplddecoders.DecodeBlock(parent.ObjectData.Bytes())
 					if err != nil {
 						return fmt.Errorf("error while decoding block: %w", err)
 					}
+					defer iplddecoders.PutBlock(block)
 					transactions, err := accum.ObjectsToTransactionsAndMetadata(block, children)
 					if err != nil {
 						return fmt.Errorf("error while converting objects to transactions: %w", err)
 					}
 					defer accum.PutTransactionWithSlotSlice(transactions)
 
+					if sigverify {
+						wg := new(errgroup.Group)
+						for ii := range transactions {
+							txWithInfo := transactions[ii]
+							wg.Go(func() error {
+								if err := txWithInfo.Transaction.VerifySignatures(); err != nil {
+									return fmt.Errorf(
+										"error while verifying signatures for transaction %s: %w",
+										txWithInfo.Transaction.Signatures[0],
+										err,
+									)
+								}
+								{
+									if len(txWithInfo.MetadataPieces) > 0 {
+										numTransactionsWithMoreThanOnePieceForMetadata.Add(1)
+									}
+								}
+								return nil
+							})
+						}
+						if err := wg.Wait(); err != nil {
+							klog.Exitf("Error while verifying signatures: %s", err)
+						}
+					}
+
 					for ii := range transactions {
 						txWithInfo := transactions[ii]
-						if sigverify {
-							if err := txWithInfo.Transaction.VerifySignatures(); err != nil {
-								klog.Fatalf(
-									"Error while verifying signatures for transaction %s: %s",
-									txWithInfo.Transaction.Signatures[0],
-									err,
-								)
-								continue
-							}
-						}
 						numProcessedTransactions.Add(1)
 						accountKeys := txWithInfo.Transaction.Message.AccountKeys
 						if txWithInfo.Metadata != nil && txWithInfo.Metadata.IsProtobuf() {
@@ -236,8 +320,7 @@ func newCmd_Index_gsfa() *cli.Command {
 							if requireTxMetadata {
 								klog.Errorf("Transaction %s has no metadata", txWithInfo.Transaction.Signatures[0])
 								spew.Dump(txWithInfo.Error, txWithInfo.IsMetaParseError())
-								spew.Dump(txWithInfo)
-								panic("metadata error")
+								panic("Transaction has no metadata, but --require-tx-metadata=true")
 							}
 						}
 						isSuccess := func() bool {
@@ -262,8 +345,17 @@ func newCmd_Index_gsfa() *cli.Command {
 							return false
 						}()
 
-						isVote := IsVote(&txWithInfo.Transaction)
+						isVote := IsVote(txWithInfo.Transaction)
 
+						// v2:
+						if len(pubkeysExclude) > 0 {
+							accountKeys = slices.DeleteFunc(
+								accountKeys,
+								func(pk solana.PublicKey) bool {
+									return slices.Contains(pubkeysExclude, pk)
+								},
+							)
+						}
 						err = indexW.Push(
 							txWithInfo.Offset,
 							txWithInfo.Length,
@@ -320,7 +412,7 @@ func newCmd_Index_gsfa() *cli.Command {
 				if err := indexW.Close(); err != nil {
 					klog.Fatalf("Error while closing: %s", err)
 				}
-				klog.Infof("Success: gSFA index created at %s with %d transactions", gsfaIndexDir, numProcessedTransactions.Load())
+				klog.Infof("Success: gSFA index created at %s with %s transactions", gsfaIndexDir, humanize.Comma(int64(numProcessedTransactions.Load())))
 				klog.Infof("Finished in %s", time.Since(startedAt))
 			}
 
@@ -337,4 +429,26 @@ func formatIndexDirname_gsfa(epoch uint64, rootCid cid.Cid, network indexes.Netw
 		network,
 		"gsfa.indexdir",
 	)
+}
+
+func isFileOrDirExists(path string) (bool, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil // File or directory does not exist
+		}
+		return false, err // Other error occurred
+	}
+	return info.IsDir() || info.Mode().IsRegular(), nil // Return true if it's a directory or a regular file
+}
+
+func isDirNonEmpty(path string) (bool, error) {
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil // Directory does not exist
+		}
+		return false, err // Other error occurred
+	}
+	return len(entries) > 0, nil // Return true if there are any entries in the directory
 }

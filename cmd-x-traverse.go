@@ -88,7 +88,7 @@ func newCmd_XTraverse() *cli.Command {
 									if err != nil {
 										return fmt.Errorf("failed to get rewards: %w", err)
 									}
-									rewardsBuffer, err := tooling.LoadDataFromDataFrames(&rewards.Data, simpleIter.GetDataFrame)
+									rewardsBuffer, err := ipldbindcode.LoadDataFromDataFrames(&rewards.Data, simpleIter.GetDataFrame)
 									if err != nil {
 										panic(err)
 									}
@@ -139,7 +139,7 @@ func newCmd_XTraverse() *cli.Command {
 								{
 									var transaction solana.Transaction
 									{
-										txBuffer, err := tooling.LoadDataFromDataFrames(&tx.Data, simpleIter.GetDataFrame)
+										txBuffer, err := ipldbindcode.LoadDataFromDataFrames(&tx.Data, simpleIter.GetDataFrame)
 										if err != nil {
 											panic(err)
 										}
@@ -154,7 +154,7 @@ func newCmd_XTraverse() *cli.Command {
 										fmt.Println(transaction.String())
 									}
 									{
-										metaBuffer, err := tooling.LoadDataFromDataFrames(&tx.Metadata, simpleIter.GetDataFrame)
+										metaBuffer, err := ipldbindcode.LoadDataFromDataFrames(&tx.Metadata, simpleIter.GetDataFrame)
 										if err != nil {
 											panic(err)
 										}
@@ -217,7 +217,7 @@ func askForConfirmation(message string, args ...any) bool {
 	var response string
 	_, err := fmt.Scanln(&response)
 	if err != nil {
-		return askForConfirmation(message)
+		return askForConfirmation(message, args...)
 	}
 	if isStringAnyOf(response, "y", "Y", "yes", "Yes", "YES") {
 		return true

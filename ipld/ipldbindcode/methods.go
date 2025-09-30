@@ -1,6 +1,7 @@
 package ipldbindcode
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,6 +15,8 @@ import (
 	"github.com/ipfs/go-cid"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/rpcpool/yellowstone-faithful/dummycid"
+	solanatxmetaparsers "github.com/rpcpool/yellowstone-faithful/solana-tx-meta-parsers"
+	"github.com/rpcpool/yellowstone-faithful/tooling"
 )
 
 // DataFrame.HasHash returns whether the 'Hash' field is present.
@@ -126,7 +129,7 @@ func (n Transaction) GetPositionIndex() (int, bool) {
 
 var DisableHashVerification bool
 
-func (decoded Transaction) GetSolanaTransaction() (*solana.Transaction, error) {
+func (decoded *Transaction) GetSolanaTransaction() (*solana.Transaction, error) {
 	if total, ok := decoded.Data.GetTotal(); !ok || total == 1 {
 		completeData := decoded.Data.Bytes()
 		if !DisableHashVerification {
@@ -150,12 +153,81 @@ func (decoded Transaction) GetSolanaTransaction() (*solana.Transaction, error) {
 	}
 }
 
-func (decoded Transaction) Signatures() ([]solana.Signature, error) {
+var (
+	ErrPiecesNotAvailable = errors.New("transaction pieces are not available")
+	ErrMetadataNotFound   = errors.New("transaction metadata not found")
+)
+
+// GetMetadata will parse and return the metadata of the transaction.
+// NOTE: This will return ErrPiecesNotAvailable if the metadata is split into multiple dataframes.
+// In that case, you should use GetMetadataWithFrameLoader instead.
+func (decodedTxObj *Transaction) GetMetadata() (*solanatxmetaparsers.TransactionStatusMetaContainer, error) {
+	if total, ok := decodedTxObj.Metadata.GetTotal(); !ok || total == 1 {
+		// metadata fit into the transaction object:
+		completeBuffer := decodedTxObj.Metadata.Bytes()
+		if ha, ok := decodedTxObj.Metadata.GetHash(); ok {
+			err := VerifyHash(completeBuffer, ha)
+			if err != nil {
+				return nil, fmt.Errorf("failed to verify metadata hash: %w", err)
+			}
+		}
+		if len(completeBuffer) > 0 {
+			uncompressedMeta, err := tooling.DecompressZstd(completeBuffer)
+			if err != nil {
+				return nil, fmt.Errorf("failed to decompress metadata: %w", err)
+			}
+			status, err := solanatxmetaparsers.ParseTransactionStatusMetaContainer(uncompressedMeta)
+			if err == nil {
+				return status, nil
+			} else {
+				return nil, fmt.Errorf("failed to parse metadata: %w", err)
+			}
+		} else {
+			return nil, ErrMetadataNotFound
+		}
+	}
+	// metadata didn't fit into the transaction object, and was split into multiple dataframes.
+	return nil, ErrPiecesNotAvailable
+}
+
+// GetMetadataWithFrameLoader will parse and return the metadata of the transaction.
+// It uses the provided dataFrameGetter function to load the missing dataframes.
+func (decodedTxObj *Transaction) GetMetadataWithFrameLoader(dataFrameGetter func(ctx context.Context, wantedCid cid.Cid) (*DataFrame, error)) (*solanatxmetaparsers.TransactionStatusMetaContainer, error) {
+	if total, ok := decodedTxObj.Metadata.GetTotal(); !ok || total == 1 {
+		return decodedTxObj.GetMetadata()
+	}
+	// metadata didn't fit into the transaction object, and was split into multiple dataframes:
+	metaBuffer, err := LoadDataFromDataFrames(
+		&decodedTxObj.Metadata,
+		dataFrameGetter,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load metadata: %w", err)
+	}
+
+	// if we have a metadata buffer, try to decompress it:
+	if len(metaBuffer) > 0 {
+		uncompressedMeta, err := tooling.DecompressZstd(metaBuffer)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decompress metadata: %w", err)
+		}
+		status, err := solanatxmetaparsers.ParseTransactionStatusMetaContainer(uncompressedMeta)
+		if err == nil {
+			return status, nil
+		} else {
+			return nil, fmt.Errorf("failed to parse metadata: %w", err)
+		}
+	} else {
+		return nil, ErrMetadataNotFound
+	}
+}
+
+func (decoded *Transaction) Signatures() ([]solana.Signature, error) {
 	return readAllSignatures(decoded.Data.Bytes())
 }
 
-func (decoded Transaction) Signature() (solana.Signature, error) {
-	return readFirstSignature(decoded.Data.Bytes())
+func (decoded *Transaction) Signature() (solana.Signature, error) {
+	return tooling.ReadFirstSignature(decoded.Data.Bytes())
 }
 
 func readAllSignatures(buf []byte) ([]solana.Signature, error) {
@@ -185,31 +257,6 @@ func readAllSignatures(buf []byte) ([]solana.Signature, error) {
 	return sigs, nil
 }
 
-func readFirstSignature(buf []byte) (solana.Signature, error) {
-	decoder := bin.NewCompactU16Decoder(buf)
-	numSigs, err := decoder.ReadCompactU16()
-	if err != nil {
-		return solana.Signature{}, err
-	}
-	if numSigs == 0 {
-		return solana.Signature{}, fmt.Errorf("no signatures")
-	}
-	// check that there is at least 64 bytes left:
-	if decoder.Remaining() < 64 {
-		return solana.Signature{}, fmt.Errorf("not enough bytes left to read a signature")
-	}
-
-	var sig solana.Signature
-	numRead, err := decoder.Read(sig[:])
-	if err != nil {
-		return sig, err
-	}
-	if numRead != 64 {
-		return sig, fmt.Errorf("unexpected signature length %d", numRead)
-	}
-	return sig, nil
-}
-
 // GetBlockHeight returns the 'block_height' field, which indicates
 // the height of the block, and
 // a flag indicating whether the field has a value.
@@ -218,6 +265,14 @@ func (n Block) GetBlockHeight() (uint64, bool) {
 		return 0, false
 	}
 	return uint64(**n.Meta.Block_height), true
+}
+
+func (n Block) GetRewards() (cid.Cid, bool) {
+	rewardsCid := n.Rewards.(cidlink.Link).Cid
+	if rewardsCid.Equals(dummycid.DummyCID) {
+		return cid.Cid{}, false
+	}
+	return rewardsCid, true
 }
 
 // DataFrame.MarshalJSON implements the json.Marshaler interface.
@@ -343,4 +398,194 @@ func (n SlotMeta) Equivalent(other SlotMeta) bool {
 func (n Block) HasRewards() bool {
 	hasRewards := !n.Rewards.(cidlink.Link).Cid.Equals(dummycid.DummyCID)
 	return hasRewards
+}
+
+// Reset resets the List__Link to an empty state.
+func (l *List__Link) Reset() {
+	if l == nil {
+		return
+	}
+	*l = (*l)[:0] // Reset the slice to an empty state.
+}
+
+// Reset resets the Epoch to an empty state.
+func (e *Epoch) Reset() {
+	if e == nil {
+		return
+	}
+	e.Kind = 0
+	e.Epoch = 0
+	e.Subsets.Reset() // Reset the slice to an empty state.
+}
+
+// Reset resets the Subset to an empty state.
+func (s *Subset) Reset() {
+	if s == nil {
+		return
+	}
+	s.Kind = 0
+	s.First = 0
+	s.Last = 0
+	s.Blocks.Reset() // Reset the slice to an empty state.
+}
+
+// Reset resets the List__Shredding to an empty state.
+func (l *List__Shredding) Reset() {
+	if l == nil {
+		return
+	}
+	*l = (*l)[:0] // Reset the slice to an empty state.
+}
+
+// Reset resets the Block to an empty state.
+func (b *Block) Reset() {
+	if b == nil {
+		return
+	}
+	b.Kind = 0
+	b.Slot = 0
+	b.Shredding.Reset()                              // Reset the slice to an empty state.
+	b.Entries.Reset()                                // Reset the slice to an empty state.
+	b.Meta = SlotMeta{}                              // Reset the SlotMeta to an empty state.
+	b.Rewards = cidlink.Link{Cid: dummycid.DummyCID} // Reset the Rewards to a dummy CID.
+}
+
+// Reset resets the Rewards to an empty state.
+func (r *Rewards) Reset() {
+	if r == nil {
+		return
+	}
+	r.Kind = 0
+	r.Slot = 0
+	r.Data.Reset() // Reset the DataFrame to an empty state.
+}
+
+// Reset resets the SlotMeta to an empty state.
+func (s *SlotMeta) Reset() {
+	if s == nil {
+		return
+	}
+	s.Parent_slot = 0
+	s.Blocktime = 0
+	clearIntptrPtr(s.Block_height) // Reset the Block_height pointer to nil.
+	s.Block_height = nil           // Reset the pointer to nil.
+}
+
+// Reset resets the Shredding to an empty state.
+func (s *Shredding) Reset() {
+	if s == nil {
+		return
+	}
+	s.EntryEndIdx = 0
+	s.ShredEndIdx = 0
+}
+
+// Reset resets the Entry to an empty state.
+func (e *Entry) Reset() {
+	if e == nil {
+		return
+	}
+	e.Kind = 0
+	e.NumHashes = 0
+	e.Hash = e.Hash[:0]    // Reset the Hash to an empty slice.
+	e.Transactions.Reset() // Reset the slice to an empty state.
+}
+
+// Reset resets the DataFrame to an empty state.
+func (d *DataFrame) Reset() {
+	if d == nil {
+		return
+	}
+	d.Kind = 0
+	if d.Hash != nil {
+		*d.Hash = nil // Reset the pointer to nil.
+	}
+	d.Hash = nil            // Reset the pointer to nil.
+	clearIntptrPtr(d.Index) // Reset the Index pointer to nil.
+	clearIntptrPtr(d.Total) // Reset the Total pointer to nil.
+	d.Total = nil           // Reset the pointer to nil.
+	d.Data = d.Data[:0]     // Reset the Data slice to an empty state.
+	if d.Next != nil && *d.Next != nil {
+		(*d.Next).Reset() // Reset the List__Link to an empty state.
+	} else {
+		d.Next = nil // Reset the pointer to nil.
+	}
+}
+
+// Reset resets the Transaction to an empty state.
+func (t *Transaction) Reset() {
+	if t == nil {
+		return
+	}
+	t.Kind = 0
+	t.Data.Reset() // Reset the DataFrame to an empty state.
+	t.Metadata.Reset()
+	t.Slot = 0
+	clearIntptrPtr(t.Index) // Reset the Index pointer to nil.
+}
+
+func clearIntptrPtr(ptr **int) {
+	if ptr == nil || *ptr == nil {
+		return
+	}
+	**ptr = 0  // Reset the value to 0.
+	*ptr = nil // Reset the pointer to nil.
+}
+
+type Node interface {
+	Node()
+}
+
+var (
+	_ Node = Epoch{}
+	_ Node = Subset{}
+	_ Node = Block{}
+	_ Node = Rewards{}
+	_ Node = Entry{}
+	_ Node = Transaction{}
+	_ Node = DataFrame{}
+)
+
+func (e Epoch) Node() {}
+
+func (s Subset) Node() {}
+
+func (b Block) Node() {}
+
+func (r Rewards) Node() {}
+
+func (e Entry) Node() {}
+
+func (t Transaction) Node() {}
+
+func (d DataFrame) Node() {}
+
+// GetSlot returns the slot of the block.
+func (b *Block) GetSlot() uint64 {
+	if b == nil {
+		return 0
+	}
+	return uint64(b.Slot)
+}
+
+// GetBlocktime returns the blocktime of the block.
+func (m *SlotMeta) GetBlocktime() int64 {
+	if m == nil {
+		return 0
+	}
+	return int64(m.Blocktime)
+}
+
+func (b *Block) GetParentSlot() uint64 {
+	if b == nil || b.Meta.Parent_slot == 0 {
+		return 0
+	}
+	return uint64(b.Meta.Parent_slot)
+}
+
+func (b *Block) GetBlocktime() int64 {
+	if b == nil || b.Meta.Blocktime == 0 {
+		return 0
+	}
+	return int64(b.Meta.Blocktime)
 }

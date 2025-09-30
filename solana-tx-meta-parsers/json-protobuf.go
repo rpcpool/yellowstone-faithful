@@ -7,7 +7,6 @@ import (
 	"strconv"
 
 	"github.com/gagliardetto/solana-go"
-	"github.com/mr-tron/base58"
 	"github.com/rpcpool/yellowstone-faithful/jsonbuilder"
 	transaction_status_meta_serde_agave "github.com/rpcpool/yellowstone-faithful/parse_legacy_transaction_status_meta"
 	"github.com/rpcpool/yellowstone-faithful/third_party/solana_proto/confirmed_block"
@@ -62,12 +61,12 @@ func ProtobufTransactionStatusMetaToUi(meta *confirmed_block.TransactionStatusMe
 	{
 		// .preBalances
 		// pub pre_balances: Vec<u64>,
-		resp.Value("preBalances", meta.PreBalances)
+		resp.UintSlice("preBalances", meta.PreBalances)
 	}
 	{
 		// .postBalances
 		// pub post_balances: Vec<u64>,
-		resp.Value("postBalances", meta.PostBalances)
+		resp.UintSlice("postBalances", meta.PostBalances)
 	}
 	{
 		// .innerInstructions
@@ -149,7 +148,7 @@ func ProtobufTransactionStatusMetaToUi(meta *confirmed_block.TransactionStatusMe
 											arr.AddUint8(account) // TODO: check if this marshals to array of numbers
 										}
 									})
-									uiCompiledInstruction.String("data", base58.Encode(instruction.Data[:]))
+									uiCompiledInstruction.Base58("data", instruction.Data[:])
 									// NOTE: stackHeight is only present in protobuf encoding.
 									if instruction.StackHeight != nil {
 										uiCompiledInstruction.Uint("stackHeight", uint64(*instruction.StackHeight))
@@ -312,18 +311,8 @@ func ProtobufTransactionStatusMetaToUi(meta *confirmed_block.TransactionStatusMe
 				//     pub writable: Vec<String>,
 				//     pub readonly: Vec<String>,
 				// }
-				o.ArrayFunc("writable", func(arr *jsonbuilder.ArrayBuilder) {
-					for _, addr := range meta.LoadedWritableAddresses {
-						addr := solana.PublicKeyFromBytes(addr[:])
-						arr.AddString(addr.String())
-					}
-				})
-				o.ArrayFunc("readonly", func(arr *jsonbuilder.ArrayBuilder) {
-					for _, addr := range meta.LoadedReadonlyAddresses {
-						addr := solana.PublicKeyFromBytes(addr[:])
-						arr.AddString(addr.String())
-					}
-				})
+				o.Base58Slice("writable", meta.LoadedWritableAddresses)
+				o.Base58Slice("readonly", meta.LoadedReadonlyAddresses)
 			})
 	}
 	{
@@ -345,7 +334,7 @@ func ProtobufTransactionStatusMetaToUi(meta *confirmed_block.TransactionStatusMe
 					"returnData",
 					func(o *jsonbuilder.OrderedJSONObject) {
 						pid := solana.PublicKeyFromBytes(meta.ReturnData.ProgramId[:])
-						o.String("programId", pid.String())
+						o.Base58("programId", pid[:])
 						o.ArrayFunc("data", func(arr *jsonbuilder.ArrayBuilder) {
 							arr.AddString(base64.StdEncoding.EncodeToString(meta.ReturnData.Data[:]))
 							arr.AddString("base64")

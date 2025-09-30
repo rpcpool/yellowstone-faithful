@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"crypto/rand"
@@ -12,13 +11,13 @@ import (
 	"time"
 
 	"github.com/multiformats/go-multiaddr"
+	"github.com/valyala/bytebufferpool"
 
 	"github.com/anjor/carlet"
 	"github.com/davecgh/go-spew/spew"
 	"github.com/gagliardetto/solana-go"
 	"github.com/ipfs/go-cid"
 	carv1 "github.com/ipld/go-car"
-	"github.com/ipld/go-car/util"
 	carv2 "github.com/ipld/go-car/v2"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -50,7 +49,7 @@ type Epoch struct {
 	// contains indexes and block data for the epoch
 	lassieFetcher               *lassieWrapper
 	localCarReader              *carv2.Reader
-	remoteCarReader             ReaderAtCloser
+	remoteCarReader             carreader.ReaderAtCloser
 	carHeaderSize               uint64
 	rootCid                     cid.Cid
 	cidToOffsetAndSizeIndex     *indexes.CidToOffsetAndSize_Reader
@@ -295,7 +294,7 @@ func NewEpochFromConfig(
 
 	if isCarMode {
 		var localCarReader *carv2.Reader
-		var remoteCarReader ReaderAtCloser
+		var remoteCarReader carreader.ReaderAtCloser
 		var err error
 		if config.IsCarFromPieces() {
 
@@ -421,7 +420,7 @@ func NewEpochFromConfig(
 		ep.remoteCarReader = remoteCarReader
 		if remoteCarReader != nil {
 			// determine the header size so that we know where the data starts:
-			headerSizeBuf, err := readSectionFromReaderAt(remoteCarReader, 0, 10)
+			headerSizeBuf, err := carreader.ReadSectionFromReaderAt(remoteCarReader, 0, 10)
 			if err != nil {
 				return nil, fmt.Errorf("failed to read CAR header: %w", err)
 			}
@@ -504,7 +503,7 @@ func NewEpochFromConfig(
 		if err != nil {
 			return nil, fmt.Errorf("failed to open slot-to-blocktime index file: %w", err)
 		}
-		buf, err := ReadAllFromReaderAt(slotToBlocktimeFile, uint64(blocktimeindex.DefaultIndexByteSize))
+		buf, err := carreader.ReadAllFromReaderAt(slotToBlocktimeFile, uint64(blocktimeindex.DefaultIndexByteSize))
 		if err != nil {
 			return nil, fmt.Errorf("failed to read slot-to-blocktime index: %w", err)
 		}
@@ -526,18 +525,6 @@ func NewEpochFromConfig(
 	ep.rootCid = lastRootCid
 
 	return ep, nil
-}
-
-func ReadAllFromReaderAt(reader io.ReaderAt, size uint64) ([]byte, error) {
-	buf := make([]byte, size)
-	n, err := reader.ReadAt(buf, 0)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read: %w", err)
-	}
-	if uint64(n) != size {
-		return nil, fmt.Errorf("failed to read all bytes: expected %d, got %d", size, n)
-	}
-	return buf, nil
 }
 
 func ParseFilecoinProviders(vs ...string) ([]peer.AddrInfo, error) {
@@ -682,6 +669,7 @@ func (s *Epoch) GetNodeByCid(ctx context.Context, wantedCid cid.Cid) ([]byte, er
 	return s.GetNodeByOffsetAndSize(ctx, &wantedCid, oas)
 }
 
+// TODO: refactor.
 func (s *Epoch) ReadAtFromCar(ctx context.Context, offset uint64, length uint64) ([]byte, error) {
 	// Start span for CAR read
 	ctx, span := telemetry.StartSpan(ctx, "CAR_Read")
@@ -697,7 +685,7 @@ func (s *Epoch) ReadAtFromCar(ctx context.Context, offset uint64, length uint64)
 			return nil, fmt.Errorf("no CAR reader available")
 		}
 		span.SetAttributes(attribute.String("reader_type", "remote"))
-		return readSectionFromReaderAt(s.remoteCarReader, offset, length)
+		return carreader.ReadSectionFromReaderAt(s.remoteCarReader, offset, length)
 	}
 	span.SetAttributes(attribute.String("reader_type", "local"))
 
@@ -716,6 +704,14 @@ func (s *Epoch) ReadAtFromCar(ctx context.Context, offset uint64, length uint64)
 }
 
 func (s *Epoch) GetNodeByOffsetAndSize(ctx context.Context, wantedCid *cid.Cid, offsetAndSize *indexes.OffsetAndSize) ([]byte, error) {
+	buf, err := s.GetNodeByOffsetAndSizeBuffer(ctx, wantedCid, offsetAndSize)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get node by offset and size: %w", err)
+	}
+	return buf.B, nil
+}
+
+func (s *Epoch) GetNodeByOffsetAndSizeBuffer(ctx context.Context, wantedCid *cid.Cid, offsetAndSize *indexes.OffsetAndSize) (*bytebufferpool.ByteBuffer, error) {
 	if offsetAndSize == nil {
 		return nil, fmt.Errorf("offsetAndSize must not be nil")
 	}
@@ -724,22 +720,29 @@ func (s *Epoch) GetNodeByOffsetAndSize(ctx context.Context, wantedCid *cid.Cid, 
 	}
 	offset := offsetAndSize.Offset
 	length := offsetAndSize.Size
-	if s.localCarReader == nil {
-		// try remote reader
-		if s.remoteCarReader == nil {
-			return nil, fmt.Errorf("no CAR reader available")
-		}
-		return readNodeFromReaderAtWithOffsetAndSize(s.remoteCarReader, wantedCid, offset, length)
+	if s.localCarReader == nil && s.remoteCarReader == nil {
+		return nil, fmt.Errorf("no CAR reader available")
 	}
 	// Get reader and seek to offset, then read node.
-	dr, err := s.localCarReader.DataReader()
+	dr, err := s.GetEpochReaderAt()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get local CAR data reader: %w", err)
 	}
-	dr.Seek(int64(offset), io.SeekStart)
-	br := bufio.NewReader(dr)
+	section, err := carreader.ReadIntoBuffer(offset, length, dr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read node from CAR: %w", err)
+	}
+	return carreader.ParseNodeFromSectionBuffer(section, wantedCid)
+}
 
-	return readNodeWithKnownSize(br, wantedCid, length)
+func (s *Epoch) GetEpochReaderAt() (io.ReaderAt, error) {
+	if s.localCarReader != nil {
+		return s.localCarReader.DataReader()
+	}
+	if s.remoteCarReader != nil {
+		return s.remoteCarReader, nil
+	}
+	return nil, fmt.Errorf("no CAR reader available")
 }
 
 func (s *Epoch) getNodeSize(ctx context.Context, offset uint64) (uint64, error) {
@@ -748,60 +751,14 @@ func (s *Epoch) getNodeSize(ctx context.Context, offset uint64) (uint64, error) 
 		if s.remoteCarReader == nil {
 			return 0, fmt.Errorf("no CAR reader available")
 		}
-		return readNodeSizeFromReaderAtWithOffset(s.remoteCarReader, offset)
+		return carreader.ReadNodeSizeFromReaderAtWithOffset(s.remoteCarReader, offset)
 	}
 	// Get reader and seek to offset, then read node.
 	dr, err := s.localCarReader.DataReader()
 	if err != nil {
 		return 0, fmt.Errorf("failed to get local CAR data reader: %w", err)
 	}
-	return readNodeSizeFromReaderAtWithOffset(dr, offset)
-}
-
-func readNodeSizeFromReaderAtWithOffset(reader io.ReaderAt, offset uint64) (uint64, error) {
-	// read MaxVarintLen64 bytes
-	lenBuf := make([]byte, binary.MaxVarintLen64)
-	_, err := reader.ReadAt(lenBuf, int64(offset))
-	if err != nil {
-		return 0, err
-	}
-	// read uvarint
-	dataLen, n := binary.Uvarint(lenBuf)
-	dataLen += uint64(n)
-	if dataLen > uint64(util.MaxAllowedSectionSize) { // Don't OOM
-		return 0, errors.New("malformed car; header is bigger than util.MaxAllowedSectionSize")
-	}
-	return dataLen, nil
-}
-
-func readNodeWithKnownSize(br *bufio.Reader, wantedCid *cid.Cid, length uint64) ([]byte, error) {
-	section := make([]byte, length)
-	_, err := io.ReadFull(br, section)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read section from CAR with length %d: %w", length, err)
-	}
-	return parseNodeFromSection(section, wantedCid)
-}
-
-func parseNodeFromSection(section []byte, wantedCid *cid.Cid) ([]byte, error) {
-	// read an uvarint from the buffer
-	gotLen, usize := binary.Uvarint(section)
-	if usize <= 0 {
-		return nil, fmt.Errorf("failed to decode uvarint")
-	}
-	if gotLen > uint64(util.MaxAllowedSectionSize) { // Don't OOM
-		return nil, errors.New("malformed car; header is bigger than util.MaxAllowedSectionSize")
-	}
-	data := section[usize:]
-	cidLen, gotCid, err := cid.CidFromReader(bytes.NewReader(data))
-	if err != nil {
-		return nil, fmt.Errorf("failed to read cid: %w", err)
-	}
-	// verify that the CID we read matches the one we expected.
-	if wantedCid != nil && !gotCid.Equals(*wantedCid) {
-		return nil, fmt.Errorf("CID mismatch: expected %s, got %s", wantedCid, gotCid)
-	}
-	return data[cidLen:], nil
+	return carreader.ReadNodeSizeFromReaderAtWithOffset(dr, offset)
 }
 
 func (ser *Epoch) FindCidFromSlot(ctx context.Context, slot uint64) (o cid.Cid, e error) {

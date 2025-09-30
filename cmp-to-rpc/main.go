@@ -17,6 +17,7 @@ import (
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/gagliardetto/solana-go"
+	"github.com/gagliardetto/solana-go/rpc"
 	"github.com/rpcpool/yellowstone-faithful/accum"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
 	"github.com/rpcpool/yellowstone-faithful/readasonecar"
@@ -116,6 +117,7 @@ func main() {
 	)
 
 	format := solana.EncodingJSON
+	transactionDetails := rpc.TransactionDetailsFull
 
 	uris, err := generateListOfURIs(
 		uris,
@@ -149,7 +151,9 @@ func main() {
 			func(blockObject *accum.ObjectWithMetadata, dagObjects accum.ObjectsWithMetadata) error {
 				numSlotsSeen.Add(1)
 
-				block, err := iplddecoders.DecodeBlock(blockObject.ObjectData)
+				rawData := blockObject.ObjectData.Bytes()
+
+				block, err := iplddecoders.DecodeBlock(rawData)
 				if err != nil {
 					return fmt.Errorf("error while decoding block: %w", err)
 				}
@@ -212,15 +216,15 @@ func main() {
 								txWithInfo.Transaction,
 								txWithInfo.Metadata,
 							)
-							gotUi, err := uiBoth.ToUi(format)
+							gotUi, err := uiBoth.ToUi(format, transactionDetails)
 							if err != nil {
 								panic(fmt.Errorf("tx %s : failed to convert to UI: %w", sig, err))
 							}
-							gotUi.Value("slot", txWithInfo.Slot)
+							gotUi.Uint("slot", txWithInfo.Slot)
 							if block.Meta.Blocktime == 0 {
-								gotUi.Value("blockTime", nil)
+								gotUi.Null("blockTime")
 							} else {
-								gotUi.Value("blockTime", block.Meta.Blocktime)
+								gotUi.Int("blockTime", int64(block.Meta.Blocktime))
 							}
 							{
 								carJson, err := gotUi.MarshalJSON()

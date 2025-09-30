@@ -8,7 +8,9 @@ import (
 	"time"
 
 	"github.com/gagliardetto/solana-go"
+	"github.com/gagliardetto/solana-go/rpc"
 	"github.com/rpcpool/yellowstone-faithful/compactindexsized"
+	"github.com/rpcpool/yellowstone-faithful/nodetools"
 	solanatxmetaparsers "github.com/rpcpool/yellowstone-faithful/solana-tx-meta-parsers"
 	"github.com/rpcpool/yellowstone-faithful/telemetry"
 	"github.com/sourcegraph/jsonrpc2"
@@ -186,7 +188,7 @@ func (multi *MultiEpoch) handleGetTransaction(ctx context.Context, conn *request
 
 	// Start span for parsing transaction and metadata
 	_, parseSpan := telemetry.StartSpan(ctx, "GetTransaction_ParseTransactionMeta")
-	tx, meta, err := parseTransactionAndMetaFromNode(transactionNode, epochHandler.GetDataFrameByCid)
+	tx, meta, err := nodetools.ParseTransactionAndMetaFromNode(transactionNode, epochHandler.GetDataFrameByCid)
 	parseSpan.End()
 	if err != nil {
 		return &jsonrpc2.Error{
@@ -199,7 +201,7 @@ func (multi *MultiEpoch) handleGetTransaction(ctx context.Context, conn *request
 		meta,
 	)
 
-	response, err := out.ToUi(*params.Options.Encoding)
+	response, err := out.ToUi(*params.Options.Encoding, rpc.TransactionDetailsFull)
 	if err != nil {
 		return &jsonrpc2.Error{
 			Code:    jsonrpc2.CodeInternalError,
@@ -207,7 +209,7 @@ func (multi *MultiEpoch) handleGetTransaction(ctx context.Context, conn *request
 		}, fmt.Errorf("failed to encode transaction: %w", err)
 	}
 
-	response.Value("slot", transactionNode.Slot)
+	response.Uint("slot", uint64(transactionNode.Slot))
 	{
 		// Start span for getting block time
 		_, blocktimeSpan := telemetry.StartSpan(ctx, "GetTransaction_GetBlockTime")
@@ -220,9 +222,9 @@ func (multi *MultiEpoch) handleGetTransaction(ctx context.Context, conn *request
 				return nil, status.Errorf(codes.Internal, "Failed to get block: %v", err)
 			}
 			if blocktime == 0 {
-				response.Value("blockTime", nil)
+				response.Null("blockTime")
 			} else {
-				response.Value("blockTime", blocktime)
+				response.Int("blockTime", blocktime)
 			}
 		} else {
 			blocktimeSpan.End()
@@ -236,7 +238,7 @@ func (multi *MultiEpoch) handleGetTransaction(ctx context.Context, conn *request
 	{
 		pos, ok := transactionNode.GetPositionIndex()
 		if ok {
-			response.Value("position", pos)
+			response.Int("position", int64(pos))
 		}
 	}
 	// reply with the data
