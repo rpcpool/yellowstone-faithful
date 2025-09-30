@@ -906,7 +906,7 @@ func (multi *MultiEpoch) processSlotTransactions(
 							return status.Errorf(codes.Internal, "Failed to parse transaction from node: %v", err)
 						}
 
-						shouldExcludeTx := filterOut.Do(&tx, meta)
+						shouldExcludeTx := filterOut.Do(tx, meta)
 						klog.V(5).Infof("Filter evaluation for GSFA transaction: shouldExclude=%v", shouldExcludeTx)
 						if !shouldExcludeTx {
 							txResp := new(old_faithful_grpc.TransactionResponse)
