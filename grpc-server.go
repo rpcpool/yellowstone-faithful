@@ -1322,26 +1322,25 @@ func validateAccountFilters(filter *old_faithful_grpc.StreamTransactionsFilter) 
 		return nil
 	}
 
-	// Validate account_include addresses
-	for i, account := range filter.AccountInclude {
-		if _, err := solana.PublicKeyFromBase58(account); err != nil {
-			return fmt.Errorf("invalid account_include[%d] '%s': %w", i, account, err)
-		}
+	if err := validateAccountSlice(filter.AccountInclude, "account_include"); err != nil {
+		return err
+	}
+	if err := validateAccountSlice(filter.AccountExclude, "account_exclude"); err != nil {
+		return err
+	}
+	if err := validateAccountSlice(filter.AccountRequired, "account_required"); err != nil {
+		return err
 	}
 
-	// Validate account_exclude addresses
-	for i, account := range filter.AccountExclude {
+	return nil
+}
+
+// validateAccountSlice validates that all account addresses in the slice are valid base58 public keys
+func validateAccountSlice(accounts []string, fieldName string) error {
+	for i, account := range accounts {
 		if _, err := solana.PublicKeyFromBase58(account); err != nil {
-			return fmt.Errorf("invalid account_exclude[%d] '%s': %w", i, account, err)
+			return fmt.Errorf("invalid %s[%d] '%s': %w", fieldName, i, account, err)
 		}
 	}
-
-	// Validate account_required addresses
-	for i, account := range filter.AccountRequired {
-		if _, err := solana.PublicKeyFromBase58(account); err != nil {
-			return fmt.Errorf("invalid account_required[%d] '%s': %w", i, account, err)
-		}
-	}
-
 	return nil
 }
