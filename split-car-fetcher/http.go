@@ -9,7 +9,7 @@ import (
 )
 
 var (
-	DefaultMaxIdleConnsPerHost = 500
+	DefaultMaxIdleConnsPerHost = 1000
 	DefaultTimeout             = 1000 * time.Second
 	DefaultKeepAlive           = 180 * time.Second
 )
