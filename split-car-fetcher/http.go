@@ -9,7 +9,8 @@ import (
 )
 
 var (
-	DefaultMaxIdleConnsPerHost = 1000
+	DefaultMaxConnsPerHost     = 30_000
+	DefaultMaxIdleConnsPerHost = 10_000
 	DefaultTimeout             = 1000 * time.Second
 	DefaultKeepAlive           = 180 * time.Second
 )
@@ -17,9 +18,9 @@ var (
 func NewHTTPTransport() *http.Transport {
 	return &http.Transport{
 		IdleConnTimeout:     time.Minute,
-		MaxConnsPerHost:     DefaultMaxIdleConnsPerHost,
+		MaxConnsPerHost:     DefaultMaxConnsPerHost,
 		MaxIdleConnsPerHost: DefaultMaxIdleConnsPerHost,
-		MaxIdleConns:        DefaultMaxIdleConnsPerHost,
+		MaxIdleConns:        0,
 		Proxy:               http.ProxyFromEnvironment,
 		DialContext: (&net.Dialer{
 			Timeout:   DefaultTimeout,
