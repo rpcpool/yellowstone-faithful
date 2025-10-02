@@ -9,10 +9,19 @@ import (
 )
 
 var (
-	DefaultMaxConnsPerHost     = 30_000
+	// DefaultMaxConnsPerHost is the default maximum number of connections per host in the global pool (shared among all epochs) of connections
+	// to the remote CAR storage servers.
+	DefaultMaxConnsPerHost = 30_000
+
+	// DefaultMaxIdleConnsPerHost is the default maximum number of idle (keep-alive) connections per host in the global pool (shared among all epochs)
+	// of connections to the remote CAR storage servers.
 	DefaultMaxIdleConnsPerHost = 10_000
-	DefaultTimeout             = 1000 * time.Second
-	DefaultKeepAlive           = 180 * time.Second
+
+	// DefaultKeepAlive is the default keep-alive period for HTTP connections to the remote CAR storage servers.
+	DefaultKeepAlive = 180 * time.Second
+
+	// DefaultTimeout is the default timeout for HTTP requests to the remote CAR storage servers.
+	DefaultTimeout = 1000 * time.Second
 )
 
 func NewHTTPTransport() *http.Transport {
