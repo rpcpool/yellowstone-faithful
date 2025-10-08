@@ -36,6 +36,7 @@ func newCmd_rpc() *cli.Command {
 	var maxCacheSizeMB int
 	var grpcListenOn string
 	var lotusAPIAddress string
+	var useODirect bool
 	return &cli.Command{
 		Name:        "rpc",
 		Usage:       "Start a Solana JSON RPC server.",
@@ -110,6 +111,12 @@ func newCmd_rpc() *cli.Command {
 				Usage:       "Address of the filecoin API to find provider info",
 				Value:       defaultLotusAPIAddress,
 				Destination: &lotusAPIAddress,
+			},
+			&cli.BoolFlag{
+				Name:        "odirect",
+				Usage:       "Use O_DIRECT for reading index files (bypasses page cache)",
+				Value:       false,
+				Destination: &useODirect,
 			},
 		),
 		Action: func(c *cli.Context) error {
@@ -188,11 +195,12 @@ func newCmd_rpc() *cli.Command {
 					wg.Go(func() error {
 						epochNum := *config.Epoch
 						err := func() error {
-							epoch, err := NewEpochFromConfig(
+							epoch, err := NewEpochFromConfigWithOptions(
 								config,
 								c,
 								allCache,
 								minerInfo,
+								useODirect,
 							)
 							if err != nil {
 								return fmt.Errorf("failed to create epoch from config %q: %s", config.ConfigFilepath(), err.Error())
@@ -265,7 +273,7 @@ func newCmd_rpc() *cli.Command {
 									klog.Errorf("error loading config file %q: %s", event.Name, err.Error())
 									return
 								}
-								epoch, err := NewEpochFromConfig(config, c, allCache, minerInfo)
+								epoch, err := NewEpochFromConfigWithOptions(config, c, allCache, minerInfo, useODirect)
 								if err != nil {
 									klog.Errorf("error creating epoch from config file %q: %s", event.Name, err.Error())
 									return
@@ -288,7 +296,7 @@ func newCmd_rpc() *cli.Command {
 									klog.Errorf("error loading config file %q: %s", event.Name, err.Error())
 									return
 								}
-								epoch, err := NewEpochFromConfig(config, c, allCache, minerInfo)
+								epoch, err := NewEpochFromConfigWithOptions(config, c, allCache, minerInfo, useODirect)
 								if err != nil {
 									klog.Errorf("error creating epoch from config file %q: %s", event.Name, err.Error())
 									return

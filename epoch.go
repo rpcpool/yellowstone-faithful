@@ -114,6 +114,16 @@ func NewEpochFromConfig(
 	allCache *hugecache.Cache,
 	minerInfo *splitcarfetcher.MinerInfoCache,
 ) (*Epoch, error) {
+	return NewEpochFromConfigWithOptions(config, c, allCache, minerInfo, false)
+}
+
+func NewEpochFromConfigWithOptions(
+	config *Config,
+	c *cli.Context,
+	allCache *hugecache.Cache,
+	minerInfo *splitcarfetcher.MinerInfoCache,
+	useODirect bool,
+) (*Epoch, error) {
 	if config == nil {
 		return nil, fmt.Errorf("config must not be nil")
 	}
@@ -144,9 +154,10 @@ func NewEpochFromConfig(
 	if isCarMode {
 		if config.IsDeprecatedIndexes() {
 			// The CAR-mode requires a cid-to-offset index.
-			cidToOffsetIndexFile, err := openIndexStorage(
+			cidToOffsetIndexFile, err := openIndexStorageWithOptions(
 				c.Context,
 				string(config.Indexes.CidToOffset.URI),
+				useODirect,
 			)
 			if err != nil {
 				return nil, fmt.Errorf("failed to open cid-to-offset index file: %w", err)
@@ -163,9 +174,10 @@ func NewEpochFromConfig(
 			ep.deprecated_cidToOffsetIndex = cidToOffsetIndex
 		} else {
 			// The CAR-mode requires a cid-to-offset index.
-			cidToOffsetAndSizeIndexFile, err := openIndexStorage(
+			cidToOffsetAndSizeIndexFile, err := openIndexStorageWithOptions(
 				c.Context,
 				string(config.Indexes.CidToOffsetAndSize.URI),
+				useODirect,
 			)
 			if err != nil {
 				return nil, fmt.Errorf("failed to open cid-to-offset index file: %w", err)
@@ -189,9 +201,10 @@ func NewEpochFromConfig(
 	}
 
 	{
-		slotToCidIndexFile, err := openIndexStorage(
+		slotToCidIndexFile, err := openIndexStorageWithOptions(
 			c.Context,
 			string(config.Indexes.SlotToCid.URI),
+			useODirect,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to open slot-to-cid index file: %w", err)
@@ -219,9 +232,10 @@ func NewEpochFromConfig(
 	}
 
 	{
-		sigToCidIndexFile, err := openIndexStorage(
+		sigToCidIndexFile, err := openIndexStorageWithOptions(
 			c.Context,
 			string(config.Indexes.SigToCid.URI),
+			useODirect,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to open sig-to-cid index file: %w", err)
@@ -454,9 +468,10 @@ func NewEpochFromConfig(
 		}
 	}
 	{
-		sigExistsFile, err := openIndexStorage(
+		sigExistsFile, err := openIndexStorageWithOptions(
 			c.Context,
 			string(config.Indexes.SigExists.URI),
+			useODirect,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to open sig-exists index file: %w", err)
@@ -497,9 +512,10 @@ func NewEpochFromConfig(
 		}
 	}
 	{
-		slotToBlocktimeFile, err := openIndexStorage(
+		slotToBlocktimeFile, err := openIndexStorageWithOptions(
 			c.Context,
 			string(config.Indexes.SlotToBlocktime.URI),
+			useODirect,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to open slot-to-blocktime index file: %w", err)

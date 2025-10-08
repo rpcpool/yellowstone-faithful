@@ -29,6 +29,18 @@ func openIndexStorage(
 	ctx context.Context,
 	where string,
 ) (ReaderAtCloser, error) {
+	return openIndexStorageWithOptions(ctx, where, false)
+}
+
+// openIndexStorageWithOptions open a compactindex from a local file, or from a remote URL.
+// Supported protocols are:
+// - http://
+// - https://
+func openIndexStorageWithOptions(
+	ctx context.Context,
+	where string,
+	useODirect bool,
+) (ReaderAtCloser, error) {
 	where = strings.TrimSpace(where)
 	if isHTTP(where) {
 		klog.Infof("opening index file from %q as HTTP remote file", where)
@@ -48,7 +60,22 @@ func openIndexStorage(
 	}
 	// TODO: add support for IPFS gateways.
 	// TODO: add support for Filecoin gateways.
-	rac, err := mmap.Open(where)
+	
+	var rac ReaderAtCloser
+	var err error
+	
+	if useODirect {
+		klog.V(2).Infof("opening index file from %q with O_DIRECT", where)
+		rac, err = NewODirectReaderAtCloser(where)
+		if err != nil {
+			// Fallback to mmap if O_DIRECT fails
+			klog.Warningf("O_DIRECT failed for %q, falling back to mmap: %v", where, err)
+			rac, err = mmap.Open(where)
+		}
+	} else {
+		rac, err = mmap.Open(where)
+	}
+	
 	if err != nil {
 		return nil, fmt.Errorf("failed to open local index file: %w", err)
 	}
