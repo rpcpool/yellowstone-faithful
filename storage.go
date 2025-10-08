@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/ipfs/go-cid"
@@ -26,6 +27,7 @@ func isHTTP(where string) bool {
 func openIndexStorage(
 	ctx context.Context,
 	where string,
+	useMmapForLocalIndexes bool,
 ) (carreader.ReaderAtCloser, error) {
 	where = strings.TrimSpace(where)
 	if isHTTP(where) {
@@ -44,9 +46,7 @@ func openIndexStorage(
 			size:     size,
 		}, nil
 	}
-	// TODO: add support for IPFS gateways.
-	// TODO: add support for Filecoin gateways.
-	rac, err := mmap.Open(where)
+	rac, err := openMMapFile(where, useMmapForLocalIndexes)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open local index file: %w", err)
 	}
@@ -60,7 +60,18 @@ func openIndexStorage(
 	}, nil
 }
 
-func openCarStorage(ctx context.Context, where string) (*carv2.Reader, carreader.ReaderAtCloser, error) {
+func openMMapFile(filePath string, useMmap bool) (carreader.ReaderAtCloser, error) {
+	if useMmap {
+		return mmap.Open(filePath)
+	}
+	return os.Open(filePath)
+}
+
+func openCarStorage(
+	ctx context.Context,
+	where string,
+	useMmap bool,
+) (*carv2.Reader, carreader.ReaderAtCloser, error) {
 	where = strings.TrimSpace(where)
 	if isHTTP(where) {
 		klog.Infof("opening CAR file from %q as HTTP remote file", where)
@@ -74,14 +85,34 @@ func openCarStorage(ctx context.Context, where string) (*carv2.Reader, carreader
 			size: size,
 		}, nil
 	}
-	// TODO: add support for IPFS gateways.
-	// TODO: add support for Filecoin gateways.
 
-	carReader, err := carv2.OpenReader(where)
+	if useMmap {
+		carReader, err := carv2.OpenReader(where)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to open CAR file: %w", err)
+		}
+		return carReader, nil, nil
+	}
+	reader, err := openCarFile(ctx, where)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to open CAR file: %w", err)
 	}
-	return carReader, nil, nil
+	return reader, nil, nil
+}
+
+func openCarFile(
+	ctx context.Context,
+	where string,
+) (*carv2.Reader, error) {
+	file, err := os.Open(where)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open CAR file %q: %w", where, err)
+	}
+	r, err := carv2.NewReader(file)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create CAR reader: %w", err)
+	}
+	return r, nil
 }
 
 func getTransactionAndMetaFromNode(
