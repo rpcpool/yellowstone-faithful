@@ -804,6 +804,8 @@ func (multi *MultiEpoch) processSlotTransactions(
 						txResp.Transaction.Transaction = tx.Transaction
 						txResp.Transaction.Meta = tx.Meta
 						txResp.Transaction.Index = tx.Index
+						txResp.Slot = block.Slot
+						txResp.Index = tx.Index
 
 						epochNumber := slottools.CalcEpochForSlot(slot)
 						epochHandler, err := multi.GetEpoch(epochNumber)
