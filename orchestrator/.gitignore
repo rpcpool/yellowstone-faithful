@@ -1,0 +1,8 @@
+.claude/**
+.claude-flow/**
+.swarm/**
+CLAUDE.md
+config.local.toml
+
+# Local configuration directory
+configs/

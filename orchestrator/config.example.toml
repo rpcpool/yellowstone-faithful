@@ -1,0 +1,41 @@
+# Old Faithful Orchestrator Configuration
+
+# Storage backends for CAR files and indexes
+# Currently supported: local, http
+
+[epoch_configs]
+output_dir = "./configs"
+
+# Cache configuration for storing scan results
+# The cache improves performance by storing scan results to disk
+# and reusing them across runs to avoid re-scanning storage backends
+[cache]
+# Enable/disable cache (default: false for backward compatibility)
+enabled = false
+# Directory to store cache files (default: "./cache")
+directory = "./cache"
+# Time-to-live for cache entries (default: "24h")
+# Supported formats: "1h", "30m", "3600s", "1d"
+ttl = "24h"
+
+[[storage]]
+type = "local"
+path = "/var/lib/faithful/storage"
+# Optional: specify epoch range to scan
+# epoch_range = { start = 0, end = 100 }
+
+[[storage]]
+type = "http"
+url = "https://storage.example.com"
+timeout = "30s"
+# Optional: specify epoch range to scan
+# epoch_range = { start = 0, end = 500 }
+
+# Note: S3 buckets can be accessed via their HTTP endpoints
+# Example: https://my-bucket.s3.us-west-2.amazonaws.com
+[[storage]]
+type = "http"
+url = "https://my-bucket.s3.us-west-2.amazonaws.com"
+timeout = "60s"
+# For HTTP storage, epoch_range is recommended to limit probing
+epoch_range = { start = 0, end = 800 }
