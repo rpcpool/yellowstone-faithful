@@ -39,6 +39,8 @@ func newCmd_rpc() *cli.Command {
 	var grpcListenOn string
 	var lotusAPIAddress string
 	var pyroscopeServerAddress string
+	var useMmapForLocalCars bool
+	var useMmapForLocalIndexes bool
 	return &cli.Command{
 		Name:        "rpc",
 		Usage:       "Start a Solana JSON RPC server.",
@@ -120,6 +122,18 @@ func newCmd_rpc() *cli.Command {
 				Value:       "", // If empty, profiling is not enabled
 				Destination: &pyroscopeServerAddress,
 				EnvVars:     []string{"PYROSCOPE_SERVER_ADDRESS"},
+			},
+			&cli.BoolFlag{
+				Name:        "use-mmap-for-local-cars",
+				Usage:       "Use mmap for local CAR files (instead of os.Open)",
+				Value:       false,
+				Destination: &useMmapForLocalCars,
+			},
+			&cli.BoolFlag{
+				Name:        "use-mmap-for-local-indexes",
+				Usage:       "Use mmap for local index files (instead of os.Open)",
+				Value:       false,
+				Destination: &useMmapForLocalIndexes,
 			},
 		),
 		Action: func(c *cli.Context) error {
@@ -247,6 +261,8 @@ func newCmd_rpc() *cli.Command {
 								c,
 								allCache,
 								minerInfo,
+								useMmapForLocalCars,
+								useMmapForLocalIndexes,
 							)
 							if err != nil {
 								return fmt.Errorf("failed to create epoch from config %q: %s", config.ConfigFilepath(), err.Error())
@@ -319,7 +335,14 @@ func newCmd_rpc() *cli.Command {
 									klog.Errorf("error loading config file %q: %s", event.Name, err.Error())
 									return
 								}
-								epoch, err := NewEpochFromConfig(config, c, allCache, minerInfo)
+								epoch, err := NewEpochFromConfig(
+									config,
+									c,
+									allCache,
+									minerInfo,
+									useMmapForLocalCars,
+									useMmapForLocalIndexes,
+								)
 								if err != nil {
 									klog.Errorf("error creating epoch from config file %q: %s", event.Name, err.Error())
 									return
@@ -342,7 +365,14 @@ func newCmd_rpc() *cli.Command {
 									klog.Errorf("error loading config file %q: %s", event.Name, err.Error())
 									return
 								}
-								epoch, err := NewEpochFromConfig(config, c, allCache, minerInfo)
+								epoch, err := NewEpochFromConfig(
+									config,
+									c,
+									allCache,
+									minerInfo,
+									useMmapForLocalCars,
+									useMmapForLocalIndexes,
+								)
 								if err != nil {
 									klog.Errorf("error creating epoch from config file %q: %s", event.Name, err.Error())
 									return

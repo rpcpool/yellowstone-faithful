@@ -112,6 +112,8 @@ func NewEpochFromConfig(
 	c *cli.Context,
 	allCache *hugecache.Cache,
 	minerInfo *splitcarfetcher.MinerInfoCache,
+	useMmapForLocalCars bool,
+	useMmapForLocalIndexes bool,
 ) (*Epoch, error) {
 	if config == nil {
 		return nil, fmt.Errorf("config must not be nil")
@@ -146,6 +148,7 @@ func NewEpochFromConfig(
 			cidToOffsetIndexFile, err := openIndexStorage(
 				c.Context,
 				string(config.Indexes.CidToOffset.URI),
+				useMmapForLocalIndexes,
 			)
 			if err != nil {
 				return nil, fmt.Errorf("failed to open cid-to-offset index file: %w", err)
@@ -165,6 +168,7 @@ func NewEpochFromConfig(
 			cidToOffsetAndSizeIndexFile, err := openIndexStorage(
 				c.Context,
 				string(config.Indexes.CidToOffsetAndSize.URI),
+				useMmapForLocalIndexes,
 			)
 			if err != nil {
 				return nil, fmt.Errorf("failed to open cid-to-offset index file: %w", err)
@@ -191,6 +195,7 @@ func NewEpochFromConfig(
 		slotToCidIndexFile, err := openIndexStorage(
 			c.Context,
 			string(config.Indexes.SlotToCid.URI),
+			useMmapForLocalIndexes,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to open slot-to-cid index file: %w", err)
@@ -221,6 +226,7 @@ func NewEpochFromConfig(
 		sigToCidIndexFile, err := openIndexStorage(
 			c.Context,
 			string(config.Indexes.SigToCid.URI),
+			useMmapForLocalIndexes,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to open sig-to-cid index file: %w", err)
@@ -405,7 +411,11 @@ func NewEpochFromConfig(
 				remoteCarReader = scrFromURLs
 			}
 		} else {
-			localCarReader, remoteCarReader, err = openCarStorage(c.Context, string(config.Data.Car.URI))
+			localCarReader, remoteCarReader, err = openCarStorage(
+				c.Context,
+				string(config.Data.Car.URI),
+				useMmapForLocalCars,
+			)
 			if err != nil {
 				return nil, fmt.Errorf("failed to open CAR file: %w", err)
 			}
@@ -456,6 +466,7 @@ func NewEpochFromConfig(
 		sigExistsFile, err := openIndexStorage(
 			c.Context,
 			string(config.Indexes.SigExists.URI),
+			useMmapForLocalIndexes,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to open sig-exists index file: %w", err)
@@ -499,6 +510,7 @@ func NewEpochFromConfig(
 		slotToBlocktimeFile, err := openIndexStorage(
 			c.Context,
 			string(config.Indexes.SlotToBlocktime.URI),
+			useMmapForLocalIndexes,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to open slot-to-blocktime index file: %w", err)
