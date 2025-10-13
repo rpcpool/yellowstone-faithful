@@ -126,13 +126,13 @@ func newCmd_rpc() *cli.Command {
 			&cli.BoolFlag{
 				Name:        "use-mmap-for-local-cars",
 				Usage:       "Use mmap for local CAR files (instead of os.Open)",
-				Value:       false, // default to false
+				Value:       false,
 				Destination: &useMmapForLocalCars,
 			},
 			&cli.BoolFlag{
 				Name:        "use-mmap-for-local-indexes",
 				Usage:       "Use mmap for local index files (instead of os.Open)",
-				Value:       true, // default to true
+				Value:       false,
 				Destination: &useMmapForLocalIndexes,
 			},
 		),
