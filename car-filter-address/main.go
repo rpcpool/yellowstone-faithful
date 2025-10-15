@@ -176,7 +176,7 @@ func main() {
 			}
 			// print one object with all results
 			output := map[string]any{
-				"success":                  finished.Load(),
+				"completed":                finished.Load(),
 				"epoch":                    slottools.CalcEpochForSlot(highestSlotCar.Load()),
 				"num_blocks_checked":       numBlocksReadCar.Load(),
 				"num_transactions_checked": counterTx.Load(),

@@ -41,6 +41,6 @@ go run main.go \
       "count_tx_reverted": 409016
     }
   ],
-  "success": true
+  "completed": true
 }
 ```
