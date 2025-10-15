@@ -142,11 +142,7 @@ var latencyBuckets = []float64{
 	// fractional seconds from 0 to 1, with increments of 0.05 (= 50 ms)
 	0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45,
 	0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95,
-	1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5,
-	// then 5-10 with increments of 1
-	6, 7, 8, 9, 10,
-	// then 10-60 with increments of 5
-	15, 20, 25, 30, 35, 40, 45, 50, 55, 60,
+	1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5, 10,
 }
 
 var ErrBlockNotFound = promauto.NewCounter(
