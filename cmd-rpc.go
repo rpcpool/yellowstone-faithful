@@ -34,6 +34,8 @@ func newCmd_rpc() *cli.Command {
 	var epochSearchConcurrency int
 	var epochLoadConcurrency int
 	var maxCacheSizeMB int
+	var tier1EpochLimit int
+	var tier2EpochLimit int
 	var grpcListenOn string
 	var lotusAPIAddress string
 	var useODirect bool
@@ -93,6 +95,18 @@ func newCmd_rpc() *cli.Command {
 				Usage:       "How many epochs to search in parallel when searching for a signature",
 				Value:       runtime.NumCPU(),
 				Destination: &epochSearchConcurrency,
+			},
+			&cli.IntFlag{
+				Name:        "tier1-epoch-limit",
+				Usage:       "Number of most recent epochs to search first in tiered search (default: 10)",
+				Value:       10,
+				Destination: &tier1EpochLimit,
+			},
+			&cli.IntFlag{
+				Name:        "tier2-epoch-limit", 
+				Usage:       "Total epochs to search in first two tiers (default: 50)",
+				Value:       50,
+				Destination: &tier2EpochLimit,
 			},
 			&cli.IntFlag{
 				Name:        "epoch-load-concurrency",
@@ -171,6 +185,8 @@ func newCmd_rpc() *cli.Command {
 			multi := NewMultiEpoch(&Options{
 				GsfaOnlySignatures:     gsfaOnlySignatures,
 				EpochSearchConcurrency: epochSearchConcurrency,
+				Tier1EpochLimit:        tier1EpochLimit,
+				Tier2EpochLimit:        tier2EpochLimit,
 			})
 			defer func() {
 				if err := multi.Close(); err != nil {
