@@ -34,10 +34,7 @@ func newCmd_rpc() *cli.Command {
 	var epochSearchConcurrency int
 	var epochLoadConcurrency int
 	var maxCacheSizeMB int
-	var tier1EpochLimit int
-	var tier2EpochLimit int
-	var tier1Concurrency int
-	var tier2Concurrency int
+	var hotTierLimit int
 	var grpcListenOn string
 	var lotusAPIAddress string
 	var useODirect bool
@@ -99,28 +96,10 @@ func newCmd_rpc() *cli.Command {
 				Destination: &epochSearchConcurrency,
 			},
 			&cli.IntFlag{
-				Name:        "tier1-epoch-limit",
-				Usage:       "Number of most recent epochs to search first in tiered search (default: 10)",
-				Value:       10,
-				Destination: &tier1EpochLimit,
-			},
-			&cli.IntFlag{
-				Name:        "tier2-epoch-limit", 
-				Usage:       "Total epochs to search in first two tiers (default: 50)",
-				Value:       50,
-				Destination: &tier2EpochLimit,
-			},
-			&cli.IntFlag{
-				Name:        "tier1-concurrency",
-				Usage:       "Concurrency for tier 1 search (0 = use epoch-search-concurrency, 1 = sequential)",
-				Value:       0,
-				Destination: &tier1Concurrency,
-			},
-			&cli.IntFlag{
-				Name:        "tier2-concurrency",
-				Usage:       "Concurrency for tier 2 search (0 = use epoch-search-concurrency)",
-				Value:       0,
-				Destination: &tier2Concurrency,
+				Name:        "hot-tier-limit",
+				Usage:       "Number of most recent epochs to search in parallel (default: 30)",
+				Value:       30,
+				Destination: &hotTierLimit,
 			},
 			&cli.IntFlag{
 				Name:        "epoch-load-concurrency",
@@ -199,10 +178,7 @@ func newCmd_rpc() *cli.Command {
 			multi := NewMultiEpoch(&Options{
 				GsfaOnlySignatures:     gsfaOnlySignatures,
 				EpochSearchConcurrency: epochSearchConcurrency,
-				Tier1EpochLimit:        tier1EpochLimit,
-				Tier2EpochLimit:        tier2EpochLimit,
-				Tier1Concurrency:       tier1Concurrency,
-				Tier2Concurrency:       tier2Concurrency,
+				HotTierLimit:           hotTierLimit,
 			})
 			defer func() {
 				if err := multi.Close(); err != nil {

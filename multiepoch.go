@@ -33,12 +33,8 @@ import (
 type Options struct {
 	GsfaOnlySignatures     bool
 	EpochSearchConcurrency int
-	// Tiered search configuration
-	Tier1EpochLimit int // Last N epochs to search first (default: 10, searches last-3 to last-N)
-	Tier2EpochLimit int // Last N epochs to search second (default: 50, searches last-10 to last-N)
-	// Tier-specific concurrency (0 = use default EpochSearchConcurrency)
-	Tier1Concurrency int // Concurrency for tier 1 (default: 0 = use EpochSearchConcurrency)
-	Tier2Concurrency int // Concurrency for tier 2 (default: 0 = use EpochSearchConcurrency)
+	// Hot tier configuration
+	HotTierLimit int // Number of most recent epochs to search in parallel (default: 30)
 }
 
 type MultiEpoch struct {
