@@ -133,31 +133,47 @@ func (multi *MultiEpoch) findEpochNumberFromSignature(ctx context.Context, sig s
 		return val, nil
 	}
 
-	// Tier 1: Search last-3 to last-10 epochs (most recent by epoch number)
-	if len(numbers) >= tier1Start {
-		tier1Epochs := numbers[tier1Start-1:] // Start from last-3 (index 2)
-		if len(tier1Epochs) > (tier1End - tier1Start + 1) {
-			tier1Epochs = tier1Epochs[:(tier1End - tier1Start + 1)]
+	// Tier 1: Search most recent epochs
+	if len(numbers) > 0 {
+		var tier1Epochs []uint64
+		if tier1Start > 0 {
+			// Start from last-N (e.g., last-3)
+			if len(numbers) >= tier1Start {
+				tier1Epochs = numbers[tier1Start-1:]
+			}
+		} else {
+			// Start from the very beginning (most recent)
+			tier1Epochs = numbers
 		}
-		klog.V(5).Infof("Searching tier 1: last-%d to last-%d epochs (%d-%d, %d epochs)", tier1Start, tier1End, tier1Epochs[len(tier1Epochs)-1], tier1Epochs[0], len(tier1Epochs))
-		if result, err := searchEpochs(tier1Epochs, multi.options.Tier1Concurrency); err == nil {
-			return result, nil
-		} else if !errors.Is(err, ErrNotFound) {
-			return 0, err
+		
+		// Limit to tier1End epochs
+		if len(tier1Epochs) > tier1End {
+			tier1Epochs = tier1Epochs[:tier1End]
+		}
+		
+		if len(tier1Epochs) > 0 {
+			klog.V(5).Infof("Searching tier 1: %d most recent epochs (%d-%d)", len(tier1Epochs), tier1Epochs[len(tier1Epochs)-1], tier1Epochs[0])
+			if result, err := searchEpochs(tier1Epochs, multi.options.Tier1Concurrency); err == nil {
+				return result, nil
+			} else if !errors.Is(err, ErrNotFound) {
+				return 0, err
+			}
 		}
 	}
 
-	// Tier 2: Search last-10 to last-50 epochs (no overlap with tier 1)
-	if len(numbers) >= tier2Start {
-		tier2Epochs := numbers[tier2Start-1:] // Start from last-10 (index 9)
-		if len(tier2Epochs) > (tier2End - tier2Start + 1) {
-			tier2Epochs = tier2Epochs[:(tier2End - tier2Start + 1)]
+	// Tier 2: Search next batch of epochs (no overlap with tier 1)
+	if len(numbers) > tier1End {
+		tier2Epochs := numbers[tier1End:]
+		if len(tier2Epochs) > (tier2End - tier1End) {
+			tier2Epochs = tier2Epochs[:(tier2End - tier1End)]
 		}
-		klog.V(5).Infof("Searching tier 2: last-%d to last-%d epochs (%d-%d, %d epochs)", tier2Start, tier2End, tier2Epochs[len(tier2Epochs)-1], tier2Epochs[0], len(tier2Epochs))
-		if result, err := searchEpochs(tier2Epochs, multi.options.Tier2Concurrency); err == nil {
-			return result, nil
-		} else if !errors.Is(err, ErrNotFound) {
-			return 0, err
+		if len(tier2Epochs) > 0 {
+			klog.V(5).Infof("Searching tier 2: %d epochs (%d-%d)", len(tier2Epochs), tier2Epochs[len(tier2Epochs)-1], tier2Epochs[0])
+			if result, err := searchEpochs(tier2Epochs, multi.options.Tier2Concurrency); err == nil {
+				return result, nil
+			} else if !errors.Is(err, ErrNotFound) {
+				return 0, err
+			}
 		}
 	}
 
