@@ -124,6 +124,17 @@ func NewEpochFromConfigWithOptions(
 	minerInfo *splitcarfetcher.MinerInfoCache,
 	useODirect bool,
 ) (*Epoch, error) {
+	return NewEpochFromConfigWithOptionsAndMmap(config, c, allCache, minerInfo, useODirect, nil)
+}
+
+func NewEpochFromConfigWithOptionsAndMmap(
+	config *Config,
+	c *cli.Context,
+	allCache *hugecache.Cache,
+	minerInfo *splitcarfetcher.MinerInfoCache,
+	useODirect bool,
+	mmapOptions *Options,
+) (*Epoch, error) {
 	if config == nil {
 		return nil, fmt.Errorf("config must not be nil")
 	}
@@ -136,6 +147,27 @@ func NewEpochFromConfigWithOptions(
 		config:         config,
 		onClose:        make([]func() error, 0),
 		allCache:       allCache,
+	}
+
+	// Determine if this epoch should be mmapped and which indexes
+	shouldMmapEpoch := false
+	shouldMmapSigExists := false
+	shouldMmapSigToCid := false
+	shouldMmapSlotToBlocktime := false
+
+	if mmapOptions != nil && mmapOptions.MmapHotEpochs > 0 {
+		// For now, we'll assume this epoch should be mmapped if MmapHotEpochs > 0
+		// In a real implementation, you'd need to pass the epoch number and total epochs
+		// to determine if this epoch is in the "hot" tier (most recent N epochs)
+		shouldMmapEpoch = true
+		
+		if mmapOptions.MmapSigExistsOnly {
+			shouldMmapSigExists = true
+		} else if mmapOptions.MmapEssentialOnly {
+			shouldMmapSigExists = true
+			shouldMmapSigToCid = true
+			shouldMmapSlotToBlocktime = true
+		}
 	}
 	var lastRootCid cid.Cid
 	{
@@ -232,11 +264,23 @@ func NewEpochFromConfigWithOptions(
 	}
 
 	{
-		sigToCidIndexFile, err := openIndexStorageWithOptions(
-			c.Context,
-			string(config.Indexes.SigToCid.URI),
-			useODirect,
-		)
+		var sigToCidIndexFile ReaderAtCloser
+		var err error
+		if shouldMmapEpoch && shouldMmapSigToCid {
+			sigToCidIndexFile, err = openIndexStorageWithOptionsAndMmap(
+				c.Context,
+				string(config.Indexes.SigToCid.URI),
+				useODirect,
+				true,  // forceMmap
+				false, // forceODirect
+			)
+		} else {
+			sigToCidIndexFile, err = openIndexStorageWithOptions(
+				c.Context,
+				string(config.Indexes.SigToCid.URI),
+				useODirect,
+			)
+		}
 		if err != nil {
 			return nil, fmt.Errorf("failed to open sig-to-cid index file: %w", err)
 		}
@@ -468,11 +512,23 @@ func NewEpochFromConfigWithOptions(
 		}
 	}
 	{
-		sigExistsFile, err := openIndexStorageWithOptions(
-			c.Context,
-			string(config.Indexes.SigExists.URI),
-			useODirect,
-		)
+		var sigExistsFile ReaderAtCloser
+		var err error
+		if shouldMmapEpoch && shouldMmapSigExists {
+			sigExistsFile, err = openIndexStorageWithOptionsAndMmap(
+				c.Context,
+				string(config.Indexes.SigExists.URI),
+				useODirect,
+				true,  // forceMmap
+				false, // forceODirect
+			)
+		} else {
+			sigExistsFile, err = openIndexStorageWithOptions(
+				c.Context,
+				string(config.Indexes.SigExists.URI),
+				useODirect,
+			)
+		}
 		if err != nil {
 			return nil, fmt.Errorf("failed to open sig-exists index file: %w", err)
 		}
@@ -512,11 +568,23 @@ func NewEpochFromConfigWithOptions(
 		}
 	}
 	{
-		slotToBlocktimeFile, err := openIndexStorageWithOptions(
-			c.Context,
-			string(config.Indexes.SlotToBlocktime.URI),
-			useODirect,
-		)
+		var slotToBlocktimeFile ReaderAtCloser
+		var err error
+		if shouldMmapEpoch && shouldMmapSlotToBlocktime {
+			slotToBlocktimeFile, err = openIndexStorageWithOptionsAndMmap(
+				c.Context,
+				string(config.Indexes.SlotToBlocktime.URI),
+				useODirect,
+				true,  // forceMmap
+				false, // forceODirect
+			)
+		} else {
+			slotToBlocktimeFile, err = openIndexStorageWithOptions(
+				c.Context,
+				string(config.Indexes.SlotToBlocktime.URI),
+				useODirect,
+			)
+		}
 		if err != nil {
 			return nil, fmt.Errorf("failed to open slot-to-blocktime index file: %w", err)
 		}

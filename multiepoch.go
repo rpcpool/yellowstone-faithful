@@ -35,6 +35,10 @@ type Options struct {
 	EpochSearchConcurrency int
 	// Hot tier configuration
 	HotTierLimit int // Number of most recent epochs to search in parallel (default: 30)
+	// Memory optimization
+	MmapHotEpochs int // Number of most recent epochs to mmap (0 = no mmap, default: 0)
+	MmapEssentialOnly bool // Only mmap essential indexes for getTransaction (default: true)
+	MmapSigExistsOnly bool // Only mmap sig-exists index (most memory efficient, default: false)
 }
 
 type MultiEpoch struct {

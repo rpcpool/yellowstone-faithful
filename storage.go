@@ -41,6 +41,16 @@ func openIndexStorageWithOptions(
 	where string,
 	useODirect bool,
 ) (ReaderAtCloser, error) {
+	return openIndexStorageWithOptionsAndMmap(ctx, where, useODirect, false, false)
+}
+
+func openIndexStorageWithOptionsAndMmap(
+	ctx context.Context,
+	where string,
+	useODirect bool,
+	forceMmap bool,
+	forceODirect bool,
+) (ReaderAtCloser, error) {
 	where = strings.TrimSpace(where)
 	if isHTTP(where) {
 		klog.Infof("opening index file from %q as HTTP remote file", where)
@@ -64,7 +74,18 @@ func openIndexStorageWithOptions(
 	var rac ReaderAtCloser
 	var err error
 	
-	if useODirect {
+	if forceMmap {
+		klog.V(2).Infof("opening index file from %q with forced mmap", where)
+		rac, err = mmap.Open(where)
+	} else if forceODirect {
+		klog.V(2).Infof("opening index file from %q with forced O_DIRECT", where)
+		rac, err = NewODirectReaderAtCloser(where)
+		if err != nil {
+			// Fallback to mmap if O_DIRECT fails
+			klog.Warningf("O_DIRECT failed for %q, falling back to mmap: %v", where, err)
+			rac, err = mmap.Open(where)
+		}
+	} else if useODirect {
 		klog.V(2).Infof("opening index file from %q with O_DIRECT", where)
 		rac, err = NewODirectReaderAtCloser(where)
 		if err != nil {

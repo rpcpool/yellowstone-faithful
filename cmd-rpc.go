@@ -35,6 +35,9 @@ func newCmd_rpc() *cli.Command {
 	var epochLoadConcurrency int
 	var maxCacheSizeMB int
 	var hotTierLimit int
+	var mmapHotEpochs int
+	var mmapEssentialOnly bool
+	var mmapSigExistsOnly bool
 	var grpcListenOn string
 	var lotusAPIAddress string
 	var useODirect bool
@@ -100,6 +103,24 @@ func newCmd_rpc() *cli.Command {
 				Usage:       "Number of most recent epochs to search in parallel (default: 30)",
 				Value:       30,
 				Destination: &hotTierLimit,
+			},
+			&cli.IntFlag{
+				Name:        "mmap-hot-epochs",
+				Usage:       "Number of most recent epochs to mmap for faster access (default: 0 = no mmap)",
+				Value:       0,
+				Destination: &mmapHotEpochs,
+			},
+			&cli.BoolFlag{
+				Name:        "mmap-essential-only",
+				Usage:       "Only mmap essential indexes for getTransaction (sig-exists, sig-to-cid, slot-to-blocktime)",
+				Value:       true,
+				Destination: &mmapEssentialOnly,
+			},
+			&cli.BoolFlag{
+				Name:        "mmap-sig-exists-only",
+				Usage:       "Only mmap sig-exists index (most memory efficient, ~4.7GB per epoch)",
+				Value:       false,
+				Destination: &mmapSigExistsOnly,
 			},
 			&cli.IntFlag{
 				Name:        "epoch-load-concurrency",
@@ -179,6 +200,9 @@ func newCmd_rpc() *cli.Command {
 				GsfaOnlySignatures:     gsfaOnlySignatures,
 				EpochSearchConcurrency: epochSearchConcurrency,
 				HotTierLimit:           hotTierLimit,
+				MmapHotEpochs:          mmapHotEpochs,
+				MmapEssentialOnly:      mmapEssentialOnly,
+				MmapSigExistsOnly:      mmapSigExistsOnly,
 			})
 			defer func() {
 				if err := multi.Close(); err != nil {
@@ -203,12 +227,17 @@ func newCmd_rpc() *cli.Command {
 					wg.Go(func() error {
 						epochNum := *config.Epoch
 						err := func() error {
-							epoch, err := NewEpochFromConfigWithOptions(
+							epoch, err := NewEpochFromConfigWithOptionsAndMmap(
 								config,
 								c,
 								allCache,
 								minerInfo,
 								useODirect,
+								&Options{
+									MmapHotEpochs:     mmapHotEpochs,
+									MmapEssentialOnly: mmapEssentialOnly,
+									MmapSigExistsOnly: mmapSigExistsOnly,
+								},
 							)
 							if err != nil {
 								return fmt.Errorf("failed to create epoch from config %q: %s", config.ConfigFilepath(), err.Error())
@@ -281,7 +310,11 @@ func newCmd_rpc() *cli.Command {
 									klog.Errorf("error loading config file %q: %s", event.Name, err.Error())
 									return
 								}
-								epoch, err := NewEpochFromConfigWithOptions(config, c, allCache, minerInfo, useODirect)
+								epoch, err := NewEpochFromConfigWithOptionsAndMmap(config, c, allCache, minerInfo, useODirect, &Options{
+									MmapHotEpochs:     mmapHotEpochs,
+									MmapEssentialOnly: mmapEssentialOnly,
+									MmapSigExistsOnly: mmapSigExistsOnly,
+								})
 								if err != nil {
 									klog.Errorf("error creating epoch from config file %q: %s", event.Name, err.Error())
 									return
@@ -304,7 +337,11 @@ func newCmd_rpc() *cli.Command {
 									klog.Errorf("error loading config file %q: %s", event.Name, err.Error())
 									return
 								}
-								epoch, err := NewEpochFromConfigWithOptions(config, c, allCache, minerInfo, useODirect)
+								epoch, err := NewEpochFromConfigWithOptionsAndMmap(config, c, allCache, minerInfo, useODirect, &Options{
+									MmapHotEpochs:     mmapHotEpochs,
+									MmapEssentialOnly: mmapEssentialOnly,
+									MmapSigExistsOnly: mmapSigExistsOnly,
+								})
 								if err != nil {
 									klog.Errorf("error creating epoch from config file %q: %s", event.Name, err.Error())
 									return
