@@ -60,10 +60,10 @@ func (multi *MultiEpoch) findEpochNumberFromSignature(ctx context.Context, sig s
 
 	// Define tier thresholds from configuration
 	// We expect this to be handled upstream by the HOT TIER
-	tier1Start := 3  // Start from last-3
+	tier1Start := 0  // Start from last-3
 	tier1End := multi.options.Tier1EpochLimit
 	if tier1End <= 0 {
-		tier1End = 10 // default: last-10
+		tier1End = 5 // default: last-10
 	}
 	tier2Start := multi.options.Tier1EpochLimit
 	if tier2Start <= 0 {
@@ -71,13 +71,18 @@ func (multi *MultiEpoch) findEpochNumberFromSignature(ctx context.Context, sig s
 	}
 	tier2End := multi.options.Tier2EpochLimit
 	if tier2End <= 0 {
-		tier2End = 50 // default: last-50
+		tier2End = 30 // default: last-50
 	}
 
-	// Helper function to search a subset of epochs
-	searchEpochs := func(epochNumbers []uint64) (uint64, error) {
+	// Helper function to search a subset of epochs with specific concurrency
+	searchEpochs := func(epochNumbers []uint64, concurrency int) (uint64, error) {
 		if len(epochNumbers) == 0 {
 			return 0, ErrNotFound
+		}
+		
+		// Use provided concurrency, or default to EpochSearchConcurrency
+		if concurrency <= 0 {
+			concurrency = multi.options.EpochSearchConcurrency
 		}
 		
 		jobGroup := NewJobGroup[uint64]()
@@ -109,7 +114,7 @@ func (multi *MultiEpoch) findEpochNumberFromSignature(ctx context.Context, sig s
 				return 0, ErrNotFound
 			})
 		}
-		val, err := jobGroup.RunWithConcurrency(ctx, multi.options.EpochSearchConcurrency)
+		val, err := jobGroup.RunWithConcurrency(ctx, concurrency)
 		if err != nil {
 			errs, ok := err.(ErrorSlice)
 			if !ok {
@@ -135,7 +140,7 @@ func (multi *MultiEpoch) findEpochNumberFromSignature(ctx context.Context, sig s
 			tier1Epochs = tier1Epochs[:(tier1End - tier1Start + 1)]
 		}
 		klog.V(5).Infof("Searching tier 1: last-%d to last-%d epochs (%d-%d, %d epochs)", tier1Start, tier1End, tier1Epochs[len(tier1Epochs)-1], tier1Epochs[0], len(tier1Epochs))
-		if result, err := searchEpochs(tier1Epochs); err == nil {
+		if result, err := searchEpochs(tier1Epochs, multi.options.Tier1Concurrency); err == nil {
 			return result, nil
 		} else if !errors.Is(err, ErrNotFound) {
 			return 0, err
@@ -149,7 +154,7 @@ func (multi *MultiEpoch) findEpochNumberFromSignature(ctx context.Context, sig s
 			tier2Epochs = tier2Epochs[:(tier2End - tier2Start + 1)]
 		}
 		klog.V(5).Infof("Searching tier 2: last-%d to last-%d epochs (%d-%d, %d epochs)", tier2Start, tier2End, tier2Epochs[len(tier2Epochs)-1], tier2Epochs[0], len(tier2Epochs))
-		if result, err := searchEpochs(tier2Epochs); err == nil {
+		if result, err := searchEpochs(tier2Epochs, multi.options.Tier2Concurrency); err == nil {
 			return result, nil
 		} else if !errors.Is(err, ErrNotFound) {
 			return 0, err
@@ -160,7 +165,7 @@ func (multi *MultiEpoch) findEpochNumberFromSignature(ctx context.Context, sig s
 	if len(numbers) > tier2End {
 		tier3Epochs := numbers[tier2End:]
 		klog.V(5).Infof("Searching tier 3: remaining %d epochs (%d-%d)", len(tier3Epochs), tier3Epochs[len(tier3Epochs)-1], tier3Epochs[0])
-		if result, err := searchEpochs(tier3Epochs); err == nil {
+		if result, err := searchEpochs(tier3Epochs, multi.options.EpochSearchConcurrency); err == nil {
 			return result, nil
 		} else if !errors.Is(err, ErrNotFound) {
 			return 0, err

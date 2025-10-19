@@ -39,6 +39,8 @@ It supports the following flags:
 - `--watch`: When specified, all the provided epoch files and dirs will be watched for changes and the RPC server will automatically reload the data when changes are detected. Usage: `--watch` (boolean flag). This is useful when you want to provide just a folder and then add new epochs to it without having to restart the server.
 - `--epoch-load-concurrency=2`: How many epochs to load in parallel when starting the RPC server. Defaults to number of CPUs. This is useful when you have a lot of epochs and want to speed up the initial load time.
 - `--epoch-search-concurrency=3`: How many epochs to search in parallel when looking for data. Defaults to 3. This is useful for performance tuning when serving requests across multiple epochs.
+- `--tier1-epoch-limit=10`: Last N epochs to search first in tiered search. Defaults to 10. For 1000 epochs, this searches epochs 991-998 (last-3 to last-10).
+- `--tier2-epoch-limit=50`: Last N epochs to search second in tiered search. Defaults to 50. For 1000 epochs, this searches epochs 951-990 (last-10 to last-50).
 - `--max-cache=<megabytes>`: How much memory to use for caching. Defaults to 0 (no limit). This is useful when you want to limit the memory usage of the RPC server.
 - `--filecoin-api-address`: Filecoin API endpoint address for direct Filecoin retrievals, e.g. `--filecoin-api-address=https://api.node.glif.io`
 
