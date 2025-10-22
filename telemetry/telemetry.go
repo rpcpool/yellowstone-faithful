@@ -88,10 +88,10 @@ func InitTelemetry(ctx context.Context, serviceName string) (func(), error) {
 
 	klog.Info("Telemetry initialized successfully")
 
-	// Return a cleanup function that uses the original context
+	// Return a cleanup function that uses a background context to avoid cancellation issues
 	return func() {
-		// Use a shorter timeout for telemetry shutdown to avoid blocking the main shutdown
-		shutdownCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		// Use a background context with timeout to avoid being canceled by the main context
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		if err := tp.Shutdown(shutdownCtx); err != nil {
 			klog.Errorf("Error shutting down telemetry provider: %v", err)

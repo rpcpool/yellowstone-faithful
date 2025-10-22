@@ -103,7 +103,8 @@ func (me *MultiEpoch) ListenAndServeGRPC(ctx context.Context, listenOn string) e
 		return nil
 	case <-ctx.Done():
 		klog.Info("gRPC server context cancelled, shutting down...")
-		return ctx.Err()
+		// Return nil instead of ctx.Err() to indicate graceful shutdown
+		return nil
 	}
 }
 
