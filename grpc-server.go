@@ -64,18 +64,18 @@ func (me *MultiEpoch) ListenAndServeGRPC(ctx context.Context, listenOn string) e
 		<-ctx.Done()
 		klog.Info("gRPC server shutting down...")
 		defer klog.Info("gRPC server shut down")
-		
+
 		// Create a timeout context for graceful shutdown
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-		
+
 		// Use a channel to signal when GracefulStop completes
 		done := make(chan struct{})
 		go func() {
 			grpcServer.GracefulStop()
 			close(done)
 		}()
-		
+
 		// Wait for either graceful shutdown to complete or timeout
 		select {
 		case <-done:
@@ -87,13 +87,13 @@ func (me *MultiEpoch) ListenAndServeGRPC(ctx context.Context, listenOn string) e
 	}()
 
 	klog.Infof("gRPC server starting with telemetry enabled on %s", listenOn)
-	
+
 	// Start the server in a goroutine so we can handle shutdown properly
 	serverErr := make(chan error, 1)
 	go func() {
 		serverErr <- grpcServer.Serve(lis)
 	}()
-	
+
 	// Wait for either server error or context cancellation
 	select {
 	case err := <-serverErr:
