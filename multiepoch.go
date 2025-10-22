@@ -252,8 +252,15 @@ func (m *MultiEpoch) ListenAndServe(ctx context.Context, listenOn string, lsConf
 		<-ctx.Done()
 		klog.Info("RPC server shutting down...")
 		defer klog.Info("RPC server shut down")
-		if err := s.ShutdownWithContext(ctx); err != nil {
+		
+		// Create a timeout context for shutdown
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		
+		if err := s.ShutdownWithContext(shutdownCtx); err != nil {
 			klog.Errorf("Error while shutting down RPC server: %s", err)
+		} else {
+			klog.Info("RPC server gracefully stopped")
 		}
 	}()
 	ln, err := reuseport.Listen("tcp4", listenOn)
