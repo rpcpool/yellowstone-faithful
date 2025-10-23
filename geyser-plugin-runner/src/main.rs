@@ -1,17 +1,13 @@
 use {
     crossbeam_channel::unbounded,
     demo_rust_ipld_car::{node, utils},
+    solana_message::VersionedMessage,
+    solana_pubkey::Pubkey,
     solana_reward_info::{RewardInfo, RewardType},
     solana_rpc::optimistically_confirmed_bank_tracker::SlotNotification,
     solana_runtime::bank::KeyedRewardsAndNumPartitions,
-    std::{
-        collections::HashSet,
-        convert::{TryFrom, TryInto},
-        env::args,
-        error::Error,
-        io::BufReader,
-        str::FromStr,
-    },
+    solana_transaction_error::AddressLoaderError,
+    std::{convert::TryInto, env::args, error::Error, io::BufReader, str::FromStr},
 };
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -93,42 +89,35 @@ fn main() -> Result<(), Box<dyn Error>> {
                                 metadata.try_into()?;
 
                            {
-                                // TODO: test address loading.
-                                let dummy_address_loader = MessageAddressLoaderFromTxMeta::new(as_native_metadata.clone());
-                                let sanitized_tx = match  parsed.version() {
-                                    solana_transaction::versioned::TransactionVersion::Number(_)=> {
-                                        let message_hash = parsed.verify_and_hash_message()?;
-                                        let versioned_sanitized_tx= solana_transaction::versioned::sanitized::SanitizedVersionedTransaction::try_from(parsed)?;
-                                        solana_transaction::sanitized::SanitizedTransaction::try_new(
-                                            versioned_sanitized_tx,
-                                            message_hash,
-                                            false,
-                                            dummy_address_loader,
-                                            &HashSet::default(),
-                                        )
-                                    },
-                                    solana_transaction::versioned::TransactionVersion::Legacy(_legacy)=> {
-                                        solana_transaction::sanitized::SanitizedTransaction::try_from_legacy_transaction(
-                                            parsed.into_legacy_transaction().unwrap(),
-                                            &HashSet::default(),
-                                        )
-                                    },
-                                };
-                                if sanitized_tx.is_err() {
-                                    panic!(
-                                        "Failed to create SanitizedTransaction, error: {:?}",
-                                        sanitized_tx.err()
-                                    );
+                                let message_hash = parsed.verify_and_hash_message()?;
+
+                                // Simple vote transaction meets these conditions:
+                                // 1. has 1 or 2 signatures;
+                                // 2. is legacy message;
+                                // 3. has only one instruction;
+                                // 4. which must be Vote instruction;
+                                let mut is_vote = false;
+                                if let VersionedMessage::Legacy(legacy_message) = parsed.clone().message {
+                                    let instructions_len = legacy_message.instructions.len();
+                                    if instructions_len == 1 {
+                                            let program_id_index = legacy_message.instructions[0].program_id_index as usize;
+                                            if let Some(program_id) = legacy_message.account_keys.get(program_id_index) {
+                                                if program_id == &Pubkey::from_str_const("Vote111111111111111111111111111111111111111") {
+                                                    is_vote = true;
+                                                }
+                                            }
+                                    }
                                 }
-                                let sanitized_tx = sanitized_tx.unwrap();
 
                                 transaction_notifier
                                         .notify_transaction(
                                             block.slot,
                                             transaction.index.unwrap() as usize,
-                                            sanitized_tx.signature(),
+                                            parsed.signatures.first().expect("A transaction should contains at least one signature"),
+                                            &message_hash,
+                                            is_vote,
                                             &as_native_metadata,
-                                            &sanitized_tx,
+                                            &parsed,
                                         );
                             }
                         }
@@ -262,7 +251,7 @@ impl solana_message::AddressLoader for MessageAddressLoaderFromTxMeta {
     fn load_addresses(
         self,
         _lookups: &[solana_message::v0::MessageAddressTableLookup],
-    ) -> Result<solana_message::v0::LoadedAddresses, solana_message::AddressLoaderError> {
+    ) -> Result<solana_message::v0::LoadedAddresses, AddressLoaderError> {
         Ok(self.tx_meta.loaded_addresses.clone())
     }
 }

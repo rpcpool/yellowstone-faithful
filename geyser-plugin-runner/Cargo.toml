@@ -23,6 +23,7 @@ solana-rpc = { workspace = true }
 solana-runtime = { workspace = true }
 solana-storage-proto = { workspace = true }
 solana-transaction-status = { workspace = true }
+solana-transaction-error = { workspace = true }
 solana-reward-info = { workspace = true }
 solana-hash = { workspace = true }
 solana-transaction = { workspace = true }

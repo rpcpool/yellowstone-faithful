@@ -133,6 +133,9 @@ impl GeyserPlugin for GeyserPluginDemo {
                 ReplicaTransactionInfoVersions::V0_0_2(transaction_info) => {
                     transaction_info.signature
                 }
+                ReplicaTransactionInfoVersions::V0_0_3(transaction_info) => {
+                    transaction_info.signature
+                }
             }
         );
         Ok(())
