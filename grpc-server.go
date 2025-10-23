@@ -94,8 +94,6 @@ func (multi *MultiEpoch) GetBlock(ctx context.Context, params *old_faithful_grpc
 	defer span.End()
 	span.SetAttributes(attribute.Int64("slot", int64(params.Slot)))
 
-	nogc := DontGC(ctx)
-
 	slot := params.Slot
 	epochNumber := slottools.CalcEpochForSlot(slot)
 	span.SetAttributes(attribute.Int64("epoch_number", int64(epochNumber)))
@@ -219,9 +217,6 @@ func (multi *MultiEpoch) GetBlock(ctx context.Context, params *old_faithful_grpc
 
 	resp := old_faithful_grpc.GetBlockResponse()
 	resp.Slot = uint64(block.Slot)
-	if !nogc {
-		defer old_faithful_grpc.PutBlockResponse(resp) // return to pool
-	}
 
 	hasRewards := block.HasRewards()
 	rewardsCid := block.Rewards.(cidlink.Link).Cid
@@ -269,9 +264,6 @@ func (multi *MultiEpoch) GetBlock(ctx context.Context, params *old_faithful_grpc
 					txResp.Index = ptrToUint64(uint64(pos))
 				}
 				allTransactions = append(allTransactions, txResp)
-				if !nogc {
-					defer old_faithful_grpc.PutTransaction(txResp) // return to pool
-				}
 			}
 		}
 

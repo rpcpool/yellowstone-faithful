@@ -26,5 +26,5 @@ fi
 EPOCH_DIR=${2:-.}
 
 set -x
-faithful-cli rpc --listen ":7999" \
+./bin/faithful-cli rpc --listen ":7999" --grpc-listen ":7998" \
      ${EPOCH_DIR}/epoch-${EPOCH}.yml
