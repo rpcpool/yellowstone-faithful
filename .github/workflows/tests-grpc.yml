@@ -109,7 +109,7 @@ jobs:
       uses: JarvusInnovations/background-action@v1
       with:
         run: ./bin/faithful-cli rpc --listen ":7999" --grpc-listen ":8999" --config /tmp/$EPOCH.yml
-        wait_on: |
+        wait-on: |
           http://localhost:7999
           http-get://localhost:7999/health
         wait-for: 5s
