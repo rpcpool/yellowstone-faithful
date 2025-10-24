@@ -169,10 +169,10 @@ jobs:
 
         #grpcurl ${{ env.proto_flag }} ${{ env.endpoint }} OldFaithful.OldFaithful/GetSlot
 
-        grpcurl ${{ env.proto_flag }} ${{ env.endpoint }} -d '"slot": ${{ env.getBlock }}' OldFaithful.OldFaithful/GetBlock 
+        grpcurl ${{ env.proto_flag }} -d '"slot": ${{ env.getBlock }}' ${{ env.endpoint }} OldFaithful.OldFaithful/GetBlock 
 
-        grpcurl ${{ env.proto_flag }} ${{ env.endpoint }} -d '"slot": ${{ env.getBlock }}' OldFaithful.OldFaithful/GetBlockTime
+        grpcurl ${{ env.proto_flag }} -d '"slot": ${{ env.getBlock }}' ${{ env.endpoint }} OldFaithful.OldFaithful/GetBlockTime
 
-        grpcurl ${{ env.proto_flag }} ${{ env.endpoint }} -d '"signature": "${{ env.getTxSig }}" OldFaithful.OldFaithful/GetTransaction
+        grpcurl ${{ env.proto_flag }} -d '"signature": "${{ env.getTxSig }}" ${{ env.endpoint }} OldFaithful.OldFaithful/GetTransaction
 
         grpcurl ${{ env.proto_flag }} ${{ env.endpoint }} OldFaithful.OldFaithful/GetFirstAvailableBlock
