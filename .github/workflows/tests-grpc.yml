@@ -33,7 +33,6 @@ jobs:
 
     - name: Install system dependencies
       run: |
-        sudo apt-get update
         sudo apt-get install -y \
           build-essential \
           libssl-dev \
@@ -130,13 +129,13 @@ jobs:
 
         curl localhost:7999 -H "Content-Type: application/json" -d '
           {"jsonrpc":"2.0","id":1, "method":"getBlock","params": [${{ env.getBlock }}]}
-          ' -s | jq -r .result
+          ' -s | jq -r .
 
         curl localhost:7999 -H "Content-Type: application/json" -d '
           {"jsonrpc":"2.0","id":1, "method":"getBlockHeight"}
-          ' -s | jq -r .result
+          ' -s | jq -r .
 
         curl localhost:7999 -H "Content-Type: application/json" -d '
           {"jsonrpc":"2.0","id":1, "method":"getTransaction","params": ["${{ env.getTxSig }}"]}
-          ' -s | jq -r .result
+          ' -s | jq -r .
 
