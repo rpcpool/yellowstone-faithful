@@ -43,7 +43,7 @@ jobs:
 
     - name: Install grpcurl
       run: |
-        wget https://github.com/fullstorydev/grpcurl/releases/download/v${{ env.GRPC_CURL_VERSION }}/grpcurl_${{ env.GRPC_CURL_VERSION }}_linux_x86_64.tar.gz
+        wget -q https://github.com/fullstorydev/grpcurl/releases/download/v${{ env.GRPC_CURL_VERSION }}/grpcurl_${{ env.GRPC_CURL_VERSION }}_linux_x86_64.tar.gz
         tar -xzf grpcurl_${{ env.GRPC_CURL_VERSION }}_linux_x86_64.tar.gz
         sudo mv grpcurl /usr/local/bin/
 
@@ -77,8 +77,7 @@ jobs:
             "$HOSTNAME/$EPOCH/epoch-$EPOCH-$BAFY-mainnet-$INDEX.index"
         done
 
-        wget -O $INDEX_FOLDER/genesis.tar.bz2 https://api.mainnet-beta.solana.com/genesis.tar.bz2
-
+        wget -q -O $INDEX_FOLDER/genesis.tar.bz2 https://api.mainnet-beta.solana.com/genesis.tar.bz2
 
         cat << EOF > /tmp/$EPOCH.yml
         epoch: $EPOCH
@@ -103,11 +102,16 @@ jobs:
             uri: $(ls $INDEX_FOLDER/epoch-$EPOCH-$BAFY-mainnet-sig-exists.index)
         EOF
 
+        cat /tmp/$EPOCH.yml
+        ls -lha /tmp/epoch0
+
     - name: Start faithful-cli server
       uses: JarvusInnovations/background-action@v1
       with:
         run: ./bin/faithful-cli rpc --listen ":7999" --grpc-listen ":8999" --config /tmp/$EPOCH.yml
-        wait_on: http://localhost:7999
+        wait_on: |
+          http://localhost:7999
+          http-get://localhost:7999/health
         wait-for: 5s
 
     - name: Run gRPC tests
