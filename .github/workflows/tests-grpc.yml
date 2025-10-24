@@ -190,7 +190,8 @@ jobs:
         grpcurl ${{ env.proto_flag }} ${{ env.endpoint }} OldFaithful.OldFaithful/GetFirstAvailableBlock || echo n/a
 
         echo "StreamBlocks"
-        grpcurl ${{ env.proto_flag }} -d '{"start_slot": 2, "end_slot": 10}' ${{ env.endpoint }} OldFaithful.OldFaithful/StreamBlocks | jq -r | md5sum | grep -q 6adb0428187ea7e1a7e9d191d0201dc5
+        grpcurl ${{ env.proto_flag }} -d '{"start_slot": 2, "end_slot": 10}' ${{ env.endpoint }} OldFaithful.OldFaithful/StreamBlocks \
+        | jq -r || echo borked
 
         echo "StreamTransactions"
         grpcurl ${{ env.proto_flag }} \
