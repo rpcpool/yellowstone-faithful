@@ -114,11 +114,10 @@ jobs:
 
     - name: Run HTTP tests
       env:
-        getTxSig="3qEUUW9fKaZpECvJ87QfZMyVMQjR1GBKnuCDqJMCgxw1sCzrWSU6q5ydEiX1JEJPbQDGaNoxULxmCW6f4mAnNRo2"
-        getBlock=1
+        getTxSig: 3qEUUW9fKaZpECvJ87QfZMyVMQjR1GBKnuCDqJMCgxw1sCzrWSU6q5ydEiX1JEJPbQDGaNoxULxmCW6f4mAnNRo2
+        getBlock: 1
       run: |
-        
-        
+  
         sleep 5s
 
         curl localhost:7999 -H "Content-Type: application/json" -d '
