@@ -158,5 +158,5 @@ jobs:
         echo "getTransaction"
         curl localhost:7999 -H "Content-Type: application/json" -d '
           {"jsonrpc":"2.0","id":1, "method":"getTransaction","params": ["${{ env.getTxSig }}"]}
-          ' -s | jq -r . | md5sum | grep -q 0a4a47cd17dc19911a638f72f77b18cd || exit 1
+          ' -s | jq -r . | md5sum | grep -q 17d7cbf3d719b19ce3f4fe35a048f1fc || exit 1
 
