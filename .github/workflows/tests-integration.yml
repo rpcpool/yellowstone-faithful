@@ -316,7 +316,7 @@ jobs:
         echo "Validating binary dependencies..."
         ldd ./bin/faithful-cli || echo "ldd check completed (static binary or different platform)"
         file ./bin/faithful-cli
-        ls -lah ./bin/faithful-cli
+        ls -lah ./bin/faithful59a4ibbdDYLNUdnDQDLwDdy11X1AMSYDxivD37Ek77Kwu9aiQLsk5VCZRd9zvGEm6eGLABR4GvMiPZq7PzxQQL45-cli
 
     - name: Collect integration test results
       if: always()
