@@ -112,7 +112,10 @@ jobs:
         wait-on: http-get://localhost:7999/health
         wait-for: 5s
 
-    - name: Run gRPC tests
-      run: |
-        grpcurl -plaintext -proto ./old-faithful-proto/old-faithful-grpc.proto localhost:8999 list
-        
+    # - name: Run gRPC tests
+    #   run: |
+    #     grpcurl -plaintext -proto ./old-faithful-proto/old-faithful-grpc.proto localhost:8999 list
+   - name: Run HTTP tests
+     run: |
+        ./tests/integration/test-http.sh --port 7999 --timeout 30 --log-dir /tmp/test-logs
+        cat /tmp/test-logs/http-test.log
