@@ -108,7 +108,7 @@ jobs:
     - name: Start faithful-cli server
       uses: JarvusInnovations/background-action@v1
       with:
-        run: ./bin/faithful-cli rpc --listen ":7999" --grpc-listen ":8999" --watch /tmp/$EPOCH.yml &
+        run: ./bin/faithful-cli -v=2 rpc --listen ":7999" --grpc-listen ":8999" -vv --watch /tmp/$EPOCH.yml &
         wait-on: http-get://localhost:7999/health
         wait-for: 5s
 
@@ -118,6 +118,8 @@ jobs:
         getTxSig="3qEUUW9fKaZpECvJ87QfZMyVMQjR1GBKnuCDqJMCgxw1sCzrWSU6q5ydEiX1JEJPbQDGaNoxULxmCW6f4mAnNRo2"
         getBlock=1
         Address="Vote111111111111111111111111111111111111111"
+        
+        sleep 1s
 
         curl localhost:7999 -H "Content-Type: application/json" -d '
           {"jsonrpc":"2.0","id":1, "method":"getVersion"}
