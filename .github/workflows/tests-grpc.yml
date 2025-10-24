@@ -161,17 +161,18 @@ jobs:
 
     - name: Run gRPC tests
       env: 
-        proto_flag: -proto ../old-faithful-proto/proto/old-faithful.proto
+        proto_flag: -proto old-faithful-proto/proto/old-faithful.proto
+        endpoint: -plaintext localhost:8999
       run: |
         
-        grpcurl ${{ env.proto_flag }} -plaintext localhost:8999 OldFaithful.OldFaithful/GetVersion
+        grpcurl ${{ env.proto_flag }} ${{ env.endpoint }} OldFaithful.OldFaithful/GetVersion
 
-        grpcurl ${{ env.proto_flag }} -plaintext localhost:8999 OldFaithful.OldFaithful/GetSlot
+        grpcurl ${{ env.proto_flag }} ${{ env.endpoint }} OldFaithful.OldFaithful/GetSlot
 
-        grpcurl ${{ env.proto_flag }} -plaintext localhost:8999 -d '"slot": ${{ env.getBlock }}' OldFaithful.OldFaithful/GetBlock 
+        grpcurl ${{ env.proto_flag }} ${{ env.endpoint }} -d '"slot": ${{ env.getBlock }}' OldFaithful.OldFaithful/GetBlock 
 
-        grpcurl ${{ env.proto_flag }} -plaintext localhost:8999 -d '"slot": ${{ env.getBlock }}' OldFaithful.OldFaithful/GetBlockTime
+        grpcurl ${{ env.proto_flag }} ${{ env.endpoint }} -d '"slot": ${{ env.getBlock }}' OldFaithful.OldFaithful/GetBlockTime
 
-        grpcurl ${{ env.proto_flag }} -plaintext localhost:8999 -d '"signature": "${{ env.getTxSig }}" OldFaithful.OldFaithful/GetTransaction
+        grpcurl ${{ env.proto_flag }} ${{ env.endpoint }} -d '"signature": "${{ env.getTxSig }}" OldFaithful.OldFaithful/GetTransaction
 
-        grpcurl ${{ env.proto_flag }} -plaintext localhost:8999 OldFaithful.OldFaithful/GetFirstAvailableBlock
+        grpcurl ${{ env.proto_flag }} ${{ env.endpoint }} OldFaithful.OldFaithful/GetFirstAvailableBlock
