@@ -21,6 +21,12 @@ jobs:
     timeout-minutes: 10
     
     steps:
+    # this will be done by default from November 10, slows down CI runs
+    # https://github.com/actions/runner-images/issues/13213
+    - name: disable man-db
+      run: |
+        sudo rm /var/lib/man-db/auto-update
+
     - name: Checkout code
       uses: actions/checkout@v4
       with:
