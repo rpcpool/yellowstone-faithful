@@ -113,7 +113,7 @@ jobs:
 
     - name: Run HTTP tests
       env:
-        getTxSig: 3qEUUW9fKaZpECvJ87QfZMyVMQjR1GBKnuCDqJMCgxw1sCzrWSU6q5ydEiX1JEJPbQDGaNoxULxmCW6f4mAnNRo2
+        getTxSig: 39V8tR2Q8Ar3WwMBfVTRPFr7AakLHy5wp7skJNBL7ET6ARoikqc1TaMiuXEtHiNPLQKoeiVr5XnKH8QtjdonN4yM
         getBlock: 1
       run: |
   
@@ -128,11 +128,19 @@ jobs:
           ' -s | jq -r .result
 
         curl localhost:7999 -H "Content-Type: application/json" -d '
+          {"jsonrpc":"2.0","id":1, "method":"getGenesisHash"}
+          ' -s | jq -r .result
+
+        curl localhost:7999 -H "Content-Type: application/json" -d '
+        {"jsonrpc":"2.0","id":1, "method":"getFirstAvailableBlock"}
+        ' -s | jq -r .result
+
+        curl localhost:7999 -H "Content-Type: application/json" -d '
           {"jsonrpc":"2.0","id":1, "method":"getBlock","params": [${{ env.getBlock }}]}
           ' -s | jq -r .
 
         curl localhost:7999 -H "Content-Type: application/json" -d '
-          {"jsonrpc":"2.0","id":1, "method":"getBlockHeight"}
+          {"jsonrpc":"2.0","id":1, "method":"getBlockTime","params": [${{ env.getBlock }}]}
           ' -s | jq -r .
 
         curl localhost:7999 -H "Content-Type: application/json" -d '
