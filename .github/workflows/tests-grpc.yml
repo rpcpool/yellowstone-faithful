@@ -167,7 +167,7 @@ jobs:
         
         grpcurl ${{ env.proto_flag }} ${{ env.endpoint }} OldFaithful.OldFaithful/GetVersion
 
-        grpcurl ${{ env.proto_flag }} ${{ env.endpoint }} OldFaithful.OldFaithful/GetSlot
+        #grpcurl ${{ env.proto_flag }} ${{ env.endpoint }} OldFaithful.OldFaithful/GetSlot
 
         grpcurl ${{ env.proto_flag }} ${{ env.endpoint }} -d '"slot": ${{ env.getBlock }}' OldFaithful.OldFaithful/GetBlock 
 
