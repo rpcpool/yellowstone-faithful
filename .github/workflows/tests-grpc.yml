@@ -169,7 +169,9 @@ jobs:
 
         #grpcurl ${{ env.proto_flag }} ${{ env.endpoint }} OldFaithful.OldFaithful/GetSlot
 
-        grpcurl ${{ env.proto_flag }} -d '{"slot": ${{ env.getBlock }}}' ${{ env.endpoint }} OldFaithful.OldFaithful/GetBlock 
+        # 1 is broken?
+        #grpcurl ${{ env.proto_flag }} -d '{"slot": ${{ env.getBlock }}}' ${{ env.endpoint }} OldFaithful.OldFaithful/GetBlock 
+        grpcurl ${{ env.proto_flag }} -d '{"slot": 0}' ${{ env.endpoint }} OldFaithful.OldFaithful/GetBlock
 
         grpcurl ${{ env.proto_flag }} -d '{"slot": ${{ env.getBlock }}}' ${{ env.endpoint }} OldFaithful.OldFaithful/GetBlockTime
 
