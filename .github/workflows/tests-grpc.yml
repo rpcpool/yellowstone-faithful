@@ -84,7 +84,7 @@ jobs:
         version: 1
         data:
           car:
-            uri: http://$SERVER/$EPOCH/epoch-$EPOCH.car
+            uri: https://files.old-faithful.net/$EPOCH/epoch-$EPOCH.car
           filecoin:
             enable: false
         genesis:
