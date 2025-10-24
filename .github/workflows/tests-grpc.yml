@@ -133,30 +133,30 @@ jobs:
         echo "getSlot"
         curl localhost:7999 -H "Content-Type: application/json" -d '
           {"jsonrpc":"2.0","id":1, "method":"getSlot"}
-          ' -s | jq -r .result
+          ' -s | jq -r .result | grep -q 431999 || exit 1
 
         echo "getGenesisHash"
         curl localhost:7999 -H "Content-Type: application/json" -d '
           {"jsonrpc":"2.0","id":1, "method":"getGenesisHash"}
-          ' -s | jq -r .result
+          ' -s | jq -r .result | grep -q "5eykt4UsFv8P8NJdTREpY1vzqKqZKvLmJpnLXtQbfky" || exit 1
 
         echo "getFirstAvailableBlock"
         curl localhost:7999 -H "Content-Type: application/json" -d '
         {"jsonrpc":"2.0","id":1, "method":"getFirstAvailableBlock"}
-        ' -s | jq -r .result
+        ' -s | jq -r .result | grep -q 0 || exit 1
 
         echo "getBlock"
         curl localhost:7999 -H "Content-Type: application/json" -d '
           {"jsonrpc":"2.0","id":1, "method":"getBlock","params": [${{ env.getBlock }}]}
-          ' -s | jq -r .
+          ' -s | jq -r . 
 
         echo "getBlockTime"
         curl localhost:7999 -H "Content-Type: application/json" -d '
           {"jsonrpc":"2.0","id":1, "method":"getBlockTime","params": [${{ env.getBlock }}]}
-          ' -s | jq -r .
+          ' -s | jq -r .result | grep -q null || exit 1
 
         echo "getTransaction"
         curl localhost:7999 -H "Content-Type: application/json" -d '
           {"jsonrpc":"2.0","id":1, "method":"getTransaction","params": ["${{ env.getTxSig }}"]}
-          ' -s | jq -r .
+          ' -s | jq -r . | md5sum | grep -q 0a4a47cd17dc19911a638f72f77b18cd || exit 1
 
