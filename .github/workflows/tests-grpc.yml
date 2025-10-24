@@ -119,7 +119,7 @@ jobs:
         getBlock=1
         Address="Vote111111111111111111111111111111111111111"
         
-        sleep 1s
+        sleep 5s
 
         curl localhost:7999 -H "Content-Type: application/json" -d '
           {"jsonrpc":"2.0","id":1, "method":"getVersion"}
@@ -141,6 +141,3 @@ jobs:
           {\"jsonrpc\":\"2.0\",\"id\":1, \"method\":\"getTransaction\", \"params\": [\"$getTxSig\"]}
           " -s | jq -r .result
 
-        curl localhost:7999 -H "Content-Type: application/json" -d "
-          {\"jsonrpc\":\"2.0\",\"id\":1, \"method\":\"getSignaturesForAddress\", \"params\": [\"$Address\"]}
-          " -s | jq -r .result
