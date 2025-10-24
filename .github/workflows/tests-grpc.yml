@@ -138,7 +138,7 @@ jobs:
         echo "getGenesisHash"
         curl localhost:7999 -H "Content-Type: application/json" -d '
           {"jsonrpc":"2.0","id":1, "method":"getGenesisHash"}
-          ' -s | jq -r .result | grep -q "5eykt4UsFv8P8NJdTREpY1vzqKqZKvLmJpnLXtQbfky" || exit 1
+          ' -s | jq -r .result | grep -q "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d" || exit 1
 
         echo "getFirstAvailableBlock"
         curl localhost:7999 -H "Content-Type: application/json" -d '
