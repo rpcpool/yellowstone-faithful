@@ -13,6 +13,8 @@ env:
   RUST_VERSION: 'stable'
   EPOCH: 0
   GRPC_CURL_VERSION: '1.8.9'
+  getTxSig: 39V8tR2Q8Ar3WwMBfVTRPFr7AakLHy5wp7skJNBL7ET6ARoikqc1TaMiuXEtHiNPLQKoeiVr5XnKH8QtjdonN4yM
+  getBlock: 1
 
 jobs:
   integration-tests:
@@ -118,9 +120,6 @@ jobs:
         wait-for: 5s
 
     - name: Run HTTP tests
-      env:
-        getTxSig: 39V8tR2Q8Ar3WwMBfVTRPFr7AakLHy5wp7skJNBL7ET6ARoikqc1TaMiuXEtHiNPLQKoeiVr5XnKH8QtjdonN4yM
-        getBlock: 1
       run: |
   
         sleep 5s
@@ -160,3 +159,19 @@ jobs:
           {"jsonrpc":"2.0","id":1, "method":"getTransaction","params": ["${{ env.getTxSig }}"]}
           ' -s | jq -r . | md5sum | grep -q 17d7cbf3d719b19ce3f4fe35a048f1fc || exit 1
 
+    - name: Run gRPC tests
+      env: 
+        proto_flag: -proto ../old-faithful-proto/proto/old-faithful.proto
+      run: |
+        
+        grpcurl ${{ env.proto_flag }} -plaintext localhost:8999 OldFaithful.OldFaithful/GetVersion
+
+        grpcurl ${{ env.proto_flag }} -plaintext localhost:8999 OldFaithful.OldFaithful/GetSlot
+
+        grpcurl ${{ env.proto_flag }} -plaintext localhost:8999 -d '"slot": ${{ env.getBlock }}' OldFaithful.OldFaithful/GetBlock 
+
+        grpcurl ${{ env.proto_flag }} -plaintext localhost:8999 -d '"slot": ${{ env.getBlock }}' OldFaithful.OldFaithful/GetBlockTime
+
+        grpcurl ${{ env.proto_flag }} -plaintext localhost:8999 -d '"signature": "${{ env.getTxSig }}" OldFaithful.OldFaithful/GetTransaction
+
+        grpcurl ${{ env.proto_flag }} -plaintext localhost:8999 OldFaithful.OldFaithful/GetFirstAvailableBlock
