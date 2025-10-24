@@ -194,5 +194,4 @@ jobs:
         | jq -r | md5sum || echo borked
 
         echo "StreamTransactions"
-        grpcurl ${{ env.proto_flag }} \
-          -d '{"start_slot": 2, "end_slot": 3, "filter": {"vote": true, "failed": false}}' ${{ env.endpoint }} OldFaithful.OldFaithful/StreamTransactions | jq -r | md5sum | grep -q ef4ede37466326b25df41babf60d9037 || echo borked
+        grpcurl ${{ env.proto_flag }} -d '{"start_slot": 2, "end_slot": 3, "filter": {"vote": true, "failed": false}}' ${{ env.endpoint }} OldFaithful.OldFaithful/StreamTransactions | jq -r | md5sum | grep -q ef4ede37466326b25df41babf60d9037 || echo borked
