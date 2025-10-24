@@ -113,11 +113,11 @@ jobs:
         wait-for: 5s
 
     - name: Run HTTP tests
-      run: |
-        
+      env:
         getTxSig="3qEUUW9fKaZpECvJ87QfZMyVMQjR1GBKnuCDqJMCgxw1sCzrWSU6q5ydEiX1JEJPbQDGaNoxULxmCW6f4mAnNRo2"
         getBlock=1
-        Address="Vote111111111111111111111111111111111111111"
+      run: |
+        
         
         sleep 5s
 
@@ -130,14 +130,14 @@ jobs:
           ' -s | jq -r .result
 
         curl localhost:7999 -H "Content-Type: application/json" -d '
-          {"jsonrpc":"2.0","id":1, "method":"getBlock","params": [$getBlock]}
+          {"jsonrpc":"2.0","id":1, "method":"getBlock","params": [${{ env.getBlock }}]}
           ' -s | jq -r .result
 
         curl localhost:7999 -H "Content-Type: application/json" -d '
           {"jsonrpc":"2.0","id":1, "method":"getBlockHeight"}
           ' -s | jq -r .result
 
-        curl localhost:7999 -H "Content-Type: application/json" -d "
-          {\"jsonrpc\":\"2.0\",\"id\":1, \"method\":\"getTransaction\", \"params\": [\"$getTxSig\"]}
-          " -s | jq -r .result
+        curl localhost:7999 -H "Content-Type: application/json" -d '
+          {"jsonrpc":"2.0","id":1, "method":"getTransaction","params": ["${{ env.getTxSig }}"]}
+          ' -s | jq -r .result
 
