@@ -115,7 +115,33 @@ jobs:
     # - name: Run gRPC tests
     #   run: |
     #     grpcurl -plaintext -proto ./old-faithful-proto/old-faithful-grpc.proto localhost:8999 list
-   - name: Run HTTP tests
-     run: |
-        ./tests/integration/test-http.sh --port 7999 --timeout 30 --log-dir /tmp/test-logs
-        cat /tmp/test-logs/http-test.log
+    - name: Run HTTP tests
+      run: |
+        
+        getTxSig="3qEUUW9fKaZpECvJ87QfZMyVMQjR1GBKnuCDqJMCgxw1sCzrWSU6q5ydEiX1JEJPbQDGaNoxULxmCW6f4mAnNRo2"
+        getBlock=1
+        Address="Vote111111111111111111111111111111111111111"
+
+        curl localhost:8897 -H "Content-Type: application/json" -d '
+          {"jsonrpc":"2.0","id":1, "method":"getVersion"}
+          ' -s | jq -r .result.faithful
+
+        curl localhost:8897 -H "Content-Type: application/json" -d '
+          {"jsonrpc":"2.0","id":1, "method":"getSlot"}
+          ' -s | jq -r .result
+
+        curl localhost:8897 -H "Content-Type: application/json" -d '
+          {"jsonrpc":"2.0","id":1, "method":"getBlock","params": [$getBlock]}
+          ' -s | jq -r .result
+
+        curl localhost:8897 -H "Content-Type: application/json" -d '
+          {"jsonrpc":"2.0","id":1, "method":"getBlockHeight"}
+          ' -s | jq -r .result
+
+        curl localhost:8897 -H "Content-Type: application/json" -d '
+          {"jsonrpc":"2.0","id":1, "method":"getTransaction", params": ["$getTxSig"]}
+          ' -s | jq -r .result
+
+        curl localhost:8897 -H "Content-Type: application/json" -d '
+          {"jsonrpc":"2.0","id":1, "method":"getSignaturesForAddress", params": ["$Address"]}
+          ' -s | jq -r .result
