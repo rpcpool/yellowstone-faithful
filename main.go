@@ -69,6 +69,11 @@ func main() {
 	sort.Sort(cli.CommandsByName(app.Commands))
 
 	if err := app.RunContext(ctx, os.Args); err != nil {
+		// Don't treat context cancellation as a fatal error during shutdown
+		if err == context.Canceled {
+			klog.Info("Application shutdown completed")
+			return
+		}
 		klog.Fatal(err)
 	}
 }
