@@ -291,7 +291,6 @@ func main() {
 			return ctx.Err()
 		default:
 		}
-		defer singleBlockDag.Put() // ensure resources are released
 		blocks, err := singleBlockDag.Blocks()
 		if err != nil {
 			slog.Error("Failed to get blocks from DataAndCidSlice", "error", err, "carpath", carpath)
