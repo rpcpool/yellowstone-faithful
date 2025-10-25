@@ -318,7 +318,7 @@ func main() {
 		_ = parsedNodes
 		defer func() {
 			// NOTE: If you use this dag BEYOND this function, you need to remove this line, and call dag.Put() yourself later.
-			singleBlockDag.Put()
+			singleBlockDag.Put() // ensure resources are released
 			parsedNodes.Put()
 		}()
 
@@ -422,8 +422,7 @@ func openURI(pathOrURL string) (io.ReadCloser, *atomic.Uint64, error) {
 		}
 		bytecounter := new(atomic.Uint64)
 		countingReader := NewCountingReader(reader, bytecounter)
-		buf := bufio.NewReaderSize(countingReader, MiB*50)
-		return io.NopCloser(buf), bytecounter, nil
+		return countingReader, bytecounter, nil
 		// return stream, nil
 	}
 	// {
@@ -440,12 +439,13 @@ func openURI(pathOrURL string) (io.ReadCloser, *atomic.Uint64, error) {
 }
 
 type CountingReader struct {
-	reader io.Reader
-	count  *atomic.Uint64
+	originalReader io.ReadCloser
+	bufReader      *bufio.Reader
+	count          *atomic.Uint64
 }
 
 func (cr *CountingReader) Read(p []byte) (n int, err error) {
-	n, err = cr.reader.Read(p)
+	n, err = cr.bufReader.Read(p)
 	if n > 0 {
 		cr.count.Add(uint64(n))
 	}
@@ -453,16 +453,17 @@ func (cr *CountingReader) Read(p []byte) (n int, err error) {
 }
 
 func (cr *CountingReader) Close() error {
-	if closer, ok := cr.reader.(io.Closer); ok {
+	if closer, ok := cr.originalReader.(io.Closer); ok {
 		return closer.Close()
 	}
 	return nil
 }
 
-func NewCountingReader(reader io.Reader, count *atomic.Uint64) *CountingReader {
+func NewCountingReader(reader io.ReadCloser, count *atomic.Uint64) *CountingReader {
 	return &CountingReader{
-		reader: reader,
-		count:  count,
+		originalReader: reader,
+		bufReader:      bufio.NewReaderSize(reader, MiB*50),
+		count:          count,
 	}
 }
 
