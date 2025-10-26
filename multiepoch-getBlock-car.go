@@ -114,8 +114,9 @@ func (multi *MultiEpoch) handleGetBlock_car(ctx context.Context, conn *requestCo
 	// TODO: the parent object might be in the previous epoch, so we need to handle that case.
 
 	offsetParent, parentCid, err := func() (uint64, cid.Cid, error) {
-		if parentSlot == 0 {
-			return epochHandler.carHeaderSize, cid.Cid{}, nil // genesis has no parent
+		if slot == 0 {
+			// genesis block (block 0) has no parent
+			return epochHandler.carHeaderSize, cid.Cid{}, nil
 		}
 		if parentIsInPreviousEpoch {
 			return epochHandler.carHeaderSize, cid.Cid{}, nil
