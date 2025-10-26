@@ -145,7 +145,7 @@ jobs:
         ' -s | jq -r .result | grep -q 0 || exit 1
 
         echo "getBlock"
-        curl localhost:7999 -H "Content-Type: application/json" -d '
+        curl localhost:7999 -H "Content-Typ e: application/json" -d '
           {"jsonrpc":"2.0","id":1, "method":"getBlock","params": [${{ env.getBlock }}]}
           ' -s | jq -r . 
 
@@ -173,12 +173,12 @@ jobs:
         grpcurl ${{ env.proto_flag }} ${{ env.endpoint }} OldFaithful.OldFaithful/GetVersion
 
         echo "GetSlot"
-        grpcurl ${{ env.proto_flag }} ${{ env.endpoint }} OldFaithful.OldFaithful/GetSlot || echo n/a
+        grpcurl ${{ env.proto_flag }} ${{ env.endpoint }} OldFaithful.OldFaithful/GetSlot || echo "not implemented in grpc"
 
         grpcurl ${{ env.proto_flag }} -d '{"slot": ${{ env.getBlock }}}' ${{ env.endpoint }} OldFaithful.OldFaithful/GetBlock | jq -r | md5sum | grep -q 4060788729dd4bf38bef2310728e15d6 || echo borked
         
         echo "GetBlockTime"
-        grpcurl ${{ env.proto_flag }} -d '{"slot": ${{ env.getBlock }}}' ${{ env.endpoint }} OldFaithful.OldFaithful/GetBlockTime | jq -r | grep -q "{}" || echo borked
+        grpcurl ${{ env.proto_flag }} -d '{"slot": ${{ env.getBlock }}}' ${{ env.endpoint }} OldFaithful.OldFaithful/GetBlockTime | jq -r | grep -q "{}"
         
         echo "GetTransaction"
         grpcurl ${{ env.proto_flag }} -d '{"signature": "${{ env.getTxSig }}"}' ${{ env.endpoint }} OldFaithful.OldFaithful/GetTransaction || echo borked
