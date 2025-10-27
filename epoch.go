@@ -119,6 +119,7 @@ func NewEpochFromConfig(
 	if config == nil {
 		return nil, fmt.Errorf("config must not be nil")
 	}
+	klog.Infof("NewEpochFromConfig for epoch %d: useMmapForLocalIndexes=%v, useMmapForSigExists=%v", *config.Epoch, useMmapForLocalIndexes, useMmapForSigExists)
 	isLassieMode := config.IsFilecoinMode()
 	isCarMode := !isLassieMode
 

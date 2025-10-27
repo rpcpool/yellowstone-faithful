@@ -35,7 +35,8 @@ import (
 type Options struct {
 	GsfaOnlySignatures     bool
 	EpochSearchConcurrency int
-	MmapHotTierEpochs      int // Number of recent epochs (hot tier) to use mmap for sig-exists index (default 30)
+	MmapHotTierEpochs      int  // Number of recent epochs (hot tier) to use mmap for sig-exists index (default 30)
+	MmapSigExistsOnly      bool // Only mmap sig-exists index (most memory efficient, default: false)
 }
 
 type MultiEpoch struct {

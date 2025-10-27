@@ -58,54 +58,95 @@ func (multi *MultiEpoch) findEpochNumberFromSignature(ctx context.Context, sig s
 
 	buckets := multi.getAllBucketteers()
 
-	// Search all epochs in parallel:
-	jobGroup := NewJobGroup[uint64]()
-	for i := range numbers {
-		epochNumber := numbers[i]
-		jobGroup.Add(func(ctx context.Context) (uint64, error) {
-			if ctx.Err() != nil {
-				return 0, ctx.Err()
-			}
-			bucket, ok := buckets[epochNumber]
-			if !ok {
-				return 0, ErrNotFound
-			}
-			has, err := bucket.Has(sig)
-			if err != nil {
-				return 0, fmt.Errorf("failed to check if signature exists in bucket: %w", err)
-			}
-			if !has {
-				return 0, ErrNotFound
-			}
-			epoch, err := multi.GetEpoch(epochNumber)
-			if err != nil {
-				return 0, fmt.Errorf("failed to get epoch %d: %w", epochNumber, err)
-			}
-			if _, err := epoch.FindCidFromSignature(ctx, sig); err == nil {
-				return epochNumber, nil
-			}
-			// Not found in this epoch.
-			return 0, ErrNotFound
-		})
+	// Hot tier configuration - use epoch-search-concurrency as the hot tier limit
+	hotTierLimit := multi.options.EpochSearchConcurrency
+	if hotTierLimit <= 0 {
+		hotTierLimit = 30 // default
 	}
-	val, err := jobGroup.RunWithConcurrency(ctx, multi.options.EpochSearchConcurrency)
-	// val, err := jobGroup.RunWithConcurrency(ctx, multi.options.EpochSearchConcurrency)
-	if err != nil {
-		errs, ok := err.(ErrorSlice)
+	if len(numbers) < hotTierLimit {
+		hotTierLimit = len(numbers)
+	}
+
+	// Helper function to search a single epoch
+	searchSingleEpoch := func(epochNumber uint64) (uint64, error) {
+		bucket, ok := buckets[epochNumber]
 		if !ok {
-			// An error occurred while searching one of the epochs.
+			return 0, ErrNotFound
+		}
+		has, err := bucket.Has(sig)
+		if err != nil {
+			return 0, fmt.Errorf("failed to check if signature exists in bucket: %w", err)
+		}
+		if !has {
+			return 0, ErrNotFound
+		}
+		epoch, err := multi.GetEpoch(epochNumber)
+		if err != nil {
+			return 0, fmt.Errorf("failed to get epoch %d: %w", epochNumber, err)
+		}
+		if _, err := epoch.FindCidFromSignature(ctx, sig); err == nil {
+			return epochNumber, nil
+		}
+		return 0, ErrNotFound
+	}
+
+	// Helper function to search epochs in parallel
+	searchEpochsParallel := func(epochNumbers []uint64) (uint64, error) {
+		if len(epochNumbers) == 0 {
+			return 0, ErrNotFound
+		}
+		jobGroup := NewJobGroup[uint64]()
+		for _, epochNumber := range epochNumbers {
+			epochNumber := epochNumber // capture for closure
+			jobGroup.Add(func(ctx context.Context) (uint64, error) {
+				if ctx.Err() != nil {
+					return 0, ctx.Err()
+				}
+				return searchSingleEpoch(epochNumber)
+			})
+		}
+		val, err := jobGroup.RunWithConcurrency(ctx, multi.options.EpochSearchConcurrency)
+		if err != nil {
+			errs, ok := err.(ErrorSlice)
+			if !ok {
+				return 0, err
+			}
+			if errs.All(func(err error) bool {
+				return errors.Is(err, ErrNotFound)
+			}) {
+				return 0, ErrNotFound
+			}
 			return 0, err
 		}
-		// All epochs were searched, but the signature was not found.
-		if errs.All(func(err error) bool {
-			return errors.Is(err, ErrNotFound)
-		}) {
-			return 0, ErrNotFound
-		}
-		return 0, err
+		return val, nil
 	}
-	// The signature was found in one of the epochs.
-	return val, nil
+
+	// HOT TIER: Search last 30 epochs in parallel (handles 90% of requests)
+	if len(numbers) > 0 {
+		hotTierEpochs := numbers
+		if len(hotTierEpochs) > hotTierLimit {
+			hotTierEpochs = hotTierEpochs[:hotTierLimit]
+		}
+		klog.V(5).Infof("Searching hot tier: %d most recent epochs in parallel", len(hotTierEpochs))
+		if result, err := searchEpochsParallel(hotTierEpochs); err == nil {
+			return result, nil
+		} else if !errors.Is(err, ErrNotFound) {
+			return 0, err
+		}
+	}
+
+	// COLD TIER: Search remaining epochs in parallel (handles 10% of requests)
+	if len(numbers) > hotTierLimit {
+		coldTierEpochs := numbers[hotTierLimit:]
+		klog.V(5).Infof("Searching cold tier: %d remaining epochs in parallel", len(coldTierEpochs))
+		if result, err := searchEpochsParallel(coldTierEpochs); err == nil {
+			return result, nil
+		} else if !errors.Is(err, ErrNotFound) {
+			return 0, err
+		}
+	}
+
+	return 0, ErrNotFound
 }
 
 func (multi *MultiEpoch) handleGetTransaction(ctx context.Context, conn *requestContext, req *jsonrpc2.Request) (*jsonrpc2.Error, error) {

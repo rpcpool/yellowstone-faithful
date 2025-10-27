@@ -42,6 +42,7 @@ func newCmd_rpc() *cli.Command {
 	var useMmapForLocalCars bool
 	var useMmapForLocalIndexes bool
 	var mmapHotTierEpochs int
+	var mmapSigExistsOnly bool
 	return &cli.Command{
 		Name:        "rpc",
 		Usage:       "Start a Solana JSON RPC server.",
@@ -95,7 +96,7 @@ func newCmd_rpc() *cli.Command {
 			},
 			&cli.IntFlag{
 				Name:        "epoch-search-concurrency",
-				Usage:       "How many epochs to search in parallel when searching for a signature",
+				Usage:       "Number of most recent epochs to search in parallel before falling back to sequential search (default: cpu count)",
 				Value:       runtime.NumCPU(),
 				Destination: &epochSearchConcurrency,
 			},
@@ -141,6 +142,12 @@ func newCmd_rpc() *cli.Command {
 				Usage:       "Number of recent epochs in the hot tier to use mmap for sig-exists index (0 = all epochs)",
 				Value:       30,
 				Destination: &mmapHotTierEpochs,
+			},
+			&cli.BoolFlag{
+				Name:        "mmap-sig-exists-only",
+				Usage:       "Only mmap sig-exists index (most memory efficient, default: false)",
+				Value:       false,
+				Destination: &mmapSigExistsOnly,
 			},
 		),
 		Action: func(c *cli.Context) error {
@@ -240,6 +247,7 @@ func newCmd_rpc() *cli.Command {
 				GsfaOnlySignatures:     gsfaOnlySignatures,
 				EpochSearchConcurrency: epochSearchConcurrency,
 				MmapHotTierEpochs:      mmapHotTierEpochs,
+				MmapSigExistsOnly:      mmapSigExistsOnly,
 			})
 			defer func() {
 				if err := multi.Close(); err != nil {
@@ -272,6 +280,9 @@ func newCmd_rpc() *cli.Command {
 						// Hot tier epochs are at the end of the sorted list (highest epoch numbers)
 						isHotTierEpoch := confIndex >= len(configs)-mmapHotTierEpochs
 						useMmapForSigExists := useMmapForLocalIndexes && isHotTierEpoch
+						if useMmapForSigExists {
+							klog.Infof("Epoch %d is in hot tier (index %d/%d), will use mmap for sig-exists", epochNum, confIndex, len(configs))
+						}
 						err := func() error {
 							epoch, err := NewEpochFromConfig(
 								config,
