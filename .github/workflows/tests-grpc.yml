@@ -144,7 +144,7 @@ jobs:
         {"jsonrpc":"2.0","id":1, "method":"getFirstAvailableBlock"}
         ' -s | jq -r .result | grep -q 0 || exit 1
 
-        echo "getBlock"
+        echo "getBlock" # borked
         curl localhost:7999 -H "Content-Typ e: application/json" -d '
           {"jsonrpc":"2.0","id":1, "method":"getBlock","params": [${{ env.getBlock }}]}
           ' -s | jq -r . 
@@ -184,7 +184,7 @@ jobs:
         grpcurl ${{ env.proto_flag }} -d '{"signature": "${{ env.getTxSig }}"}' ${{ env.endpoint }} OldFaithful.OldFaithful/GetTransaction || echo borked
         
         echo "GetFirstAvailableBlock"
-        grpcurl ${{ env.proto_flag }} ${{ env.endpoint }} OldFaithful.OldFaithful/GetFirstAvailableBlock || echo n/a
+        grpcurl ${{ env.proto_flag }} ${{ env.endpoint }} OldFaithful.OldFaithful/GetFirstAvailableBlock || echo "not implemented in grpc"
 
         echo "StreamBlocks"
         grpcurl ${{ env.proto_flag }} -d '{"start_slot": 2, "end_slot": 10}' ${{ env.endpoint }} OldFaithful.OldFaithful/StreamBlocks \
