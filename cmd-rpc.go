@@ -227,6 +227,15 @@ func newCmd_rpc() *cli.Command {
 					wg.Go(func() error {
 						epochNum := *config.Epoch
 						err := func() error {
+							// Determine if this epoch is in the hot tier
+							// Hot tier epochs are at the end of the sorted list (highest epoch numbers)
+							isHotTierEpoch := confIndex >= len(configs)-mmapHotEpochs
+							// Only use mmap for hot tier epochs
+							hotTierValue := mmapHotEpochs
+							if !isHotTierEpoch {
+								hotTierValue = 0 // Disable mmap for non-hot tier epochs
+							}
+
 							epoch, err := NewEpochFromConfigWithOptionsAndMmap(
 								config,
 								c,
@@ -234,7 +243,7 @@ func newCmd_rpc() *cli.Command {
 								minerInfo,
 								useODirect,
 								&Options{
-									MmapHotEpochs:     mmapHotEpochs,
+									MmapHotEpochs:     hotTierValue,
 									MmapEssentialOnly: mmapEssentialOnly,
 									MmapSigExistsOnly: mmapSigExistsOnly,
 								},
