@@ -41,6 +41,7 @@ func newCmd_rpc() *cli.Command {
 	var pyroscopeServerAddress string
 	var useMmapForLocalCars bool
 	var useMmapForLocalIndexes bool
+	var mmapHotTierEpochs int
 	return &cli.Command{
 		Name:        "rpc",
 		Usage:       "Start a Solana JSON RPC server.",
@@ -134,6 +135,12 @@ func newCmd_rpc() *cli.Command {
 				Usage:       "Use mmap for local index files (instead of os.Open)",
 				Value:       false,
 				Destination: &useMmapForLocalIndexes,
+			},
+			&cli.IntFlag{
+				Name:        "mmap-hot-tier-epochs",
+				Usage:       "Number of recent epochs in the hot tier to use mmap for sig-exists index",
+				Value:       30,
+				Destination: &mmapHotTierEpochs,
 			},
 		),
 		Action: func(c *cli.Context) error {
@@ -232,13 +239,15 @@ func newCmd_rpc() *cli.Command {
 			multi := NewMultiEpoch(&Options{
 				GsfaOnlySignatures:     gsfaOnlySignatures,
 				EpochSearchConcurrency: epochSearchConcurrency,
+				MmapHotTierEpochs:      mmapHotTierEpochs,
 			})
 			defer func() {
 				if err := multi.Close(); err != nil {
 					klog.Errorf("error closing multi-epoch: %s", err.Error())
 				}
 			}()
-
+			klog.Infof("Hot tier configuration: %d epochs will use mmap for sig-exists index", mmapHotTierEpochs)
+			
 			startedInitiatingEpochsAt := time.Now()
 			go func() {
 				// Sort epochs by epoch number:
@@ -255,6 +264,10 @@ func newCmd_rpc() *cli.Command {
 					config := configs[confIndex]
 					wg.Go(func() error {
 						epochNum := *config.Epoch
+						// Determine if this epoch is in the hot tier to decide whether to mmap sig-exists
+						// Hot tier epochs are at the end of the sorted list (highest epoch numbers)
+						isHotTierEpoch := confIndex >= len(configs)-mmapHotTierEpochs
+						useMmapForSigExists := useMmapForLocalIndexes && isHotTierEpoch
 						err := func() error {
 							epoch, err := NewEpochFromConfig(
 								config,
@@ -263,6 +276,7 @@ func newCmd_rpc() *cli.Command {
 								minerInfo,
 								useMmapForLocalCars,
 								useMmapForLocalIndexes,
+								useMmapForSigExists,
 							)
 							if err != nil {
 								return fmt.Errorf("failed to create epoch from config %q: %s", config.ConfigFilepath(), err.Error())
@@ -325,24 +339,29 @@ func newCmd_rpc() *cli.Command {
 						}
 
 						switch event.Op {
-						case fsnotify.Write:
-							{
-								startedAt := time.Now()
-								klog.V(3).Infof("File %q was modified; processing...", event.Name)
-								// find the config file, load it, and update the epoch (replace)
-								config, err := LoadConfig(event.Name)
-								if err != nil {
-									klog.Errorf("error loading config file %q: %s", event.Name, err.Error())
-									return
-								}
-								epoch, err := NewEpochFromConfig(
-									config,
-									c,
-									allCache,
-									minerInfo,
-									useMmapForLocalCars,
-									useMmapForLocalIndexes,
-								)
+					case fsnotify.Write:
+						{
+							startedAt := time.Now()
+							klog.V(3).Infof("File %q was modified; processing...", event.Name)
+							// find the config file, load it, and update the epoch (replace)
+							config, err := LoadConfig(event.Name)
+							if err != nil {
+								klog.Errorf("error loading config file %q: %s", event.Name, err.Error())
+								return
+							}
+							// Determine if this epoch is in the hot tier
+							epochNumbers := multi.GetEpochNumbers()
+							isHotTierEpoch := isEpochInHotTier(*config.Epoch, epochNumbers, mmapHotTierEpochs)
+							useMmapForSigExists := useMmapForLocalIndexes && isHotTierEpoch
+							epoch, err := NewEpochFromConfig(
+								config,
+								c,
+								allCache,
+								minerInfo,
+								useMmapForLocalCars,
+								useMmapForLocalIndexes,
+								useMmapForSigExists,
+							)
 								if err != nil {
 									klog.Errorf("error creating epoch from config file %q: %s", event.Name, err.Error())
 									return
@@ -355,24 +374,29 @@ func newCmd_rpc() *cli.Command {
 								klog.V(2).Infof("Epoch %d added/replaced in %s", epoch.Epoch(), time.Since(startedAt))
 								metrics.EpochsAvailable.WithLabelValues(fmt.Sprintf("%d", epoch.Epoch())).Set(1)
 							}
-						case fsnotify.Create:
-							{
-								startedAt := time.Now()
-								klog.V(3).Infof("File %q was created; processing...", event.Name)
-								// find the config file, load it, and add it to the multi-epoch (if not already added)
-								config, err := LoadConfig(event.Name)
-								if err != nil {
-									klog.Errorf("error loading config file %q: %s", event.Name, err.Error())
-									return
-								}
-								epoch, err := NewEpochFromConfig(
-									config,
-									c,
-									allCache,
-									minerInfo,
-									useMmapForLocalCars,
-									useMmapForLocalIndexes,
-								)
+					case fsnotify.Create:
+						{
+							startedAt := time.Now()
+							klog.V(3).Infof("File %q was created; processing...", event.Name)
+							// find the config file, load it, and add it to the multi-epoch (if not already added)
+							config, err := LoadConfig(event.Name)
+							if err != nil {
+								klog.Errorf("error loading config file %q: %s", event.Name, err.Error())
+								return
+							}
+							// Determine if this epoch is in the hot tier
+							epochNumbers := multi.GetEpochNumbers()
+							isHotTierEpoch := isEpochInHotTier(*config.Epoch, epochNumbers, mmapHotTierEpochs)
+							useMmapForSigExists := useMmapForLocalIndexes && isHotTierEpoch
+							epoch, err := NewEpochFromConfig(
+								config,
+								c,
+								allCache,
+								minerInfo,
+								useMmapForLocalCars,
+								useMmapForLocalIndexes,
+								useMmapForSigExists,
+							)
 								if err != nil {
 									klog.Errorf("error creating epoch from config file %q: %s", event.Name, err.Error())
 									return
@@ -449,6 +473,26 @@ func newCmd_rpc() *cli.Command {
 // create a map that tracks files that are already being processed because of an event:
 // this is to avoid processing the same file multiple times
 // (e.g. if a file is create and then modified, we don't want to process it twice)
+// isEpochInHotTier determines if the given epoch number is in the hot tier
+// by comparing it with the sorted list of epoch numbers. The epochNumbers slice
+// should be sorted in descending order (most recent first), as returned by GetEpochNumbers().
+func isEpochInHotTier(epochNum uint64, epochNumbers []uint64, n int) bool {
+	if len(epochNumbers) == 0 {
+		return false
+	}
+	// epochNumbers is sorted in descending order (most recent first)
+	// So we check if the epoch is within the first N epochs
+	for i, ep := range epochNumbers {
+		if i >= n {
+			break
+		}
+		if ep == epochNum {
+			return true
+		}
+	}
+	return false
+}
+
 type fileProcessingTracker struct {
 	mu sync.Mutex
 	m  map[string]struct{}
