@@ -138,7 +138,7 @@ func newCmd_rpc() *cli.Command {
 			},
 			&cli.IntFlag{
 				Name:        "mmap-hot-tier-epochs",
-				Usage:       "Number of recent epochs in the hot tier to use mmap for sig-exists index",
+				Usage:       "Number of recent epochs in the hot tier to use mmap for sig-exists index (0 = all epochs)",
 				Value:       30,
 				Destination: &mmapHotTierEpochs,
 			},
@@ -246,7 +246,11 @@ func newCmd_rpc() *cli.Command {
 					klog.Errorf("error closing multi-epoch: %s", err.Error())
 				}
 			}()
-			klog.Infof("Hot tier configuration: %d epochs will use mmap for sig-exists index", mmapHotTierEpochs)
+			if mmapHotTierEpochs == 0 {
+				klog.Infof("Hot tier configuration: all epochs will use mmap for sig-exists index")
+			} else {
+				klog.Infof("Hot tier configuration: %d epochs will use mmap for sig-exists index", mmapHotTierEpochs)
+			}
 			
 			startedInitiatingEpochsAt := time.Now()
 			go func() {
@@ -476,9 +480,14 @@ func newCmd_rpc() *cli.Command {
 // isEpochInHotTier determines if the given epoch number is in the hot tier
 // by comparing it with the sorted list of epoch numbers. The epochNumbers slice
 // should be sorted in descending order (most recent first), as returned by GetEpochNumbers().
+// If n is 0, all epochs are considered hot tier (no hot/cold distinction).
 func isEpochInHotTier(epochNum uint64, epochNumbers []uint64, n int) bool {
 	if len(epochNumbers) == 0 {
 		return false
+	}
+	// If n is 0, all epochs are hot tier
+	if n == 0 {
+		return true
 	}
 	// epochNumbers is sorted in descending order (most recent first)
 	// So we check if the epoch is within the first N epochs
