@@ -27,7 +27,7 @@ func NewRemoteHTTPFileAsIoReaderAt(ctx context.Context, url string) (ReaderAtClo
 	rr := &HTTPSingleFileRemoteReaderAt{
 		url:           url,
 		contentLength: contentLength,
-		client:        NewHTTPClient(),
+		client:        globalHTTPClient,
 	}
 	_, err = urlx.Parse(url)
 	if err != nil {
@@ -35,6 +35,12 @@ func NewRemoteHTTPFileAsIoReaderAt(ctx context.Context, url string) (ReaderAtClo
 	}
 
 	return rr, contentLength, nil
+}
+
+var globalHTTPClient *http.Client
+
+func init() {
+	globalHTTPClient = NewHTTPClient()
 }
 
 type HTTPSingleFileRemoteReaderAt struct {
