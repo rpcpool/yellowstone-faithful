@@ -1,5 +1,7 @@
-use serde::{Deserialize, Serialize};
-use solana_sdk::signature::Signature;
+use {
+    serde::{Deserialize, Serialize},
+    solana_sdk::signature::Signature,
+};
 
 /// Transaction information
 #[non_exhaustive]

@@ -1,10 +1,12 @@
-use clap::Parser;
-use futures::StreamExt;
-use tracing_subscriber;
-use yellowstone_faithful_client::{
-    connect_with_config,
-    grpc::generated::{get_request, BlockRequest, GetRequest},
-    GrpcConfig,
+use {
+    clap::Parser,
+    futures::StreamExt,
+    tracing_subscriber,
+    yellowstone_faithful_client::{
+        connect_with_config,
+        grpc::generated::{get_request, BlockRequest, GetRequest},
+        GrpcConfig,
+    },
 };
 
 #[derive(Parser, Debug)]

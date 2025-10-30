@@ -1,6 +1,8 @@
-use clap::Parser;
-use tracing_subscriber;
-use yellowstone_faithful_client::{connect_with_config, GrpcConfig};
+use {
+    clap::Parser,
+    tracing_subscriber,
+    yellowstone_faithful_client::{connect_with_config, GrpcConfig},
+};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about = "Get Old Faithful server version", long_about = None)]

@@ -1,7 +1,9 @@
-use clap::Parser;
-use futures::StreamExt;
-use tracing_subscriber;
-use yellowstone_faithful_client::{connect_with_config, GrpcConfig, StreamTransactionsFilter};
+use {
+    clap::Parser,
+    futures::StreamExt,
+    tracing_subscriber,
+    yellowstone_faithful_client::{connect_with_config, GrpcConfig, StreamTransactionsFilter},
+};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about = "Stream transactions from Old Faithful", long_about = None)]

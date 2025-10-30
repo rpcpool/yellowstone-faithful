@@ -1,10 +1,8 @@
 pub mod block;
 pub mod transaction;
 
-pub use block::*;
-pub use transaction::*;
-
 use serde::{Deserialize, Serialize};
+pub use {block::*, transaction::*};
 
 /// Version information
 #[derive(Debug, Clone, Serialize, Deserialize)]

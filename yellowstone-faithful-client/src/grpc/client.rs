@@ -1,19 +1,20 @@
 pub use tonic::{service::Interceptor, transport::ClientTlsConfig};
 use {
-    crate::config::GrpcConfig,
-    crate::error::{FaithfulError, Result as FaithfulResult},
-    crate::grpc::generated::{
-        old_faithful_client::OldFaithfulClient as GeneratedClient, BlockRequest, BlockTimeRequest,
-        GetRequest, GetResponse, StreamBlocksRequest, StreamTransactionsRequest,
-        TransactionRequest, VersionRequest,
-    },
-    crate::models::{
-        Block, BlockTime, StreamBlocksFilter, StreamTransactionsFilter, TransactionWithContext,
-        VersionInfo,
+    crate::{
+        config::GrpcConfig,
+        error::{FaithfulError, Result as FaithfulResult},
+        grpc::generated::{
+            old_faithful_client::OldFaithfulClient as GeneratedClient, BlockRequest,
+            BlockTimeRequest, GetRequest, GetResponse, StreamBlocksRequest,
+            StreamTransactionsRequest, TransactionRequest, VersionRequest,
+        },
+        models::{
+            Block, BlockTime, StreamBlocksFilter, StreamTransactionsFilter, TransactionWithContext,
+            VersionInfo,
+        },
     },
     futures::Stream,
-    std::pin::Pin,
-    std::time::Duration,
+    std::{pin::Pin, time::Duration},
     tonic::{
         metadata::{errors::InvalidMetadataValue, AsciiMetadataValue, MetadataValue},
         service::interceptor::InterceptedService,

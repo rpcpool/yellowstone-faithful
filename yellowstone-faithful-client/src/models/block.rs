@@ -1,6 +1,8 @@
-use super::transaction::TransactionInfo;
-use serde::{Deserialize, Serialize};
-use solana_sdk::hash::Hash;
+use {
+    super::transaction::TransactionInfo,
+    serde::{Deserialize, Serialize},
+    solana_sdk::hash::Hash,
+};
 
 /// Block information
 #[derive(Debug, Clone, Serialize, Deserialize)]
