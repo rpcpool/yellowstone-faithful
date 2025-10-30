@@ -4,10 +4,13 @@ use {
     crate::error::{FaithfulError, Result as FaithfulResult},
     crate::grpc::generated::{
         old_faithful_client::OldFaithfulClient as GeneratedClient, BlockRequest, BlockTimeRequest,
-        GetRequest, GetResponse, StreamBlocksRequest, StreamTransactionsRequest, TransactionRequest,
-        VersionRequest,
+        GetRequest, GetResponse, StreamBlocksRequest, StreamTransactionsRequest,
+        TransactionRequest, VersionRequest,
     },
-    crate::models::{Block, StreamBlocksFilter, StreamTransactionsFilter, TransactionWithContext, VersionInfo, BlockTime},
+    crate::models::{
+        Block, BlockTime, StreamBlocksFilter, StreamTransactionsFilter, TransactionWithContext,
+        VersionInfo,
+    },
     futures::Stream,
     std::pin::Pin,
     std::time::Duration,
@@ -55,9 +58,7 @@ pub struct GrpcClient<F> {
 }
 
 impl GrpcClient<()> {
-    pub fn build_from_shared(
-        endpoint: impl Into<bytes::Bytes>,
-    ) -> GrpcBuilderResult<GrpcBuilder> {
+    pub fn build_from_shared(endpoint: impl Into<bytes::Bytes>) -> GrpcBuilderResult<GrpcBuilder> {
         Ok(GrpcBuilder::new(Endpoint::from_shared(endpoint)?))
     }
 
@@ -67,9 +68,7 @@ impl GrpcClient<()> {
 }
 
 impl<F: Interceptor + 'static> GrpcClient<F> {
-    pub const fn new(
-        client: GeneratedClient<InterceptedService<Channel, F>>,
-    ) -> Self {
+    pub const fn new(client: GeneratedClient<InterceptedService<Channel, F>>) -> Self {
         Self { client }
     }
 
@@ -103,13 +102,17 @@ impl<F: Interceptor + 'static> GrpcClient<F> {
     }
 
     /// Get a transaction by signature
-    pub async fn get_transaction(&mut self, signature: &[u8]) -> GrpcClientResult<TransactionWithContext> {
+    pub async fn get_transaction(
+        &mut self,
+        signature: &[u8],
+    ) -> GrpcClientResult<TransactionWithContext> {
         debug!("Requesting transaction with signature: {:?}", signature);
         let request = Request::new(TransactionRequest {
             signature: signature.to_vec(),
         });
         let response = self.client.get_transaction(request).await?.into_inner();
-        TransactionWithContext::from_grpc(response).map_err(|e| GrpcClientError::TransportError(e.to_string()))
+        TransactionWithContext::from_grpc(response)
+            .map_err(|e| GrpcClientError::TransportError(e.to_string()))
     }
 
     /// Stream blocks in a slot range
@@ -146,7 +149,8 @@ impl<F: Interceptor + 'static> GrpcClient<F> {
         start_slot: u64,
         end_slot: Option<u64>,
         filter: Option<StreamTransactionsFilter>,
-    ) -> GrpcClientResult<Pin<Box<dyn Stream<Item = FaithfulResult<TransactionWithContext>> + Send>>> {
+    ) -> GrpcClientResult<Pin<Box<dyn Stream<Item = FaithfulResult<TransactionWithContext>> + Send>>>
+    {
         info!(
             "Streaming transactions from slot {} to {:?}",
             start_slot, end_slot
@@ -277,10 +281,7 @@ impl GrpcBuilder {
     }
 
     // Create client
-    fn build(
-        self,
-        channel: Channel,
-    ) -> GrpcBuilderResult<GrpcClient<InterceptorXToken>> {
+    fn build(self, channel: Channel) -> GrpcBuilderResult<GrpcClient<InterceptorXToken>> {
         let interceptor = InterceptorXToken {
             x_token: self.x_token,
             x_request_snapshot: self.x_request_snapshot,
@@ -407,7 +408,9 @@ impl GrpcBuilder {
 }
 
 // Helper function to create a client from GrpcConfig
-pub async fn connect_with_config(config: GrpcConfig) -> FaithfulResult<GrpcClient<InterceptorXToken>> {
+pub async fn connect_with_config(
+    config: GrpcConfig,
+) -> FaithfulResult<GrpcClient<InterceptorXToken>> {
     let mut builder = GrpcClient::build_from_shared(config.endpoint.clone())
         .map_err(|e| FaithfulError::ConnectionError(e.to_string()))?;
 
@@ -506,9 +509,6 @@ mod tests {
         let endpoint = "sites/files/images/picture.png";
 
         let res = GrpcClient::build_from_shared(endpoint);
-        assert!(
-            res.is_err(),
-            "Expected error for invalid URI"
-        );
+        assert!(res.is_err(), "Expected error for invalid URI");
     }
 }

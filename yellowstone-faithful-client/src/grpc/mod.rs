@@ -9,5 +9,4 @@ pub mod generated {
 
 pub mod client;
 
-pub use client::{GrpcClient, GrpcBuilder, connect_with_config, InterceptorXToken};
-
+pub use client::{connect_with_config, GrpcBuilder, GrpcClient, InterceptorXToken};

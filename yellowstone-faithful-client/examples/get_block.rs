@@ -67,7 +67,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             block.transactions.len().min(3)
         );
         for (i, tx) in block.transactions.iter().take(3).enumerate() {
-            println!("    {}. Transaction size: {} bytes", i + 1, tx.transaction.len());
+            println!(
+                "    {}. Transaction size: {} bytes",
+                i + 1,
+                tx.transaction.len()
+            );
         }
     }
 

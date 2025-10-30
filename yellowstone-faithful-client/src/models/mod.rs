@@ -31,17 +31,16 @@ pub struct StreamBlocksFilter {
 pub struct StreamTransactionsFilter {
     /// Include/exclude vote transactions
     pub vote: Option<bool>,
-    
+
     /// Include/exclude failed transactions
     pub failed: Option<bool>,
-    
+
     /// Filter transactions mentioning these accounts
     pub account_include: Vec<String>,
-    
+
     /// Exclude transactions mentioning these accounts
     pub account_exclude: Vec<String>,
-    
+
     /// Require transactions to mention all of these accounts
     pub account_required: Vec<String>,
 }
-
