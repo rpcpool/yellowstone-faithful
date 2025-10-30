@@ -1,7 +1,6 @@
 use {
     clap::Parser,
     futures::StreamExt,
-    tracing_subscriber,
     yellowstone_faithful_client::{connect_with_config, GrpcConfig, StreamBlocksFilter},
 };
 
