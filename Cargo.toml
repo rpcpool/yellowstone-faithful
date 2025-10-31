@@ -3,6 +3,7 @@ members = [
     "geyser-plugin-runner",
     "geyser-plugin-runner/demo-plugin",
     "jsonparsed",
+    "yellowstone-faithful-client"
 ]
 exclude = ["rust-compactindex"]
 resolver = "2"
