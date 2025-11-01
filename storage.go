@@ -30,6 +30,7 @@ func openIndexStorage(
 	useMmapForLocalIndexes bool,
 ) (carreader.ReaderAtCloser, error) {
 	where = strings.TrimSpace(where)
+	klog.Infof("openIndexStorage called for %q with useMmapForLocalIndexes=%v", where, useMmapForLocalIndexes)
 	if isHTTP(where) {
 		klog.Infof("opening index file from %q as HTTP remote file", where)
 		rac, size, err := splitcarfetcher.NewRemoteHTTPFileAsIoReaderAt(ctx, where)
@@ -62,8 +63,10 @@ func openIndexStorage(
 
 func openMMapFile(filePath string, useMmap bool) (carreader.ReaderAtCloser, error) {
 	if useMmap {
+		klog.Infof("Using mmap for %s", filePath)
 		return mmap.Open(filePath)
 	}
+	klog.Infof("Using regular I/O for %s", filePath)
 	return os.Open(filePath)
 }
 
