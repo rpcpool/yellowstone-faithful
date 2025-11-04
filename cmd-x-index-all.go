@@ -397,7 +397,7 @@ func createAllIndexes(
 					return nil, 0, fmt.Errorf("failed to read signature: %w", err)
 				}
 				if dedupReader != nil {
-					last, err := dedupReader.IsLast(preindex.Key(sig), preindex.Value(txNode.Slot))
+					last, err := dedupReader.IsLastMustFind(preindex.Key(sig), preindex.Value(txNode.Slot))
 					if err != nil {
 						return nil, 0, fmt.Errorf("failed to check dedup preindex: %w", err)
 					}
