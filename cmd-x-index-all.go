@@ -18,6 +18,7 @@ import (
 	"github.com/rpcpool/yellowstone-faithful/indexes"
 	"github.com/rpcpool/yellowstone-faithful/indexmeta"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
+	"github.com/rpcpool/yellowstone-faithful/preindex"
 	"github.com/rpcpool/yellowstone-faithful/readasonecar"
 	"github.com/rpcpool/yellowstone-faithful/tooling"
 	"github.com/urfave/cli/v2"
@@ -28,6 +29,7 @@ import (
 func newCmd_Index_all() *cli.Command {
 	var verify bool
 	var network indexes.Network
+	var doPreIndexTxDedup bool
 	return &cli.Command{
 		Name:        "all",
 		Usage:       "Create all the necessary indexes for a Solana epoch.",
@@ -70,6 +72,11 @@ func newCmd_Index_all() *cli.Command {
 				Usage:    "the epoch number",
 				Required: true,
 			},
+			&cli.BoolFlag{
+				Name:        "dedup-txs",
+				Usage:       "do a preliminary sig index to weed out duplicate signatures before creating the final indexes; NOTE: this requires extra disk space and RAM (40-70 GB RAM extra), and time.",
+				Destination: &doPreIndexTxDedup,
+			},
 		},
 		Subcommands: []*cli.Command{},
 		Action: func(c *cli.Context) error {
@@ -107,6 +114,126 @@ func newCmd_Index_all() *cli.Command {
 				klog.Infof("Creating all indexes for %v", carPaths)
 				klog.Infof("Indexes will be saved in %s", indexDir)
 
+				var dedupReader *preindex.PreIndexReader
+				if doPreIndexTxDedup {
+					klog.Info("Doing preliminary sig deduplication pre-index...")
+					preindexDir := filepath.Join(tmpDir, "preindex-"+time.Now().Format("20060102-150405.000000000")+fmt.Sprintf("-%d", rand.Int63()))
+					klog.Info("Creating preindex in ", preindexDir)
+					pre, err := preindex.NewPreIndexWriter(preindexDir, 256, preindex.WithTotalBufferCap(GiB*20))
+					if err != nil {
+						return fmt.Errorf("failed to create preindex writer: %w", err)
+					}
+					rd, err := readasonecar.NewFromFilepaths(carPaths...)
+					if err != nil {
+						return fmt.Errorf("failed to create car reader: %w", err)
+					}
+					defer rd.Close()
+
+					rootCID, err := rd.FindRoot()
+					if err != nil {
+						return fmt.Errorf("failed to find root CID: %w", err)
+					}
+					klog.Infof("Root CID: %s", rootCID)
+					totalSize := rd.TotalSize()
+					numIndexedBlocks := uint64(0)
+					var eta time.Duration
+					numIndexedOffsets := uint64(0)
+					numIndexedTxs := uint64(0)
+					for {
+						totalOffset, ok := rd.GetGlobalOffsetForNextRead()
+						if !ok {
+							break
+						}
+
+						_, _, buf, err := rd.NextNodeBytes()
+						if err != nil {
+							if errors.Is(err, io.EOF) {
+								break
+							}
+							return err
+						}
+						numIndexedOffsets++
+
+						rawData := buf.Bytes()
+						kind := iplddecoders.Kind(rawData[1])
+						switch kind {
+						case iplddecoders.KindBlock:
+							{
+								numIndexedBlocks++
+							}
+						case iplddecoders.KindTransaction:
+							{
+								numIndexedTxs++
+								txNode, err := iplddecoders.DecodeTransaction(rawData)
+								if err != nil {
+									return fmt.Errorf("failed to decode transaction: %w", err)
+								}
+
+								sig, err := tooling.ReadFirstSignature(txNode.Data.Bytes())
+								if err != nil {
+									return fmt.Errorf("failed to read signature: %w", err)
+								}
+								err = pre.Push(preindex.Key(sig), preindex.Value(txNode.Slot))
+								if err != nil {
+									return fmt.Errorf("failed to push to preindex: %w", err)
+								}
+							}
+						}
+						percentDone := calcPercentDone(
+							totalSize,
+							totalOffset,
+						)
+						if percentDone > 0 {
+							tookSoFar := time.Since(startedAt)
+							msPerOnePercent := float64(tookSoFar.Milliseconds()) / (percentDone)
+							eta = time.Duration(int64(msPerOnePercent)*int64(100-percentDone)) * time.Millisecond
+						}
+						if numIndexedOffsets%100_000 == 0 {
+							var etaString string
+							if eta > 0 {
+								etaString = fmt.Sprintf(" ETA: %s   ", eta.Truncate(time.Second).String())
+							} else {
+								etaString = ", ETA: ---   "
+							}
+							printToStderr(
+								fmt.Sprintf("\rTx-deduplication: %s txs [%s%%] %s",
+									humanize.Comma(int64(numIndexedTxs)),
+									humanize.CommafWithDigits(float64(percentDone), 2),
+									etaString,
+								),
+							)
+						}
+					}
+					printToStderr(
+						fmt.Sprintf("\rPre-indexed %s txs in %s                           \n",
+							humanize.Comma(int64(numIndexedTxs)),
+							time.Since(startedAt).Truncate(time.Second),
+						),
+					)
+					printToStderr("\n")
+					klog.Infof(
+						"Pre-indexed %s offsets, %s blocks, %s transactions in %s",
+						humanize.Comma(int64(numIndexedOffsets)),
+						humanize.Comma(int64(numIndexedBlocks)),
+						humanize.Comma(int64(numIndexedTxs)),
+						time.Since(startedAt).Truncate(time.Second),
+					)
+					if err := pre.Build(); err != nil {
+						return fmt.Errorf("failed to seal preindex: %w", err)
+					}
+					klog.Info("Pre-indexing complete.")
+					dedupReader, err = preindex.NewPreIndexReader(preindexDir, 256)
+					if err != nil {
+						return fmt.Errorf("failed to create preindex reader: %w", err)
+					}
+					klog.Info("Created dedup reader from preindex.")
+					err = dedupReader.Load()
+					if err != nil {
+						return fmt.Errorf("failed to load dedup reader: %w", err)
+					}
+					klog.Info("Loaded dedup reader from preindex.")
+				}
+
 				indexPaths, numTotalItems, err := createAllIndexes(
 					c.Context,
 					network,
@@ -114,6 +241,7 @@ func newCmd_Index_all() *cli.Command {
 					tmpDir,
 					carPaths,
 					indexDir,
+					dedupReader,
 				)
 				if err != nil {
 					return err
@@ -142,6 +270,7 @@ func createAllIndexes(
 	tmpDir string,
 	carPaths []string,
 	indexDir string,
+	dedupReader *preindex.PreIndexReader,
 ) (*IndexPaths, uint64, error) {
 	err := allFilesExist(carPaths...)
 	if err != nil {
@@ -267,6 +396,21 @@ func createAllIndexes(
 				if err != nil {
 					return nil, 0, fmt.Errorf("failed to read signature: %w", err)
 				}
+				if dedupReader != nil {
+					last, err := dedupReader.IsLast(preindex.Key(sig), preindex.Value(txNode.Slot))
+					if err != nil {
+						return nil, 0, fmt.Errorf("failed to check dedup preindex: %w", err)
+					}
+					if !last {
+						klog.InfoS(
+							"Skipping duplicate signature",
+							"signature", sig.String(),
+							"offset", totalOffset,
+							"slot", txNode.Slot,
+						)
+						continue // skip duplicate signature
+					}
+				}
 
 				err = sig_to_cid.Put(sig, _cid)
 				if err != nil {
@@ -312,11 +456,17 @@ func createAllIndexes(
 	)
 	printToStderr("\n")
 	klog.Infof(
-		"Indexed %s offsets, %s blocks, %s transactions",
+		"Indexed %s offsets, %s blocks, %s transactions in %s",
 		humanize.Comma(int64(numIndexedOffsets)),
 		humanize.Comma(int64(numIndexedBlocks)),
 		humanize.Comma(int64(numIndexedTransactions)),
+		time.Since(startedAt).Truncate(time.Second),
 	)
+	if dedupReader != nil {
+		if err := dedupReader.Close(); err != nil {
+			return nil, 0, fmt.Errorf("failed to close dedup reader: %w", err)
+		}
+	}
 
 	klog.Infof("Preparing to seal indexes (DO NOT EXIT)...")
 
@@ -573,7 +723,7 @@ func verifyAllIndexes(
 
 	var sig_exists *bucketteer.Reader
 	if indexes.SignatureExists != "" {
-		sig_exists, err = bucketteer.Open(
+		sig_exists, err = bucketteer.OpenMMAP(
 			indexes.SignatureExists,
 		)
 		if err != nil {

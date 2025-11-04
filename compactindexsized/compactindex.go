@@ -46,10 +46,10 @@
 //
 // Given a key, the query strategy is simple:
 //
-//  1. Hash key to bucket using global hash function
-//  2. Retrieve bucket offset from bucket header table
-//  3. Hash key to entry using per-bucket hash function
-//  4. Search for entry in bucket (binary search)
+// 1. Hash key to bucket using global hash function
+// 2. Retrieve bucket offset from bucket header table
+// 3. Hash key to entry using per-bucket hash function
+// 4. Search for entry in bucket (binary search)
 //
 // The search strategy for locating entries in buckets can be adjusted to fit the latency/bandwidth profile of the underlying storage medium.
 //
