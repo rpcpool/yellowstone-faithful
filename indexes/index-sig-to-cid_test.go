@@ -51,7 +51,7 @@ func TestSigToCid(t *testing.T) {
 	{
 		// add other 997 items
 		for i := uint64(0); i < numItems-3; i++ {
-			cid_ := cid.NewCidV1(cid.Raw, []byte(fmt.Sprintf("cid-%d", i)))
+			cid_ := cid.NewCidV1(cid.Raw, fmt.Appendf(nil, "cid-%d", i))
 			sig_ := newRandomSignature()
 			require.NoError(t, writer.Put(sig_, cid_))
 		}

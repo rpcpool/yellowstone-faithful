@@ -48,7 +48,7 @@ func OffsetAndSizeSliceFromBytes(buf []byte) ([]OffsetAndSize, error) {
 		return nil, errors.New("invalid byte slice length")
 	}
 	oass := make([]OffsetAndSize, len(buf)/IndexValueSize_CidToOffsetAndSize)
-	for i := 0; i < len(oass); i++ {
+	for i := range oass {
 		if err := oass[i].FromBytes(buf[i*IndexValueSize_CidToOffsetAndSize : (i+1)*IndexValueSize_CidToOffsetAndSize]); err != nil {
 			return nil, fmt.Errorf("failed to parse offset and size at index %d: %w", i, err)
 		}
