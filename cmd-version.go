@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"runtime"
 	"runtime/debug"
+	"slices"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/urfave/cli/v2"
 )
 
@@ -59,6 +61,7 @@ func printVersionAsJson() {
 		"date":       time.Now().Format(time.RFC3339),
 		"go_version": runtime.Version(),
 		"num_cpu":    fmt.Sprintf("%d", runtime.NumCPU()),
+		"session_id": SessionID,
 	}
 	if buildInfo, ok := debug.ReadBuildInfo(); ok {
 		for _, setting := range buildInfo.Settings {
@@ -86,13 +89,17 @@ func printVersionAsJson() {
 var (
 	GitCommit string
 	GitTag    string
+	SessionID string
 )
 
+func init() {
+	SessionID = uuid.New().String() + ":" + time.Now().Format("20060102T150405")
+}
+
+func GetSessionID() string {
+	return SessionID
+}
+
 func isAnyOf(s string, anyOf ...string) bool {
-	for _, v := range anyOf {
-		if s == v {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(anyOf, s)
 }
