@@ -26,9 +26,15 @@ import (
 	"syscall"
 
 	"github.com/cespare/xxhash/v2"
+	"github.com/mr-tron/base58/base58"
 )
 
 type Key [64]byte
+
+// .String is base58 encoded.
+func (k Key) String() string {
+	return base58.Encode(k[:])
+}
 
 // Value defines the value. Since this is intended for Solana slots, a uint32 is sufficient.
 type Value uint32
@@ -637,7 +643,7 @@ func (r *PreIndexReader) IsLastMustFind(key Key, offset Value) (bool, error) {
 
 	if !ok {
 		// Key not found in binary search
-		return false, fmt.Errorf("key not found in shard %d", shardID)
+		return false, fmt.Errorf("key %s not found in shard %d", key, shardID)
 	}
 
 	return foundOffset == offset, nil
