@@ -13,6 +13,7 @@ env:
   RUST_VERSION: 'stable'
   EPOCH: 0
   GRPC_CURL_VERSION: '1.8.9'
+  # tx signature from block 1
   getTxSig: 39V8tR2Q8Ar3WwMBfVTRPFr7AakLHy5wp7skJNBL7ET6ARoikqc1TaMiuXEtHiNPLQKoeiVr5XnKH8QtjdonN4yM
   getBlock: 1
 
@@ -20,7 +21,7 @@ jobs:
   integration-tests-grpc:
     name: Integration Tests
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
     
     steps:
     # this will be done by default from November 10, slows down CI runs
@@ -53,17 +54,6 @@ jobs:
         wget -q https://github.com/fullstorydev/grpcurl/releases/download/v${{ env.GRPC_CURL_VERSION }}/grpcurl_${{ env.GRPC_CURL_VERSION }}_linux_x86_64.tar.gz
         tar -xzf grpcurl_${{ env.GRPC_CURL_VERSION }}_linux_x86_64.tar.gz
         sudo mv grpcurl /usr/local/bin/
-
-    - name: Cache Go modules
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.cache/go-build
-          ~/go/pkg/mod
-        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-        restore-keys: |
-          ${{ runner.os }}-go-
-
 
     - name: Download Go dependencies
       run: go mod download
@@ -177,13 +167,13 @@ jobs:
         # grpcurl ${{ env.proto_flag }} ${{ env.endpoint }} OldFaithful.OldFaithful/GetSlot 
         
 
-        grpcurl ${{ env.proto_flag }} -d '{"slot": ${{ env.getBlock }}}' ${{ env.endpoint }} OldFaithful.OldFaithful/GetBlock | jq -r | md5sum | grep -q 4060788729dd4bf38bef2310728e15d6 || echo borked
+        grpcurl ${{ env.proto_flag }} -d '{"slot": ${{ env.getBlock }}}' ${{ env.endpoint }} OldFaithful.OldFaithful/GetBlock | jq -r | md5sum | grep -q 4060788729dd4bf38bef2310728e15d6
         
         echo "GetBlockTime"
         grpcurl ${{ env.proto_flag }} -d '{"slot": ${{ env.getBlock }}}' ${{ env.endpoint }} OldFaithful.OldFaithful/GetBlockTime | jq -r | grep -q "{}"
         
         echo "GetTransaction"
-        grpcurl ${{ env.proto_flag }} -d '{"signature": "${{ env.getTxSig }}"}' ${{ env.endpoint }} OldFaithful.OldFaithful/GetTransaction || echo borked
+        grpcurl ${{ env.proto_flag }} -d '{"signature": "${{ env.getTxSig }}"}' ${{ env.endpoint }} OldFaithful.OldFaithful/GetTransaction 
         
         # echo "GetFirstAvailableBlock"
         # not available from grpc interface
