@@ -1,0 +1,55 @@
+[package]
+name = "yellowstone-faithful-client"
+version = "0.1.0"
+authors = ["Old Faithful Contributors"]
+edition = "2021"
+rust-version = "1.75.0"
+description = "Rust SDK for interacting with Old Faithful gRPC services, providing access to Solana historical data"
+license = "MIT"
+repository = "https://github.com/rpcpool/yellowstone-faithful"
+keywords = ["solana", "blockchain", "grpc", "client"]
+categories = ["api-bindings", "asynchronous"]
+
+[dependencies]
+# Core async runtime
+tokio = { version = "1.35", features = ["full"] }
+futures = "0.3"
+async-trait = "0.1"
+bytes = "1.0"
+
+# gRPC dependencies (required)
+tonic = { version = "0.10", default-features = false, features = ["transport", "codegen", "prost", "tls", "tls-roots"] }
+prost = "0.12"
+prost-types = "0.12"
+
+# Serialization (used for models)
+serde = { version = "1.0", features = ["derive"] }
+
+# Encoding and utilities
+base64 = "0.22"
+bs58 = "0.5"
+
+# Error handling
+thiserror = "1.0"
+anyhow = "1.0"
+
+# Logging
+tracing = "0.1"
+
+# Async utilities
+async-stream = "0.3"
+
+# Solana types
+solana-sdk = "~2.0.13"
+solana-transaction-status = "~2.0.13"
+
+[build-dependencies]
+tonic-build = "0.10"
+protobuf-src = "1.1.0"
+
+[dev-dependencies]
+tokio-test = "0.4"
+tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
+wiremock = "0.6"
+clap = { version = "4.5", features = ["derive"] }
+chrono = "0.4"
