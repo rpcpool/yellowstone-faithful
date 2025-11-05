@@ -25,9 +25,9 @@ jobs:
     steps:
     # this will be done by default from November 10, slows down CI runs
     # https://github.com/actions/runner-images/issues/13213
-    # - name: disable man-db
-    #   run: |
-    #     sudo rm /var/lib/man-db/auto-update
+    - name: disable man-db
+      run: |
+        sudo rm /var/lib/man-db/auto-update
 
     - name: Checkout code
       uses: actions/checkout@v4
@@ -145,7 +145,7 @@ jobs:
         ' -s | jq -r .result | grep -q 0 || exit 1
 
         echo "getBlock" # borked
-        curl localhost:7999 -H "Content-Typ e: application/json" -d '
+        curl localhost:7999 -H "Content-Type: application/json" -d '
           {"jsonrpc":"2.0","id":1, "method":"getBlock","params": [${{ env.getBlock }}]}
           ' -s | jq -r . 
 
