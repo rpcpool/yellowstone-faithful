@@ -18,8 +18,8 @@ env:
   getBlock: 1
 
 jobs:
-  integration-tests-grpc:
-    name: Integration Tests
+  sample-epochs:
+    name: Sample epochs
     runs-on: ubuntu-latest
     timeout-minutes: 5
     
