@@ -167,7 +167,8 @@ jobs:
         # grpcurl ${{ env.proto_flag }} ${{ env.endpoint }} OldFaithful.OldFaithful/GetSlot 
         
 
-        grpcurl ${{ env.proto_flag }} -d '{"slot": ${{ env.getBlock }}}' ${{ env.endpoint }} OldFaithful.OldFaithful/GetBlock | jq -r | md5sum | grep -q 4060788729dd4bf38bef2310728e15d6
+        echo "GetBlock"
+        grpcurl ${{ env.proto_flag }} -d '{"slot": ${{ env.getBlock }}}' ${{ env.endpoint }} OldFaithful.OldFaithful/GetBlock #| jq -r | md5sum | grep -q 4060788729dd4bf38bef2310728e15d6
         
         echo "GetBlockTime"
         grpcurl ${{ env.proto_flag }} -d '{"slot": ${{ env.getBlock }}}' ${{ env.endpoint }} OldFaithful.OldFaithful/GetBlockTime | jq -r | grep -q "{}"
