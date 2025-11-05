@@ -7,11 +7,6 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
-env:
-  GO_VERSION: '1.23'
-  NODE_VERSION: '20'
-  RUST_VERSION: 'stable'
-
 jobs:
   security-tests:
     name: Security Tests
