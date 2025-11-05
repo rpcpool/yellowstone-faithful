@@ -17,7 +17,7 @@ env:
   getBlock: 1
 
 jobs:
-  integration-tests:
+  integration-tests-grpc:
     name: Integration Tests
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -25,9 +25,9 @@ jobs:
     steps:
     # this will be done by default from November 10, slows down CI runs
     # https://github.com/actions/runner-images/issues/13213
-    - name: disable man-db
-      run: |
-        sudo rm /var/lib/man-db/auto-update
+    # - name: disable man-db
+    #   run: |
+    #     sudo rm /var/lib/man-db/auto-update
 
     - name: Checkout code
       uses: actions/checkout@v4
@@ -164,9 +164,9 @@ jobs:
         proto_flag: -proto old-faithful-proto/proto/old-faithful.proto
         endpoint: -plaintext localhost:8999
         # epoch 1 borked, fetch 0 instead
-        getBlock: 0
+        #getBlock: 0
         # from slot 2
-        getTxSig: 5yVkF5fa41s1kond6SoC8rMAmbSeNuV5v4mnJboycJSdonNdjEqX7Vzvw3KSHa99Jjvo8e46NghJmm5ZS4r1rjjG
+        #getTxSig: 5yVkF5fa41s1kond6SoC8rMAmbSeNuV5v4mnJboycJSdonNdjEqX7Vzvw3KSHa99Jjvo8e46NghJmm5ZS4r1rjjG
       run: |
         
         echo "GetVersion"
