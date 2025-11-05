@@ -137,7 +137,7 @@ jobs:
         echo "getBlock"
         curl localhost:7999 -H "Content-Type: application/json" -d '
           {"jsonrpc":"2.0","id":1, "method":"getBlock","params": [${{ env.getBlock }}]}
-          ' -s | jq -r . | md5sum
+          ' -s | jq -r . | md5sum | grep -q 41b5e45d40d5e2b3c90eb575b2603455 || exit 1
 
         echo "getBlockTime"
         curl localhost:7999 -H "Content-Type: application/json" -d '
