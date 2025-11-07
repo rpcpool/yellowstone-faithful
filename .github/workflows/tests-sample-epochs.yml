@@ -20,7 +20,11 @@ env:
 jobs:
   sample-epochs:
     name: Sample epochs
-    runs-on: ubuntu-latest
+    runs-on: 
+      # this is a 'large runner' 16c 64GB 600GB disk
+      # disk is required to store the various index files we want to test
+      # https://docs.github.com/en/actions/how-tos/manage-runners/larger-runners/use-larger-runners
+      group: Old-faithful
     timeout-minutes: 5
     
     steps:
