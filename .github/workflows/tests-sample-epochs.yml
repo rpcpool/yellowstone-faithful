@@ -20,13 +20,13 @@ env:
 jobs:
   sample-epochs:
     name: Sample epochs
-    runs-on: 
+    runs-on:
       # this is a 'large runner' 16c 64GB 600GB disk
       # disk is required to store the various index files we want to test
       # https://docs.github.com/en/actions/how-tos/manage-runners/larger-runners/use-larger-runners
-      group: Old-faithful
+      group: Faithful
     timeout-minutes: 5
-    
+
     steps:
     # this will be done by default from November 10, slows down CI runs
     # https://github.com/actions/runner-images/issues/13213
@@ -64,15 +64,15 @@ jobs:
 
     - name: Build faithful-cli binary
       run: make
-      
+
     - name: Download sampled epoch indexes and prepare config files
-      run: | 
+      run: |
         HOSTNAME=https://files.old-faithful.net
-        
+
         # Get latest Solana epoch
         LATEST_EPOCH=$(curl -s https://api.mainnet-beta.solana.com -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","id":1,"method":"getEpochInfo"}' | jq -r '.result.epoch')
         echo "Latest epoch: $LATEST_EPOCH"
-        
+
         # Generate list of epochs: one per 100 (2, 102, 202, ..., latest), skipping epoch 0
         EPOCHS=()
         for ((i=2; i<=LATEST_EPOCH; i+=100)); do
@@ -85,26 +85,26 @@ jobs:
         # Sort and deduplicate, filter out epoch 0
         EPOCHS=($(printf '%s\n' "${EPOCHS[@]}" | sort -n | uniq | grep -v '^0$'))
         echo "Sampled epochs: ${EPOCHS[@]}"
-        
+
         # Function to download and configure a single epoch
         process_epoch() {
           local EPOCH=$1
           local INDEX_FOLDER=/tmp/epoch$EPOCH
           mkdir -p $INDEX_FOLDER
-          
+
           BAFY=$(curl $HOSTNAME/$EPOCH/epoch-$EPOCH.cid -s)
           if [ -z "$BAFY" ] || [ "$BAFY" = "null" ]; then
             echo "Warning: Could not fetch CID for epoch $EPOCH, skipping"
             return 1
           fi
-          
+
           INDEXES=(cid-to-offset-and-size slot-to-blocktime sig-to-cid sig-exists slot-to-cid)
-          
+
           for INDEX in "${INDEXES[@]}"; do
             aria2c -x 16 -s 16 -q -d $INDEX_FOLDER \
             "$HOSTNAME/$EPOCH/epoch-$EPOCH-$BAFY-mainnet-$INDEX.index" || return 1
           done
-          
+
           cat << EOF > /tmp/epoch-$EPOCH.yml
         epoch: $EPOCH
         version: 1
@@ -125,17 +125,17 @@ jobs:
           sig_exists:
             uri: $(ls $INDEX_FOLDER/epoch-$EPOCH-$BAFY-mainnet-sig-exists.index)
         EOF
-          
+
           echo "Completed epoch $EPOCH"
         }
-        
+
         # Export function for xargs
         export -f process_epoch
         export HOSTNAME
-        
+
         # Process all epochs in parallel using xargs
         printf '%s\n' "${EPOCHS[@]}" | xargs -P 4 -I {} bash -c 'process_epoch {}'
-        
+
         echo "All epochs processed. Config files:"
         ls -lh /tmp/epoch-*.yml
         echo "Index folders:"
@@ -152,7 +152,7 @@ jobs:
 
     - name: Run HTTP tests
       run: |
-  
+
         sleep 5s
 
         echo "getVersion"
