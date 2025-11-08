@@ -1,4 +1,4 @@
-name: (g)RPC Integration Tests
+name: Epochs sampling tests
 
 on:
   push:
@@ -24,9 +24,15 @@ jobs:
       # this is a 'large runner' 16c 64GB 600GB disk
       # disk is required to store the various index files we want to test
       # https://docs.github.com/en/actions/how-tos/manage-runners/larger-runners/use-larger-runners
+<<<<<<< Updated upstream
       group: Faithful
     timeout-minutes: 5
 
+=======
+      group: Old-faithful
+    timeout-minutes: 20
+    
+>>>>>>> Stashed changes
     steps:
     # this will be done by default from November 10, slows down CI runs
     # https://github.com/actions/runner-images/issues/13213
@@ -134,8 +140,13 @@ jobs:
         export HOSTNAME
 
         # Process all epochs in parallel using xargs
+<<<<<<< Updated upstream
         printf '%s\n' "${EPOCHS[@]}" | xargs -P 4 -I {} bash -c 'process_epoch {}'
 
+=======
+        printf '%s\n' "${EPOCHS[@]}" | xargs -P 10 -I {} bash -c 'process_epoch {}'
+        
+>>>>>>> Stashed changes
         echo "All epochs processed. Config files:"
         ls -lh /tmp/epoch-*.yml
         echo "Index folders:"
