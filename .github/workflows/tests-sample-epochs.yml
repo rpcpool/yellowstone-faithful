@@ -24,15 +24,9 @@ jobs:
       # this is a 'large runner' 16c 64GB 600GB disk
       # disk is required to store the various index files we want to test
       # https://docs.github.com/en/actions/how-tos/manage-runners/larger-runners/use-larger-runners
-<<<<<<< Updated upstream
       group: Faithful
-    timeout-minutes: 5
-
-=======
-      group: Old-faithful
     timeout-minutes: 20
-    
->>>>>>> Stashed changes
+
     steps:
     # this will be done by default from November 10, slows down CI runs
     # https://github.com/actions/runner-images/issues/13213
