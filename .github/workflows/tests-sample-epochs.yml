@@ -134,13 +134,7 @@ jobs:
         export HOSTNAME
 
         # Process all epochs in parallel using xargs
-<<<<<<< Updated upstream
-        printf '%s\n' "${EPOCHS[@]}" | xargs -P 4 -I {} bash -c 'process_epoch {}'
-
-=======
         printf '%s\n' "${EPOCHS[@]}" | xargs -P 10 -I {} bash -c 'process_epoch {}'
-        
->>>>>>> Stashed changes
         echo "All epochs processed. Config files:"
         ls -lh /tmp/epoch-*.yml
         echo "Index folders:"
