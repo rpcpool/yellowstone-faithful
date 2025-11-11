@@ -815,9 +815,6 @@ func (multi *MultiEpoch) StreamBlocks(params *old_faithful_grpc.StreamBlocksRequ
 func (multi *MultiEpoch) StreamTransactions(params *old_faithful_grpc.StreamTransactionsRequest, ser old_faithful_grpc.OldFaithful_StreamTransactionsServer) error {
 	ctx := ser.Context()
 
-	ctx, overallCancel := context.WithTimeout(ctx, 60*time.Second)
-	defer overallCancel()
-
 	startSlot := params.StartSlot
 	endSlot := startSlot + maxSlotsToStream
 
