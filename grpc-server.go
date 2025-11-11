@@ -40,8 +40,85 @@ import (
 
 const maxSlotsToStream uint64 = 100
 
+type GrpcServerConfig struct {
+	ListenOn             string
+	KeepAlive            GrpcServerKeepAliveConfig
+	MaxRecvMsgSize       int
+	MaxSendMsgSize       int
+	MaxConcurrentStreams int
+}
+type GrpcServerKeepAliveConfig struct {
+	MaxConnectionIdle   time.Duration
+	Time                time.Duration
+	Timeout             time.Duration
+	MinTime             time.Duration
+	PermitWithoutStream bool
+}
+
+func DefaultGrpcServerConfig() *GrpcServerConfig {
+	return &GrpcServerConfig{
+		ListenOn: "", // to be set by caller
+		KeepAlive: GrpcServerKeepAliveConfig{
+			MaxConnectionIdle:   5 * time.Minute,  // If client is idle for DURATION, close connection
+			Time:                60 * time.Second, // Ping client if idle for DURATION
+			Timeout:             30 * time.Second, // Wait DURATION for ping ack
+			MinTime:             5 * time.Second,  // Minimum time client can ping
+			PermitWithoutStream: true,             // Allow pings even without active streams
+		},
+		MaxRecvMsgSize:       10 * MiB,
+		MaxSendMsgSize:       100 * MiB,
+		MaxConcurrentStreams: 1000,
+	}
+}
+
+// GrpcServerConfig.Validate validates the gRPC server configuration.
+func (config *GrpcServerConfig) Validate() error {
+	if config == nil {
+		return errors.New("GrpcServerConfig cannot be nil")
+	}
+	if config.ListenOn == "" {
+		return errors.New("ListenOn cannot be empty")
+	}
+	if config.MaxRecvMsgSize <= 0 {
+		return errors.New("MaxRecvMsgSize must be positive")
+	}
+	if config.MaxSendMsgSize <= 0 {
+		return errors.New("MaxSendMsgSize must be positive")
+	}
+	if config.MaxConcurrentStreams <= 0 {
+		return errors.New("MaxConcurrentStreams must be positive")
+	}
+	if config.MaxConcurrentStreams > int(^uint32(0)) {
+		return errors.New("MaxConcurrentStreams exceeds maximum allowed value")
+	}
+	if err := config.KeepAlive.Validate(); err != nil {
+		return fmt.Errorf("invalid KeepAlive configuration: %w", err)
+	}
+	return nil
+}
+
+// GrpcServerKeepAliveConfig.Validate validates the gRPC server keepalive configuration.
+func (kac *GrpcServerKeepAliveConfig) Validate() error {
+	if kac.MaxConnectionIdle <= 0 {
+		return errors.New("MaxConnectionIdle must be positive")
+	}
+	if kac.Time <= 0 {
+		return errors.New("Time must be positive")
+	}
+	if kac.Timeout <= 0 {
+		return errors.New("Timeout must be positive")
+	}
+	if kac.MinTime <= 0 {
+		return errors.New("MinTime must be positive")
+	}
+	return nil
+}
+
 // ListeAndServe starts listening on the configured address and serves the RPC API.
-func (me *MultiEpoch) ListenAndServeGRPC(ctx context.Context, listenOn string) error {
+func (me *MultiEpoch) ListenAndServeGRPC(ctx context.Context, config *GrpcServerConfig) error {
+	if err := config.Validate(); err != nil {
+		return fmt.Errorf("invalid gRPC server configuration: %w", err)
+	}
 	// Initialize telemetry
 	cleanup, err := telemetry.InitTelemetry(ctx, "yellowstone-faithful")
 	if err != nil {
@@ -50,20 +127,20 @@ func (me *MultiEpoch) ListenAndServeGRPC(ctx context.Context, listenOn string) e
 		defer cleanup()
 	}
 
-	lis, err := net.Listen("tcp", listenOn)
+	lis, err := net.Listen("tcp", config.ListenOn)
 	if err != nil {
 		return fmt.Errorf("failed to create listener for gRPC server: %w", err)
 	}
 
 	// Add keepalive parameters to prevent timeouts on idle connections
 	keepaliveParams := keepalive.ServerParameters{
-		MaxConnectionIdle: 5 * time.Minute,  // If client is idle for 5 minutes, close connection
-		Time:              60 * time.Second, // Ping client if idle for 30 seconds
-		Timeout:           30 * time.Second, // Wait 10 seconds for ping ack
+		MaxConnectionIdle: config.KeepAlive.MaxConnectionIdle,
+		Time:              config.KeepAlive.Time,
+		Timeout:           config.KeepAlive.Timeout,
 	}
 	keepaliveEnforcementPolicy := keepalive.EnforcementPolicy{
-		MinTime:             5 * time.Second, // Minimum time client can ping
-		PermitWithoutStream: true,            // Allow pings even without active streams
+		MinTime:             config.KeepAlive.MinTime,
+		PermitWithoutStream: config.KeepAlive.PermitWithoutStream,
 	}
 
 	// Create gRPC server with telemetry interceptors
@@ -72,9 +149,9 @@ func (me *MultiEpoch) ListenAndServeGRPC(ctx context.Context, listenOn string) e
 		grpc.StreamInterceptor(telemetry.TracingStreamInterceptor),
 		grpc.KeepaliveParams(keepaliveParams),
 		grpc.KeepaliveEnforcementPolicy(keepaliveEnforcementPolicy),
-		grpc.MaxRecvMsgSize(10*MiB), // TODO: adjust as needed
-		grpc.MaxSendMsgSize(100*MiB),
-		grpc.MaxConcurrentStreams(1000), // TODO: Adjust based on expected load
+		grpc.MaxRecvMsgSize(config.MaxRecvMsgSize),
+		grpc.MaxSendMsgSize(config.MaxSendMsgSize),
+		grpc.MaxConcurrentStreams(uint32(config.MaxConcurrentStreams)),
 	)
 	old_faithful_grpc.RegisterOldFaithfulServer(grpcServer, me)
 	go func() {
@@ -84,7 +161,7 @@ func (me *MultiEpoch) ListenAndServeGRPC(ctx context.Context, listenOn string) e
 		grpcServer.GracefulStop()
 	}()
 
-	klog.Infof("gRPC server starting with telemetry enabled on %s", listenOn)
+	klog.Infof("gRPC server starting with telemetry enabled on %s", config.ListenOn)
 	if err := grpcServer.Serve(lis); err != nil {
 		return fmt.Errorf("failed to serve gRPC server: %w", err)
 	}

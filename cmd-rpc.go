@@ -41,6 +41,7 @@ func newCmd_rpc() *cli.Command {
 	var pyroscopeServerAddress string
 	var useMmapForLocalCars bool
 	var useMmapForLocalIndexes bool
+	defaultGrpcServerConfig := DefaultGrpcServerConfig()
 	return &cli.Command{
 		Name:        "rpc",
 		Usage:       "Start a Solana JSON RPC server.",
@@ -134,6 +135,56 @@ func newCmd_rpc() *cli.Command {
 				Usage:       "Use mmap for local index files (instead of os.Open)",
 				Value:       false,
 				Destination: &useMmapForLocalIndexes,
+			},
+			// grpc server flags:
+			&cli.IntFlag{
+				Name:        "grpc-max-recv-msg-size",
+				Usage:       "gRPC server maximum receive message size in bytes",
+				Value:       defaultGrpcServerConfig.MaxRecvMsgSize,
+				Destination: &defaultGrpcServerConfig.MaxRecvMsgSize,
+			},
+			&cli.IntFlag{
+				Name:        "grpc-max-send-msg-size",
+				Usage:       "gRPC server maximum send message size in bytes",
+				Value:       defaultGrpcServerConfig.MaxSendMsgSize,
+				Destination: &defaultGrpcServerConfig.MaxSendMsgSize,
+			},
+			&cli.IntFlag{
+				Name:        "grpc-max-concurrent-streams",
+				Usage:       "gRPC server maximum concurrent streams",
+				Value:       defaultGrpcServerConfig.MaxConcurrentStreams,
+				Destination: &defaultGrpcServerConfig.MaxConcurrentStreams,
+			},
+			// keepalive flags:
+			&cli.DurationFlag{
+				Name:        "grpc-keepalive-max-connection-idle",
+				Usage:       "gRPC server keepalive max connection idle duration",
+				Value:       defaultGrpcServerConfig.KeepAlive.MaxConnectionIdle,
+				Destination: &defaultGrpcServerConfig.KeepAlive.MaxConnectionIdle,
+			},
+			&cli.DurationFlag{
+				Name:        "grpc-keepalive-time",
+				Usage:       "gRPC server keepalive time duration",
+				Value:       defaultGrpcServerConfig.KeepAlive.Time,
+				Destination: &defaultGrpcServerConfig.KeepAlive.Time,
+			},
+			&cli.DurationFlag{
+				Name:        "grpc-keepalive-timeout",
+				Usage:       "gRPC server keepalive timeout duration",
+				Value:       defaultGrpcServerConfig.KeepAlive.Timeout,
+				Destination: &defaultGrpcServerConfig.KeepAlive.Timeout,
+			},
+			&cli.DurationFlag{
+				Name:        "grpc-keepalive-min-time",
+				Usage:       "gRPC server keepalive minimum time duration",
+				Value:       defaultGrpcServerConfig.KeepAlive.MinTime,
+				Destination: &defaultGrpcServerConfig.KeepAlive.MinTime,
+			},
+			&cli.BoolFlag{
+				Name:        "grpc-keepalive-permit-without-stream",
+				Usage:       "gRPC server keepalive permit without stream",
+				Value:       defaultGrpcServerConfig.KeepAlive.PermitWithoutStream,
+				Destination: &defaultGrpcServerConfig.KeepAlive.PermitWithoutStream,
 			},
 		),
 		Action: func(c *cli.Context) error {
@@ -424,7 +475,8 @@ func newCmd_rpc() *cli.Command {
 
 			if grpcListenOn != "" {
 				allListeners.Go(func() error {
-					err := multi.ListenAndServeGRPC(c.Context, grpcListenOn)
+					defaultGrpcServerConfig.ListenOn = grpcListenOn
+					err := multi.ListenAndServeGRPC(c.Context, defaultGrpcServerConfig)
 					if err != nil {
 						return fmt.Errorf("failed to start gRPC server: %w", err)
 					}
