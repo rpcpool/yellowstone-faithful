@@ -40,33 +40,63 @@ import (
 
 const maxSlotsToStream uint64 = 100
 
+// GrpcServerConfig defines the configuration parameters for the gRPC server.
 type GrpcServerConfig struct {
-	ListenOn             string
-	KeepAlive            GrpcServerKeepAliveConfig
-	MaxRecvMsgSize       int
-	MaxSendMsgSize       int
+	// ListenOn is the address and port string for the server to listen on (e.g., ":9000" or "0.0.0.0:9000").
+	ListenOn string
+	// KeepAlive defines the server-side keepalive policies.
+	KeepAlive GrpcServerKeepAliveConfig
+	// MaxRecvMsgSize is the maximum message size, in bytes, the server is willing to receive.
+	// If set to 0, the server will use the gRPC default.
+	MaxRecvMsgSize int
+	// MaxSendMsgSize is the maximum message size, in bytes, the server is willing to send.
+	// If set to 0, the server will use the gRPC default.
+	MaxSendMsgSize int
+	// MaxConcurrentStreams limits the number of concurrent gRPC streams (calls) a single client
+	// connection can have active. This protects the server from resource exhaustion by a single client.
 	MaxConcurrentStreams int
 }
+
+// GrpcServerKeepAliveConfig defines the server-side keepalive parameters.
+// These settings help prevent idle connections from being dropped by network intermediaries (LBs, NATs).
 type GrpcServerKeepAliveConfig struct {
-	MaxConnectionIdle   time.Duration
-	Time                time.Duration
-	Timeout             time.Duration
-	MinTime             time.Duration
+	// --- ServerParameters ---
+	// MaxConnectionIdle is the duration after which an idle connection (no active streams) will be gracefully closed.
+	// This prevents inactive connections from lingering indefinitely.
+	MaxConnectionIdle time.Duration
+	// Time is the period after which the server will send a keepalive ping to the client if no activity
+	// is observed on the connection.
+	Time time.Duration
+	// Timeout is the duration the server will wait for a keepalive ping acknowledgment (PINGACK) from the
+	// client before considering the connection dead and closing it.
+	Timeout time.Duration
+
+	// --- EnforcementPolicy ---
+	// MinTime is the minimum time interval a client is allowed to send keepalive pings.
+	// If a client pings more frequently than this, the server will treat it as a misbehavior
+	// and may close the connection.
+	MinTime time.Duration
+	// PermitWithoutStream allows the server to receive keepalive pings from a client
+	// even if there are no active streams (RPC calls) on the connection.
 	PermitWithoutStream bool
 }
 
+// DefaultGrpcServerConfig returns a GrpcServerConfig with reasonable production defaults.
 func DefaultGrpcServerConfig() *GrpcServerConfig {
 	return &GrpcServerConfig{
-		ListenOn: "", // to be set by caller
+		ListenOn: "", // Must be set by the caller.
 		KeepAlive: GrpcServerKeepAliveConfig{
-			MaxConnectionIdle:   5 * time.Minute,  // If client is idle for DURATION, close connection
-			Time:                60 * time.Second, // Ping client if idle for DURATION
-			Timeout:             30 * time.Second, // Wait DURATION for ping ack
-			MinTime:             5 * time.Second,  // Minimum time client can ping
-			PermitWithoutStream: true,             // Allow pings even without active streams
+			// ServerParameters:
+			MaxConnectionIdle: 5 * time.Minute,  // Close connections idle for 5 minutes.
+			Time:              60 * time.Second, // Send a keepalive ping if idle for 60 seconds.
+			Timeout:           30 * time.Second, // Wait 30 seconds for the ping acknowledgment.
+			// EnforcementPolicy:
+			MinTime:             5 * time.Second, // Enforce a minimum client ping interval of 5 seconds.
+			PermitWithoutStream: true,            // Allow clients to ping even if they have no active calls.
 		},
-		MaxRecvMsgSize:       10 * MiB,
-		MaxSendMsgSize:       100 * MiB,
+		MaxRecvMsgSize: 10 * MiB,  // Set a default max incoming message size of 10 MiB.
+		MaxSendMsgSize: 100 * MiB, // Set a default max outgoing message size of 100 MiB.
+		// Limit each client to 1000 concurrent calls to prevent resource abuse.
 		MaxConcurrentStreams: 1000,
 	}
 }
@@ -88,8 +118,9 @@ func (config *GrpcServerConfig) Validate() error {
 	if config.MaxConcurrentStreams <= 0 {
 		return errors.New("MaxConcurrentStreams must be positive")
 	}
+	// gRPC internally stores this as a uint32.
 	if config.MaxConcurrentStreams > int(^uint32(0)) {
-		return errors.New("MaxConcurrentStreams exceeds maximum allowed value")
+		return errors.New("MaxConcurrentStreams exceeds maximum allowed value (uint32 max)")
 	}
 	if err := config.KeepAlive.Validate(); err != nil {
 		return fmt.Errorf("invalid KeepAlive configuration: %w", err)
@@ -99,6 +130,8 @@ func (config *GrpcServerConfig) Validate() error {
 
 // GrpcServerKeepAliveConfig.Validate validates the gRPC server keepalive configuration.
 func (kac *GrpcServerKeepAliveConfig) Validate() error {
+	// Durations should be positive. gRPC may have other internal constraints
+	// (e.g., Time > 0), but positive checks are a good baseline.
 	if kac.MaxConnectionIdle <= 0 {
 		return errors.New("MaxConnectionIdle must be positive")
 	}
