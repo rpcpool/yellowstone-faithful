@@ -891,7 +891,6 @@ func (multi *MultiEpoch) processSlotTransactions(
 				}
 				return err
 			}
-			defer old_faithful_grpc.PutBlockResponse(block) // return to pool
 
 			for _, tx := range block.Transactions {
 				txn, err := solana.TransactionFromBytes(tx.GetTransaction())
@@ -945,6 +944,7 @@ func (multi *MultiEpoch) processSlotTransactions(
 					}
 				}
 			}
+			old_faithful_grpc.PutBlockResponse(block) // return to pool
 		}
 		return nil
 	}
