@@ -190,7 +190,7 @@ func newFaithfulClient(serverAddr string, useTLS bool) (*faithfulClient, error) 
 	// Add client-side keepalive parameters
 	keepaliveParams := keepalive.ClientParameters{
 		Time:                60 * time.Second, // Ping server if idle for 30 seconds
-		Timeout:             10 * time.Second, // Wait 10 seconds for ping ack
+		Timeout:             30 * time.Second, // Wait 10 seconds for ping ack
 		PermitWithoutStream: true,             // Allow pings even without active streams
 	}
 	opts = append(opts, grpc.WithKeepaliveParams(keepaliveParams))
