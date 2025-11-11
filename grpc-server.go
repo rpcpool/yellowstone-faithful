@@ -33,6 +33,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	_ "google.golang.org/grpc/encoding/gzip" // Install the gzip compressor
+	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/status"
 	"k8s.io/klog/v2"
 )
@@ -54,10 +55,26 @@ func (me *MultiEpoch) ListenAndServeGRPC(ctx context.Context, listenOn string) e
 		return fmt.Errorf("failed to create listener for gRPC server: %w", err)
 	}
 
+	// Add keepalive parameters to prevent timeouts on idle connections
+	keepaliveParams := keepalive.ServerParameters{
+		MaxConnectionIdle: 5 * time.Minute,  // If client is idle for 5 minutes, close connection
+		Time:              30 * time.Second, // Ping client if idle for 30 seconds
+		Timeout:           10 * time.Second, // Wait 10 seconds for ping ack
+	}
+	keepaliveEnforcementPolicy := keepalive.EnforcementPolicy{
+		MinTime:             5 * time.Second, // Minimum time client can ping
+		PermitWithoutStream: true,            // Allow pings even without active streams
+	}
+
 	// Create gRPC server with telemetry interceptors
 	grpcServer := grpc.NewServer(
 		grpc.UnaryInterceptor(telemetry.TracingUnaryInterceptor),
 		grpc.StreamInterceptor(telemetry.TracingStreamInterceptor),
+		grpc.KeepaliveParams(keepaliveParams),
+		grpc.KeepaliveEnforcementPolicy(keepaliveEnforcementPolicy),
+		grpc.MaxRecvMsgSize(10*MiB), // TODO: adjust as needed
+		grpc.MaxSendMsgSize(100*MiB),
+		grpc.MaxConcurrentStreams(1000), // TODO: Adjust based on expected load
 	)
 	old_faithful_grpc.RegisterOldFaithfulServer(grpcServer, me)
 	go func() {
