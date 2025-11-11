@@ -59,7 +59,7 @@ func (me *MultiEpoch) ListenAndServeGRPC(ctx context.Context, listenOn string) e
 	keepaliveParams := keepalive.ServerParameters{
 		MaxConnectionIdle: 5 * time.Minute,  // If client is idle for 5 minutes, close connection
 		Time:              60 * time.Second, // Ping client if idle for 30 seconds
-		Timeout:           10 * time.Second, // Wait 10 seconds for ping ack
+		Timeout:           30 * time.Second, // Wait 10 seconds for ping ack
 	}
 	keepaliveEnforcementPolicy := keepalive.EnforcementPolicy{
 		MinTime:             5 * time.Second, // Minimum time client can ping
