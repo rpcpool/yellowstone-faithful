@@ -96,8 +96,8 @@ func DefaultGrpcServerConfig() *GrpcServerConfig {
 		},
 		MaxRecvMsgSize: 10 * MiB,  // Set a default max incoming message size of 10 MiB.
 		MaxSendMsgSize: 100 * MiB, // Set a default max outgoing message size of 100 MiB.
-		// Limit each client to 1000 concurrent calls to prevent resource abuse.
-		MaxConcurrentStreams: 1000,
+		// Limit each client to 20 concurrent calls to prevent resource abuse.
+		MaxConcurrentStreams: 20,
 	}
 }
 
