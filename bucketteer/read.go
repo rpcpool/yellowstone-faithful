@@ -8,6 +8,7 @@ import (
 	"io"
 	"math"
 	"os"
+	"slices"
 
 	bin "github.com/gagliardetto/binary"
 	"github.com/rpcpool/yellowstone-faithful/indexmeta"
@@ -18,6 +19,7 @@ type Reader struct {
 	contentReader  io.ReaderAt
 	meta           *indexmeta.Meta
 	prefixToOffset *bucketToOffset
+	prefixToSize   map[uint16]uint64
 }
 
 type bucketToOffset [math.MaxUint16 + 1]uint64
@@ -48,9 +50,9 @@ func uint16ToPrefix(num uint16) [2]byte {
 	return prefix
 }
 
-// Open opens a Bucketteer file in read-only mode,
+// OpenMMAP opens a Bucketteer file in read-only mode,
 // using memory-mapped IO.
-func Open(path string) (*Reader, error) {
+func OpenMMAP(path string) (*Reader, error) {
 	empty, err := isEmptyFile(path)
 	if err != nil {
 		return nil, err
@@ -59,6 +61,21 @@ func Open(path string) (*Reader, error) {
 		return nil, fmt.Errorf("file is empty: %s", path)
 	}
 	file, err := mmap.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	return NewReader(file)
+}
+
+func Open(path string) (*Reader, error) {
+	empty, err := isEmptyFile(path)
+	if err != nil {
+		return nil, err
+	}
+	if empty {
+		return nil, fmt.Errorf("file is empty: %s", path)
+	}
+	file, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
@@ -110,6 +127,7 @@ func NewReader(reader io.ReaderAt) (*Reader, error) {
 	}
 	r.meta = meta
 	r.prefixToOffset = prefixToOffset
+	r.prefixToSize = calcSizeOfBuckets(*prefixToOffset)
 	r.contentReader = io.NewSectionReader(reader, headerTotalSize, 1<<63-1)
 	return r, nil
 }
@@ -133,6 +151,36 @@ func readHeaderSize(reader io.ReaderAt) (int64, error) {
 	}
 	headerSize := int64(binary.LittleEndian.Uint32(headerSizeBuf))
 	return headerSize, nil
+}
+
+func calcSizeOfBuckets(prefixToOffset bucketToOffset) map[uint16]uint64 {
+	prefixToBucketSize := make(map[uint16]uint64)
+	var prefixes []uint16
+	for prefixAsUint16 := range prefixToOffset {
+		prefixes = append(prefixes, uint16(prefixAsUint16))
+	}
+	// sort prefixes
+	sortUint16s(prefixes)
+	for i, prefixAsUint16 := range prefixes {
+		offset := prefixToOffset[prefixAsUint16]
+		var nextOffset uint64
+		if i+1 < len(prefixes) {
+			nextPrefixAsUint16 := prefixes[i+1]
+			nextOffset = prefixToOffset[nextPrefixAsUint16]
+		} else {
+			nextOffset = math.MaxUint64
+		}
+		if nextOffset == math.MaxUint64 {
+			prefixToBucketSize[prefixAsUint16] = 0
+		} else {
+			prefixToBucketSize[prefixAsUint16] = nextOffset - offset
+		}
+	}
+	return prefixToBucketSize
+}
+
+func sortUint16s(arr []uint16) {
+	slices.Sort(arr)
 }
 
 func readHeader(reader io.ReaderAt) (*bucketToOffset, *indexmeta.Meta, int64, error) {
@@ -202,15 +250,19 @@ func (r *Reader) Has(sig [64]byte) (bool, error) {
 	prefix := [2]byte{sig[0], sig[1]}
 	offset := r.prefixToOffset[prefixToUint16(prefix)]
 	if offset == math.MaxUint64 {
+		// This prefix doesn't exist, so the signature can't.
 		return false, nil
 	}
-	// numHashes:
-	numHashesBuf := make([]byte, 4) // TODO: is uint32 enough? That's 4 billion hashes per bucket. RIght now an epoch can have 1 billion signatures.
-	_, err := r.contentReader.ReadAt(numHashesBuf, int64(offset))
-	if err != nil {
-		return false, err
+	size, ok := r.prefixToSize[prefixToUint16(prefix)]
+	if !ok || size < 4 {
+		return false, fmt.Errorf("invalid bucket size for prefix %x", prefix)
 	}
-	numHashes := binary.LittleEndian.Uint32(numHashesBuf)
+	sizeMinus4 := size - 4
+	numHashes := sizeMinus4 / 8
+	if numHashes == 0 {
+		// Empty bucket.
+		return false, nil
+	}
 	bucketReader := io.NewSectionReader(r.contentReader, int64(offset)+4, int64(numHashes*8))
 
 	// hashes:

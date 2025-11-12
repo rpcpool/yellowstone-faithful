@@ -270,7 +270,7 @@ func (multi *MultiEpoch) GetBlock(ctx context.Context, params *old_faithful_grpc
 	// TODO: the parent object might be in the previous epoch, so we need to handle that case.
 
 	offsetParent, parentCid, err := func() (uint64, cid.Cid, error) {
-		if parentSlot == 0 {
+		if slot == 0 {
 			return epochHandler.carHeaderSize, cid.Cid{}, nil // genesis has no parent
 		}
 		if parentIsInPreviousEpoch {

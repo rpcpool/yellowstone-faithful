@@ -1,18 +1,29 @@
 package slottools
 
-import "encoding/binary"
+import (
+	"encoding/binary"
+	"fmt"
+)
 
 // CalcEpochForSlot returns the epoch for the given slot.
 func CalcEpochForSlot(slot uint64) uint64 {
-	return slot / EpochLen
+	return CalcEpochForSlotWithEpochLen(slot, DEFAULT_EPOCH_LEN)
 }
 
-const EpochLen = 432000
+func CalcEpochForSlotWithEpochLen(slot uint64, epochLen uint64) uint64 {
+	return slot / epochLen
+}
+
+const DEFAULT_EPOCH_LEN = 432000
 
 // CalcEpochLimits returns the start and stop slots for the given epoch (inclusive).
 func CalcEpochLimits(epoch uint64) (uint64, uint64) {
-	epochStart := epoch * EpochLen
-	epochStop := epochStart + EpochLen - 1
+	return CalcEpochLimitsWithEpochLen(epoch, DEFAULT_EPOCH_LEN)
+}
+
+func CalcEpochLimitsWithEpochLen(epoch uint64, epochLen uint64) (uint64, uint64) {
+	epochStart := epoch * epochLen
+	epochStop := epochStart + epochLen - 1
 	return epochStart, epochStop
 }
 
@@ -48,7 +59,7 @@ func Uint64FromLEBytes(buf []byte) uint64 {
 func ParentIsInPreviousEpoch(parentSlot uint64, childSlot uint64) bool {
 	// If the parent slot is less than the start of the current epoch,
 	// then it must be in the previous epoch.
-	epochStart := CalcEpochForSlot(childSlot) * EpochLen
+	epochStart := CalcEpochForSlot(childSlot) * DEFAULT_EPOCH_LEN
 	return parentSlot < epochStart
 }
 
@@ -70,4 +81,12 @@ func calcRangeInclusive(start, end uint64) []uint64 {
 		rangeSlice[i] = start + uint64(i)
 	}
 	return rangeSlice
+}
+
+// ValidateSlotInEpoch checks if a slot belongs to the expected epoch.
+func ValidateSlotInEpoch(slot, epoch, epochLen uint64) error {
+	if slotEpoch := CalcEpochForSlotWithEpochLen(slot, epochLen); epoch != slotEpoch {
+		return fmt.Errorf("provided slot %v belongs to epoch %d (expected epoch %d)", slot, slotEpoch, epoch)
+	}
+	return nil
 }
