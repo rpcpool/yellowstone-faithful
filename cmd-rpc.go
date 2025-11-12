@@ -137,6 +137,12 @@ func newCmd_rpc() *cli.Command {
 				Value:       false,
 				Destination: &useMmapForLocalIndexes,
 			},
+			&cli.BoolFlag{
+				Name:        "use-mmap-for-sig-exists-index",
+				Usage:       "Use mmap for the sig-exists index file (instead of os.Open)",
+				Value:       false,
+				Destination: &useMmapForSigExistsIndex,
+			},
 			// grpc server flags:
 			&cli.IntFlag{
 				Name:        "grpc-max-recv-msg-size",
@@ -186,12 +192,6 @@ func newCmd_rpc() *cli.Command {
 				Usage:       "gRPC server keepalive permit without stream",
 				Value:       defaultGrpcServerConfig.KeepAlive.PermitWithoutStream,
 				Destination: &defaultGrpcServerConfig.KeepAlive.PermitWithoutStream,
-      },
-			&cli.BoolFlag{
-				Name:        "use-mmap-for-sig-exists-index",
-				Usage:       "Use mmap for the sig-exists index file (instead of os.Open)",
-				Value:       false,
-				Destination: &useMmapForSigExistsIndex,
 			},
 		),
 		Action: func(c *cli.Context) error {
