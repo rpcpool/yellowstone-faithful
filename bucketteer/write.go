@@ -239,7 +239,10 @@ func seal(
 	for prefix := range prefixToHashes {
 		entries := getCleanSet(prefixToHashes[prefix])
 		if len(entries) != len(prefixToHashes[prefix]) {
-			klog.Errorf("duplicate hashes for prefix %v", prefix)
+			// TODO: is this an error? but if this is an existence check, duplicates dont matter?
+			// BUT if there are collisions in this index, it means that there are collisions in the OTHER
+			// signature indexes as well (sig_to_cid), which is FATAL (index creation FAILS).
+			klog.Warningf("duplicate hashes for prefix %v", prefix)
 		}
 		sortWithCompare(entries, func(i, j int) int {
 			if entries[i] < entries[j] {

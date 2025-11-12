@@ -41,6 +41,7 @@ func newCmd_rpc() *cli.Command {
 	var pyroscopeServerAddress string
 	var useMmapForLocalCars bool
 	var useMmapForLocalIndexes bool
+	var useMmapForSigExistsIndex bool
 	return &cli.Command{
 		Name:        "rpc",
 		Usage:       "Start a Solana JSON RPC server.",
@@ -134,6 +135,12 @@ func newCmd_rpc() *cli.Command {
 				Usage:       "Use mmap for local index files (instead of os.Open)",
 				Value:       false,
 				Destination: &useMmapForLocalIndexes,
+			},
+			&cli.BoolFlag{
+				Name:        "use-mmap-for-sig-exists-index",
+				Usage:       "Use mmap for the sig-exists index file (instead of os.Open)",
+				Value:       false,
+				Destination: &useMmapForSigExistsIndex,
 			},
 		),
 		Action: func(c *cli.Context) error {
@@ -263,6 +270,7 @@ func newCmd_rpc() *cli.Command {
 								minerInfo,
 								useMmapForLocalCars,
 								useMmapForLocalIndexes,
+								useMmapForSigExistsIndex,
 							)
 							if err != nil {
 								return fmt.Errorf("failed to create epoch from config %q: %s", config.ConfigFilepath(), err.Error())
@@ -342,6 +350,7 @@ func newCmd_rpc() *cli.Command {
 									minerInfo,
 									useMmapForLocalCars,
 									useMmapForLocalIndexes,
+									useMmapForSigExistsIndex,
 								)
 								if err != nil {
 									klog.Errorf("error creating epoch from config file %q: %s", event.Name, err.Error())
@@ -372,6 +381,7 @@ func newCmd_rpc() *cli.Command {
 									minerInfo,
 									useMmapForLocalCars,
 									useMmapForLocalIndexes,
+									useMmapForSigExistsIndex,
 								)
 								if err != nil {
 									klog.Errorf("error creating epoch from config file %q: %s", event.Name, err.Error())

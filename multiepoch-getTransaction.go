@@ -27,13 +27,25 @@ type SigExistsIndex interface {
 func (multi *MultiEpoch) getAllBucketteers() map[uint64]SigExistsIndex {
 	multi.mu.RLock()
 	defer multi.mu.RUnlock()
-	bucketteers := make(map[uint64]SigExistsIndex)
+	bucketteers := make(map[uint64]SigExistsIndex, len(multi.epochs))
 	for _, epoch := range multi.epochs {
 		if epoch.sigExists != nil {
 			bucketteers[epoch.Epoch()] = epoch.sigExists
 		}
 	}
 	return bucketteers
+}
+
+func sortDescending(vals []uint64) {
+	sort.Slice(vals, func(i, j int) bool {
+		return vals[i] > vals[j]
+	})
+}
+
+func sortAscending(vals []uint64) {
+	sort.Slice(vals, func(i, j int) bool {
+		return vals[i] < vals[j]
+	})
 }
 
 func (multi *MultiEpoch) findEpochNumberFromSignature(ctx context.Context, sig solana.Signature) (uint64, error) {
@@ -46,15 +58,13 @@ func (multi *MultiEpoch) findEpochNumberFromSignature(ctx context.Context, sig s
 		klog.V(4).Infof("findEpochNumberFromSignature took %s", time.Since(ttok))
 	}()
 
-	if epochs := multi.GetEpochNumbers(); len(epochs) == 1 {
-		return epochs[0], nil
+	numbers := multi.GetEpochNumbers()
+	if len(numbers) == 1 {
+		return numbers[0], nil
 	}
 
-	numbers := multi.GetEpochNumbers()
 	// sort from highest to lowest:
-	sort.Slice(numbers, func(i, j int) bool {
-		return numbers[i] > numbers[j]
-	})
+	sortDescending(numbers)
 
 	buckets := multi.getAllBucketteers()
 
@@ -70,20 +80,27 @@ func (multi *MultiEpoch) findEpochNumberFromSignature(ctx context.Context, sig s
 			if !ok {
 				return 0, ErrNotFound
 			}
+			hasStartedAt := time.Now()
 			has, err := bucket.Has(sig)
 			if err != nil {
 				return 0, fmt.Errorf("failed to check if signature exists in bucket: %w", err)
 			}
+			klog.V(4).Infof("Checked existence of signature %s in epoch %d in %s", sig, epochNumber, time.Since(hasStartedAt))
 			if !has {
 				return 0, ErrNotFound
 			}
+			startedGetEpochAt := time.Now()
 			epoch, err := multi.GetEpoch(epochNumber)
 			if err != nil {
 				return 0, fmt.Errorf("failed to get epoch %d: %w", epochNumber, err)
 			}
+			klog.V(4).Infof("Retrieved epoch %d in %s", epochNumber, time.Since(startedGetEpochAt))
+			findCidFromSigStartedAt := time.Now()
 			if _, err := epoch.FindCidFromSignature(ctx, sig); err == nil {
+				klog.V(4).Infof("Found CID for signature %s in epoch %d in %s", sig, epochNumber, time.Since(findCidFromSigStartedAt))
 				return epochNumber, nil
 			}
+			klog.V(4).Infof("Signature %s not found in epoch %d in %s", sig, epochNumber, time.Since(findCidFromSigStartedAt))
 			// Not found in this epoch.
 			return 0, ErrNotFound
 		})

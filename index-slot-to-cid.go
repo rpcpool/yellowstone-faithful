@@ -46,7 +46,7 @@ func CreateIndex_slot2cid(
 		return "", fmt.Errorf("failed to create tmp dir: %w", err)
 	}
 
-	numItems := uint64(slottools.EpochLen)
+	numItems := uint64(slottools.DEFAULT_EPOCH_LEN)
 
 	klog.Infof("Creating builder with %d items", numItems)
 	sl2c, err := indexes.NewWriter_SlotToCid(

@@ -114,6 +114,7 @@ func NewEpochFromConfig(
 	minerInfo *splitcarfetcher.MinerInfoCache,
 	useMmapForLocalCars bool,
 	useMmapForLocalIndexes bool,
+	useMmapForSigExistsIndex bool,
 ) (*Epoch, error) {
 	if config == nil {
 		return nil, fmt.Errorf("config must not be nil")
@@ -466,7 +467,7 @@ func NewEpochFromConfig(
 		sigExistsFile, err := openIndexStorage(
 			c.Context,
 			string(config.Indexes.SigExists.URI),
-			useMmapForLocalIndexes,
+			useMmapForSigExistsIndex,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to open sig-exists index file: %w", err)
