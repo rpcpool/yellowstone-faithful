@@ -14,6 +14,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"k8s.io/klog/v2"
@@ -182,9 +183,17 @@ func newFaithfulClient(serverAddr string, useTLS bool) (*faithfulClient, error) 
 
 	// Set maximum message size (100MB)
 	opts = append(opts, grpc.WithDefaultCallOptions(
-		grpc.MaxCallRecvMsgSize(100*1024*1024),
-		grpc.MaxCallSendMsgSize(100*1024*1024),
+		grpc.MaxCallRecvMsgSize(100*MiB),
+		grpc.MaxCallSendMsgSize(100*MiB),
 	))
+
+	// Add client-side keepalive parameters
+	keepaliveParams := keepalive.ClientParameters{
+		Time:                60 * time.Second, // Ping server if idle for 30 seconds
+		Timeout:             30 * time.Second, // Wait 10 seconds for ping ack
+		PermitWithoutStream: true,             // Allow pings even without active streams
+	}
+	opts = append(opts, grpc.WithKeepaliveParams(keepaliveParams))
 
 	// Connect to the server with a timeout
 	dialCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
