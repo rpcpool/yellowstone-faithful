@@ -42,7 +42,7 @@ fi
 CID_URL=https://files.old-faithful.net/${EPOCH}/epoch-${EPOCH}.cid
 EPOCH_CID=$($READ_COMMAND $CID_URL)
 
-INDEXES=(slot-to-cid sig-to-cid cid-to-offset)
+INDEXES=(slot-to-cid sig-to-cid cid-to-offset)/
 for INDEX in "${INDEXES[@]}"; do
     INDEX_URL=https://files.old-faithful.net/${EPOCH}/epoch-${EPOCH}.car.${EPOCH_CID}.${INDEX}.index
     set -x
