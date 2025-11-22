@@ -112,9 +112,9 @@ message StreamTransactionsRequest {
 }
 
 message StreamTransactionsFilter {
-  optional bool vote = 1;
-  optional bool failed = 2;
-  repeated string account_include = 3;
-  repeated string account_exclude = 4;
-  repeated string account_required = 5;
+  optional bool vote = 1;   // Set to false to exclude vote transactions; omit/true includes votes.
+  optional bool failed = 2; // Set to false to exclude failed transactions; omit/true includes failed ones.
+  repeated string account_include = 3;  // Include transactions mentioning any of these accounts.
+  repeated string account_exclude = 4;  // Exclude transactions mentioning any of these accounts.
+  repeated string account_required = 5; // Require all of these accounts to be mentioned.
 }

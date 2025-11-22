@@ -65,6 +65,12 @@ func newCmd_rpc() *cli.Command {
 				Destination: &grpcListenOn,
 			},
 			&cli.BoolFlag{
+				Name:        "allow-unfiltered-streams",
+				Usage:       "Allow StreamTransactions without filters (firehose mode)",
+				Value:       false,
+				Destination: &defaultGrpcServerConfig.AllowUnfilteredStreams,
+			},
+			&cli.BoolFlag{
 				Name:        "gsfa-only-signatures",
 				Usage:       "gSFA: only return signatures",
 				Value:       false,
@@ -290,6 +296,7 @@ func newCmd_rpc() *cli.Command {
 			multi := NewMultiEpoch(&Options{
 				GsfaOnlySignatures:     gsfaOnlySignatures,
 				EpochSearchConcurrency: epochSearchConcurrency,
+				AllowUnfilteredStreams: defaultGrpcServerConfig.AllowUnfilteredStreams,
 			})
 			defer func() {
 				if err := multi.Close(); err != nil {

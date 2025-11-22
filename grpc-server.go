@@ -55,6 +55,8 @@ type GrpcServerConfig struct {
 	// MaxConcurrentStreams limits the number of concurrent gRPC streams (calls) a single client
 	// connection can have active. This protects the server from resource exhaustion by a single client.
 	MaxConcurrentStreams int
+	// AllowUnfilteredStreams enables StreamTransactions requests without filters (firehose mode).
+	AllowUnfilteredStreams bool
 }
 
 // GrpcServerKeepAliveConfig defines the server-side keepalive parameters.
@@ -97,7 +99,8 @@ func DefaultGrpcServerConfig() *GrpcServerConfig {
 		MaxRecvMsgSize: 10 * MiB,  // Set a default max incoming message size of 10 MiB.
 		MaxSendMsgSize: 100 * MiB, // Set a default max outgoing message size of 100 MiB.
 		// Limit each client to 20 concurrent calls to prevent resource abuse.
-		MaxConcurrentStreams: 20,
+		MaxConcurrentStreams:   20,
+		AllowUnfilteredStreams: false,
 	}
 }
 
@@ -822,9 +825,9 @@ func (multi *MultiEpoch) StreamTransactions(params *old_faithful_grpc.StreamTran
 		endSlot = *params.EndSlot
 	}
 
-	// Validate that at least one filter is provided
-	if !hasValidTransactionFilter(params.Filter) {
-		return status.Errorf(codes.InvalidArgument, "At least one filter must be specified (vote, failed, account_include, account_exclude, or account_required)")
+	allowUnfiltered := multi.options != nil && multi.options.AllowUnfilteredStreams
+	if !allowUnfiltered && !hasValidTransactionFilter(params.Filter) {
+		return status.Errorf(codes.InvalidArgument, "At least one filter must be specified (vote, failed, account_include, account_exclude, or account_required). Start the server with --allow-unfiltered-streams to allow empty filters.")
 	}
 
 	// Validate account addresses early to catch invalid ones before processing
@@ -867,12 +870,18 @@ func (multi *MultiEpoch) processSlotTransactions(
 		return status.Errorf(codes.InvalidArgument, "Failed to parse filter: %v", err)
 	}
 	klog.V(4).Info("Successfully parsed StreamTransactions filter, compiling exclusion rules")
-	filterOut, err := compilableFilter.CompileExclusion()
-	if err != nil {
-		klog.Errorf("Failed to compile StreamTransactions filter: %v", err)
-		return status.Errorf(codes.Internal, "Failed to compile filter: %v", err)
+	var filterOut assertionSlice
+	if compilableFilter != nil {
+		filterOut, err = compilableFilter.CompileExclusion()
+		if err != nil {
+			klog.Errorf("Failed to compile StreamTransactions filter: %v", err)
+			return status.Errorf(codes.Internal, "Failed to compile filter: %v", err)
+		}
+		klog.V(4).Info("Successfully compiled StreamTransactions filter exclusion rules")
+	} else {
+		filterOut = assertionSlice{}
+		klog.V(4).Info("No StreamTransactions filter provided; unfiltered streaming enabled by server configuration")
 	}
-	klog.V(4).Info("Successfully compiled StreamTransactions filter exclusion rules")
 
 	if 1 == 0+1 {
 		klog.V(4).Infof("Using the old faithful method for streaming transactions from slots %d to %d", startSlot, endSlot)
@@ -959,8 +968,13 @@ func (multi *MultiEpoch) processSlotTransactions(
 	const maxConcurrentAccounts = 10
 	wg.SetLimit(maxConcurrentAccounts)
 
-	for accI := range compilableFilter.AccountInclude {
-		account := compilableFilter.AccountInclude[accI]
+	accountInclude := solana.PublicKeySlice(nil)
+	if compilableFilter != nil {
+		accountInclude = compilableFilter.AccountInclude
+	}
+
+	for accI := range accountInclude {
+		account := accountInclude[accI]
 		wg.Go(func() error {
 			return func(pKey solana.PK) error {
 				queryCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
@@ -1223,13 +1237,11 @@ func (b *txBuffer) flush(ser old_faithful_grpc.OldFaithful_StreamTransactionsSer
 }
 
 // hasValidTransactionFilter checks if the filter contains at least one valid constraint.
-// Returns true if the filter has at least one meaningful constraint set.
 func hasValidTransactionFilter(filter *old_faithful_grpc.StreamTransactionsFilter) bool {
 	if filter == nil {
 		return false
 	}
 
-	// Check if any filter field is set
 	return filter.Vote != nil ||
 		filter.Failed != nil ||
 		len(filter.AccountInclude) > 0 ||

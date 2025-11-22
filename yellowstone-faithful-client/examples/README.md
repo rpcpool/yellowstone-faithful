@@ -133,13 +133,15 @@ cargo run --example stream_blocks -- \
 - `--limit` or `-l`: Maximum blocks to receive (default: 100)
 - `--account-include`: Filter by account (can be specified multiple times)
 
+Blocks are returned when any transaction (including loaded accounts) mentions one of the provided accounts.
+
 ---
 
 ### 6. Stream Transactions (StreamTransactions)
 
 Stream transactions within a slot range with advanced filtering.
 
-**Example Command (No Filter):**
+**Example Command (No Filters):**
 ```bash
 cargo run --example stream_transactions -- \
   --endpoint https://customer-endpoint-2608.mainnet.rpcpool.com:443 \
@@ -157,7 +159,7 @@ cargo run --example stream_transactions -- \
   --start-slot 307152000 \
   --end-slot 307152010 \
   --no-vote \
-  --failed-only \
+  --exclude-failed \
   --limit 50
 ```
 
@@ -168,10 +170,12 @@ cargo run --example stream_transactions -- \
 - `--end-slot`: Ending slot (inclusive, optional)
 - `--limit` or `-l`: Maximum transactions to receive (default: 100)
 - `--no-vote`: Exclude vote transactions
-- `--failed-only`: Only include failed transactions
+- `--exclude-failed`: Skip failed transactions
 - `--account-include`: Include transactions with these accounts (repeatable)
 - `--account-exclude`: Exclude transactions with these accounts (repeatable)
 - `--account-required`: Require these accounts in transactions (repeatable)
+
+Filters are combined: transactions must satisfy every provided filter (non-vote if `--no-vote`, not failed if `--exclude-failed`, matches any `--account-include`, avoids any `--account-exclude`, and includes all `--account-required`).
 
 ---
 
@@ -227,4 +231,3 @@ RUST_LOG=trace cargo run --example get_version -- \
 - [Old Faithful Documentation](https://docs.old-faithful.net)
 - [gRPC Proto Definition](../old-faithful-proto/proto/old-faithful.proto)
 - [SDK Source Code](../src)
-

@@ -27,10 +27,10 @@ pub struct StreamBlocksFilter {
 /// Streaming filter for transactions
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct StreamTransactionsFilter {
-    /// Include/exclude vote transactions
+    /// Set to false to exclude vote transactions; None/true includes them.
     pub vote: Option<bool>,
 
-    /// Include/exclude failed transactions
+    /// Set to false to exclude failed transactions; None/true includes them.
     pub failed: Option<bool>,
 
     /// Filter transactions mentioning these accounts

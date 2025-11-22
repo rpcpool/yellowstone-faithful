@@ -31,9 +31,9 @@ struct Args {
     #[arg(long = "no-vote")]
     no_vote: bool,
 
-    /// Only include failed transactions
-    #[arg(long = "failed-only")]
-    failed_only: bool,
+    /// Exclude failed transactions
+    #[arg(long = "exclude-failed")]
+    exclude_failed: bool,
 
     /// Filter transactions by accounts to include (can be specified multiple times)
     #[arg(long = "account-include")]
@@ -74,7 +74,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Build filter
     let has_filter = args.no_vote
-        || args.failed_only
+        || args.exclude_failed
         || !args.account_include.is_empty()
         || !args.account_exclude.is_empty()
         || !args.account_required.is_empty();
@@ -84,8 +84,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         if args.no_vote {
             println!("  • Excluding vote transactions");
         }
-        if args.failed_only {
-            println!("  • Only failed transactions");
+        if args.exclude_failed {
+            println!("  • Excluding failed transactions");
         }
         if !args.account_include.is_empty() {
             println!("  • Include accounts: {:?}", args.account_include);
@@ -100,7 +100,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         Some(StreamTransactionsFilter {
             vote: if args.no_vote { Some(false) } else { None },
-            failed: if args.failed_only { Some(true) } else { None },
+            failed: if args.exclude_failed {
+                Some(false)
+            } else {
+                None
+            },
             account_include: args.account_include,
             account_exclude: args.account_exclude,
             account_required: args.account_required,

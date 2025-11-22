@@ -91,19 +91,17 @@ func (f *StreamTransactionsFilterExecutable) CompileExclusion() (assertionSlice,
 	if f.Failed != nil && !*f.Failed { // If failed is false, we should filter out failed transactions
 		klog.V(4).Info("Adding failed exclusion filter (excluding failed transactions)")
 		asserts = append(asserts, func(tx *solana.Transaction, meta *solanatxmetaparsers.TransactionStatusMetaContainer, allAccounts solana.PublicKeySlice) bool {
-			// If is not failed, then exclude=true
 			if meta == nil {
 				klog.V(5).Info("Including transaction with no meta (can't determine if failed)")
 				return false // No meta means we can't determine if it failed, so we include it
 			}
 			isFailed := meta.IsErr()
 			if isFailed {
-				klog.V(5).Info("Including failed transaction")
-				return false
-			} else {
-				klog.V(5).Info("Excluding successful transaction")
+				klog.V(5).Info("Excluding failed transaction")
 				return true
 			}
+			klog.V(5).Info("Including successful transaction")
+			return false
 		})
 	}
 	if len(f.AccountInclude) > 0 {
@@ -171,13 +169,17 @@ func getAllAccountsFromTransaction(
 type assertionSlice []func(tx *solana.Transaction, meta *solanatxmetaparsers.TransactionStatusMetaContainer, allAccounts solana.PublicKeySlice) bool
 
 func (s assertionSlice) Do(tx *solana.Transaction, meta *solanatxmetaparsers.TransactionStatusMetaContainer) bool {
+	if len(s) == 0 {
+		return false
+	}
+
 	allAccounts := getAllAccountsFromTransaction(tx, meta)
 	for _, assert := range s {
-		if !assert(tx, meta, allAccounts) {
-			return false
+		if assert(tx, meta, allAccounts) {
+			return true
 		}
 	}
-	return true
+	return false
 }
 
 func ptrToBool(b bool) *bool {

@@ -70,6 +70,12 @@ func newCmd_TestGRPC() *cli.Command {
 				Value:    true,
 				Required: false,
 			},
+			&cli.BoolFlag{
+				Name:     "allow-unfiltered-streams",
+				Usage:    "Allow empty transaction filters (server must be started with --allow-unfiltered-streams)",
+				Value:    false,
+				Required: false,
+			},
 			&cli.StringFlag{
 				Name:     "account",
 				Usage:    "Account to filter by (comma separated for multiple)",
@@ -117,6 +123,7 @@ func newCmd_TestGRPC() *cli.Command {
 			useTLS := cctx.Bool("tls")
 			includeVote := cctx.Bool("vote")
 			includeFailed := cctx.Bool("failed")
+			allowUnfiltered := cctx.Bool("allow-unfiltered-streams")
 			accountsStr := cctx.String("account")
 			method := cctx.String("method")
 			slot := cctx.Uint64("slot")
@@ -156,7 +163,7 @@ func newCmd_TestGRPC() *cli.Command {
 				}
 				return testTransaction(timeoutCtx, client, authToken, signatureStr, verbose)
 			case "stream-transactions":
-				return testStreamTransactions(timeoutCtx, client, authToken, startSlot, endSlot, includeVote, includeFailed, accounts, verbose)
+				return testStreamTransactions(timeoutCtx, client, authToken, startSlot, endSlot, includeVote, includeFailed, accounts, verbose, allowUnfiltered)
 			default:
 				return fmt.Errorf("unknown method: %s", method)
 			}
@@ -220,10 +227,10 @@ func (c *faithfulClient) close() error {
 
 // addAuthToken adds authentication token to the context if provided
 func addAuthToken(ctx context.Context, authToken string) context.Context {
-	if authToken != "" {
-		return metadata.AppendToOutgoingContext(ctx, "x-token", authToken)
+	if authToken == "" {
+		return ctx
 	}
-	return ctx
+	return metadata.AppendToOutgoingContext(ctx, "x-token", authToken)
 }
 
 // Test the GetVersion method
@@ -328,27 +335,32 @@ func testStreamTransactions(
 	includeFailed bool,
 	accounts []string,
 	verbose bool,
+	allowUnfiltered bool,
 ) error {
 	ctx = addAuthToken(ctx, authToken)
 
 	// Prepare the request
-	request := &old_faithful_grpc.StreamTransactionsRequest{
-		StartSlot: startSlot,
-		Filter: &old_faithful_grpc.StreamTransactionsFilter{
+	request := &old_faithful_grpc.StreamTransactionsRequest{StartSlot: startSlot}
+
+	if !allowUnfiltered {
+		request.Filter = &old_faithful_grpc.StreamTransactionsFilter{
 			Vote:   &includeVote,
 			Failed: &includeFailed,
-		},
+		}
 	}
 
-	// Set end slot if provided
 	if endSlot > startSlot {
 		request.EndSlot = &endSlot
 	}
 
 	// Add account filters if provided
-	if len(accounts) > 0 {
+	if len(accounts) > 0 && !allowUnfiltered {
 		request.Filter.AccountInclude = accounts
 		klog.Infof("Filtering for accounts: %v", accounts)
+	}
+
+	if allowUnfiltered {
+		klog.Infof("Unfiltered streaming enabled: sending request without filters (requires server --allow-unfiltered-streams)")
 	}
 
 	// Start streaming

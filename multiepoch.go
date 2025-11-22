@@ -35,6 +35,7 @@ import (
 type Options struct {
 	GsfaOnlySignatures     bool
 	EpochSearchConcurrency int
+	AllowUnfilteredStreams bool
 }
 
 type MultiEpoch struct {
