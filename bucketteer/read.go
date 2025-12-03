@@ -407,7 +407,7 @@ func (r *Reader) Has(sig [64]byte) (bool, error) {
 		return false, nil
 	}
 	size, ok := r.prefixToSize[prefixToUint16(prefix)]
-	if !ok {
+	if !ok || size == 0 {
 		return false, nil
 	}
 	if size < 4 {
