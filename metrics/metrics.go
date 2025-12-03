@@ -1,6 +1,8 @@
 package metrics
 
 import (
+	"log"
+	"net"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -173,3 +175,33 @@ var RemoteFileHttpRequestsTotal = promauto.NewCounterVec(
 	},
 	[]string{"method", "code"},
 )
+
+func init() {
+	{
+		ifaces := []string{"enp193s0f0np0", "eth0", "enp0s3", "en0"}
+		for _, iface := range ifaces {
+			if isInterfaceAvailable(iface) {
+				netCollector := NewNetCollector([]string{iface})
+				prometheus.MustRegister(netCollector)
+				break
+			}
+		}
+	}
+}
+
+// isInterfaceAvailable checks if a network interface with the given name exists.
+// bash command to list interfaces: ip link show
+func isInterfaceAvailable(name string) bool {
+	interfaces, err := net.Interfaces()
+	if err != nil {
+		log.Printf("Error getting network interfaces: %v", err)
+		return false
+	}
+
+	for _, iface := range interfaces {
+		if iface.Name == name {
+			return true
+		}
+	}
+	return false
+}

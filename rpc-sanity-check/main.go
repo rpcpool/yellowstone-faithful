@@ -920,7 +920,7 @@ func runTxLoadTest(cfg Config) {
 		go func(id int) {
 			// Local random source for shuffling
 			r := mrand.New(mrand.NewSource(time.Now().UnixNano() + int64(id)))
-			batchSize := 500 // Reduced batch size for smoother flow
+			batchSize := 1000 // Reduced batch size for smoother flow
 			batch := make([]string, 0, batchSize)
 			flushTicker := time.NewTicker(200 * time.Millisecond)
 			defer flushTicker.Stop()
