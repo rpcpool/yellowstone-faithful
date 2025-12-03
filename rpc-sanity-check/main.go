@@ -254,8 +254,10 @@ func processSlot(client *http.Client, cfg Config, slot uint64) {
 		},
 	}
 
+	ctx := context.Background()
+
 	// 1. Fetch Block from Ref ONLY first (to get signatures and baseline)
-	refBlock, refLat, refErr := callRPC(client, cfg.RefRPC, "getBlock", params)
+	refBlock, refLat, refErr := callRPC(ctx, client, cfg.RefRPC, "getBlock", params)
 
 	if refErr != nil {
 		// If Ref failed, we can't get signatures to check Txs, but we should still try to check Target Block existence?
@@ -304,7 +306,7 @@ func processSlot(client *http.Client, cfg Config, slot uint64) {
 	}
 
 	// 4. Fetch Block from Target (now that Txs are checked)
-	targetBlock, targetLat, targetErr := callRPC(client, cfg.TargetRPC, "getBlock", params)
+	targetBlock, targetLat, targetErr := callRPC(ctx, client, cfg.TargetRPC, "getBlock", params)
 
 	// Log Slot Header with Latency (now that we have both)
 	logLatency(fmt.Sprintf("📦 SLOT %d", slot), refLat, targetLat)
@@ -336,8 +338,10 @@ func compareTransaction(client *http.Client, cfg Config, signature string) {
 		},
 	}
 
-	refTx, refLat, refErr := callRPC(client, cfg.RefRPC, "getTransaction", params)
-	targetTx, targetLat, targetErr := callRPC(client, cfg.TargetRPC, "getTransaction", params)
+	ctx := context.Background()
+
+	refTx, refLat, refErr := callRPC(ctx, client, cfg.RefRPC, "getTransaction", params)
+	targetTx, targetLat, targetErr := callRPC(ctx, client, cfg.TargetRPC, "getTransaction", params)
 
 	// Indented log for transactions
 	logLatency(fmt.Sprintf("   📄 %s", shortSig(signature, cfg.FullSig)), refLat, targetLat)
@@ -361,7 +365,7 @@ func compareTransaction(client *http.Client, cfg Config, signature string) {
 	}
 }
 
-func callRPC(client *http.Client, url, method string, params []interface{}) (json.RawMessage, time.Duration, error) {
+func callRPC(ctx context.Context, client *http.Client, url, method string, params []interface{}) (json.RawMessage, time.Duration, error) {
 	reqBody := JSONRPCRequest{
 		JSONRPC: "2.0",
 		ID:      1,
@@ -374,8 +378,14 @@ func callRPC(client *http.Client, url, method string, params []interface{}) (jso
 		return nil, 0, err
 	}
 
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(payload))
+	if err != nil {
+		return nil, 0, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
 	start := time.Now()
-	resp, err := client.Post(url, "application/json", bytes.NewBuffer(payload))
+	resp, err := client.Do(req)
 	latency := time.Since(start)
 
 	if err != nil {
@@ -808,7 +818,7 @@ func runTxLoadTest(cfg Config) {
 		log.Fatalf("❌ Failed to fetch epochs from target: %v", err)
 	}
 
-	totalTargetSigs := 100_000
+	totalTargetSigs := 500_000
 	// Calculate signatures needed per epoch to reach total ~50k
 	// Ceiling division: (x + y - 1) / y
 	sigsPerEpoch := (totalTargetSigs + len(targetEpochs) - 1) / len(targetEpochs)
@@ -848,7 +858,8 @@ func runTxLoadTest(cfg Config) {
 			}
 
 			// Fetch from Reference RPC
-			block, _, err := callRPC(client, cfg.RefRPC, "getBlock", params)
+			// Use background context for harvesting (relies on client timeout)
+			block, _, err := callRPC(context.Background(), client, cfg.RefRPC, "getBlock", params)
 			if err != nil {
 				continue
 			}
@@ -974,12 +985,6 @@ func runTxLoadTest(cfg Config) {
 					// Pick random signature
 					sig := sigs[randInt(len(sigs))] // Using insecure rand for speed here or crypto/rand wrapped
 
-					// Reusing crypto/rand based helper or just math/rand?
-					// main uses crypto/rand. Let's make a quick helper or just use math/rand seeded once if not strict.
-					// Actually, for load test, math/rand is fine and faster.
-					// But we haven't imported math/rand (only math/big).
-					// Let's use crypto/rand helper below.
-
 					params := []interface{}{
 						sig,
 						map[string]interface{}{
@@ -988,7 +993,11 @@ func runTxLoadTest(cfg Config) {
 						},
 					}
 
-					_, dur, err := callRPC(client, cfg.TargetRPC, "getTransaction", params)
+					// Enforce 5s timeout per tx
+					reqCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+					_, dur, err := callRPC(reqCtx, client, cfg.TargetRPC, "getTransaction", params)
+					cancel()
+
 					if err == nil {
 						atomic.AddUint64(&totalTx, 1)
 						atomic.AddInt64(&totalLatency, int64(dur.Microseconds()))
