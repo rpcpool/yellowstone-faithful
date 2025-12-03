@@ -165,3 +165,11 @@ func MaybeAddDiskDevice(device string) {
 		diskCollectorInstance.AddDevice(device)
 	}
 }
+
+var RemoteFileHttpRequestsTotal = promauto.NewCounterVec(
+	prometheus.CounterOpts{
+		Name: "splitcarfetcher_http_requests_total",
+		Help: "Total number of HTTP requests made by splitcarfetcher.",
+	},
+	[]string{"method", "code"},
+)
