@@ -49,12 +49,12 @@ func sortAscending(vals []uint64) {
 	})
 }
 
-type Uint64AndCid struct {
-	Uint64 uint64
-	Cid    cid.Cid
+type EpochAndSigCid struct {
+	Epoch  uint64
+	SigCid cid.Cid
 }
 
-func (multi *MultiEpoch) findEpochNumberFromSignature(ctx context.Context, sig solana.Signature) (*Uint64AndCid, error) {
+func (multi *MultiEpoch) findEpochNumberFromSignature(ctx context.Context, sig solana.Signature) (*EpochAndSigCid, error) {
 	// FLOW:
 	// - if one epoch, just return that epoch
 	// - if multiple epochs, use sigToEpoch to find the epoch number
@@ -66,8 +66,8 @@ func (multi *MultiEpoch) findEpochNumberFromSignature(ctx context.Context, sig s
 
 	numbers := multi.GetEpochNumbers()
 	if len(numbers) == 1 {
-		return &Uint64AndCid{
-			Uint64: numbers[0],
+		return &EpochAndSigCid{
+			Epoch: numbers[0],
 		}, nil
 	}
 
@@ -77,10 +77,10 @@ func (multi *MultiEpoch) findEpochNumberFromSignature(ctx context.Context, sig s
 	buckets := multi.getAllBucketteers()
 
 	// Search all epochs in parallel:
-	jobGroup := NewJobGroup[*Uint64AndCid]()
+	jobGroup := NewJobGroup[*EpochAndSigCid]()
 	for i := range numbers {
 		epochNumber := numbers[i]
-		jobGroup.Add(func(ctx context.Context) (*Uint64AndCid, error) {
+		jobGroup.Add(func(ctx context.Context) (*EpochAndSigCid, error) {
 			if ctx.Err() != nil {
 				return nil, ctx.Err()
 			}
@@ -106,9 +106,9 @@ func (multi *MultiEpoch) findEpochNumberFromSignature(ctx context.Context, sig s
 			findCidFromSigStartedAt := time.Now()
 			if sigCid, err := epoch.FindCidFromSignature(ctx, sig); err == nil {
 				klog.V(4).Infof("Found CID for signature %s in epoch %d in %s", sig, epochNumber, time.Since(findCidFromSigStartedAt))
-				return &Uint64AndCid{
-					Uint64: epochNumber,
-					Cid:    sigCid,
+				return &EpochAndSigCid{
+					Epoch:  epochNumber,
+					SigCid: sigCid,
 				}, nil
 			}
 			klog.V(4).Infof("Signature %s not found in epoch %d in %s", sig, epochNumber, time.Since(findCidFromSigStartedAt))
@@ -179,7 +179,7 @@ func (multi *MultiEpoch) handleGetTransaction(ctx context.Context, conn *request
 			Message: "Internal error",
 		}, fmt.Errorf("failed to get epoch for signature %s: %w", sig, err)
 	}
-	epochNumber := epochAndSigCid.Uint64
+	epochNumber := epochAndSigCid.Epoch
 	klog.V(4).Infof("Found signature %s in epoch %d in %s", sig, epochNumber, time.Since(startedEpochLookupAt))
 
 	epochHandler, err := multi.GetEpoch(uint64(epochNumber))
@@ -196,7 +196,7 @@ func (multi *MultiEpoch) handleGetTransaction(ctx context.Context, conn *request
 		attribute.Int64("epoch", int64(epochNumber)),
 		attribute.String("signature", sig.String()),
 	)
-	transactionNode, transactionCid, err := epochHandler.GetTransaction(WithSubrapghPrefetch(txRetrievalCtx, true), sig, epochAndSigCid.Cid)
+	transactionNode, transactionCid, err := epochHandler.GetTransaction(WithSubrapghPrefetch(txRetrievalCtx, true), sig, epochAndSigCid.SigCid)
 	txRetrievalSpan.End()
 	if err != nil {
 		if errors.Is(err, compactindexsized.ErrNotFound) {

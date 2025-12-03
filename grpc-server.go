@@ -501,7 +501,7 @@ func (multi *MultiEpoch) GetTransaction(ctx context.Context, params *old_faithfu
 
 	startedEpochLookupAt := time.Now()
 	_, findEpochSpan := telemetry.StartSpan(ctx, "FindEpochFromSignature")
-	epochNumber, err := multi.findEpochNumberFromSignature(ctx, sig)
+	epochAndSigCid, err := multi.findEpochNumberFromSignature(ctx, sig)
 	findEpochSpan.SetAttributes(
 		attribute.Int64("lookup_duration_ms", time.Since(startedEpochLookupAt).Milliseconds()),
 	)
@@ -516,6 +516,8 @@ func (multi *MultiEpoch) GetTransaction(ctx context.Context, params *old_faithfu
 		return nil, status.Errorf(codes.Internal, "Failed to get epoch for signature %s: %v", sig, err)
 	}
 
+	epochNumber := epochAndSigCid.Epoch
+
 	span.SetAttributes(attribute.Int64("epoch_number", int64(epochNumber)))
 	klog.V(5).Infof("Found signature %s in epoch %d in %s", sig, epochNumber, time.Since(startedEpochLookupAt))
 
@@ -529,7 +531,7 @@ func (multi *MultiEpoch) GetTransaction(ctx context.Context, params *old_faithfu
 	}
 
 	_, getTxSpan := telemetry.StartSpan(ctx, "GetTransactionFromEpoch")
-	transactionNode, _, err := epochHandler.GetTransaction(WithSubrapghPrefetch(ctx, true), sig)
+	transactionNode, _, err := epochHandler.GetTransaction(WithSubrapghPrefetch(ctx, true), sig, epochAndSigCid.SigCid)
 	getTxSpan.End()
 
 	if err != nil {
