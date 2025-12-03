@@ -41,6 +41,8 @@ type Config struct {
 	GRPCToken       string
 	GRPCProto       string
 	GRPCConcurrency int
+	RunTxLoadTest   bool
+	TxConcurrency   int
 }
 
 // EpochResponse matches the structure {"epochs":[...]}
@@ -110,6 +112,8 @@ func main() {
 	flag.StringVar(&cfg.GRPCToken, "grpc-token", "<token>", "Auth token for gRPC")
 	flag.StringVar(&cfg.GRPCProto, "grpc-proto", "old-faithful-proto/proto/old-faithful.proto", "Path to .proto file")
 	flag.IntVar(&cfg.GRPCConcurrency, "grpc-concurrency", 100, "Number of concurrent gRPC streams")
+	flag.BoolVar(&cfg.RunTxLoadTest, "tx-load-test", false, "Run getTransaction load test (JSON-RPC)")
+	flag.IntVar(&cfg.TxConcurrency, "tx-concurrency", 100, "Concurrency for tx load test")
 	flag.Var(&cfg.SkipEpochs, "skip-epoch", "Epoch number to skip (can be specified multiple times)")
 	flag.Parse()
 
@@ -124,6 +128,11 @@ func main() {
 			log.Fatal("❌ --grpc-target is required when --grpc-load-test is enabled")
 		}
 		runGRPCLoadTest(cfg)
+		return
+	}
+
+	if cfg.RunTxLoadTest {
+		runTxLoadTest(cfg)
 		return
 	}
 
@@ -757,4 +766,219 @@ func runGRPCLoadTest(cfg Config) {
 	log.Printf("   ✅ All streams launched. Waiting... (Press Ctrl+C to stop)")
 	wg.Wait()
 	log.Printf("   🏁 Load test finished.")
+}
+
+func runTxLoadTest(cfg Config) {
+	log.Printf("🔥 Starting getTransaction Load Test (JSON-RPC)")
+	log.Printf("   Concurrency: %d", cfg.TxConcurrency)
+	log.Printf("   Target:      %s", cfg.TargetRPC)
+
+	client := &http.Client{
+		Transport: &http.Transport{
+			MaxIdleConns:        cfg.TxConcurrency,
+			MaxIdleConnsPerHost: cfg.TxConcurrency,
+		},
+		Timeout: 10 * time.Second,
+	}
+
+	// 1. Harvest Signatures
+	log.Printf("   🌾 Harvesting signatures from reference (%s) using target epochs...", cfg.RefRPC)
+
+	// Get Target Epochs to know valid ranges
+	targetEpochs, err := fetchEpochs(cfg.TargetRPC)
+	if err != nil || len(targetEpochs) == 0 {
+		log.Fatalf("❌ Failed to fetch epochs from target: %v", err)
+	}
+
+	totalTargetSigs := 50000
+	// Calculate signatures needed per epoch to reach total ~50k
+	// Ceiling division: (x + y - 1) / y
+	sigsPerEpoch := (totalTargetSigs + len(targetEpochs) - 1) / len(targetEpochs)
+	// Ensure we grab at least a few if calculation is weird, though math holds.
+	if sigsPerEpoch == 0 {
+		sigsPerEpoch = 100
+	}
+
+	log.Printf("   🎯 Plan: Harvest ~%d total signatures across %d epochs (~%d/epoch)", totalTargetSigs, len(targetEpochs), sigsPerEpoch)
+
+	sigs := []string{}
+
+	for i, epoch := range targetEpochs {
+		epochSigs := []string{}
+		startSlot := epoch * uint64(cfg.SlotsInEpoch)
+		endSlot := startSlot + uint64(cfg.SlotsInEpoch) - 1
+		rangeSz := new(big.Int).SetUint64(endSlot - startSlot)
+
+		// Try up to 20 random slots per epoch to fill the quota
+		// This prevents getting stuck on an epoch with missing blocks in ref
+		for attempts := 0; attempts < 20 && len(epochSigs) < sigsPerEpoch; attempts++ {
+			// Generate random slot in epoch
+			offset, err := rand.Int(rand.Reader, rangeSz)
+			if err != nil {
+				continue
+			}
+			slot := startSlot + offset.Uint64()
+
+			params := []interface{}{
+				slot,
+				map[string]interface{}{
+					"encoding":                       "json",
+					"transactionDetails":             "full",
+					"rewards":                        false,
+					"maxSupportedTransactionVersion": 0,
+				},
+			}
+
+			// Fetch from Reference RPC
+			block, _, err := callRPC(client, cfg.RefRPC, "getBlock", params)
+			if err != nil {
+				continue
+			}
+
+			// Extract signatures
+			var blockStruct BlockShort
+			if err := json.Unmarshal(block, &blockStruct); err == nil {
+				for _, tx := range blockStruct.Transactions {
+					if txMap, ok := tx.Transaction.(map[string]interface{}); ok {
+						if sigsArr, ok := txMap["signatures"].([]interface{}); ok && len(sigsArr) > 0 {
+							if s, ok := sigsArr[0].(string); ok {
+								epochSigs = append(epochSigs, s)
+							}
+						}
+					}
+				}
+
+				// Fallback for different structure
+				if len(epochSigs) == 0 {
+					var b struct {
+						Transactions []struct {
+							Transaction struct {
+								Signatures []string `json:"signatures"`
+							} `json:"transaction"`
+						} `json:"transactions"`
+					}
+					if err := json.Unmarshal(block, &b); err == nil {
+						for _, t := range b.Transactions {
+							if len(t.Transaction.Signatures) > 0 {
+								epochSigs = append(epochSigs, t.Transaction.Signatures[0])
+							}
+						}
+					}
+				}
+			}
+		}
+
+		// Cap and append
+		if len(epochSigs) > sigsPerEpoch {
+			epochSigs = epochSigs[:sigsPerEpoch]
+		}
+		sigs = append(sigs, epochSigs...)
+		fmt.Printf("\r   🌾 Harvested %d signatures (Epoch %d/%d)...", len(sigs), i+1, len(targetEpochs))
+	}
+	fmt.Println()
+
+	if len(sigs) == 0 {
+		log.Fatal("❌ Failed to harvest any signatures. Check reference RPC health and epoch alignment.")
+	}
+	log.Printf("   ✅ Ready with %d unique signatures.", len(sigs))
+
+	// 2. Start Load Test
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-sigChan
+		log.Println("\n🛑 Stopping load test...")
+		cancel()
+	}()
+
+	var wg sync.WaitGroup
+	var totalTx uint64
+	var totalLatency int64 // microseconds
+	startTime := time.Now()
+
+	// TPS Monitor
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		ticker := time.NewTicker(1 * time.Second)
+		defer ticker.Stop()
+
+		var lastCount uint64
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				current := atomic.LoadUint64(&totalTx)
+				latencySum := atomic.LoadInt64(&totalLatency)
+
+				diff := current - lastCount
+				lastCount = current
+
+				elapsed := time.Since(startTime).Seconds()
+				avg := 0.0
+				if elapsed > 0 {
+					avg = float64(current) / elapsed
+				}
+
+				avgLat := 0.0
+				if current > 0 {
+					avgLat = float64(latencySum) / float64(current) / 1000.0 // ms
+				}
+
+				log.Printf("   ⚡ Status: %d total | TPS: %d (Avg: %.1f) | Avg Latency: %.1fms", current, diff, avg, avgLat)
+			}
+		}
+	}()
+
+	log.Printf("   🚀 Launching %d workers...", cfg.TxConcurrency)
+
+	for i := 0; i < cfg.TxConcurrency; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				default:
+					// Pick random signature
+					sig := sigs[randInt(len(sigs))] // Using insecure rand for speed here or crypto/rand wrapped
+
+					// Reusing crypto/rand based helper or just math/rand?
+					// main uses crypto/rand. Let's make a quick helper or just use math/rand seeded once if not strict.
+					// Actually, for load test, math/rand is fine and faster.
+					// But we haven't imported math/rand (only math/big).
+					// Let's use crypto/rand helper below.
+
+					params := []interface{}{
+						sig,
+						map[string]interface{}{
+							"encoding":                       "json",
+							"maxSupportedTransactionVersion": 0,
+						},
+					}
+
+					_, dur, err := callRPC(client, cfg.TargetRPC, "getTransaction", params)
+					if err == nil {
+						atomic.AddUint64(&totalTx, 1)
+						atomic.AddInt64(&totalLatency, int64(dur.Microseconds()))
+					}
+				}
+			}
+		}()
+	}
+
+	wg.Wait()
+}
+
+func randInt(max int) int {
+	if max <= 0 {
+		return 0
+	}
+	n, _ := rand.Int(rand.Reader, big.NewInt(int64(max)))
+	return int(n.Int64())
 }
