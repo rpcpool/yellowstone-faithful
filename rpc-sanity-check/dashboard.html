@@ -94,6 +94,12 @@
         <canvas id="memoryChart"></canvas>
       </div>
 
+      <!-- Disk I/O Line -->
+      <div class="card">
+        <h2>Disk I/O Rate</h2>
+        <canvas id="diskIoChart"></canvas>
+      </div>
+
       <!-- Errors -->
       <div class="card">
         <h2>RPC Errors</h2>
@@ -147,6 +153,28 @@
         return metrics;
       }
 
+      // Utility to format bytes
+      function formatBytes(bytes, decimals = 2) {
+        if (bytes === 0) return '0 B';
+        const k = 1024;
+        const dm = decimals < 0 ? 0 : decimals;
+        const sizes = [
+          'B',
+          'KiB',
+          'MiB',
+          'GiB',
+          'TiB',
+          'PiB',
+          'EiB',
+          'ZiB',
+          'YiB',
+        ];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return (
+          parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i]
+        );
+      }
+
       // Charts Initialization
       Chart.defaults.color = '#aaa';
       Chart.defaults.borderColor = '#444';
@@ -163,6 +191,7 @@
       const ctxMem = document.getElementById('memoryChart').getContext('2d');
       const ctxErr = document.getElementById('errorChart').getContext('2d');
       const ctxCache = document.getElementById('cacheChart').getContext('2d');
+      const ctxDisk = document.getElementById('diskIoChart').getContext('2d');
 
       const createBarChart = (ctx, label, color) =>
         new Chart(ctx, {
@@ -206,8 +235,109 @@
       const chartRpcLat = createBarChart(ctxRpcLat, 'Count', '#ff5722');
       const chartCarLat = createBarChart(ctxCarLat, 'Count', '#2196f3');
       const chartTps = createLineChart(ctxTps, 'Req/s', '#4caf50');
-      const chartMem = createLineChart(ctxMem, 'Bytes', '#e91e63');
+
+      // Memory Chart with Byte formatting
+      const chartMem = new Chart(ctxMem, {
+        type: 'line',
+        data: {
+          labels: [],
+          datasets: [
+            {
+              label: 'Bytes',
+              data: [],
+              borderColor: '#e91e63',
+              tension: 0.1,
+              fill: false,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            y: {
+              beginAtZero: true,
+              ticks: {
+                callback: function (value) {
+                  return formatBytes(value);
+                },
+              },
+            },
+          },
+          animation: false,
+          elements: { point: { radius: 0 } },
+          plugins: {
+            tooltip: {
+              callbacks: {
+                label: function (context) {
+                  return (
+                    context.dataset.label + ': ' + formatBytes(context.parsed.y)
+                  );
+                },
+              },
+            },
+          },
+        },
+      });
+
       const chartErr = createLineChart(ctxErr, 'Errors/s', '#f44336');
+
+      // Disk I/O Chart with Byte formatting
+      const chartDisk = new Chart(ctxDisk, {
+        type: 'line',
+        data: {
+          labels: [],
+          datasets: [
+            {
+              label: 'Read',
+              data: [],
+              borderColor: '#03a9f4',
+              tension: 0.1,
+              fill: false,
+            },
+            {
+              label: 'Write',
+              data: [],
+              borderColor: '#ff9800',
+              tension: 0.1,
+              fill: false,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            y: {
+              beginAtZero: true,
+              ticks: {
+                callback: function (value) {
+                  return formatBytes(value) + '/s';
+                },
+              },
+            },
+          },
+          animation: false,
+          elements: { point: { radius: 0 } },
+          plugins: {
+            tooltip: {
+              callbacks: {
+                label: function (context) {
+                  let label = context.dataset.label || '';
+                  if (label) {
+                    label += ': ';
+                  }
+                  if (context.parsed.y !== null) {
+                    label += formatBytes(context.parsed.y) + '/s';
+                  }
+                  return label;
+                },
+              },
+            },
+          },
+        },
+      });
+
       const chartCache = new Chart(ctxCache, {
         type: 'doughnut',
         data: {
@@ -219,7 +349,9 @@
 
       let previousTpsCount = 0;
       let previousErrCount = 0;
-      let lastTime = Date.now();
+      let previousDiskRead = 0;
+      let previousDiskWrite = 0;
+      let firstRun = true;
 
       async function updateMetrics() {
         try {
@@ -260,9 +392,7 @@
           }
 
           // 2. CAR Lookup Latency (Flame Bucket Snapshot)
-          // Aggregating across all .car files for summary view
           if (data['car_lookup_latency_histogram_bucket']) {
-            // Group by 'le' across all cars
             const bucketMap = {};
             data['car_lookup_latency_histogram_bucket'].forEach((b) => {
               if (b.labels.le === '+Inf') return;
@@ -270,7 +400,6 @@
               bucketMap[b.labels.le] += b.value;
             });
 
-            // Sort keys numerically
             const keys = Object.keys(bucketMap).sort(
               (a, b) => parseFloat(a) - parseFloat(b),
             );
@@ -297,8 +426,7 @@
                 (m) => m.labels.method === 'getTransaction',
               )?.value || 0;
             const delta = currentTotal - previousTpsCount;
-            if (previousTpsCount !== 0) {
-              // Skip first tick spike
+            if (!firstRun) {
               updateLineChart(chartTps, now, delta);
             }
             previousTpsCount = currentTotal;
@@ -310,7 +438,43 @@
             updateLineChart(chartMem, now, mem);
           }
 
-          // 5. Errors
+          // 5. Disk I/O
+          let currentRead = 0;
+          let currentWrite = 0;
+          if (data['disk_read_bytes_total']) {
+            currentRead = data['disk_read_bytes_total'].reduce(
+              (acc, curr) => acc + curr.value,
+              0,
+            );
+          }
+          if (data['disk_write_bytes_total']) {
+            currentWrite = data['disk_write_bytes_total'].reduce(
+              (acc, curr) => acc + curr.value,
+              0,
+            );
+          }
+
+          if (!firstRun) {
+            const readDelta = currentRead - previousDiskRead;
+            const writeDelta = currentWrite - previousDiskWrite;
+
+            chartDisk.data.labels.push(now);
+            chartDisk.data.datasets[0].data.push(readDelta > 0 ? readDelta : 0);
+            chartDisk.data.datasets[1].data.push(
+              writeDelta > 0 ? writeDelta : 0,
+            );
+
+            if (chartDisk.data.labels.length > MAX_HISTORY) {
+              chartDisk.data.labels.shift();
+              chartDisk.data.datasets[0].data.shift();
+              chartDisk.data.datasets[1].data.shift();
+            }
+            chartDisk.update();
+          }
+          previousDiskRead = currentRead;
+          previousDiskWrite = currentWrite;
+
+          // 6. Errors
           let currentErrs = 0;
           if (data['method_to_success_or_failure']) {
             const failMetric = data['method_to_success_or_failure'].find(
@@ -319,12 +483,12 @@
             if (failMetric) currentErrs = failMetric.value;
           }
           document.getElementById('failCount').innerText = currentErrs;
-          if (previousErrCount !== 0 || currentErrs > 0) {
+          if (!firstRun || currentErrs > 0) {
             updateLineChart(chartErr, now, currentErrs - previousErrCount);
           }
           previousErrCount = currentErrs;
 
-          // 6. Cache
+          // 7. Cache
           if (data['cache_hit_miss_total']) {
             const hits =
               data['cache_hit_miss_total'].find(
@@ -337,6 +501,8 @@
             chartCache.data.datasets[0].data = [hits, misses];
             chartCache.update();
           }
+
+          firstRun = false;
         } catch (e) {
           console.error(e);
           document.getElementById('status').innerText = 'Disconnected';
