@@ -11,6 +11,7 @@ import (
 	"io"
 	"log"
 	"math/big"
+	mrand "math/rand"
 	"net"
 	"net/http"
 	"os"
@@ -117,7 +118,7 @@ func main() {
 	flag.IntVar(&cfg.GRPCConcurrency, "grpc-concurrency", 100, "Number of concurrent gRPC streams")
 	flag.BoolVar(&cfg.RunTxLoadTest, "tx-load-test", false, "Run getTransaction load test (JSON-RPC)")
 	flag.IntVar(&cfg.TxConcurrency, "tx-concurrency", 100, "Concurrency for tx load test")
-	flag.StringVar(&cfg.MetricsURL, "metrics-url", "http://faithful-staging1:8888/metrics", "URL to fetch Prometheus metrics from (e.g. http://faithful-staging1:8888/metrics)")
+	flag.StringVar(&cfg.MetricsURL, "metrics-url", "", "URL to fetch Prometheus metrics from (e.g. http://localhost:8080/metrics)")
 	flag.IntVar(&cfg.WebPort, "web-port", 3000, "Port to serve the metrics dashboard")
 	flag.Var(&cfg.SkipEpochs, "skip-epoch", "Epoch number to skip (can be specified multiple times)")
 	flag.Parse()
@@ -880,11 +881,16 @@ func runTxLoadTest(cfg Config) {
 	// Launch Harvester Pool
 	// To ensure > 10k sigs/sec. Assuming ~1-2k sigs per block and network latency,
 	// we need parallel requests. 10 harvesters is robust.
-	numHarvesters := 10
-	log.Printf("   🌾 Starting %d continuous harvesters (Ref: %s) to maintain >10k sigs/s", numHarvesters, cfg.RefRPC)
+	numHarvesters := 20
+	log.Printf("   🌾 Starting %d continuous harvesters (Ref: %s) to maintain >10k sigs/s (Mixing enabled)", numHarvesters, cfg.RefRPC)
 
 	for h := 0; h < numHarvesters; h++ {
 		go func(id int) {
+			// Local random source for shuffling
+			r := mrand.New(mrand.NewSource(time.Now().UnixNano() + int64(id)))
+			batchSize := 2000
+			batch := make([]string, 0, batchSize)
+
 			for {
 				if ctx.Err() != nil {
 					return
@@ -925,13 +931,36 @@ func runTxLoadTest(cfg Config) {
 				}
 
 				if len(blockSigs.Signatures) > 0 {
-					for _, s := range blockSigs.Signatures {
-						select {
-						case sigChan <- s:
-							// pushed
-						case <-ctx.Done():
-							return
+					// Shuffle block signatures to pick random ones if truncating
+					r.Shuffle(len(blockSigs.Signatures), func(i, j int) {
+						blockSigs.Signatures[i], blockSigs.Signatures[j] = blockSigs.Signatures[j], blockSigs.Signatures[i]
+					})
+
+					// Limit sigs per block to force diversity (max 200)
+					limit := 200
+					count := len(blockSigs.Signatures)
+					if count > limit {
+						count = limit
+					}
+
+					batch = append(batch, blockSigs.Signatures[:count]...)
+
+					// If batch is full, shuffle and flush
+					if len(batch) >= batchSize {
+						r.Shuffle(len(batch), func(i, j int) {
+							batch[i], batch[j] = batch[j], batch[i]
+						})
+
+						for _, s := range batch {
+							select {
+							case sigChan <- s:
+								// pushed
+							case <-ctx.Done():
+								return
+							}
 						}
+						// clear batch
+						batch = batch[:0]
 					}
 				}
 			}
