@@ -71,6 +71,8 @@ func main() {
 	flag.BoolVar(&cfg.StopOnDiff, "stop-on-diff", false, "Exit immediately when a discrepancy is found")
 	flag.Parse()
 
+	// crypto/rand does not require seeding
+
 	log.Printf("Starting verification...")
 	log.Printf("Target: %s", cfg.TargetRPC)
 	log.Printf("Reference: %s", cfg.RefRPC)
@@ -176,7 +178,7 @@ func processSlot(client *http.Client, cfg Config, slot uint64) {
 	refBlock, refLat, refErr := callRPC(client, cfg.RefRPC, "getBlock", params)
 	targetBlock, targetLat, targetErr := callRPC(client, cfg.TargetRPC, "getBlock", params)
 
-	log.Printf("Slot %d Latency: Ref=%.1fms | Target=%.1fms", slot, float64(refLat)/float64(time.Millisecond), float64(targetLat)/float64(time.Millisecond))
+	logLatency("Slot "+fmt.Sprint(slot), refLat, targetLat)
 
 	// Handle availability issues
 	if refErr != nil || targetErr != nil {
@@ -259,7 +261,7 @@ func compareTransaction(client *http.Client, cfg Config, signature string) {
 	refTx, refLat, refErr := callRPC(client, cfg.RefRPC, "getTransaction", params)
 	targetTx, targetLat, targetErr := callRPC(client, cfg.TargetRPC, "getTransaction", params)
 
-	log.Printf("Tx %s Latency: Ref=%.1fms | Target=%.1fms", signature, float64(refLat)/float64(time.Millisecond), float64(targetLat)/float64(time.Millisecond))
+	logLatency("Tx "+signature, refLat, targetLat)
 
 	if refErr != nil && targetErr != nil {
 		return // Both failed
@@ -326,6 +328,21 @@ func callRPC(client *http.Client, url, method string, params []interface{}) (jso
 	return rpcResp.Result, latency, nil
 }
 
+func logLatency(label string, ref, target time.Duration) {
+	refMs := float64(ref) / float64(time.Millisecond)
+	targetMs := float64(target) / float64(time.Millisecond)
+	diffMs := targetMs - refMs
+	factor := 0.0
+	if refMs > 0 {
+		factor = targetMs / refMs
+	}
+
+	// Format: Label | Ref=X | Target=Y | Diff=+/-Z (xF.FF)
+	// Using fixed width for numbers to align visually in logs
+	log.Printf("%s Latency: Ref=%6.1fms | Target=%6.1fms | Diff=%+6.1fms (x%.2f)",
+		label, refMs, targetMs, diffMs, factor)
+}
+
 // compareJSON uses jd to print structural diffs
 func compareJSON(ref []byte, target []byte, label string, stopOnDiff bool) {
 	// Pre-process to scrub fields that are hard to target with path options (wildcards)
@@ -344,6 +361,10 @@ func compareJSON(ref []byte, target []byte, label string, stopOnDiff bool) {
 	// rewards can be noisy
 	scrubKey(refObj, "rewards")
 	scrubKey(targetObj, "rewards")
+
+	// Normalize RPC values (0 vs null, [] vs null)
+	normalizeRPC(refObj)
+	normalizeRPC(targetObj)
 
 	refScrubbed, _ := json.Marshal(refObj)
 	targetScrubbed, _ := json.Marshal(targetObj)
@@ -459,4 +480,36 @@ func isLogSubset(refVal, targetVal interface{}) bool {
 
 	// Ref is a prefix of Target (or exact match)
 	return true
+}
+
+func normalizeRPC(v interface{}) {
+	switch tv := v.(type) {
+	case map[string]interface{}:
+		// Handle blockHeight: 0 -> null
+		if val, ok := tv["blockHeight"]; ok {
+			if f, ok := val.(float64); ok && f == 0 {
+				tv["blockHeight"] = nil
+			}
+		}
+
+		// Handle array fields: [] -> null
+		// Common fields in transaction meta that might be empty or null
+		targetFields := []string{"innerInstructions", "postTokenBalances", "preTokenBalances"}
+		for _, key := range targetFields {
+			if val, ok := tv[key]; ok {
+				if slice, ok := val.([]interface{}); ok && len(slice) == 0 {
+					tv[key] = nil
+				}
+			}
+		}
+
+		// Recurse
+		for _, val := range tv {
+			normalizeRPC(val)
+		}
+	case []interface{}:
+		for _, val := range tv {
+			normalizeRPC(val)
+		}
+	}
 }
