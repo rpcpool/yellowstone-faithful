@@ -151,3 +151,16 @@ var ErrBlockNotFound = promauto.NewCounter(
 		Help: "A block was not found because either skipped or not available in current set of epochs",
 	},
 )
+
+var diskCollectorInstance *diskCollector
+
+func init() {
+	diskCollectorInstance = NewDiskCollector(nil)
+	prometheus.MustRegister(diskCollectorInstance)
+}
+
+func MaybeAddDiskDevice(device string) {
+	if diskCollectorInstance != nil {
+		diskCollectorInstance.AddDevice(device)
+	}
+}

@@ -4,12 +4,14 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/ipfs/go-cid"
 	carv2 "github.com/ipld/go-car/v2"
 	"github.com/rpcpool/yellowstone-faithful/carreader"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
+	"github.com/rpcpool/yellowstone-faithful/metrics"
 	splitcarfetcher "github.com/rpcpool/yellowstone-faithful/split-car-fetcher"
 	"github.com/rpcpool/yellowstone-faithful/tooling"
 	"golang.org/x/exp/mmap"
@@ -61,6 +63,14 @@ func openIndexStorage(
 	if !klog.V(5).Enabled() {
 		return rac, size, nil
 	}
+	{
+		device, err := metrics.GetDeviceForDirectory(filepath.Dir(where))
+		if err != nil {
+			klog.Warningf("failed to get device for directory %q: %v", filepath.Dir(where), err)
+		} else {
+			metrics.MaybeAddDiskDevice(device)
+		}
+	}
 	return &readCloserWrapperForStats{
 		rac:      rac,
 		name:     where,
@@ -93,7 +103,14 @@ func openCarStorage(
 			size: size,
 		}, nil
 	}
-
+	{
+		device, err := metrics.GetDeviceForDirectory(filepath.Dir(where))
+		if err != nil {
+			klog.Warningf("failed to get device for directory %q: %v", filepath.Dir(where), err)
+		} else {
+			metrics.MaybeAddDiskDevice(device)
+		}
+	}
 	if useMmap {
 		carReader, err := carv2.OpenReader(where)
 		if err != nil {
