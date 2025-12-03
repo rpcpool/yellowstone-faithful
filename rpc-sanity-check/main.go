@@ -1021,10 +1021,11 @@ func runTxLoadTest(cfg Config) {
 	}
 
 	// Wait for initial buffer fill (at least 10k to start safely)
-	log.Printf("   ⏳ Waiting for signature buffer to fill (10k)...")
+	initialFillSize := 100_000
+	log.Printf("   ⏳ Waiting for signature buffer to fill (%d sigs)...", initialFillSize)
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
-	for len(sigChan) < 100_000 {
+	for len(sigChan) < initialFillSize {
 		select {
 		case <-ctx.Done():
 			return
@@ -1033,6 +1034,25 @@ func runTxLoadTest(cfg Config) {
 		}
 	}
 	log.Printf("   ✅ Buffer ready (%d sigs). Launching %d workers...", len(sigChan), cfg.TxConcurrency)
+	// read all, shuffle, and put back to mix initial sigs
+	initialSigs := make([]string, 0, len(sigChan))
+	for len(sigChan) > 0 {
+		initialSigs = append(initialSigs, <-sigChan)
+	}
+	mrand.Shuffle(len(initialSigs), func(i, j int) {
+		initialSigs[i], initialSigs[j] = initialSigs[j], initialSigs[i]
+	})
+	go func() {
+		for _, s := range initialSigs {
+			select {
+			case sigChan <- s:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
+	// 2. Launch Workers
 
 	var wg sync.WaitGroup
 	var totalTx uint64
