@@ -33,16 +33,15 @@ var ErrInvalidMagic = errors.New("invalid magic")
 // The provided stream must start with the Magic byte sequence.
 // Tip: Use io.NewSectionReader to create aligned substreams when dealing with a file that contains multiple indexes.
 func Open(stream io.ReaderAt) (*DB, error) {
-	{
-		type fileDescriptor interface {
-			Fd() uintptr
-		}
-		if f, ok := stream.(fileDescriptor); ok {
-			// fadvise random access pattern for the whole file
-			err := unix.Fadvise(int(f.Fd()), 0, 0, unix.FADV_RANDOM)
-			if err != nil {
-				slog.Warn("fadvise(RANDOM) failed", "error", err)
-			}
+	type fileDescriptor interface {
+		Fd() uintptr
+		Name() string
+	}
+	if f, ok := stream.(fileDescriptor); ok {
+		// fadvise random access pattern for the whole file
+		err := unix.Fadvise(int(f.Fd()), 0, 0, unix.FADV_RANDOM)
+		if err != nil {
+			slog.Warn("fadvise(RANDOM) failed", "error", err)
 		}
 	}
 	// Read the static 32-byte header.
@@ -72,23 +71,26 @@ func Open(stream io.ReaderAt) (*DB, error) {
 	}
 	db.headerSize = int64(8 + 4 + size)
 	db.Stream = stream
-	{
-		slog.Info("Warming up drives for bucket offsets (compactindexsized)...")
-		startedWarmup := time.Now()
-		dummyBuf := make([]byte, 1)
-		warmedBuckets := 0
-		for bucketIndex := range db.Header.NumBuckets {
-			_, err := db.Stream.ReadAt(dummyBuf, bucketOffset(db.headerSize, uint(bucketIndex)))
-			if err != nil {
-				return nil, fmt.Errorf("failed to warm up page cache for bucket %d: %w", bucketIndex, err)
+
+	if f, ok := stream.(fileDescriptor); ok {
+		{
+			slog.Info("Warming up drives for bucket offsets (compactindexsized)...", "file", f.Name())
+			startedWarmup := time.Now()
+			dummyBuf := make([]byte, 1)
+			warmedBuckets := 0
+			for bucketIndex := range db.Header.NumBuckets {
+				_, err := db.Stream.ReadAt(dummyBuf, bucketOffset(db.headerSize, uint(bucketIndex)))
+				if err != nil {
+					return nil, fmt.Errorf("failed to warm up page cache for bucket %d: %w", bucketIndex, err)
+				}
+				warmedBuckets++
 			}
-			warmedBuckets++
+			slog.Info(
+				"Cache warmup complete",
+				"buckets_warmed", warmedBuckets,
+				"duration", time.Since(startedWarmup).String(),
+			)
 		}
-		slog.Info(
-			"Cache warmup complete",
-			"buckets_warmed", warmedBuckets,
-			"duration", time.Since(startedWarmup).String(),
-		)
 	}
 	return db, nil
 }

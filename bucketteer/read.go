@@ -153,6 +153,7 @@ func NewReader(reader io.ReaderAt, fileSize int64) (*Reader, error) {
 
 	type fileDescriptor interface {
 		Fd() uintptr
+		Name() string
 	}
 	if f, ok := reader.(fileDescriptor); ok {
 		// fadvise random access pattern for the whole file
@@ -160,30 +161,31 @@ func NewReader(reader io.ReaderAt, fileSize int64) (*Reader, error) {
 		if err != nil {
 			slog.Warn("fadvise(RANDOM) failed", "error", err)
 		}
+		{
+			slog.Info("Warming up drives for bucket offsets (bucketteer)...", "file", f.Name())
+			startedWarmup := time.Now()
+			dummyBuf := make([]byte, 1)
+			warmedBuckets := 0
+			for _, offset := range *r.prefixToOffset {
+				if offset != math.MaxUint64 {
+					if _, err := r.contentReader.ReadAt(dummyBuf, int64(offset)); err != nil {
+						if !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
+							slog.Warn("Cache warmup read failed", "offset", offset, "error", err)
+						}
+					}
+					warmedBuckets++
+				}
+			}
+			slog.Info(
+				"Cache warmup complete",
+				"buckets_warmed", warmedBuckets,
+				"duration", time.Since(startedWarmup).String(),
+			)
+		}
 	} else {
 		slog.Warn("Reader does not have an Fd(); cannot use posix_fadvise to manage cache.")
 	}
-	{
-		slog.Info("Warming up drives for bucket offsets (bucketteer)...")
-		startedWarmup := time.Now()
-		dummyBuf := make([]byte, 1)
-		warmedBuckets := 0
-		for _, offset := range *r.prefixToOffset {
-			if offset != math.MaxUint64 {
-				if _, err := r.contentReader.ReadAt(dummyBuf, int64(offset)); err != nil {
-					if !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
-						slog.Warn("Cache warmup read failed", "offset", offset, "error", err)
-					}
-				}
-				warmedBuckets++
-			}
-		}
-		slog.Info(
-			"Cache warmup complete",
-			"buckets_warmed", warmedBuckets,
-			"duration", time.Since(startedWarmup).String(),
-		)
-	}
+
 	// if klog.V(4).Enabled() {
 	// 	// debug: print all prefixes and their offsets and sizes
 	// 	sizeSum := uint64(0)

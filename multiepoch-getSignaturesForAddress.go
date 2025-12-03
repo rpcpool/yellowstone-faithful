@@ -59,7 +59,7 @@ func (ser *MultiEpoch) getGsfaReadersInEpochDescendingOrderForSlotRange(ctx cont
 		if epoch, ok := ser.epochs[wantedEpoch]; ok {
 			epochs = append(epochs, epoch)
 		} else {
-			klog.Warningf("epoch %d not found in multiepoch", wantedEpoch)
+			klog.V(4).Infof("epoch %d not found in multiepoch", wantedEpoch)
 		}
 	}
 
