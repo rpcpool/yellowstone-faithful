@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
+	"context"
 	"crypto/rand"
 	"encoding/json"
 	"flag"
@@ -11,8 +13,13 @@ import (
 	"math/big"
 	"net/http"
 	"os"
+	"os/exec"
+	"os/signal"
 	"reflect"
 	"strings"
+	"sync"
+	"sync/atomic"
+	"syscall"
 	"time"
 
 	jd "github.com/josephburnett/jd/v2"
@@ -20,14 +27,19 @@ import (
 
 // Config holds the command line arguments
 type Config struct {
-	RefRPC        string
-	TargetRPC     string
-	SlotsPerEpoch int
-	MaxTxsToCheck int
-	Verbose       bool
-	SlotsInEpoch  int64 // Standard Solana slots per epoch
-	StopOnDiff    bool
-	FullSig       bool
+	RefRPC          string
+	TargetRPC       string
+	SlotsPerEpoch   int
+	MaxTxsToCheck   int
+	Verbose         bool
+	SlotsInEpoch    int64 // Standard Solana slots per epoch
+	StopOnDiff      bool
+	FullSig         bool
+	RunGRPCLoadTest bool
+	GRPCTarget      string
+	GRPCToken       string
+	GRPCProto       string
+	GRPCConcurrency int
 }
 
 // EpochResponse matches the structure {"epochs":[...]}
@@ -72,6 +84,11 @@ func main() {
 	flag.Int64Var(&cfg.SlotsInEpoch, "epoch-len", 432000, "Length of an epoch in slots (default 432000)")
 	flag.BoolVar(&cfg.StopOnDiff, "stop-on-diff", false, "Exit immediately when a discrepancy is found")
 	flag.BoolVar(&cfg.FullSig, "full-sig", false, "Print full transaction signatures in logs")
+	flag.BoolVar(&cfg.RunGRPCLoadTest, "grpc-load-test", false, "Run gRPC load test step")
+	flag.StringVar(&cfg.GRPCTarget, "grpc-target", "", "Target gRPC endpoint (required for --grpc-load-test)")
+	flag.StringVar(&cfg.GRPCToken, "grpc-token", "<token>", "Auth token for gRPC")
+	flag.StringVar(&cfg.GRPCProto, "grpc-proto", "old-faithful-proto/proto/old-faithful.proto", "Path to .proto file")
+	flag.IntVar(&cfg.GRPCConcurrency, "grpc-concurrency", 100, "Number of concurrent gRPC streams")
 	flag.Parse()
 
 	// Configure logger to remove timestamps for cleaner output (we can add them back if strictly needed,
@@ -79,6 +96,14 @@ func main() {
 	// However, keeping standard log format is safer for debugging.
 	// Let's stick to standard log but clean the messages.
 	log.SetFlags(log.Ltime) // Only show time, remove date to save space
+
+	if cfg.RunGRPCLoadTest {
+		if cfg.GRPCTarget == "" {
+			log.Fatal("❌ --grpc-target is required when --grpc-load-test is enabled")
+		}
+		runGRPCLoadTest(cfg)
+		return
+	}
 
 	log.Printf("🔹 Starting Verification")
 	log.Printf("   Ref:    %s", cfg.RefRPC)
@@ -535,4 +560,157 @@ func normalizeRPC(v interface{}) {
 			normalizeRPC(val)
 		}
 	}
+}
+
+func runGRPCLoadTest(cfg Config) {
+	log.Printf("🔥 Starting gRPC Load Test")
+	log.Printf("   Concurrency: %d", cfg.GRPCConcurrency)
+	log.Printf("   Endpoint:    %s", cfg.GRPCTarget)
+	log.Printf("   Proto:       %s", cfg.GRPCProto)
+	log.Printf("   Target:      OldFaithful.OldFaithful/StreamTransactions")
+
+	// Verify grpcurl exists
+	if _, err := exec.LookPath("grpcurl"); err != nil {
+		log.Fatal("❌ grpcurl not found in PATH. Please install it to run the load test.")
+	}
+
+	// Fetch epochs from target to determine a valid slot range
+	epochs, err := fetchEpochs(cfg.TargetRPC)
+	if err != nil {
+		log.Fatalf("❌ Failed to fetch epochs for load test config: %v", err)
+	}
+	if len(epochs) == 0 {
+		log.Fatal("❌ No epochs returned from target")
+	}
+
+	// Use the first epoch (usually the latest)
+	targetEpoch := epochs[0]
+	startSlot := targetEpoch * uint64(cfg.SlotsInEpoch)
+	endSlot := startSlot + uint64(cfg.SlotsInEpoch) - 1
+
+	log.Printf("   📅 Configured for Epoch %d (Slots %d-%d)", targetEpoch, startSlot, endSlot)
+
+	// Payload construction
+	payload := fmt.Sprintf(`{
+		"start_slot": %d, 
+		"end_slot": %d, 
+		"filter": {
+			"vote": false, 
+			"failed": false, 
+			"account_include":["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"]
+		}
+	}`, startSlot, endSlot)
+
+	// Context to handle cancellation (Ctrl+C)
+	// This context will kill child processes when cancelled
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Handle interrupts
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-sigChan
+		log.Println("\n🛑 Stopping load test...")
+		cancel()
+	}()
+
+	var wg sync.WaitGroup
+	var totalTx uint64
+	startTime := time.Now()
+
+	// TPS Monitor
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		ticker := time.NewTicker(1 * time.Second)
+		defer ticker.Stop()
+
+		var lastCount uint64
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				current := atomic.LoadUint64(&totalTx)
+				diff := current - lastCount
+				lastCount = current
+				elapsed := time.Since(startTime).Seconds()
+				avg := 0.0
+				if elapsed > 0 {
+					avg = float64(current) / elapsed
+				}
+				log.Printf("   ⚡ Status: %d total txs | Current TPS: %d | Avg TPS: %.1f", current, diff, avg)
+			}
+		}
+	}()
+
+	log.Printf("   🚀 Launching %d streams...", cfg.GRPCConcurrency)
+
+	for i := 0; i < cfg.GRPCConcurrency; i++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+
+			// Construct arguments
+			args := []string{
+				"-proto", cfg.GRPCProto,
+				"-H", fmt.Sprintf("x-token: %s", cfg.GRPCToken),
+				"-plaintext",
+				"-keepalive-time", "10",
+				"-max-time", "0",
+				"-d", payload,
+				cfg.GRPCTarget,
+				"OldFaithful.OldFaithful/StreamTransactions",
+			}
+
+			cmd := exec.CommandContext(ctx, "grpcurl", args...)
+
+			// Capture stdout to count transactions
+			stdout, err := cmd.StdoutPipe()
+			if err != nil {
+				log.Printf("   ❌ Stream %d failed to get stdout: %v", id, err)
+				return
+			}
+
+			// Capture stderr to debug immediate failures
+			var stderr bytes.Buffer
+			cmd.Stderr = &stderr
+
+			if err := cmd.Start(); err != nil {
+				log.Printf("   ❌ Stream %d failed to start: %v", id, err)
+				return
+			}
+
+			// Parse output for transactions
+			scanner := bufio.NewScanner(stdout)
+			// Increase buffer size if needed, but default is usually fine for JSON lines unless they are huge
+			// scanner.Buffer(make([]byte, 64*1024), 1024*1024)
+
+			go func() {
+				for scanner.Scan() {
+					line := scanner.Text()
+					// Heuristic: Assume distinct transaction messages contain "slot"
+					// This works if grpcurl pretty prints (multiple lines per tx) or prints single lines.
+					// We just count occurrences of the key.
+					if strings.Contains(line, "\"slot\":") {
+						atomic.AddUint64(&totalTx, 1)
+					}
+				}
+			}()
+
+			// Wait for command to finish (or be killed by context)
+			if err := cmd.Wait(); err != nil {
+				// Only log if context wasn't cancelled (clean shutdown)
+				if ctx.Err() == nil {
+					// Use strings.TrimSpace to clean up the error log
+					log.Printf("   ❌ Stream %d exited early: %v | Stderr: %s", id, err, strings.TrimSpace(stderr.String()))
+				}
+			}
+		}(i)
+	}
+
+	log.Printf("   ✅ All streams launched. Waiting... (Press Ctrl+C to stop)")
+	wg.Wait()
+	log.Printf("   🏁 Load test finished.")
 }
