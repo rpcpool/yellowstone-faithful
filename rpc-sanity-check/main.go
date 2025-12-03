@@ -315,7 +315,7 @@ func compareJSON(ref []byte, target []byte, label string, stopOnDiff bool) {
 
 	scrubKey(refObj, "stackHeight")
 	scrubKey(targetObj, "stackHeight")
-	//
+	scrubCompatibleLogs(refObj, targetObj)
 	scrubKey(targetObj, "position")
 	// rewards can be noisy
 	scrubKey(refObj, "rewards")
@@ -364,4 +364,75 @@ func scrubKey(v interface{}, key string) {
 			scrubKey(val, key)
 		}
 	}
+}
+
+func scrubCompatibleLogs(ref, target interface{}) {
+	refMap, rOk := ref.(map[string]interface{})
+	targetMap, tOk := target.(map[string]interface{})
+
+	if rOk && tOk {
+		// Check for logMessages at this level
+		if rLogs, rHas := refMap["logMessages"]; rHas {
+			if tLogs, tHas := targetMap["logMessages"]; tHas {
+				if isLogSubset(rLogs, tLogs) {
+					delete(refMap, "logMessages")
+					delete(targetMap, "logMessages")
+				}
+			}
+		}
+
+		// Recurse into common keys
+		for k, v := range refMap {
+			if tv, exists := targetMap[k]; exists {
+				scrubCompatibleLogs(v, tv)
+			}
+		}
+		return
+	}
+
+	refSlice, rOk := ref.([]interface{})
+	targetSlice, tOk := target.([]interface{})
+	if rOk && tOk {
+		// Recurse into array elements (e.g. transactions array)
+		limit := len(refSlice)
+		if len(targetSlice) < limit {
+			limit = len(targetSlice)
+		}
+		for i := 0; i < limit; i++ {
+			scrubCompatibleLogs(refSlice[i], targetSlice[i])
+		}
+	}
+}
+
+func isLogSubset(refVal, targetVal interface{}) bool {
+	rList, rOk := refVal.([]interface{})
+	tList, tOk := targetVal.([]interface{})
+	if !rOk || !tOk {
+		return false // Malformed or not arrays
+	}
+
+	for i, rItem := range rList {
+		rStr, rStrOk := rItem.(string)
+		if !rStrOk {
+			return false // Logs should be strings
+		}
+
+		// If Ref says "Log truncated", we accept it as a match (prefix matched so far)
+		if rStr == "Log truncated" {
+			return true
+		}
+
+		// If Ref has more lines than Target (and wasn't truncated), mismatch
+		if i >= len(tList) {
+			return false
+		}
+
+		tStr, tStrOk := tList[i].(string)
+		if !tStrOk || rStr != tStr {
+			return false // Content mismatch
+		}
+	}
+
+	// Ref is a prefix of Target (or exact match)
+	return true
 }
