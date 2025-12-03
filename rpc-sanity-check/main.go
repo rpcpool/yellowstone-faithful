@@ -843,8 +843,8 @@ func runTxLoadTest(cfg Config) {
 		Proxy:                 http.ProxyFromEnvironment,
 		DialContext:           dialer.DialContext,
 		ForceAttemptHTTP2:     true,
-		MaxIdleConns:          cfg.TxConcurrency + 10, // +10 for harvester
-		MaxIdleConnsPerHost:   cfg.TxConcurrency + 10,
+		MaxIdleConns:          cfg.TxConcurrency + 20, // +20 for harvesters
+		MaxIdleConnsPerHost:   cfg.TxConcurrency + 20,
 		IdleConnTimeout:       90 * time.Second,
 		TLSHandshakeTimeout:   10 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
@@ -862,8 +862,9 @@ func runTxLoadTest(cfg Config) {
 	}
 
 	// Start Continuous Harvester
-	// Buffer size handles slight bursts
-	sigChan := make(chan string, 20000)
+	// Buffer size set to 100k to satisfy requirement: pause if > 100k unused signatures.
+	// Writing to a full channel blocks the sender, effectively pausing harvesting.
+	sigChan := make(chan string, 100000)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -876,70 +877,80 @@ func runTxLoadTest(cfg Config) {
 		cancel()
 	}()
 
-	// Harvester Routine
-	go func() {
-		log.Printf("   🌾 Starting continuous harvester (Ref: %s)", cfg.RefRPC)
-		for {
-			if ctx.Err() != nil {
-				return
-			}
+	// Launch Harvester Pool
+	// To ensure > 10k sigs/sec. Assuming ~1-2k sigs per block and network latency,
+	// we need parallel requests. 10 harvesters is robust.
+	numHarvesters := 10
+	log.Printf("   🌾 Starting %d continuous harvesters (Ref: %s) to maintain >10k sigs/s", numHarvesters, cfg.RefRPC)
 
-			// Pick random epoch and slot from target's available range
-			epoch := targetEpochs[randInt(len(targetEpochs))]
-			startSlot := epoch * uint64(cfg.SlotsInEpoch)
-			offset := randInt(int(cfg.SlotsInEpoch))
-			slot := startSlot + uint64(offset)
+	for h := 0; h < numHarvesters; h++ {
+		go func(id int) {
+			for {
+				if ctx.Err() != nil {
+					return
+				}
 
-			params := []interface{}{
-				slot,
-				map[string]interface{}{
-					"encoding":                       "json",
-					"transactionDetails":             "signatures",
-					"rewards":                        false,
-					"maxSupportedTransactionVersion": 0,
-				},
-			}
+				// Pick random epoch and slot from target's available range
+				epoch := targetEpochs[randInt(len(targetEpochs))]
+				startSlot := epoch * uint64(cfg.SlotsInEpoch)
+				offset := randInt(int(cfg.SlotsInEpoch))
+				slot := startSlot + uint64(offset)
 
-			// Use independent context for harvesting
-			hCtx, hCancel := context.WithTimeout(ctx, 10*time.Second)
-			res, _, err := callRPC(hCtx, client, cfg.RefRPC, "getBlock", params)
-			hCancel()
+				params := []interface{}{
+					slot,
+					map[string]interface{}{
+						"encoding":                       "json",
+						"transactionDetails":             "signatures",
+						"rewards":                        false,
+						"maxSupportedTransactionVersion": 0,
+					},
+				}
 
-			if err != nil {
-				// Sleep briefly on error to avoid hammering if Ref is down
-				time.Sleep(100 * time.Millisecond)
-				continue
-			}
+				// Use independent context for harvesting
+				hCtx, hCancel := context.WithTimeout(ctx, 10*time.Second)
+				res, _, err := callRPC(hCtx, client, cfg.RefRPC, "getBlock", params)
+				hCancel()
 
-			var blockSigs struct {
-				Signatures []string `json:"signatures"`
-			}
-			if err := json.Unmarshal(res, &blockSigs); err != nil {
-				continue
-			}
+				if err != nil {
+					// Sleep briefly on error to avoid hammering if Ref is down
+					time.Sleep(100 * time.Millisecond)
+					continue
+				}
 
-			if len(blockSigs.Signatures) > 0 {
-				for _, s := range blockSigs.Signatures {
-					select {
-					case sigChan <- s:
-						// pushed
-					case <-ctx.Done():
-						return
+				var blockSigs struct {
+					Signatures []string `json:"signatures"`
+				}
+				if err := json.Unmarshal(res, &blockSigs); err != nil {
+					continue
+				}
+
+				if len(blockSigs.Signatures) > 0 {
+					for _, s := range blockSigs.Signatures {
+						select {
+						case sigChan <- s:
+							// pushed
+						case <-ctx.Done():
+							return
+						}
 					}
 				}
 			}
-		}
-	}()
+		}(h)
+	}
 
-	// Wait for initial buffer
-	log.Printf("   ⏳ Waiting for signature buffer to fill...")
-	for len(sigChan) < 1000 {
-		time.Sleep(100 * time.Millisecond)
-		if ctx.Err() != nil {
+	// Wait for initial buffer fill (at least 10k to start safely)
+	log.Printf("   ⏳ Waiting for signature buffer to fill (10k)...")
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+	for len(sigChan) < 10000 {
+		select {
+		case <-ctx.Done():
 			return
+		case <-ticker.C:
+			// Waiting
 		}
 	}
-	log.Printf("   ✅ Buffer ready. Launching %d workers...", cfg.TxConcurrency)
+	log.Printf("   ✅ Buffer ready (%d sigs). Launching %d workers...", len(sigChan), cfg.TxConcurrency)
 
 	var wg sync.WaitGroup
 	var totalTx uint64
@@ -971,6 +982,9 @@ func runTxLoadTest(cfg Config) {
 				rErr := atomic.LoadUint64(&totalRpcErrors)
 				bErr := atomic.LoadUint64(&totalBadResponse)
 
+				// Monitor buffer health
+				bufLen := len(sigChan)
+
 				diff := current - lastCount
 				lastCount = current
 
@@ -985,8 +999,8 @@ func runTxLoadTest(cfg Config) {
 					avgLat = float64(latencySum) / float64(current) / 1000.0 // ms
 				}
 
-				log.Printf("   ⚡ Status: %d total | TPS: %d (Avg: %.1f) | Avg Latency: %.1fms | NetErr: %d | HTTPErr: %d | RPCErr: %d | BadRes: %d",
-					current, diff, avg, avgLat, nErr, hErr, rErr, bErr)
+				log.Printf("   ⚡ Status: %d total | TPS: %d (Avg: %.1f) | Latency: %.1fms | Buffer: %d | Err(Net/HTTP/RPC/Bad): %d/%d/%d/%d",
+					current, diff, avg, avgLat, bufLen, nErr, hErr, rErr, bErr)
 			}
 		}
 	}()
