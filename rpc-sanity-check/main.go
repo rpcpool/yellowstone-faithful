@@ -2,12 +2,13 @@ package main
 
 import (
 	"bytes"
+	"crypto/rand"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
 	"log"
-	"math/rand"
+	"math/big"
 	"net/http"
 	"os"
 	"reflect"
@@ -70,8 +71,6 @@ func main() {
 	flag.BoolVar(&cfg.StopOnDiff, "stop-on-diff", false, "Exit immediately when a discrepancy is found")
 	flag.Parse()
 
-	rand.Seed(time.Now().UnixNano())
-
 	log.Printf("Starting verification...")
 	log.Printf("Target: %s", cfg.TargetRPC)
 	log.Printf("Reference: %s", cfg.RefRPC)
@@ -122,16 +121,41 @@ func fetchEpochs(baseURL string) ([]uint64, error) {
 }
 
 func generateRandomSlots(min, max uint64, count int) []uint64 {
-	// Simple random generator without duplicate checking for simplicity on large ranges
 	slots := make([]uint64, count)
-	rangeSz := int64(max - min)
-	if rangeSz <= 0 {
+	rangeSz := new(big.Int).SetUint64(max - min)
+
+	if rangeSz.Sign() <= 0 {
 		return []uint64{min}
 	}
+
 	for i := 0; i < count; i++ {
-		slots[i] = min + uint64(rand.Int63n(rangeSz))
+		offset, err := rand.Int(rand.Reader, rangeSz)
+		if err != nil {
+			// Fallback or panic in case of crypto/rand failure, though unlikely
+			log.Printf("Failed to generate secure random number: %v", err)
+			slots[i] = min
+			continue
+		}
+		slots[i] = min + offset.Uint64()
 	}
 	return slots
+}
+
+// securePerm generates a random permutation of integers from 0 to n-1
+func securePerm(n int) []int {
+	m := make([]int, n)
+	for i := 0; i < n; i++ {
+		m[i] = i
+	}
+	for i := n - 1; i > 0; i-- {
+		jBig, err := rand.Int(rand.Reader, big.NewInt(int64(i+1)))
+		if err != nil {
+			continue
+		}
+		j := int(jBig.Int64())
+		m[i], m[j] = m[j], m[i]
+	}
+	return m
 }
 
 func processSlot(client *http.Client, cfg Config, slot uint64) {
@@ -152,7 +176,7 @@ func processSlot(client *http.Client, cfg Config, slot uint64) {
 	refBlock, refLat, refErr := callRPC(client, cfg.RefRPC, "getBlock", params)
 	targetBlock, targetLat, targetErr := callRPC(client, cfg.TargetRPC, "getBlock", params)
 
-	log.Printf("Slot %d Latency: Ref=%v | Target=%v", slot, refLat, targetLat)
+	log.Printf("Slot %d Latency: Ref=%.1fms | Target=%.1fms", slot, float64(refLat)/float64(time.Millisecond), float64(targetLat)/float64(time.Millisecond))
 
 	// Handle availability issues
 	if refErr != nil || targetErr != nil {
@@ -163,7 +187,7 @@ func processSlot(client *http.Client, cfg Config, slot uint64) {
 			}
 			return
 		}
-		log.Printf("Slot %d: FETCH ERROR mismatch. RefErr: %v, TargetErr: %v", slot, refErr, targetErr)
+		log.Printf("Slot %d: FETCH ERROR mismatch. RefErr: %q, TargetErr: %q", slot, refErr, targetErr)
 		return
 	}
 
@@ -203,8 +227,8 @@ func processSlot(client *http.Client, cfg Config, slot uint64) {
 		return
 	}
 
-	// Random sampling of transactions
-	perm := rand.Perm(txCount)
+	// Random sampling of transactions using secure permutation
+	perm := securePerm(txCount)
 	limit := cfg.MaxTxsToCheck
 	if limit > txCount {
 		limit = txCount
@@ -235,13 +259,13 @@ func compareTransaction(client *http.Client, cfg Config, signature string) {
 	refTx, refLat, refErr := callRPC(client, cfg.RefRPC, "getTransaction", params)
 	targetTx, targetLat, targetErr := callRPC(client, cfg.TargetRPC, "getTransaction", params)
 
-	log.Printf("Tx %s Latency: Ref=%v | Target=%v", signature, refLat, targetLat)
+	log.Printf("Tx %s Latency: Ref=%.1fms | Target=%.1fms", signature, float64(refLat)/float64(time.Millisecond), float64(targetLat)/float64(time.Millisecond))
 
 	if refErr != nil && targetErr != nil {
 		return // Both failed
 	}
 	if refErr != nil || targetErr != nil {
-		log.Printf(" [!] TX FETCH mismatch for %s. RefErr: %v, TargetErr: %v", signature, refErr, targetErr)
+		log.Printf(" [!] TX FETCH mismatch for %s. RefErr: %q, TargetErr: %q", signature, refErr, targetErr)
 		return
 	}
 
