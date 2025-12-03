@@ -845,25 +845,48 @@ func runTxLoadTest(cfg Config) {
 	log.Printf("   Concurrency: %d", cfg.TxConcurrency)
 	log.Printf("   Target:      %s", cfg.TargetRPC)
 
-	dialer := &net.Dialer{
+	// Dedicated Transport/Client for Workers
+	workerDialer := &net.Dialer{
 		Timeout:   30 * time.Second,
 		KeepAlive: 30 * time.Second,
 	}
-	transport := &http.Transport{
+	workerTransport := &http.Transport{
 		Proxy:                 http.ProxyFromEnvironment,
-		DialContext:           dialer.DialContext,
+		DialContext:           workerDialer.DialContext,
 		ForceAttemptHTTP2:     true,
-		MaxIdleConns:          cfg.TxConcurrency + 20, // +20 for harvesters
+		MaxIdleConns:          cfg.TxConcurrency + 20,
 		MaxIdleConnsPerHost:   cfg.TxConcurrency + 20,
 		IdleConnTimeout:       90 * time.Second,
 		TLSHandshakeTimeout:   10 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
 	}
-
-	client := &http.Client{
-		Transport: transport,
+	workerClient := &http.Client{
+		Transport: workerTransport,
 		Timeout:   10 * time.Second,
 	}
+
+	// Dedicated Transport/Client for Harvesters (Isolated)
+	harvesterDialer := &net.Dialer{
+		Timeout:   10 * time.Second,
+		KeepAlive: 30 * time.Second,
+	}
+	harvesterTransport := &http.Transport{
+		Proxy:                 http.ProxyFromEnvironment,
+		DialContext:           harvesterDialer.DialContext,
+		ForceAttemptHTTP2:     true,
+		MaxIdleConns:          20,
+		MaxIdleConnsPerHost:   20,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+	}
+	harvesterClient := &http.Client{
+		Transport: harvesterTransport,
+		Timeout:   10 * time.Second,
+	}
+
+	// 1. Harvest Signatures
+	log.Printf("   🌾 Harvesting signatures from reference (%s) using target epochs...", cfg.RefRPC)
 
 	// Get Target Epochs to know valid ranges
 	targetEpochs, err := fetchEpochs(cfg.TargetRPC)
@@ -890,19 +913,39 @@ func runTxLoadTest(cfg Config) {
 	// Launch Harvester Pool
 	// To ensure > 10k sigs/sec. Assuming ~1-2k sigs per block and network latency,
 	// we need parallel requests. 10 harvesters is robust.
-	numHarvesters := 20
+	numHarvesters := 100
 	log.Printf("   🌾 Starting %d continuous harvesters (Ref: %s) to maintain >10k sigs/s (Mixing enabled)", numHarvesters, cfg.RefRPC)
 
 	for h := 0; h < numHarvesters; h++ {
 		go func(id int) {
 			// Local random source for shuffling
 			r := mrand.New(mrand.NewSource(time.Now().UnixNano() + int64(id)))
-			batchSize := 2000
+			batchSize := 500 // Reduced batch size for smoother flow
 			batch := make([]string, 0, batchSize)
+			flushTicker := time.NewTicker(200 * time.Millisecond)
+			defer flushTicker.Stop()
 
 			for {
-				if ctx.Err() != nil {
+				select {
+				case <-ctx.Done():
 					return
+				case <-flushTicker.C:
+					if len(batch) > 0 {
+						// Flush partial batch
+						r.Shuffle(len(batch), func(i, j int) {
+							batch[i], batch[j] = batch[j], batch[i]
+						})
+						for _, s := range batch {
+							select {
+							case sigChan <- s:
+							case <-ctx.Done():
+								return
+							}
+						}
+						batch = batch[:0]
+					}
+				default:
+					// Proceed to fetch
 				}
 
 				// Pick random epoch and slot from target's available range
@@ -923,7 +966,8 @@ func runTxLoadTest(cfg Config) {
 
 				// Use independent context for harvesting
 				hCtx, hCancel := context.WithTimeout(ctx, 10*time.Second)
-				res, _, err := callRPC(hCtx, client, cfg.RefRPC, "getBlock", params)
+				// Use dedicated harvesterClient
+				res, _, err := callRPC(hCtx, harvesterClient, cfg.RefRPC, "getBlock", params)
 				hCancel()
 
 				if err != nil {
@@ -945,8 +989,8 @@ func runTxLoadTest(cfg Config) {
 						blockSigs.Signatures[i], blockSigs.Signatures[j] = blockSigs.Signatures[j], blockSigs.Signatures[i]
 					})
 
-					// Limit sigs per block to force diversity (max 200)
-					limit := 200
+					// Limit sigs per block to force diversity (max 500)
+					limit := 500
 					count := len(blockSigs.Signatures)
 					if count > limit {
 						count = limit
@@ -980,7 +1024,7 @@ func runTxLoadTest(cfg Config) {
 	log.Printf("   ⏳ Waiting for signature buffer to fill (10k)...")
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
-	for len(sigChan) < 10000 {
+	for len(sigChan) < 100_000 {
 		select {
 		case <-ctx.Done():
 			return
@@ -1066,7 +1110,8 @@ func runTxLoadTest(cfg Config) {
 
 				// Enforce 5s timeout per tx
 				reqCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-				res, dur, err := callRPC(reqCtx, client, cfg.TargetRPC, "getTransaction", params)
+				// Use dedicated workerClient
+				res, dur, err := callRPC(reqCtx, workerClient, cfg.TargetRPC, "getTransaction", params)
 				cancel()
 
 				if err == nil {
