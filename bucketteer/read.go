@@ -177,9 +177,10 @@ func NewReader(reader io.ReaderAt, fileSize int64) (*Reader, error) {
 				}
 			}
 			slog.Info(
-				"Cache warmup complete",
+				"Drive warmup complete",
 				"buckets_warmed", warmedBuckets,
 				"duration", time.Since(startedWarmup).String(),
+				"file", f.Name(),
 			)
 		}
 	} else {

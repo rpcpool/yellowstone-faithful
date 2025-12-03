@@ -86,9 +86,10 @@ func Open(stream io.ReaderAt) (*DB, error) {
 				warmedBuckets++
 			}
 			slog.Info(
-				"Cache warmup complete",
+				"Drive warmup complete",
 				"buckets_warmed", warmedBuckets,
 				"duration", time.Since(startedWarmup).String(),
+				"file", f.Name(),
 			)
 		}
 	}
