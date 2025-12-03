@@ -790,7 +790,7 @@ func runTxLoadTest(cfg Config) {
 		log.Fatalf("❌ Failed to fetch epochs from target: %v", err)
 	}
 
-	totalTargetSigs := 50000
+	totalTargetSigs := 500_000
 	// Calculate signatures needed per epoch to reach total ~50k
 	// Ceiling division: (x + y - 1) / y
 	sigsPerEpoch := (totalTargetSigs + len(targetEpochs) - 1) / len(targetEpochs)
