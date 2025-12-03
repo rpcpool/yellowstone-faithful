@@ -44,6 +44,8 @@ type Config struct {
 	GRPCConcurrency int
 	RunTxLoadTest   bool
 	TxConcurrency   int
+	MetricsURL      string
+	WebPort         int
 }
 
 // EpochResponse matches the structure {"epochs":[...]}
@@ -115,6 +117,8 @@ func main() {
 	flag.IntVar(&cfg.GRPCConcurrency, "grpc-concurrency", 100, "Number of concurrent gRPC streams")
 	flag.BoolVar(&cfg.RunTxLoadTest, "tx-load-test", false, "Run getTransaction load test (JSON-RPC)")
 	flag.IntVar(&cfg.TxConcurrency, "tx-concurrency", 100, "Concurrency for tx load test")
+	flag.StringVar(&cfg.MetricsURL, "metrics-url", "http://faithful-staging1:8888/metrics", "URL to fetch Prometheus metrics from (e.g. http://faithful-staging1:8888/metrics)")
+	flag.IntVar(&cfg.WebPort, "web-port", 3000, "Port to serve the metrics dashboard")
 	flag.Var(&cfg.SkipEpochs, "skip-epoch", "Epoch number to skip (can be specified multiple times)")
 	flag.Parse()
 
@@ -123,6 +127,11 @@ func main() {
 	// However, keeping standard log format is safer for debugging.
 	// Let's stick to standard log but clean the messages.
 	log.SetFlags(log.Ltime) // Only show time, remove date to save space
+
+	// Start Metrics Server if requested
+	if cfg.MetricsURL != "" {
+		go runMetricsServer(cfg)
+	}
 
 	if cfg.RunGRPCLoadTest {
 		if cfg.GRPCTarget == "" {
@@ -631,6 +640,43 @@ func normalizeRPC(v interface{}) {
 	}
 }
 
+func runMetricsServer(cfg Config) {
+	log.Printf("📊 Starting Metrics Dashboard at http://localhost:%d", cfg.WebPort)
+	log.Printf("   🔗 Proxying metrics from: %s", cfg.MetricsURL)
+
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		// Serve dashboard.html if it exists in current directory
+		if _, err := os.Stat("dashboard.html"); err == nil {
+			http.ServeFile(w, r, "dashboard.html")
+			return
+		}
+		// Fallback message
+		w.Header().Set("Content-Type", "text/html")
+		fmt.Fprintf(w, "<h1>Dashboard Not Found</h1><p>Please ensure 'dashboard.html' is in the current directory.</p>")
+	})
+
+	http.HandleFunc("/api/metrics", func(w http.ResponseWriter, r *http.Request) {
+		// Fetch metrics from target
+		client := &http.Client{Timeout: 5 * time.Second}
+		resp, err := client.Get(cfg.MetricsURL)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Failed to fetch metrics: %v", err), http.StatusInternalServerError)
+			return
+		}
+		defer resp.Body.Close()
+
+		// Copy headers and body
+		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		io.Copy(w, resp.Body)
+	})
+
+	addr := fmt.Sprintf(":%d", cfg.WebPort)
+	if err := http.ListenAndServe(addr, nil); err != nil {
+		log.Printf("❌ Failed to start web server: %v", err)
+	}
+}
+
 func runGRPCLoadTest(cfg Config) {
 	log.Printf("🔥 Starting gRPC Load Test")
 	log.Printf("   Concurrency: %d", cfg.GRPCConcurrency)
@@ -929,6 +975,7 @@ func runTxLoadTest(cfg Config) {
 	var totalHttpErrors uint64
 	var totalNetworkErrors uint64
 	var totalRpcErrors uint64
+	var totalBadResponse uint64
 	startTime := time.Now()
 
 	// TPS Monitor
@@ -950,6 +997,7 @@ func runTxLoadTest(cfg Config) {
 				nErr := atomic.LoadUint64(&totalNetworkErrors)
 				hErr := atomic.LoadUint64(&totalHttpErrors)
 				rErr := atomic.LoadUint64(&totalRpcErrors)
+				bErr := atomic.LoadUint64(&totalBadResponse)
 
 				diff := current - lastCount
 				lastCount = current
@@ -965,8 +1013,8 @@ func runTxLoadTest(cfg Config) {
 					avgLat = float64(latencySum) / float64(current) / 1000.0 // ms
 				}
 
-				log.Printf("   ⚡ Status: %d total | TPS: %d (Avg: %.1f) | Avg Latency: %.1fms | NetErr: %d | HTTPErr: %d | RPCErr: %d",
-					current, diff, avg, avgLat, nErr, hErr, rErr)
+				log.Printf("   ⚡ Status: %d total | TPS: %d (Avg: %.1f) | Avg Latency: %.1fms | NetErr: %d | HTTPErr: %d | RPCErr: %d | BadRes: %d",
+					current, diff, avg, avgLat, nErr, hErr, rErr, bErr)
 			}
 		}
 	}()
@@ -995,12 +1043,19 @@ func runTxLoadTest(cfg Config) {
 
 					// Enforce 5s timeout per tx
 					reqCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-					_, dur, err := callRPC(reqCtx, client, cfg.TargetRPC, "getTransaction", params)
+					res, dur, err := callRPC(reqCtx, client, cfg.TargetRPC, "getTransaction", params)
 					cancel()
 
 					if err == nil {
-						atomic.AddUint64(&totalTx, 1)
-						atomic.AddInt64(&totalLatency, int64(dur.Microseconds()))
+						var verify struct {
+							Slot uint64 `json:"slot"`
+						}
+						if vErr := json.Unmarshal(res, &verify); vErr != nil || verify.Slot == 0 {
+							atomic.AddUint64(&totalBadResponse, 1)
+						} else {
+							atomic.AddUint64(&totalTx, 1)
+							atomic.AddInt64(&totalLatency, int64(dur.Microseconds()))
+						}
 					} else {
 						errMsg := err.Error()
 						if strings.Contains(errMsg, "RPC Error") {

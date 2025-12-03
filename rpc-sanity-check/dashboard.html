@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RPC Load Test Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+      body {
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        background-color: #1a1a1a;
+        color: #e0e0e0;
+        margin: 0;
+        padding: 20px;
+      }
+      .container {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+        gap: 20px;
+      }
+      .card {
+        background-color: #2d2d2d;
+        border-radius: 8px;
+        padding: 15px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+      }
+      h2 {
+        margin-top: 0;
+        font-size: 1.2rem;
+        color: #4caf50;
+        border-bottom: 1px solid #444;
+        padding-bottom: 10px;
+      }
+      canvas {
+        width: 100% !important;
+        height: 300px !important;
+      }
+      .stat-row {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 10px;
+        font-size: 0.9rem;
+      }
+      .stat-val {
+        font-weight: bold;
+        color: #fff;
+      }
+      #status {
+        position: fixed;
+        top: 10px;
+        right: 20px;
+        padding: 5px 10px;
+        background: #333;
+        border-radius: 4px;
+        font-size: 0.8rem;
+      }
+      .flame-container {
+        display: flex;
+        flex-direction: column;
+        height: 320px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="status">Connecting...</div>
+    <h1>RPC Load Test Metrics</h1>
+
+    <div class="container">
+      <!-- Latency Heatmap (Flame Buckets) -->
+      <div class="card">
+        <h2>RPC Response Latency (Buckets)</h2>
+        <div class="flame-container">
+          <canvas id="rpcLatencyChart"></canvas>
+        </div>
+      </div>
+
+      <!-- CAR Lookup Latency (Flame Buckets) -->
+      <div class="card">
+        <h2>CAR Lookup Latency (Buckets)</h2>
+        <div class="flame-container">
+          <canvas id="carLatencyChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Throughput Line -->
+      <div class="card">
+        <h2>RPC Throughput (req/s)</h2>
+        <canvas id="throughputChart"></canvas>
+      </div>
+
+      <!-- Memory Line -->
+      <div class="card">
+        <h2>Memory Usage (Heap In-Use)</h2>
+        <canvas id="memoryChart"></canvas>
+      </div>
+
+      <!-- Errors -->
+      <div class="card">
+        <h2>RPC Errors</h2>
+        <div class="stat-row">
+          <span>Total Failures:</span>
+          <span id="failCount" class="stat-val">0</span>
+        </div>
+        <canvas id="errorChart"></canvas>
+      </div>
+
+      <!-- Cache -->
+      <div class="card">
+        <h2>Cache Hit/Miss</h2>
+        <canvas id="cacheChart"></canvas>
+      </div>
+    </div>
+
+    <script>
+      const API_URL = '/api/metrics';
+      const MAX_HISTORY = 60; // Keep 60 seconds of history
+
+      // Utility to parse Prometheus Text Format
+      function parsePrometheus(text) {
+        const metrics = {};
+        const lines = text.split('\n');
+
+        lines.forEach((line) => {
+          line = line.trim();
+          if (!line || line.startsWith('#')) return;
+
+          let match = line.match(
+            /^([a-zA-Z0-9_]+)(?:\{([^}]+)\})?\s+([0-9eE\+\-\.]+)/,
+          );
+          if (match) {
+            const key = match[1];
+            const labelsStr = match[2];
+            const value = parseFloat(match[3]);
+
+            const labels = {};
+            if (labelsStr) {
+              labelsStr.split(',').forEach((l) => {
+                const [k, v] = l.split('=');
+                labels[k] = v.replace(/"/g, '');
+              });
+            }
+
+            if (!metrics[key]) metrics[key] = [];
+            metrics[key].push({ labels, value });
+          }
+        });
+        return metrics;
+      }
+
+      // Charts Initialization
+      Chart.defaults.color = '#aaa';
+      Chart.defaults.borderColor = '#444';
+
+      const ctxRpcLat = document
+        .getElementById('rpcLatencyChart')
+        .getContext('2d');
+      const ctxCarLat = document
+        .getElementById('carLatencyChart')
+        .getContext('2d');
+      const ctxTps = document
+        .getElementById('throughputChart')
+        .getContext('2d');
+      const ctxMem = document.getElementById('memoryChart').getContext('2d');
+      const ctxErr = document.getElementById('errorChart').getContext('2d');
+      const ctxCache = document.getElementById('cacheChart').getContext('2d');
+
+      const createBarChart = (ctx, label, color) =>
+        new Chart(ctx, {
+          type: 'bar',
+          data: {
+            labels: [],
+            datasets: [{ label, data: [], backgroundColor: color }],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: { x: { stacked: true }, y: { beginAtZero: true } },
+            animation: false,
+          },
+        });
+
+      const createLineChart = (ctx, label, color) =>
+        new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels: [],
+            datasets: [
+              {
+                label,
+                data: [],
+                borderColor: color,
+                tension: 0.1,
+                fill: false,
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: { y: { beginAtZero: true } },
+            animation: false,
+            elements: { point: { radius: 0 } },
+          },
+        });
+
+      const chartRpcLat = createBarChart(ctxRpcLat, 'Count', '#ff5722');
+      const chartCarLat = createBarChart(ctxCarLat, 'Count', '#2196f3');
+      const chartTps = createLineChart(ctxTps, 'Req/s', '#4caf50');
+      const chartMem = createLineChart(ctxMem, 'Bytes', '#e91e63');
+      const chartErr = createLineChart(ctxErr, 'Errors/s', '#f44336');
+      const chartCache = new Chart(ctxCache, {
+        type: 'doughnut',
+        data: {
+          labels: ['Hit', 'Miss'],
+          datasets: [{ data: [0, 0], backgroundColor: ['#4caf50', '#f44336'] }],
+        },
+        options: { responsive: true, maintainAspectRatio: false },
+      });
+
+      let previousTpsCount = 0;
+      let previousErrCount = 0;
+      let lastTime = Date.now();
+
+      async function updateMetrics() {
+        try {
+          const response = await fetch(API_URL);
+          if (!response.ok) throw new Error('Network response was not ok');
+          const text = await response.text();
+          const data = parsePrometheus(text);
+          document.getElementById('status').innerText = 'Connected';
+          document.getElementById('status').style.color = '#4caf50';
+
+          const now = new Date().toLocaleTimeString();
+
+          // 1. RPC Latency Histogram (Flame Bucket Snapshot)
+          if (data['rpc_response_latency_histogram_bucket']) {
+            const buckets = data['rpc_response_latency_histogram_bucket']
+              .filter(
+                (b) =>
+                  b.labels.rpc_method === 'getTransaction' &&
+                  b.labels.le !== '+Inf',
+              )
+              .sort(
+                (a, b) => parseFloat(a.labels.le) - parseFloat(b.labels.le),
+              );
+
+            // Calculate discrete counts from cumulative buckets
+            const counts = [];
+            const labels = [];
+            let prev = 0;
+            buckets.forEach((b) => {
+              labels.push(b.labels.le + 's');
+              counts.push(b.value - prev);
+              prev = b.value;
+            });
+
+            chartRpcLat.data.labels = labels;
+            chartRpcLat.data.datasets[0].data = counts;
+            chartRpcLat.update();
+          }
+
+          // 2. CAR Lookup Latency (Flame Bucket Snapshot)
+          // Aggregating across all .car files for summary view
+          if (data['car_lookup_latency_histogram_bucket']) {
+            // Group by 'le' across all cars
+            const bucketMap = {};
+            data['car_lookup_latency_histogram_bucket'].forEach((b) => {
+              if (b.labels.le === '+Inf') return;
+              if (!bucketMap[b.labels.le]) bucketMap[b.labels.le] = 0;
+              bucketMap[b.labels.le] += b.value;
+            });
+
+            // Sort keys numerically
+            const keys = Object.keys(bucketMap).sort(
+              (a, b) => parseFloat(a) - parseFloat(b),
+            );
+
+            const counts = [];
+            const labels = [];
+            let prev = 0;
+            keys.forEach((k) => {
+              labels.push(k + 's');
+              const val = bucketMap[k];
+              counts.push(val - prev);
+              prev = val;
+            });
+
+            chartCarLat.data.labels = labels;
+            chartCarLat.data.datasets[0].data = counts;
+            chartCarLat.update();
+          }
+
+          // 3. Throughput (TPS)
+          if (data['rpc_requests_by_method']) {
+            const currentTotal =
+              data['rpc_requests_by_method'].find(
+                (m) => m.labels.method === 'getTransaction',
+              )?.value || 0;
+            const delta = currentTotal - previousTpsCount;
+            if (previousTpsCount !== 0) {
+              // Skip first tick spike
+              updateLineChart(chartTps, now, delta);
+            }
+            previousTpsCount = currentTotal;
+          }
+
+          // 4. Memory
+          if (data['go_memstats_heap_inuse_bytes']) {
+            const mem = data['go_memstats_heap_inuse_bytes'][0].value;
+            updateLineChart(chartMem, now, mem);
+          }
+
+          // 5. Errors
+          let currentErrs = 0;
+          if (data['method_to_success_or_failure']) {
+            const failMetric = data['method_to_success_or_failure'].find(
+              (m) => m.labels.status === 'failure',
+            );
+            if (failMetric) currentErrs = failMetric.value;
+          }
+          document.getElementById('failCount').innerText = currentErrs;
+          if (previousErrCount !== 0 || currentErrs > 0) {
+            updateLineChart(chartErr, now, currentErrs - previousErrCount);
+          }
+          previousErrCount = currentErrs;
+
+          // 6. Cache
+          if (data['cache_hit_miss_total']) {
+            const hits =
+              data['cache_hit_miss_total'].find(
+                (m) => m.labels.result === 'hit',
+              )?.value || 0;
+            const misses =
+              data['cache_hit_miss_total'].find(
+                (m) => m.labels.result === 'miss',
+              )?.value || 0;
+            chartCache.data.datasets[0].data = [hits, misses];
+            chartCache.update();
+          }
+        } catch (e) {
+          console.error(e);
+          document.getElementById('status').innerText = 'Disconnected';
+          document.getElementById('status').style.color = '#f44336';
+        }
+      }
+
+      function updateLineChart(chart, label, data) {
+        chart.data.labels.push(label);
+        chart.data.datasets[0].data.push(data);
+        if (chart.data.labels.length > MAX_HISTORY) {
+          chart.data.labels.shift();
+          chart.data.datasets[0].data.shift();
+        }
+        chart.update();
+      }
+
+      setInterval(updateMetrics, 1000);
+      updateMetrics();
+    </script>
+  </body>
+</html>
