@@ -39,7 +39,7 @@ func openIndexStorage(
 		if !klog.V(5).Enabled() {
 			return rac, size, nil
 		}
-		return &readCloserWrapper{
+		return &readCloserWrapperForStats{
 			rac:      rac,
 			name:     where,
 			isRemote: true,
@@ -54,21 +54,21 @@ func openIndexStorage(
 	if size == 0 {
 		return nil, -1, fmt.Errorf("local index file %q is empty", where)
 	}
-	rac, err := openMMapFile(where, useMmapForLocalIndexes)
+	rac, err := openFile(where, useMmapForLocalIndexes)
 	if err != nil {
 		return nil, -1, fmt.Errorf("failed to open local index file: %w", err)
 	}
 	if !klog.V(5).Enabled() {
 		return rac, size, nil
 	}
-	return &readCloserWrapper{
+	return &readCloserWrapperForStats{
 		rac:      rac,
 		name:     where,
 		isRemote: false,
 	}, size, nil
 }
 
-func openMMapFile(filePath string, useMmap bool) (carreader.ReaderAtCloser, error) {
+func openFile(filePath string, useMmap bool) (carreader.ReaderAtCloser, error) {
 	if useMmap {
 		return mmap.Open(filePath)
 	}
@@ -87,7 +87,7 @@ func openCarStorage(
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to open remote CAR file %q: %w", where, err)
 		}
-		return nil, &readCloserWrapper{
+		return nil, &readCloserWrapperForStats{
 			rac:  rem,
 			name: where,
 			size: size,

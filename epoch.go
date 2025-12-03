@@ -366,7 +366,7 @@ func NewEpochFromConfig(
 								return nil, fmt.Errorf("failed to create remote file split car reader from %q: %w", formattedURL, err)
 							}
 
-							return &readCloserWrapper{
+							return &readCloserWrapperForStats{
 								rac:        rfspc,
 								name:       formattedURL,
 								size:       rfspc.Size(),
@@ -398,7 +398,7 @@ func NewEpochFromConfig(
 								return nil, fmt.Errorf("failed to create remote file split car reader from %q: %w", formattedURL, err)
 							}
 
-							return &readCloserWrapper{
+							return &readCloserWrapperForStats{
 								rac:        rfspc,
 								name:       formattedURL,
 								size:       rfspc.Size(),
