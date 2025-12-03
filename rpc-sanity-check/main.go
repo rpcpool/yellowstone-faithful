@@ -35,6 +35,7 @@ type Config struct {
 	SlotsInEpoch    int64 // Standard Solana slots per epoch
 	StopOnDiff      bool
 	FullSig         bool
+	SkipEpochs      FlagUint64Slice
 	RunGRPCLoadTest bool
 	GRPCTarget      string
 	GRPCToken       string
@@ -74,6 +75,26 @@ type BlockShort struct {
 	Signatures []string `json:"signatures"` // Sometimes present depending on encoding
 }
 
+type FlagUint64Slice []uint64
+
+func (f *FlagUint64Slice) String() string {
+	strs := []string{}
+	for _, v := range *f {
+		strs = append(strs, fmt.Sprintf("%d", v))
+	}
+	return strings.Join(strs, ",")
+}
+
+func (f *FlagUint64Slice) Set(value string) error {
+	var parsed uint64
+	_, err := fmt.Sscanf(value, "%d", &parsed)
+	if err != nil {
+		return err
+	}
+	*f = append(*f, parsed)
+	return nil
+}
+
 func main() {
 	cfg := Config{}
 	flag.StringVar(&cfg.RefRPC, "ref-rpc", "https://api.mainnet-beta.solana.com", "Reference Solana RPC endpoint")
@@ -89,6 +110,7 @@ func main() {
 	flag.StringVar(&cfg.GRPCToken, "grpc-token", "<token>", "Auth token for gRPC")
 	flag.StringVar(&cfg.GRPCProto, "grpc-proto", "old-faithful-proto/proto/old-faithful.proto", "Path to .proto file")
 	flag.IntVar(&cfg.GRPCConcurrency, "grpc-concurrency", 100, "Number of concurrent gRPC streams")
+	flag.Var(&cfg.SkipEpochs, "skip-epoch", "Epoch number to skip (can be specified multiple times)")
 	flag.Parse()
 
 	// Configure logger to remove timestamps for cleaner output (we can add them back if strictly needed,
@@ -115,6 +137,25 @@ func main() {
 		log.Fatalf("❌ Failed to fetch epochs: %v", err)
 	}
 	log.Printf("   Epochs: %d found %v", len(epochs), epochs)
+	if len(epochs) == 0 {
+		log.Fatal("❌ No epochs returned from target")
+	}
+	if len(cfg.SkipEpochs) > 0 {
+		skipMap := make(map[uint64]bool)
+		for _, e := range cfg.SkipEpochs {
+			skipMap[e] = true
+		}
+		filtered := []uint64{}
+		for _, e := range epochs {
+			if !skipMap[e] {
+				filtered = append(filtered, e)
+			} else {
+				log.Printf("   ⏭️  Skipping epoch %d as per configuration", e)
+			}
+		}
+		epochs = filtered
+		log.Printf("   Epochs after skip: %d remaining %v", len(epochs), epochs)
+	}
 
 	client := &http.Client{Timeout: 30 * time.Second}
 
