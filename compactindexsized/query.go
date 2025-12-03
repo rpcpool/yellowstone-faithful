@@ -11,8 +11,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
+	"time"
 
 	"github.com/rpcpool/yellowstone-faithful/indexmeta"
+	"github.com/valyala/bytebufferpool"
+	"golang.org/x/sys/unix"
 )
 
 // DB is a compactindex handle.
@@ -20,7 +24,6 @@ type DB struct {
 	Header     *Header
 	headerSize int64
 	Stream     io.ReaderAt
-	prefetch   bool
 }
 
 var ErrInvalidMagic = errors.New("invalid magic")
@@ -30,6 +33,18 @@ var ErrInvalidMagic = errors.New("invalid magic")
 // The provided stream must start with the Magic byte sequence.
 // Tip: Use io.NewSectionReader to create aligned substreams when dealing with a file that contains multiple indexes.
 func Open(stream io.ReaderAt) (*DB, error) {
+	{
+		type fileDescriptor interface {
+			Fd() uintptr
+		}
+		if f, ok := stream.(fileDescriptor); ok {
+			// fadvise random access pattern for the whole file
+			err := unix.Fadvise(int(f.Fd()), 0, 0, unix.FADV_RANDOM)
+			if err != nil {
+				slog.Warn("fadvise(RANDOM) failed", "error", err)
+			}
+		}
+	}
 	// Read the static 32-byte header.
 	// Ignore errors if the read fails after filling the buffer (e.g. EOF).
 	var magicAndSize [8 + 4]byte
@@ -57,11 +72,25 @@ func Open(stream io.ReaderAt) (*DB, error) {
 	}
 	db.headerSize = int64(8 + 4 + size)
 	db.Stream = stream
+	{
+		slog.Info("Warming up drives for bucket offsets (compactindexsized)...")
+		startedWarmup := time.Now()
+		dummyBuf := make([]byte, 1)
+		warmedBuckets := 0
+		for bucketIndex := range db.Header.NumBuckets {
+			_, err := db.Stream.ReadAt(dummyBuf, bucketOffset(db.headerSize, uint(bucketIndex)))
+			if err != nil {
+				return nil, fmt.Errorf("failed to warm up page cache for bucket %d: %w", bucketIndex, err)
+			}
+			warmedBuckets++
+		}
+		slog.Info(
+			"Cache warmup complete",
+			"buckets_warmed", warmedBuckets,
+			"duration", time.Since(startedWarmup).String(),
+		)
+	}
 	return db, nil
-}
-
-func (db *DB) Prefetch(yes bool) {
-	db.prefetch = yes
 }
 
 // GetKind returns the kind of the index.
@@ -119,16 +148,7 @@ func (db *DB) GetBucket(i uint) (*Bucket, error) {
 		return nil, readErr
 	}
 	bucket.Entries = io.NewSectionReader(db.Stream, int64(bucket.FileOffset), int64(bucket.NumEntries)*int64(bucket.Stride))
-	if db.prefetch {
-		// TODO: find good value for numEntriesToPrefetch
-		numEntriesToPrefetch := minInt64(3_000, int64(bucket.NumEntries))
-		prefetchSize := int64(db.entryStride()) * numEntriesToPrefetch
-		buf := make([]byte, prefetchSize)
-		_, err := bucket.Entries.ReadAt(buf, 0)
-		if err != nil && !errors.Is(err, io.EOF) {
-			return nil, err
-		}
-	}
+
 	return bucket, nil
 }
 
@@ -218,20 +238,55 @@ func (b *Bucket) Load(batchSize int) ([]Entry, error) {
 
 // Lookup queries for a key using binary search.
 func (b *Bucket) Lookup(key []byte) ([]byte, error) {
+	// startedAt := time.Now()
+	// Read all entries into memory in one read, then perform the search.
+	// This avoids multiple small reads during the binary search.
+
+	if b.NumEntries > maxEntriesPerBucket {
+		return nil, fmt.Errorf("refusing to load bucket with %d entries for lookup", b.NumEntries)
+	}
+
+	numBytes := int64(b.NumEntries) * int64(b.Stride)
+	if numBytes == 0 {
+		return nil, ErrNotFound
+	}
+
+	entriesBuf := bytebufferpool.Get()
+	defer bytebufferpool.Put(entriesBuf)
+	entriesBuf.Reset()
+
+	// startReadAllAt := time.Now()
+	// n, err := entriesBuf.ReadFrom(b.Entries)
+	entriesBuf.B = make([]byte, numBytes)
+	n, err := io.ReadFull(b.Entries, entriesBuf.B[:numBytes])
+	// slog.Info("Bucket.Lookup: ReadFrom took", "duration", time.Since(startReadAllAt), "bytesRead", n, "numEntries", b.NumEntries, "numBytes", numBytes, "keyHash", b.Hash(key), "totalDuration", time.Since(startedAt))
+
+	// ReadAt must return a non-nil error if n < len(buf).
+	// SectionReader will return io.EOF if it reads exactly to the end.
+	// We fail if we read too few bytes, or if we got an error that wasn't io.EOF.
+	if int64(n) < numBytes {
+		return nil, fmt.Errorf("short read on bucket: read %d, expected %d: %w", n, numBytes, err)
+	}
+	if err != nil && !errors.Is(err, io.EOF) {
+		return nil, fmt.Errorf("error reading bucket entries: %w", err)
+	}
+
+	// Define a getter closure that operates on the in-memory buffer.
+	getter := func(i int) (Entry, error) {
+		off := i * int(b.Stride)
+		// Bounds check (should be guaranteed by searchEytzinger's `high` limit, but defense-in-depth)
+		if off+int(b.Stride) > len(entriesBuf.B) {
+			return Entry{}, fmt.Errorf("internal error: search index %d out of bounds for buffer length %d", i, len(entriesBuf.B))
+		}
+		entryData := entriesBuf.B[off : off+int(b.Stride)]
+		return b.unmarshalEntry(entryData), nil
+	}
+
+	// Now perform the search in-memory.
 	target := b.Hash(key)
 	low := 0
 	high := int(b.NumEntries)
-	return searchEytzinger(low, high, target, b.loadEntry)
-}
-
-func (b *Bucket) loadEntry(i int) (Entry, error) {
-	off := int64(i) * int64(b.Stride)
-	buf := make([]byte, b.Stride)
-	n, err := b.Entries.ReadAt(buf, off)
-	if n != len(buf) {
-		return Entry{}, err
-	}
-	return b.unmarshalEntry(buf), nil
+	return searchEytzinger(low, high, target, getter)
 }
 
 // ErrNotFound marks a missing entry.
