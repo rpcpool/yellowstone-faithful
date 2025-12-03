@@ -1033,9 +1033,12 @@ func runTxLoadTest(cfg Config) {
 
 				if err == nil {
 					var verify struct {
-						Slot uint64 `json:"slot"`
+						Slot        uint64 `json:"slot"`
+						Transaction struct {
+							Signatures []string `json:"signatures"`
+						} `json:"transaction"`
 					}
-					if vErr := json.Unmarshal(res, &verify); vErr != nil || verify.Slot == 0 {
+					if vErr := json.Unmarshal(res, &verify); vErr != nil || verify.Slot == 0 || len(verify.Transaction.Signatures) == 0 || verify.Transaction.Signatures[0] != sig {
 						atomic.AddUint64(&totalBadResponse, 1)
 					} else {
 						atomic.AddUint64(&totalTx, 1)
