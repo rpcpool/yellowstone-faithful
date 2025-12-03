@@ -407,7 +407,10 @@ func (r *Reader) Has(sig [64]byte) (bool, error) {
 		return false, nil
 	}
 	size, ok := r.prefixToSize[prefixToUint16(prefix)]
-	if !ok || size < 4 {
+	if !ok {
+		return false, nil
+	}
+	if size < 4 {
 		return false, fmt.Errorf("invalid bucket size for prefix %x", prefix)
 	}
 	sizeMinus4 := size - 4
