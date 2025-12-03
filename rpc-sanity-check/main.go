@@ -27,6 +27,7 @@ type Config struct {
 	Verbose       bool
 	SlotsInEpoch  int64 // Standard Solana slots per epoch
 	StopOnDiff    bool
+	FullSig       bool
 }
 
 // EpochResponse matches the structure {"epochs":[...]}
@@ -70,6 +71,7 @@ func main() {
 	flag.BoolVar(&cfg.Verbose, "verbose", false, "Enable verbose logging")
 	flag.Int64Var(&cfg.SlotsInEpoch, "epoch-len", 432000, "Length of an epoch in slots (default 432000)")
 	flag.BoolVar(&cfg.StopOnDiff, "stop-on-diff", false, "Exit immediately when a discrepancy is found")
+	flag.BoolVar(&cfg.FullSig, "full-sig", false, "Print full transaction signatures in logs")
 	flag.Parse()
 
 	// Configure logger to remove timestamps for cleaner output (we can add them back if strictly needed,
@@ -259,7 +261,7 @@ func compareTransaction(client *http.Client, cfg Config, signature string) {
 	targetTx, targetLat, targetErr := callRPC(client, cfg.TargetRPC, "getTransaction", params)
 
 	// Indented log for transactions
-	logLatency(fmt.Sprintf("   📄 %s", shortSig(signature)), refLat, targetLat)
+	logLatency(fmt.Sprintf("   📄 %s", shortSig(signature, cfg.FullSig)), refLat, targetLat)
 
 	if refErr != nil && targetErr != nil {
 		return
@@ -425,7 +427,10 @@ func errorStr(err error) string {
 	return err.Error()
 }
 
-func shortSig(sig string) string {
+func shortSig(sig string, full bool) string {
+	if full {
+		return sig
+	}
 	if len(sig) > 16 {
 		return sig[:8] + "..." + sig[len(sig)-8:]
 	}
