@@ -244,37 +244,19 @@ func processSlot(client *http.Client, cfg Config, slot uint64) {
 		},
 	}
 
-	// 3. Fetch Block from both
+	// 1. Fetch Block from Ref ONLY first (to get signatures and baseline)
 	refBlock, refLat, refErr := callRPC(client, cfg.RefRPC, "getBlock", params)
-	targetBlock, targetLat, targetErr := callRPC(client, cfg.TargetRPC, "getBlock", params)
 
-	// Log Slot Header with Latency
-	logLatency(fmt.Sprintf("📦 SLOT %d", slot), refLat, targetLat)
-
-	// Handle availability issues
-	if refErr != nil || targetErr != nil {
-		if refErr != nil && targetErr != nil {
-			if cfg.Verbose {
-				log.Printf("   ⚠️  Skipped (both missing)")
-			}
-			return
-		}
-		log.Printf("   ❌ FETCH ERROR | Ref: %v | Target: %v", errorStr(refErr), errorStr(targetErr))
+	if refErr != nil {
+		// If Ref failed, we can't get signatures to check Txs, but we should still try to check Target Block existence?
+		// Or just fail the slot. Let's fail the slot for consistency with previous logic which required both.
+		// However, to strictly check Target Block latency independently, we could fetch it, but we have no Ref to compare.
+		// Let's abort if Ref fails.
+		log.Printf("   ❌ Ref Fetch Failed: %v", refErr)
 		return
 	}
 
-	// 4. Compare Block Data
-	var refData, targetData interface{}
-	json.Unmarshal(refBlock, &refData)
-	json.Unmarshal(targetBlock, &targetData)
-
-	if !reflect.DeepEqual(refData, targetData) {
-		compareJSON(refBlock, targetBlock, fmt.Sprintf("Block %d", slot), cfg.StopOnDiff)
-	} else if cfg.Verbose {
-		log.Printf("   ✅ Content Match")
-	}
-
-	// Extract signatures
+	// 2. Extract signatures from Ref Block
 	var blockStruct struct {
 		Transactions []struct {
 			Transaction struct {
@@ -283,34 +265,55 @@ func processSlot(client *http.Client, cfg Config, slot uint64) {
 		} `json:"transactions"`
 	}
 
-	if err := json.Unmarshal(targetBlock, &blockStruct); err != nil {
-		log.Printf("   ❌ Failed to parse block structure: %v", err)
+	if err := json.Unmarshal(refBlock, &blockStruct); err != nil {
+		log.Printf("   ❌ Failed to parse ref block structure: %v", err)
 		return
 	}
 
 	sigsToCheck := []string{}
 	txCount := len(blockStruct.Transactions)
 
-	if txCount == 0 {
-		return
-	}
+	if txCount > 0 {
+		perm := securePerm(txCount)
+		limit := cfg.MaxTxsToCheck
+		if limit > txCount {
+			limit = txCount
+		}
 
-	perm := securePerm(txCount)
-	limit := cfg.MaxTxsToCheck
-	if limit > txCount {
-		limit = txCount
-	}
-
-	for i := 0; i < limit; i++ {
-		tx := blockStruct.Transactions[perm[i]]
-		if len(tx.Transaction.Signatures) > 0 {
-			sigsToCheck = append(sigsToCheck, tx.Transaction.Signatures[0])
+		for i := 0; i < limit; i++ {
+			tx := blockStruct.Transactions[perm[i]]
+			if len(tx.Transaction.Signatures) > 0 {
+				sigsToCheck = append(sigsToCheck, tx.Transaction.Signatures[0])
+			}
 		}
 	}
 
-	// 5. Check Transactions
+	// 3. Check Transactions (Target "cold" read - assuming block hasn't been fetched yet)
 	for _, sig := range sigsToCheck {
 		compareTransaction(client, cfg, sig)
+	}
+
+	// 4. Fetch Block from Target (now that Txs are checked)
+	targetBlock, targetLat, targetErr := callRPC(client, cfg.TargetRPC, "getBlock", params)
+
+	// Log Slot Header with Latency (now that we have both)
+	logLatency(fmt.Sprintf("📦 SLOT %d", slot), refLat, targetLat)
+
+	// Handle availability issues
+	if targetErr != nil {
+		log.Printf("   ❌ Target Fetch Failed: %v", targetErr)
+		return
+	}
+
+	// 5. Compare Block Data
+	var refData, targetData interface{}
+	json.Unmarshal(refBlock, &refData)
+	json.Unmarshal(targetBlock, &targetData)
+
+	if !reflect.DeepEqual(refData, targetData) {
+		compareJSON(refBlock, targetBlock, fmt.Sprintf("Block %d", slot), cfg.StopOnDiff)
+	} else if cfg.Verbose {
+		log.Printf("   ✅ Content Match")
 	}
 }
 
