@@ -54,6 +54,24 @@
         border-radius: 4px;
         font-size: 0.8rem;
       }
+      .meta-info {
+        margin-bottom: 20px;
+        color: #bbb;
+        font-size: 0.9rem;
+        background: #252525;
+        padding: 10px;
+        border-radius: 6px;
+        display: inline-block;
+      }
+      .meta-label {
+        color: #888;
+        margin-right: 5px;
+      }
+      .meta-val {
+        color: #4caf50;
+        font-family: 'Courier New', Courier, monospace;
+        margin-right: 20px;
+      }
       .flame-container {
         display: flex;
         flex-direction: column;
@@ -64,6 +82,13 @@
   <body>
     <div id="status">Connecting...</div>
     <h1>RPC Load Test Metrics</h1>
+
+    <div class="meta-info">
+      <span class="meta-label">Target RPC:</span>
+      <span id="targetRpc" class="meta-val">Loading...</span>
+      <span class="meta-label">Metrics Source:</span>
+      <span id="metricsUrl" class="meta-val">Loading...</span>
+    </div>
 
     <div class="container">
       <!-- Latency Heatmap (Flame Buckets) -->
@@ -119,8 +144,29 @@
 
     <script>
       const API_URL = '/api/metrics';
+      const CONFIG_URL = '/api/config';
       const MAX_HISTORY = 60; // Keep 60 seconds of history
       const SMOOTHING_ALPHA = 0.2; // Smoothing factor (0.0 - 1.0). Lower = smoother but more lag.
+
+      // Fetch and display config
+      async function loadConfig() {
+        try {
+          const response = await fetch(CONFIG_URL);
+          if (response.ok) {
+            const config = await response.json();
+            document.getElementById('targetRpc').innerText = config.target_rpc;
+            document.getElementById('metricsUrl').innerText =
+              config.metrics_url;
+          }
+        } catch (e) {
+          console.warn('Could not fetch config:', e);
+          // Don't overwrite with "Unknown" on transient failures if we already have data
+          if (document.getElementById('targetRpc').innerText === 'Loading...') {
+            document.getElementById('targetRpc').innerText = 'Unknown';
+            document.getElementById('metricsUrl').innerText = 'Unknown';
+          }
+        }
+      }
 
       // Utility to parse Prometheus Text Format
       function parsePrometheus(text) {
@@ -563,6 +609,10 @@
 
       setInterval(updateMetrics, 1000);
       updateMetrics();
+
+      // Poll config every 2 seconds
+      setInterval(loadConfig, 2000);
+      loadConfig();
     </script>
   </body>
 </html>

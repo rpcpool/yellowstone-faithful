@@ -645,6 +645,15 @@ func runMetricsServer(cfg Config) {
 	log.Printf("📊 Starting Metrics Dashboard at http://localhost:%d", cfg.WebPort)
 	log.Printf("   🔗 Proxying metrics from: %s", cfg.MetricsURL)
 
+	http.HandleFunc("/api/config", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		json.NewEncoder(w).Encode(map[string]string{
+			"target_rpc":  cfg.TargetRPC,
+			"metrics_url": cfg.MetricsURL,
+		})
+	})
+
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		// Serve dashboard.html if it exists in current directory
 		if _, err := os.Stat("dashboard.html"); err == nil {
