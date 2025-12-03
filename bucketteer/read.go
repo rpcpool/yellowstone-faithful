@@ -411,7 +411,7 @@ func (r *Reader) Has(sig [64]byte) (bool, error) {
 		return false, nil
 	}
 	if size < 4 {
-		return false, fmt.Errorf("invalid bucket size for prefix %x", prefix)
+		return false, fmt.Errorf("invalid bucket size (%v) for prefix %x", size, prefix)
 	}
 	sizeMinus4 := size - 4
 	numHashes := sizeMinus4 / 8
