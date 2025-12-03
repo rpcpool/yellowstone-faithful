@@ -178,6 +178,24 @@
         </div>
       </div>
 
+      <!-- Network I/O Line -->
+      <div
+        class="flex flex-col gap-4 rounded-xl border border-border-dark bg-surface-dark p-6"
+      >
+        <div class="flex items-center justify-between">
+          <h2 class="text-lg font-semibold text-text-primary-dark">
+            Network I/O Rate
+          </h2>
+          <span
+            class="text-xs text-text-secondary-dark bg-background-dark px-2 py-1 rounded border border-border-dark"
+            >Smoothed</span
+          >
+        </div>
+        <div class="h-64 w-full relative">
+          <canvas id="netIoChart"></canvas>
+        </div>
+      </div>
+
       <!-- Latency Heatmap (Flame Buckets) -->
       <div
         class="flex flex-col gap-4 rounded-xl border border-border-dark bg-surface-dark p-6"
@@ -343,6 +361,7 @@
       const ctxErr = document.getElementById('errorChart').getContext('2d');
       const ctxCache = document.getElementById('cacheChart').getContext('2d');
       const ctxDisk = document.getElementById('diskIoChart').getContext('2d');
+      const ctxNet = document.getElementById('netIoChart').getContext('2d');
 
       const createBarChart = (ctx, label, color) =>
         new Chart(ctx, {
@@ -393,9 +412,10 @@
       const COLOR_INFO = '#3b82f6';
       const COLOR_DANGER = '#FA5538';
       const COLOR_SUCCESS = '#0BDA43';
-      const COLOR_WARN = '#e91e63'; // Using pink for memory/warn equivalent
+      const COLOR_WARN = '#e91e63';
+      const COLOR_PURPLE = '#a855f7'; // Purple for Network Rx
 
-      const chartRpcLat = createBarChart(ctxRpcLat, 'Count', COLOR_DANGER); // Latency is danger usually
+      const chartRpcLat = createBarChart(ctxRpcLat, 'Count', COLOR_DANGER);
       const chartCarLat = createBarChart(ctxCarLat, 'Count', COLOR_INFO);
       const chartTps = createLineChart(ctxTps, 'Req/s', COLOR_PRIMARY);
       const chartErr = createLineChart(ctxErr, 'Errors/s', COLOR_DANGER);
@@ -498,6 +518,61 @@
         },
       });
 
+      const chartNet = new Chart(ctxNet, {
+        type: 'line',
+        data: {
+          labels: [],
+          datasets: [
+            {
+              label: 'Rx (In)',
+              data: [],
+              borderColor: COLOR_PURPLE,
+              tension: 0.3,
+              fill: false,
+            },
+            {
+              label: 'Tx (Out)',
+              data: [],
+              borderColor: COLOR_PRIMARY,
+              tension: 0.3,
+              fill: false,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            y: {
+              beginAtZero: true,
+              ticks: {
+                callback: function (value) {
+                  return formatBytes(value) + '/s';
+                },
+              },
+            },
+          },
+          animation: false,
+          elements: { point: { radius: 0 } },
+          plugins: {
+            tooltip: {
+              callbacks: {
+                label: function (context) {
+                  let label = context.dataset.label || '';
+                  if (label) {
+                    label += ': ';
+                  }
+                  if (context.parsed.y !== null) {
+                    label += formatBytes(context.parsed.y) + '/s';
+                  }
+                  return label;
+                },
+              },
+            },
+          },
+        },
+      });
+
       const chartCache = new Chart(ctxCache, {
         type: 'doughnut',
         data: {
@@ -523,11 +598,15 @@
       let previousTpsCount = 0,
         previousErrCount = 0,
         previousDiskRead = 0,
-        previousDiskWrite = 0;
+        previousDiskWrite = 0,
+        previousNetRx = 0,
+        previousNetTx = 0;
       let smoothedTps = 0,
         smoothedErr = 0,
         smoothedDiskRead = 0,
-        smoothedDiskWrite = 0;
+        smoothedDiskWrite = 0,
+        smoothedNetRx = 0,
+        smoothedNetTx = 0;
       let lastTime = Date.now();
       let firstRun = true;
 
@@ -672,7 +751,42 @@
           previousDiskRead = currentRead;
           previousDiskWrite = currentWrite;
 
-          // 6. Errors
+          // 6. Network I/O
+          let currentNetRx = 0,
+            currentNetTx = 0;
+          if (data['net_receive_bytes_total'])
+            currentNetRx = data['net_receive_bytes_total'].reduce(
+              (acc, curr) => acc + curr.value,
+              0,
+            );
+          if (data['net_send_bytes_total'])
+            currentNetTx = data['net_send_bytes_total'].reduce(
+              (acc, curr) => acc + curr.value,
+              0,
+            );
+
+          if (!firstRun) {
+            const rxRaw = (currentNetRx - previousNetRx) / timeDelta;
+            const txRaw = (currentNetTx - previousNetTx) / timeDelta;
+            const validRx = rxRaw >= 0 ? rxRaw : 0;
+            const validTx = txRaw >= 0 ? txRaw : 0;
+            smoothedNetRx = smooth(validRx, smoothedNetRx, SMOOTHING_ALPHA);
+            smoothedNetTx = smooth(validTx, smoothedNetTx, SMOOTHING_ALPHA);
+
+            chartNet.data.labels.push(nowLabel);
+            chartNet.data.datasets[0].data.push(smoothedNetRx);
+            chartNet.data.datasets[1].data.push(smoothedNetTx);
+            if (chartNet.data.labels.length > MAX_HISTORY) {
+              chartNet.data.labels.shift();
+              chartNet.data.datasets[0].data.shift();
+              chartNet.data.datasets[1].data.shift();
+            }
+            chartNet.update();
+          }
+          previousNetRx = currentNetRx;
+          previousNetTx = currentNetTx;
+
+          // 7. Errors
           let currentErrs = 0;
           if (data['method_to_success_or_failure']) {
             const failMetric = data['method_to_success_or_failure'].find(
@@ -690,7 +804,7 @@
           }
           previousErrCount = currentErrs;
 
-          // 7. Cache
+          // 8. Cache
           if (data['cache_hit_miss_total']) {
             const hits =
               data['cache_hit_miss_total'].find(
