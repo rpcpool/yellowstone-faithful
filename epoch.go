@@ -960,11 +960,21 @@ func (ser *Epoch) GetRewardsByCid(ctx context.Context, wantedCid cid.Cid) (*ipld
 	return decoded, nil
 }
 
-func (ser *Epoch) GetTransaction(ctx context.Context, sig solana.Signature) (*ipldbindcode.Transaction, cid.Cid, error) {
+func (ser *Epoch) GetTransaction(
+	ctx context.Context,
+	sig solana.Signature,
+	optionalSigCid ...cid.Cid,
+) (*ipldbindcode.Transaction, cid.Cid, error) {
 	// get the CID by signature
-	wantedCid, err := ser.FindCidFromSignature(ctx, sig)
-	if err != nil {
-		return nil, cid.Cid{}, fmt.Errorf("failed to find CID for signature %s: %w", sig, err)
+	var wantedCid cid.Cid
+	if len(optionalSigCid) > 0 && optionalSigCid[0] != cid.Undef {
+		wantedCid = optionalSigCid[0]
+	} else {
+		var err error
+		wantedCid, err = ser.FindCidFromSignature(ctx, sig)
+		if err != nil {
+			return nil, cid.Cid{}, fmt.Errorf("failed to find CID for signature %s: %w", sig, err)
+		}
 	}
 	{
 		doPrefetch := getValueFromContext(ctx, "prefetch")
