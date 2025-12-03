@@ -84,7 +84,7 @@
 
       <!-- Throughput Line -->
       <div class="card">
-        <h2>RPC Throughput (req/s)</h2>
+        <h2>RPC Throughput (req/s) (Smoothed)</h2>
         <canvas id="throughputChart"></canvas>
       </div>
 
@@ -96,7 +96,7 @@
 
       <!-- Disk I/O Line -->
       <div class="card">
-        <h2>Disk I/O Rate</h2>
+        <h2>Disk I/O Rate (Smoothed)</h2>
         <canvas id="diskIoChart"></canvas>
       </div>
 
@@ -120,6 +120,7 @@
     <script>
       const API_URL = '/api/metrics';
       const MAX_HISTORY = 60; // Keep 60 seconds of history
+      const SMOOTHING_ALPHA = 0.2; // Smoothing factor (0.0 - 1.0). Lower = smoother but more lag.
 
       // Utility to parse Prometheus Text Format
       function parsePrometheus(text) {
@@ -173,6 +174,11 @@
         return (
           parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i]
         );
+      }
+
+      // Exponential Moving Average (EMA) helper
+      function smooth(current, previous, alpha) {
+        return alpha * current + (1 - alpha) * previous;
       }
 
       // Charts Initialization
@@ -236,7 +242,6 @@
       const chartCarLat = createBarChart(ctxCarLat, 'Count', '#2196f3');
       const chartTps = createLineChart(ctxTps, 'Req/s', '#4caf50');
 
-      // Memory Chart with Byte formatting
       const chartMem = new Chart(ctxMem, {
         type: 'line',
         data: {
@@ -282,7 +287,6 @@
 
       const chartErr = createLineChart(ctxErr, 'Errors/s', '#f44336');
 
-      // Disk I/O Chart with Byte formatting
       const chartDisk = new Chart(ctxDisk, {
         type: 'line',
         data: {
@@ -347,10 +351,19 @@
         options: { responsive: true, maintainAspectRatio: false },
       });
 
+      // State for counters
       let previousTpsCount = 0;
       let previousErrCount = 0;
       let previousDiskRead = 0;
       let previousDiskWrite = 0;
+
+      // State for smoothing (last displayed value)
+      let smoothedTps = 0;
+      let smoothedErr = 0;
+      let smoothedDiskRead = 0;
+      let smoothedDiskWrite = 0;
+
+      let lastTime = Date.now();
       let firstRun = true;
 
       async function updateMetrics() {
@@ -362,9 +375,13 @@
           document.getElementById('status').innerText = 'Connected';
           document.getElementById('status').style.color = '#4caf50';
 
-          const now = new Date().toLocaleTimeString();
+          const currentTime = Date.now();
+          // Calculate precise time delta in seconds (protect against div by zero)
+          let timeDelta = (currentTime - lastTime) / 1000;
+          if (timeDelta <= 0) timeDelta = 1;
+          const nowLabel = new Date().toLocaleTimeString();
 
-          // 1. RPC Latency Histogram (Flame Bucket Snapshot)
+          // 1. RPC Latency Histogram (Snapshot - no smoothing needed)
           if (data['rpc_response_latency_histogram_bucket']) {
             const buckets = data['rpc_response_latency_histogram_bucket']
               .filter(
@@ -376,7 +393,6 @@
                 (a, b) => parseFloat(a.labels.le) - parseFloat(b.labels.le),
               );
 
-            // Calculate discrete counts from cumulative buckets
             const counts = [];
             const labels = [];
             let prev = 0;
@@ -391,7 +407,7 @@
             chartRpcLat.update();
           }
 
-          // 2. CAR Lookup Latency (Flame Bucket Snapshot)
+          // 2. CAR Lookup Latency (Snapshot - no smoothing needed)
           if (data['car_lookup_latency_histogram_bucket']) {
             const bucketMap = {};
             data['car_lookup_latency_histogram_bucket'].forEach((b) => {
@@ -403,7 +419,6 @@
             const keys = Object.keys(bucketMap).sort(
               (a, b) => parseFloat(a) - parseFloat(b),
             );
-
             const counts = [];
             const labels = [];
             let prev = 0;
@@ -419,26 +434,34 @@
             chartCarLat.update();
           }
 
-          // 3. Throughput (TPS)
+          // 3. Throughput (TPS) - Smoothed
           if (data['rpc_requests_by_method']) {
             const currentTotal =
               data['rpc_requests_by_method'].find(
                 (m) => m.labels.method === 'getTransaction',
               )?.value || 0;
-            const delta = currentTotal - previousTpsCount;
             if (!firstRun) {
-              updateLineChart(chartTps, now, delta);
+              const rawDelta = currentTotal - previousTpsCount;
+              const rawRate = rawDelta / timeDelta;
+              // Avoid negative spikes on restarts
+              const validRate = rawRate >= 0 ? rawRate : 0;
+
+              smoothedTps = smooth(validRate, smoothedTps, SMOOTHING_ALPHA);
+              updateLineChart(chartTps, nowLabel, smoothedTps);
+            } else {
+              // Init smoothed value to 0 or initial rate logic if preferred
+              smoothedTps = 0;
             }
             previousTpsCount = currentTotal;
           }
 
-          // 4. Memory
+          // 4. Memory (Gauge - no smoothing)
           if (data['go_memstats_heap_inuse_bytes']) {
             const mem = data['go_memstats_heap_inuse_bytes'][0].value;
-            updateLineChart(chartMem, now, mem);
+            updateLineChart(chartMem, nowLabel, mem);
           }
 
-          // 5. Disk I/O
+          // 5. Disk I/O - Smoothed
           let currentRead = 0;
           let currentWrite = 0;
           if (data['disk_read_bytes_total']) {
@@ -455,14 +478,26 @@
           }
 
           if (!firstRun) {
-            const readDelta = currentRead - previousDiskRead;
-            const writeDelta = currentWrite - previousDiskWrite;
+            const readRaw = (currentRead - previousDiskRead) / timeDelta;
+            const writeRaw = (currentWrite - previousDiskWrite) / timeDelta;
 
-            chartDisk.data.labels.push(now);
-            chartDisk.data.datasets[0].data.push(readDelta > 0 ? readDelta : 0);
-            chartDisk.data.datasets[1].data.push(
-              writeDelta > 0 ? writeDelta : 0,
+            const validRead = readRaw >= 0 ? readRaw : 0;
+            const validWrite = writeRaw >= 0 ? writeRaw : 0;
+
+            smoothedDiskRead = smooth(
+              validRead,
+              smoothedDiskRead,
+              SMOOTHING_ALPHA,
             );
+            smoothedDiskWrite = smooth(
+              validWrite,
+              smoothedDiskWrite,
+              SMOOTHING_ALPHA,
+            );
+
+            chartDisk.data.labels.push(nowLabel);
+            chartDisk.data.datasets[0].data.push(smoothedDiskRead);
+            chartDisk.data.datasets[1].data.push(smoothedDiskWrite);
 
             if (chartDisk.data.labels.length > MAX_HISTORY) {
               chartDisk.data.labels.shift();
@@ -474,7 +509,7 @@
           previousDiskRead = currentRead;
           previousDiskWrite = currentWrite;
 
-          // 6. Errors
+          // 6. Errors - Smoothed
           let currentErrs = 0;
           if (data['method_to_success_or_failure']) {
             const failMetric = data['method_to_success_or_failure'].find(
@@ -483,12 +518,17 @@
             if (failMetric) currentErrs = failMetric.value;
           }
           document.getElementById('failCount').innerText = currentErrs;
-          if (!firstRun || currentErrs > 0) {
-            updateLineChart(chartErr, now, currentErrs - previousErrCount);
+          if (!firstRun) {
+            const rawErrDelta = currentErrs - previousErrCount;
+            const rawErrRate = rawErrDelta / timeDelta;
+            const validErrRate = rawErrRate >= 0 ? rawErrRate : 0;
+
+            smoothedErr = smooth(validErrRate, smoothedErr, SMOOTHING_ALPHA);
+            updateLineChart(chartErr, nowLabel, smoothedErr);
           }
           previousErrCount = currentErrs;
 
-          // 7. Cache
+          // 7. Cache (Doughnut - Snapshot)
           if (data['cache_hit_miss_total']) {
             const hits =
               data['cache_hit_miss_total'].find(
@@ -502,6 +542,7 @@
             chartCache.update();
           }
 
+          lastTime = currentTime;
           firstRun = false;
         } catch (e) {
           console.error(e);

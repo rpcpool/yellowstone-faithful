@@ -843,8 +843,8 @@ func runTxLoadTest(cfg Config) {
 		Proxy:                 http.ProxyFromEnvironment,
 		DialContext:           dialer.DialContext,
 		ForceAttemptHTTP2:     true,
-		MaxIdleConns:          cfg.TxConcurrency,
-		MaxIdleConnsPerHost:   cfg.TxConcurrency,
+		MaxIdleConns:          cfg.TxConcurrency + 10, // +10 for harvester
+		MaxIdleConnsPerHost:   cfg.TxConcurrency + 10,
 		IdleConnTimeout:       90 * time.Second,
 		TLSHandshakeTimeout:   10 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
@@ -855,119 +855,91 @@ func runTxLoadTest(cfg Config) {
 		Timeout:   10 * time.Second,
 	}
 
-	// 1. Harvest Signatures
-	log.Printf("   🌾 Harvesting signatures from reference (%s) using target epochs...", cfg.RefRPC)
-
 	// Get Target Epochs to know valid ranges
 	targetEpochs, err := fetchEpochs(cfg.TargetRPC)
 	if err != nil || len(targetEpochs) == 0 {
 		log.Fatalf("❌ Failed to fetch epochs from target: %v", err)
 	}
 
-	totalTargetSigs := 500_000
-	// Calculate signatures needed per epoch to reach total ~50k
-	// Ceiling division: (x + y - 1) / y
-	sigsPerEpoch := (totalTargetSigs + len(targetEpochs) - 1) / len(targetEpochs)
-	// Ensure we grab at least a few if calculation is weird, though math holds.
-	if sigsPerEpoch == 0 {
-		sigsPerEpoch = 100
-	}
+	// Start Continuous Harvester
+	// Buffer size handles slight bursts
+	sigChan := make(chan string, 20000)
 
-	log.Printf("   🎯 Plan: Harvest ~%d total signatures across %d epochs (~%d/epoch)", totalTargetSigs, len(targetEpochs), sigsPerEpoch)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-	sigs := []string{}
+	sigChanOs := make(chan os.Signal, 1)
+	signal.Notify(sigChanOs, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-sigChanOs
+		log.Println("\n🛑 Stopping load test...")
+		cancel()
+	}()
 
-	for i, epoch := range targetEpochs {
-		epochSigs := []string{}
-		startSlot := epoch * uint64(cfg.SlotsInEpoch)
-		endSlot := startSlot + uint64(cfg.SlotsInEpoch) - 1
-		rangeSz := new(big.Int).SetUint64(endSlot - startSlot)
-
-		// Try up to 20 random slots per epoch to fill the quota
-		// This prevents getting stuck on an epoch with missing blocks in ref
-		for attempts := 0; attempts < 20 && len(epochSigs) < sigsPerEpoch; attempts++ {
-			// Generate random slot in epoch
-			offset, err := rand.Int(rand.Reader, rangeSz)
-			if err != nil {
-				continue
+	// Harvester Routine
+	go func() {
+		log.Printf("   🌾 Starting continuous harvester (Ref: %s)", cfg.RefRPC)
+		for {
+			if ctx.Err() != nil {
+				return
 			}
-			slot := startSlot + offset.Uint64()
+
+			// Pick random epoch and slot from target's available range
+			epoch := targetEpochs[randInt(len(targetEpochs))]
+			startSlot := epoch * uint64(cfg.SlotsInEpoch)
+			offset := randInt(int(cfg.SlotsInEpoch))
+			slot := startSlot + uint64(offset)
 
 			params := []interface{}{
 				slot,
 				map[string]interface{}{
 					"encoding":                       "json",
-					"transactionDetails":             "full",
+					"transactionDetails":             "signatures",
 					"rewards":                        false,
 					"maxSupportedTransactionVersion": 0,
 				},
 			}
 
-			// Fetch from Reference RPC
-			// Use background context for harvesting (relies on client timeout)
-			block, _, err := callRPC(context.Background(), client, cfg.RefRPC, "getBlock", params)
+			// Use independent context for harvesting
+			hCtx, hCancel := context.WithTimeout(ctx, 10*time.Second)
+			res, _, err := callRPC(hCtx, client, cfg.RefRPC, "getBlock", params)
+			hCancel()
+
 			if err != nil {
+				// Sleep briefly on error to avoid hammering if Ref is down
+				time.Sleep(100 * time.Millisecond)
 				continue
 			}
 
-			// Extract signatures
-			var blockStruct BlockShort
-			if err := json.Unmarshal(block, &blockStruct); err == nil {
-				for _, tx := range blockStruct.Transactions {
-					if txMap, ok := tx.Transaction.(map[string]interface{}); ok {
-						if sigsArr, ok := txMap["signatures"].([]interface{}); ok && len(sigsArr) > 0 {
-							if s, ok := sigsArr[0].(string); ok {
-								epochSigs = append(epochSigs, s)
-							}
-						}
-					}
-				}
+			var blockSigs struct {
+				Signatures []string `json:"signatures"`
+			}
+			if err := json.Unmarshal(res, &blockSigs); err != nil {
+				continue
+			}
 
-				// Fallback for different structure
-				if len(epochSigs) == 0 {
-					var b struct {
-						Transactions []struct {
-							Transaction struct {
-								Signatures []string `json:"signatures"`
-							} `json:"transaction"`
-						} `json:"transactions"`
-					}
-					if err := json.Unmarshal(block, &b); err == nil {
-						for _, t := range b.Transactions {
-							if len(t.Transaction.Signatures) > 0 {
-								epochSigs = append(epochSigs, t.Transaction.Signatures[0])
-							}
-						}
+			if len(blockSigs.Signatures) > 0 {
+				for _, s := range blockSigs.Signatures {
+					select {
+					case sigChan <- s:
+						// pushed
+					case <-ctx.Done():
+						return
 					}
 				}
 			}
 		}
-
-		// Cap and append
-		if len(epochSigs) > sigsPerEpoch {
-			epochSigs = epochSigs[:sigsPerEpoch]
-		}
-		sigs = append(sigs, epochSigs...)
-		fmt.Printf("\r   🌾 Harvested %d signatures (Epoch %d/%d)...", len(sigs), i+1, len(targetEpochs))
-	}
-	fmt.Println()
-
-	if len(sigs) == 0 {
-		log.Fatal("❌ Failed to harvest any signatures. Check reference RPC health and epoch alignment.")
-	}
-	log.Printf("   ✅ Ready with %d unique signatures.", len(sigs))
-
-	// 2. Start Load Test
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-	go func() {
-		<-sigChan
-		log.Println("\n🛑 Stopping load test...")
-		cancel()
 	}()
+
+	// Wait for initial buffer
+	log.Printf("   ⏳ Waiting for signature buffer to fill...")
+	for len(sigChan) < 1000 {
+		time.Sleep(100 * time.Millisecond)
+		if ctx.Err() != nil {
+			return
+		}
+	}
+	log.Printf("   ✅ Buffer ready. Launching %d workers...", cfg.TxConcurrency)
 
 	var wg sync.WaitGroup
 	var totalTx uint64
@@ -1019,52 +991,50 @@ func runTxLoadTest(cfg Config) {
 		}
 	}()
 
-	log.Printf("   🚀 Launching %d workers...", cfg.TxConcurrency)
-
+	// Workers
 	for i := 0; i < cfg.TxConcurrency; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			for {
+				var sig string
 				select {
 				case <-ctx.Done():
 					return
-				default:
-					// Pick random signature
-					sig := sigs[randInt(len(sigs))] // Using insecure rand for speed here or crypto/rand wrapped
+				case sig = <-sigChan:
+				}
 
-					params := []interface{}{
-						sig,
-						map[string]interface{}{
-							"encoding":                       "json",
-							"maxSupportedTransactionVersion": 0,
-						},
+				params := []interface{}{
+					sig,
+					map[string]interface{}{
+						"encoding":                       "json",
+						"maxSupportedTransactionVersion": 0,
+					},
+				}
+
+				// Enforce 5s timeout per tx
+				reqCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				res, dur, err := callRPC(reqCtx, client, cfg.TargetRPC, "getTransaction", params)
+				cancel()
+
+				if err == nil {
+					var verify struct {
+						Slot uint64 `json:"slot"`
 					}
-
-					// Enforce 5s timeout per tx
-					reqCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-					res, dur, err := callRPC(reqCtx, client, cfg.TargetRPC, "getTransaction", params)
-					cancel()
-
-					if err == nil {
-						var verify struct {
-							Slot uint64 `json:"slot"`
-						}
-						if vErr := json.Unmarshal(res, &verify); vErr != nil || verify.Slot == 0 {
-							atomic.AddUint64(&totalBadResponse, 1)
-						} else {
-							atomic.AddUint64(&totalTx, 1)
-							atomic.AddInt64(&totalLatency, int64(dur.Microseconds()))
-						}
+					if vErr := json.Unmarshal(res, &verify); vErr != nil || verify.Slot == 0 {
+						atomic.AddUint64(&totalBadResponse, 1)
 					} else {
-						errMsg := err.Error()
-						if strings.Contains(errMsg, "RPC Error") {
-							atomic.AddUint64(&totalRpcErrors, 1)
-						} else if strings.Contains(errMsg, "unexpected status code") {
-							atomic.AddUint64(&totalHttpErrors, 1)
-						} else {
-							atomic.AddUint64(&totalNetworkErrors, 1)
-						}
+						atomic.AddUint64(&totalTx, 1)
+						atomic.AddInt64(&totalLatency, int64(dur.Microseconds()))
+					}
+				} else {
+					errMsg := err.Error()
+					if strings.Contains(errMsg, "RPC Error") {
+						atomic.AddUint64(&totalRpcErrors, 1)
+					} else if strings.Contains(errMsg, "unexpected status code") {
+						atomic.AddUint64(&totalHttpErrors, 1)
+					} else {
+						atomic.AddUint64(&totalNetworkErrors, 1)
 					}
 				}
 			}
