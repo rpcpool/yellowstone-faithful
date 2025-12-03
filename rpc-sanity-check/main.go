@@ -11,6 +11,7 @@ import (
 	"io"
 	"log"
 	"math/big"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -382,6 +383,11 @@ func callRPC(client *http.Client, url, method string, params []interface{}) (jso
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode != http.StatusOK {
+		io.Copy(io.Discard, resp.Body)
+		return nil, latency, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, latency, err
@@ -472,9 +478,9 @@ func compareJSON(ref []byte, target []byte, label string, stopOnDiff bool) {
 	}
 
 	ignoreOpts := `[
-		{"@":["blockTime"],"^":["DIFF_OFF"]},
-		{"@":["version"],"^":["DIFF_OFF"]}
-	]`
+        {"@":["blockTime"],"^":["DIFF_OFF"]},
+        {"@":["version"],"^":["DIFF_OFF"]}
+    ]`
 	opts, _ := jd.ReadOptionsString(ignoreOpts)
 
 	diff := a.Diff(b, opts...)
@@ -645,14 +651,14 @@ func runGRPCLoadTest(cfg Config) {
 
 	// Payload construction
 	payload := fmt.Sprintf(`{
-		"start_slot": %d, 
-		"end_slot": %d, 
-		"filter": {
-			"vote": false, 
-			"failed": false, 
-			"account_include":["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"]
-		}
-	}`, startSlot, endSlot)
+        "start_slot": %d, 
+        "end_slot": %d, 
+        "filter": {
+            "vote": false, 
+            "failed": false, 
+            "account_include":["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"]
+        }
+    }`, startSlot, endSlot)
 
 	// Context to handle cancellation (Ctrl+C)
 	// This context will kill child processes when cancelled
@@ -773,12 +779,24 @@ func runTxLoadTest(cfg Config) {
 	log.Printf("   Concurrency: %d", cfg.TxConcurrency)
 	log.Printf("   Target:      %s", cfg.TargetRPC)
 
+	dialer := &net.Dialer{
+		Timeout:   30 * time.Second,
+		KeepAlive: 30 * time.Second,
+	}
+	transport := &http.Transport{
+		Proxy:                 http.ProxyFromEnvironment,
+		DialContext:           dialer.DialContext,
+		ForceAttemptHTTP2:     true,
+		MaxIdleConns:          cfg.TxConcurrency,
+		MaxIdleConnsPerHost:   cfg.TxConcurrency,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+	}
+
 	client := &http.Client{
-		Transport: &http.Transport{
-			MaxIdleConns:        cfg.TxConcurrency,
-			MaxIdleConnsPerHost: cfg.TxConcurrency,
-		},
-		Timeout: 10 * time.Second,
+		Transport: transport,
+		Timeout:   10 * time.Second,
 	}
 
 	// 1. Harvest Signatures
@@ -790,7 +808,7 @@ func runTxLoadTest(cfg Config) {
 		log.Fatalf("❌ Failed to fetch epochs from target: %v", err)
 	}
 
-	totalTargetSigs := 500_000
+	totalTargetSigs := 100_000
 	// Calculate signatures needed per epoch to reach total ~50k
 	// Ceiling division: (x + y - 1) / y
 	sigsPerEpoch := (totalTargetSigs + len(targetEpochs) - 1) / len(targetEpochs)
@@ -897,6 +915,9 @@ func runTxLoadTest(cfg Config) {
 	var wg sync.WaitGroup
 	var totalTx uint64
 	var totalLatency int64 // microseconds
+	var totalHttpErrors uint64
+	var totalNetworkErrors uint64
+	var totalRpcErrors uint64
 	startTime := time.Now()
 
 	// TPS Monitor
@@ -915,6 +936,10 @@ func runTxLoadTest(cfg Config) {
 				current := atomic.LoadUint64(&totalTx)
 				latencySum := atomic.LoadInt64(&totalLatency)
 
+				nErr := atomic.LoadUint64(&totalNetworkErrors)
+				hErr := atomic.LoadUint64(&totalHttpErrors)
+				rErr := atomic.LoadUint64(&totalRpcErrors)
+
 				diff := current - lastCount
 				lastCount = current
 
@@ -929,7 +954,8 @@ func runTxLoadTest(cfg Config) {
 					avgLat = float64(latencySum) / float64(current) / 1000.0 // ms
 				}
 
-				log.Printf("   ⚡ Status: %d total | TPS: %d (Avg: %.1f) | Avg Latency: %.1fms", current, diff, avg, avgLat)
+				log.Printf("   ⚡ Status: %d total | TPS: %d (Avg: %.1f) | Avg Latency: %.1fms | NetErr: %d | HTTPErr: %d | RPCErr: %d",
+					current, diff, avg, avgLat, nErr, hErr, rErr)
 			}
 		}
 	}()
@@ -966,6 +992,15 @@ func runTxLoadTest(cfg Config) {
 					if err == nil {
 						atomic.AddUint64(&totalTx, 1)
 						atomic.AddInt64(&totalLatency, int64(dur.Microseconds()))
+					} else {
+						errMsg := err.Error()
+						if strings.Contains(errMsg, "RPC Error") {
+							atomic.AddUint64(&totalRpcErrors, 1)
+						} else if strings.Contains(errMsg, "unexpected status code") {
+							atomic.AddUint64(&totalHttpErrors, 1)
+						} else {
+							atomic.AddUint64(&totalNetworkErrors, 1)
+						}
 					}
 				}
 			}
