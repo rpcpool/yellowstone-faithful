@@ -198,7 +198,3 @@ func (r *PubkeyToOffsetAndSize_Reader) Close() error {
 func (r *PubkeyToOffsetAndSize_Reader) Meta() *Metadata {
 	return r.meta
 }
-
-func (r *PubkeyToOffsetAndSize_Reader) Prefetch(b bool) {
-	r.index.Prefetch(b)
-}

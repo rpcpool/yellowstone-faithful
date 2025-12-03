@@ -28,36 +28,44 @@ func openIndexStorage(
 	ctx context.Context,
 	where string,
 	useMmapForLocalIndexes bool,
-) (carreader.ReaderAtCloser, error) {
+) (carreader.ReaderAtCloser, int64, error) {
 	where = strings.TrimSpace(where)
 	if isHTTP(where) {
 		klog.Infof("opening index file from %q as HTTP remote file", where)
 		rac, size, err := splitcarfetcher.NewRemoteHTTPFileAsIoReaderAt(ctx, where)
 		if err != nil {
-			return nil, fmt.Errorf("failed to open remote index file %q: %w", where, err)
+			return nil, -1, fmt.Errorf("failed to open remote index file %q: %w", where, err)
 		}
 		if !klog.V(5).Enabled() {
-			return rac, nil
+			return rac, size, nil
 		}
 		return &readCloserWrapper{
 			rac:      rac,
 			name:     where,
 			isRemote: true,
 			size:     size,
-		}, nil
+		}, size, nil
+	}
+	stat, err := os.Stat(where)
+	if err != nil {
+		return nil, -1, fmt.Errorf("failed to stat local index file %q: %w", where, err)
+	}
+	size := stat.Size()
+	if size == 0 {
+		return nil, -1, fmt.Errorf("local index file %q is empty", where)
 	}
 	rac, err := openMMapFile(where, useMmapForLocalIndexes)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open local index file: %w", err)
+		return nil, -1, fmt.Errorf("failed to open local index file: %w", err)
 	}
 	if !klog.V(5).Enabled() {
-		return rac, nil
+		return rac, size, nil
 	}
 	return &readCloserWrapper{
 		rac:      rac,
 		name:     where,
 		isRemote: false,
-	}, nil
+	}, size, nil
 }
 
 func openMMapFile(filePath string, useMmap bool) (carreader.ReaderAtCloser, error) {

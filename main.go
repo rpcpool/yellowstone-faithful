@@ -69,6 +69,6 @@ func main() {
 	sort.Sort(cli.CommandsByName(app.Commands))
 
 	if err := app.RunContext(ctx, os.Args); err != nil {
-		klog.Fatal(err)
+		klog.Fatal(fmt.Errorf("application error: %w", err))
 	}
 }

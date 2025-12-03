@@ -72,7 +72,7 @@ func main() {
 		panic(err)
 	}
 	defer mmr.Close()
-	buRd, err := bucketteer.NewReader(mmr)
+	buRd, err := bucketteer.NewReader(mmr, int64(mmr.Len()))
 	if err != nil {
 		panic(err)
 	}

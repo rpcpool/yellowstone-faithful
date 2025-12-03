@@ -203,7 +203,7 @@ func VerifyIndex_sigExists(ctx context.Context, carPaths []string, indexFilePath
 		return fmt.Errorf("index file %s does not exist", indexFilePath)
 	}
 
-	sigExists, err := bucketteer.OpenMMAP(indexFilePath)
+	sigExists, err := bucketteer.Open(indexFilePath)
 	if err != nil {
 		return fmt.Errorf("failed to open index: %w", err)
 	}
