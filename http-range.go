@@ -10,7 +10,7 @@ import (
 	"k8s.io/klog/v2"
 )
 
-type readCloserWrapper struct {
+type readCloserWrapperForStats struct {
 	rac        carreader.ReaderAtCloser
 	isRemote   bool
 	isSplitCar bool
@@ -18,12 +18,12 @@ type readCloserWrapper struct {
 	size       int64
 }
 
-func (r *readCloserWrapper) Size() int64 {
+func (r *readCloserWrapperForStats) Size() int64 {
 	return r.size
 }
 
 // when reading print a dot
-func (r *readCloserWrapper) ReadAt(p []byte, off int64) (n int, err error) {
+func (r *readCloserWrapperForStats) ReadAt(p []byte, off int64) (n int, err error) {
 	startedAt := time.Now()
 	defer func() {
 		took := time.Since(startedAt)
@@ -103,7 +103,7 @@ func azureBG(s string) string {
 }
 
 // when closing print a newline
-func (r *readCloserWrapper) Close() error {
+func (r *readCloserWrapperForStats) Close() error {
 	return r.rac.Close()
 }
 

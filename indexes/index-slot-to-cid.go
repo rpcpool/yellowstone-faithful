@@ -224,11 +224,3 @@ func (r *SlotToCid_Reader) Close() error {
 func (r *SlotToCid_Reader) Meta() *Metadata {
 	return r.meta
 }
-
-func (r *SlotToCid_Reader) Prefetch(b bool) {
-	if r.IsDeprecatedOldVersion() {
-		r.deprecatedIndex.Prefetch(b)
-		return
-	}
-	r.index.Prefetch(b)
-}

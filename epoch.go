@@ -146,7 +146,7 @@ func NewEpochFromConfig(
 	if isCarMode {
 		if config.IsDeprecatedIndexes() {
 			// The CAR-mode requires a cid-to-offset index.
-			cidToOffsetIndexFile, err := openIndexStorage(
+			cidToOffsetIndexFile, _, err := openIndexStorage(
 				c.Context,
 				string(config.Indexes.CidToOffset.URI),
 				useMmapForLocalIndexes,
@@ -166,7 +166,7 @@ func NewEpochFromConfig(
 			ep.deprecated_cidToOffsetIndex = cidToOffsetIndex
 		} else {
 			// The CAR-mode requires a cid-to-offset index.
-			cidToOffsetAndSizeIndexFile, err := openIndexStorage(
+			cidToOffsetAndSizeIndexFile, _, err := openIndexStorage(
 				c.Context,
 				string(config.Indexes.CidToOffsetAndSize.URI),
 				useMmapForLocalIndexes,
@@ -180,9 +180,9 @@ func NewEpochFromConfig(
 			if err != nil {
 				return nil, fmt.Errorf("failed to open cid-to-offset index: %w", err)
 			}
-			if config.Indexes.CidToOffsetAndSize.URI.IsWeb() {
-				cidToOffsetAndSizeIndex.Prefetch(true)
-			}
+			// if config.Indexes.CidToOffsetAndSize.URI.IsWeb() {
+			// 	cidToOffsetAndSizeIndex.Prefetch(true)
+			// }
 			ep.cidToOffsetAndSizeIndex = cidToOffsetAndSizeIndex
 
 			if ep.Epoch() != cidToOffsetAndSizeIndex.Meta().Epoch {
@@ -193,7 +193,7 @@ func NewEpochFromConfig(
 	}
 
 	{
-		slotToCidIndexFile, err := openIndexStorage(
+		slotToCidIndexFile, _, err := openIndexStorage(
 			c.Context,
 			string(config.Indexes.SlotToCid.URI),
 			useMmapForLocalIndexes,
@@ -207,9 +207,9 @@ func NewEpochFromConfig(
 		if err != nil {
 			return nil, fmt.Errorf("failed to open slot-to-cid index: %w", err)
 		}
-		if config.Indexes.SlotToCid.URI.IsWeb() {
-			slotToCidIndex.Prefetch(true)
-		}
+		// if config.Indexes.SlotToCid.URI.IsWeb() {
+		// 	slotToCidIndex.Prefetch(true)
+		// }
 		ep.slotToCidIndex = slotToCidIndex
 
 		if !slotToCidIndex.IsDeprecatedOldVersion() {
@@ -224,7 +224,7 @@ func NewEpochFromConfig(
 	}
 
 	{
-		sigToCidIndexFile, err := openIndexStorage(
+		sigToCidIndexFile, _, err := openIndexStorage(
 			c.Context,
 			string(config.Indexes.SigToCid.URI),
 			useMmapForLocalIndexes,
@@ -238,9 +238,9 @@ func NewEpochFromConfig(
 		if err != nil {
 			return nil, fmt.Errorf("failed to open sig-to-cid index: %w", err)
 		}
-		if config.Indexes.SigToCid.URI.IsWeb() {
-			sigToCidIndex.Prefetch(true)
-		}
+		// if config.Indexes.SigToCid.URI.IsWeb() {
+		// 	sigToCidIndex.Prefetch(true)
+		// }
 		ep.sigToCidIndex = sigToCidIndex
 
 		if !sigToCidIndex.IsDeprecatedOldVersion() {
@@ -366,7 +366,7 @@ func NewEpochFromConfig(
 								return nil, fmt.Errorf("failed to create remote file split car reader from %q: %w", formattedURL, err)
 							}
 
-							return &readCloserWrapper{
+							return &readCloserWrapperForStats{
 								rac:        rfspc,
 								name:       formattedURL,
 								size:       rfspc.Size(),
@@ -398,7 +398,7 @@ func NewEpochFromConfig(
 								return nil, fmt.Errorf("failed to create remote file split car reader from %q: %w", formattedURL, err)
 							}
 
-							return &readCloserWrapper{
+							return &readCloserWrapperForStats{
 								rac:        rfspc,
 								name:       formattedURL,
 								size:       rfspc.Size(),
@@ -464,7 +464,7 @@ func NewEpochFromConfig(
 		}
 	}
 	{
-		sigExistsFile, err := openIndexStorage(
+		sigExistsFile, indexSize, err := openIndexStorage(
 			c.Context,
 			string(config.Indexes.SigExists.URI),
 			useMmapForSigExistsIndex,
@@ -482,7 +482,7 @@ func NewEpochFromConfig(
 			ep.onClose = append(ep.onClose, sigExists.Close)
 			ep.sigExists = sigExists
 		} else {
-			sigExists, err := bucketteer.NewReader(sigExistsFile)
+			sigExists, err := bucketteer.NewReader(sigExistsFile, indexSize)
 			if err != nil {
 				return nil, fmt.Errorf("failed to open sig-exists index: %w", err)
 			}
@@ -508,7 +508,7 @@ func NewEpochFromConfig(
 		}
 	}
 	{
-		slotToBlocktimeFile, err := openIndexStorage(
+		slotToBlocktimeFile, _, err := openIndexStorage(
 			c.Context,
 			string(config.Indexes.SlotToBlocktime.URI),
 			useMmapForLocalIndexes,
@@ -960,11 +960,21 @@ func (ser *Epoch) GetRewardsByCid(ctx context.Context, wantedCid cid.Cid) (*ipld
 	return decoded, nil
 }
 
-func (ser *Epoch) GetTransaction(ctx context.Context, sig solana.Signature) (*ipldbindcode.Transaction, cid.Cid, error) {
+func (ser *Epoch) GetTransaction(
+	ctx context.Context,
+	sig solana.Signature,
+	optionalSigCid ...cid.Cid,
+) (*ipldbindcode.Transaction, cid.Cid, error) {
 	// get the CID by signature
-	wantedCid, err := ser.FindCidFromSignature(ctx, sig)
-	if err != nil {
-		return nil, cid.Cid{}, fmt.Errorf("failed to find CID for signature %s: %w", sig, err)
+	var wantedCid cid.Cid
+	if len(optionalSigCid) > 0 && optionalSigCid[0] != cid.Undef {
+		wantedCid = optionalSigCid[0]
+	} else {
+		var err error
+		wantedCid, err = ser.FindCidFromSignature(ctx, sig)
+		if err != nil {
+			return nil, cid.Cid{}, fmt.Errorf("failed to find CID for signature %s: %w", sig, err)
+		}
 	}
 	{
 		doPrefetch := getValueFromContext(ctx, "prefetch")

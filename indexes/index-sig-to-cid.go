@@ -232,11 +232,3 @@ func (r *SigToCid_Reader) Close() error {
 func (r *SigToCid_Reader) Meta() *Metadata {
 	return r.meta
 }
-
-func (r *SigToCid_Reader) Prefetch(b bool) {
-	if r.IsDeprecatedOldVersion() {
-		r.deprecatedIndex.Prefetch(b)
-		return
-	}
-	r.index.Prefetch(b)
-}

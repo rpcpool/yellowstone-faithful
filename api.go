@@ -75,7 +75,7 @@ func (multi *MultiEpoch) apiHandler(reqCtx *fasthttp.RequestCtx) {
 			return
 		}
 
-		epochHandler, err := multi.GetEpoch(uint64(epochNumber))
+		epochHandler, err := multi.GetEpoch(uint64(epochNumber.Epoch))
 		if err != nil {
 			reqCtx.SetStatusCode(fasthttp.StatusNotFound) // TODO: this means epoch is not available, and probably should be another dedicated status code
 			return

@@ -1,0 +1,854 @@
+<!DOCTYPE html>
+<html class="dark" lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <title>RPC Load Test Dashboard</title>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <!-- Fonts -->
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&amp;display=swap"
+      rel="stylesheet"
+    />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+      rel="stylesheet"
+    />
+
+    <script id="tailwind-config">
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            colors: {
+              primary: '#2bee79',
+              'background-light': '#f6f8f7',
+              'background-dark': '#102217',
+              'surface-dark': '#162D1D',
+              'border-dark': '#2E4738',
+              'text-primary-dark': '#EAF9F0',
+              'text-secondary-dark': '#9DB9A8',
+              success: '#0BDA43',
+              danger: '#FA5538',
+              info: '#3b82f6',
+            },
+            fontFamily: {
+              display: ['Inter', 'sans-serif'],
+            },
+          },
+        },
+      };
+    </script>
+    <style>
+      /* Custom scrollbar for better aesthetics */
+      ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+      }
+      ::-webkit-scrollbar-track {
+        background: #102217;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #2e4738;
+        border-radius: 4px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #2bee79;
+      }
+      .material-symbols-outlined {
+        font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        vertical-align: middle;
+      }
+    </style>
+  </head>
+  <body
+    class="font-display bg-background-dark text-text-primary-dark min-h-screen p-6 md:p-8"
+  >
+    <!-- Header / Status Bar -->
+    <header
+      class="flex flex-wrap items-center justify-between gap-4 border-b border-border-dark pb-6 mb-8"
+    >
+      <div class="flex flex-col gap-1">
+        <h1
+          class="text-3xl font-bold tracking-tight text-text-primary-dark flex items-center gap-3"
+        >
+          <span
+            class="material-symbols-outlined text-primary text-4xl"
+            style="font-variation-settings: 'FILL' 1"
+            >speed</span
+          >
+          RPC Load Test Dashboard
+        </h1>
+        <p class="text-text-secondary-dark text-base">
+          Real-time metrics verification and performance monitoring.
+        </p>
+      </div>
+
+      <div class="flex items-center gap-4">
+        <!-- Connection Status -->
+        <div
+          id="status-pill"
+          class="flex items-center gap-2.5 rounded-full bg-surface-dark border border-border-dark px-3 py-1.5 text-sm font-medium"
+        >
+          <div
+            id="status-dot"
+            class="h-2.5 w-2.5 rounded-full bg-gray-500"
+          ></div>
+          <span id="status-text" class="text-text-secondary-dark"
+            >Connecting...</span
+          >
+        </div>
+      </div>
+    </header>
+
+    <!-- Meta Info / Configuration -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+      <div
+        class="flex items-center justify-between rounded-xl border border-border-dark bg-surface-dark p-4"
+      >
+        <div class="flex items-center gap-3">
+          <span class="material-symbols-outlined text-text-secondary-dark"
+            >dns</span
+          >
+          <span class="text-text-secondary-dark font-medium">Target RPC</span>
+        </div>
+        <span
+          id="targetRpc"
+          class="text-primary font-mono text-sm font-bold truncate ml-4"
+          >Loading...</span
+        >
+      </div>
+      <div
+        class="flex items-center justify-between rounded-xl border border-border-dark bg-surface-dark p-4"
+      >
+        <div class="flex items-center gap-3">
+          <span class="material-symbols-outlined text-text-secondary-dark"
+            >monitoring</span
+          >
+          <span class="text-text-secondary-dark font-medium"
+            >Metrics Source</span
+          >
+        </div>
+        <span
+          id="metricsUrl"
+          class="text-info font-mono text-sm font-bold truncate ml-4"
+          >Loading...</span
+        >
+      </div>
+    </div>
+
+    <!-- Main Grid -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+      <!-- Throughput Line -->
+      <div
+        class="flex flex-col gap-4 rounded-xl border border-border-dark bg-surface-dark p-6 col-span-1 lg:col-span-2"
+      >
+        <div class="flex items-center justify-between">
+          <h2 class="text-lg font-semibold text-text-primary-dark">
+            Throughput (Req/s)
+          </h2>
+          <span
+            class="text-xs text-text-secondary-dark bg-background-dark px-2 py-1 rounded border border-border-dark"
+            >Smoothed</span
+          >
+        </div>
+        <div class="h-64 w-full relative">
+          <canvas id="throughputChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Disk I/O Line -->
+      <div
+        class="flex flex-col gap-4 rounded-xl border border-border-dark bg-surface-dark p-6"
+      >
+        <div class="flex items-center justify-between">
+          <h2 class="text-lg font-semibold text-text-primary-dark">
+            Disk I/O Rate
+          </h2>
+          <span
+            class="text-xs text-text-secondary-dark bg-background-dark px-2 py-1 rounded border border-border-dark"
+            >Smoothed</span
+          >
+        </div>
+        <div class="h-64 w-full relative">
+          <canvas id="diskIoChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Network I/O Line -->
+      <div
+        class="flex flex-col gap-4 rounded-xl border border-border-dark bg-surface-dark p-6"
+      >
+        <div class="flex items-center justify-between">
+          <h2 class="text-lg font-semibold text-text-primary-dark">
+            Network I/O Rate
+          </h2>
+          <span
+            class="text-xs text-text-secondary-dark bg-background-dark px-2 py-1 rounded border border-border-dark"
+            >Smoothed</span
+          >
+        </div>
+        <div class="h-64 w-full relative">
+          <canvas id="netIoChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Latency Heatmap (Flame Buckets) -->
+      <div
+        class="flex flex-col gap-4 rounded-xl border border-border-dark bg-surface-dark p-6"
+      >
+        <h2 class="text-lg font-semibold text-text-primary-dark">
+          RPC Latency Distribution
+        </h2>
+        <div class="h-64 w-full relative">
+          <canvas id="rpcLatencyChart"></canvas>
+        </div>
+      </div>
+
+      <!-- CAR Lookup Latency (Flame Buckets) -->
+      <div
+        class="flex flex-col gap-4 rounded-xl border border-border-dark bg-surface-dark p-6"
+      >
+        <h2 class="text-lg font-semibold text-text-primary-dark">
+          CAR Lookup Distribution
+        </h2>
+        <div class="h-64 w-full relative">
+          <canvas id="carLatencyChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Memory Line -->
+      <div
+        class="flex flex-col gap-4 rounded-xl border border-border-dark bg-surface-dark p-6"
+      >
+        <h2 class="text-lg font-semibold text-text-primary-dark">
+          Memory Usage (Heap)
+        </h2>
+        <div class="h-64 w-full relative">
+          <canvas id="memoryChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Errors -->
+      <div
+        class="flex flex-col gap-4 rounded-xl border border-border-dark bg-surface-dark p-6"
+      >
+        <div class="flex items-center justify-between">
+          <h2 class="text-lg font-semibold text-text-primary-dark">
+            RPC Errors
+          </h2>
+          <div class="flex items-center gap-2">
+            <span class="text-text-secondary-dark text-sm">Total:</span>
+            <span id="failCount" class="text-danger font-bold font-mono"
+              >0</span
+            >
+          </div>
+        </div>
+        <div class="h-64 w-full relative">
+          <canvas id="errorChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Cache -->
+      <div
+        class="flex flex-col gap-4 rounded-xl border border-border-dark bg-surface-dark p-6"
+      >
+        <h2 class="text-lg font-semibold text-text-primary-dark">
+          Cache Hit/Miss Ratio
+        </h2>
+        <div class="h-64 w-full relative flex justify-center">
+          <canvas id="cacheChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const API_URL = '/api/metrics';
+      const CONFIG_URL = '/api/config';
+      const MAX_HISTORY = 60; // Keep 60 seconds of history
+      const SMOOTHING_ALPHA = 0.2; // Smoothing factor
+
+      // Fetch and display config
+      async function loadConfig() {
+        try {
+          const response = await fetch(CONFIG_URL);
+          if (response.ok) {
+            const config = await response.json();
+            document.getElementById('targetRpc').innerText = config.target_rpc;
+            document.getElementById('metricsUrl').innerText =
+              config.metrics_url;
+          }
+        } catch (e) {
+          console.warn('Could not fetch config:', e);
+          const el = document.getElementById('targetRpc');
+          if (el.innerText === 'Loading...') {
+            el.innerText = 'Unknown';
+            document.getElementById('metricsUrl').innerText = 'Unknown';
+          }
+        }
+      }
+
+      function parsePrometheus(text) {
+        const metrics = {};
+        const lines = text.split('\n');
+        lines.forEach((line) => {
+          line = line.trim();
+          if (!line || line.startsWith('#')) return;
+          let match = line.match(
+            /^([a-zA-Z0-9_]+)(?:\{([^}]+)\})?\s+([0-9eE\+\-\.]+)/,
+          );
+          if (match) {
+            const key = match[1];
+            const labelsStr = match[2];
+            const value = parseFloat(match[3]);
+            const labels = {};
+            if (labelsStr) {
+              labelsStr.split(',').forEach((l) => {
+                const [k, v] = l.split('=');
+                labels[k] = v.replace(/"/g, '');
+              });
+            }
+            if (!metrics[key]) metrics[key] = [];
+            metrics[key].push({ labels, value });
+          }
+        });
+        return metrics;
+      }
+
+      function formatBytes(bytes, decimals = 2) {
+        if (bytes === 0) return '0 B';
+        const k = 1024;
+        const dm = decimals < 0 ? 0 : decimals;
+        const sizes = [
+          'B',
+          'KiB',
+          'MiB',
+          'GiB',
+          'TiB',
+          'PiB',
+          'EiB',
+          'ZiB',
+          'YiB',
+        ];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return (
+          parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i]
+        );
+      }
+
+      function smooth(current, previous, alpha) {
+        return alpha * current + (1 - alpha) * previous;
+      }
+
+      // Charts Config
+      Chart.defaults.color = '#9DB9A8'; // secondary text color
+      Chart.defaults.borderColor = '#2E4738'; // border color
+      Chart.defaults.font.family = 'Inter';
+
+      const ctxRpcLat = document
+        .getElementById('rpcLatencyChart')
+        .getContext('2d');
+      const ctxCarLat = document
+        .getElementById('carLatencyChart')
+        .getContext('2d');
+      const ctxTps = document
+        .getElementById('throughputChart')
+        .getContext('2d');
+      const ctxMem = document.getElementById('memoryChart').getContext('2d');
+      const ctxErr = document.getElementById('errorChart').getContext('2d');
+      const ctxCache = document.getElementById('cacheChart').getContext('2d');
+      const ctxDisk = document.getElementById('diskIoChart').getContext('2d');
+      const ctxNet = document.getElementById('netIoChart').getContext('2d');
+
+      const createBarChart = (ctx, label, color) =>
+        new Chart(ctx, {
+          type: 'bar',
+          data: {
+            labels: [],
+            datasets: [
+              { label, data: [], backgroundColor: color, borderRadius: 4 },
+            ],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+              x: { stacked: true, grid: { display: false } },
+              y: { beginAtZero: true },
+            },
+            animation: false,
+          },
+        });
+
+      const createLineChart = (ctx, label, color) =>
+        new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels: [],
+            datasets: [
+              {
+                label,
+                data: [],
+                borderColor: color,
+                tension: 0.3,
+                fill: { target: 'origin', above: color + '20' },
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: { y: { beginAtZero: true } },
+            animation: false,
+            elements: { point: { radius: 0, hitRadius: 10 } },
+          },
+        });
+
+      // Specific colors from palette
+      const COLOR_PRIMARY = '#2bee79';
+      const COLOR_INFO = '#3b82f6';
+      const COLOR_DANGER = '#FA5538';
+      const COLOR_SUCCESS = '#0BDA43';
+      const COLOR_WARN = '#e91e63';
+      const COLOR_PURPLE = '#a855f7'; // Purple for Network Rx
+
+      const chartRpcLat = createBarChart(ctxRpcLat, 'Count', COLOR_DANGER);
+      const chartCarLat = createBarChart(ctxCarLat, 'Count', COLOR_INFO);
+      const chartTps = createLineChart(ctxTps, 'Req/s', COLOR_PRIMARY);
+      const chartErr = createLineChart(ctxErr, 'Errors/s', COLOR_DANGER);
+
+      const chartMem = new Chart(ctxMem, {
+        type: 'line',
+        data: {
+          labels: [],
+          datasets: [
+            {
+              label: 'Bytes',
+              data: [],
+              borderColor: COLOR_WARN,
+              tension: 0.3,
+              fill: { target: 'origin', above: COLOR_WARN + '20' },
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            y: {
+              beginAtZero: true,
+              ticks: {
+                callback: function (value) {
+                  return formatBytes(value);
+                },
+              },
+            },
+          },
+          animation: false,
+          elements: { point: { radius: 0 } },
+          plugins: {
+            tooltip: {
+              callbacks: {
+                label: function (context) {
+                  return (
+                    context.dataset.label + ': ' + formatBytes(context.parsed.y)
+                  );
+                },
+              },
+            },
+          },
+        },
+      });
+
+      const chartDisk = new Chart(ctxDisk, {
+        type: 'line',
+        data: {
+          labels: [],
+          datasets: [
+            {
+              label: 'Read',
+              data: [],
+              borderColor: COLOR_INFO,
+              tension: 0.3,
+              fill: false,
+            },
+            {
+              label: 'Write',
+              data: [],
+              borderColor: '#ff9800',
+              tension: 0.3,
+              fill: false,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            y: {
+              beginAtZero: true,
+              ticks: {
+                callback: function (value) {
+                  return formatBytes(value) + '/s';
+                },
+              },
+            },
+          },
+          animation: false,
+          elements: { point: { radius: 0 } },
+          plugins: {
+            tooltip: {
+              callbacks: {
+                label: function (context) {
+                  let label = context.dataset.label || '';
+                  if (label) {
+                    label += ': ';
+                  }
+                  if (context.parsed.y !== null) {
+                    label += formatBytes(context.parsed.y) + '/s';
+                  }
+                  return label;
+                },
+              },
+            },
+          },
+        },
+      });
+
+      const chartNet = new Chart(ctxNet, {
+        type: 'line',
+        data: {
+          labels: [],
+          datasets: [
+            {
+              label: 'Rx (In)',
+              data: [],
+              borderColor: COLOR_PURPLE,
+              tension: 0.3,
+              fill: false,
+            },
+            {
+              label: 'Tx (Out)',
+              data: [],
+              borderColor: COLOR_PRIMARY,
+              tension: 0.3,
+              fill: false,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            y: {
+              beginAtZero: true,
+              ticks: {
+                callback: function (value) {
+                  return formatBytes(value) + '/s';
+                },
+              },
+            },
+          },
+          animation: false,
+          elements: { point: { radius: 0 } },
+          plugins: {
+            tooltip: {
+              callbacks: {
+                label: function (context) {
+                  let label = context.dataset.label || '';
+                  if (label) {
+                    label += ': ';
+                  }
+                  if (context.parsed.y !== null) {
+                    label += formatBytes(context.parsed.y) + '/s';
+                  }
+                  return label;
+                },
+              },
+            },
+          },
+        },
+      });
+
+      const chartCache = new Chart(ctxCache, {
+        type: 'doughnut',
+        data: {
+          labels: ['Hit', 'Miss'],
+          datasets: [
+            {
+              data: [0, 0],
+              backgroundColor: [COLOR_SUCCESS, COLOR_DANGER],
+              borderWidth: 0,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          cutout: '70%',
+          plugins: {
+            legend: { position: 'right' },
+          },
+        },
+      });
+
+      let previousTpsCount = 0,
+        previousErrCount = 0,
+        previousDiskRead = 0,
+        previousDiskWrite = 0,
+        previousNetRx = 0,
+        previousNetTx = 0;
+      let smoothedTps = 0,
+        smoothedErr = 0,
+        smoothedDiskRead = 0,
+        smoothedDiskWrite = 0,
+        smoothedNetRx = 0,
+        smoothedNetTx = 0;
+      let lastTime = Date.now();
+      let firstRun = true;
+
+      async function updateMetrics() {
+        try {
+          const response = await fetch(API_URL);
+          if (!response.ok) throw new Error('Network response was not ok');
+          const text = await response.text();
+          const data = parsePrometheus(text);
+
+          const statusDot = document.getElementById('status-dot');
+          const statusText = document.getElementById('status-text');
+          const statusPill = document.getElementById('status-pill');
+
+          statusDot.classList.remove('bg-gray-500', 'bg-red-500');
+          statusDot.classList.add('bg-success');
+          statusText.innerText = 'Connected';
+          statusText.classList.remove('text-danger');
+          statusText.classList.add('text-success');
+          statusPill.classList.add('border-success/30', 'bg-success/10');
+
+          const currentTime = Date.now();
+          let timeDelta = (currentTime - lastTime) / 1000;
+          if (timeDelta <= 0) timeDelta = 1;
+          const nowLabel = new Date().toLocaleTimeString();
+
+          // 1. RPC Latency
+          if (data['rpc_response_latency_histogram_bucket']) {
+            const buckets = data['rpc_response_latency_histogram_bucket']
+              .filter(
+                (b) =>
+                  b.labels.rpc_method === 'getTransaction' &&
+                  b.labels.le !== '+Inf',
+              )
+              .sort(
+                (a, b) => parseFloat(a.labels.le) - parseFloat(b.labels.le),
+              );
+
+            const counts = [];
+            const labels = [];
+            let prev = 0;
+            buckets.forEach((b) => {
+              labels.push(b.labels.le + 's');
+              counts.push(b.value - prev);
+              prev = b.value;
+            });
+
+            chartRpcLat.data.labels = labels;
+            chartRpcLat.data.datasets[0].data = counts;
+            chartRpcLat.update();
+          }
+
+          // 2. CAR Latency
+          if (data['car_lookup_latency_histogram_bucket']) {
+            const bucketMap = {};
+            data['car_lookup_latency_histogram_bucket'].forEach((b) => {
+              if (b.labels.le === '+Inf') return;
+              if (!bucketMap[b.labels.le]) bucketMap[b.labels.le] = 0;
+              bucketMap[b.labels.le] += b.value;
+            });
+            const keys = Object.keys(bucketMap).sort(
+              (a, b) => parseFloat(a) - parseFloat(b),
+            );
+            const counts = [];
+            const labels = [];
+            let prev = 0;
+            keys.forEach((k) => {
+              labels.push(k + 's');
+              const val = bucketMap[k];
+              counts.push(val - prev);
+              prev = val;
+            });
+            chartCarLat.data.labels = labels;
+            chartCarLat.data.datasets[0].data = counts;
+            chartCarLat.update();
+          }
+
+          // 3. Throughput
+          if (data['rpc_requests_by_method']) {
+            const currentTotal =
+              data['rpc_requests_by_method'].find(
+                (m) => m.labels.method === 'getTransaction',
+              )?.value || 0;
+            if (!firstRun) {
+              const rawDelta = currentTotal - previousTpsCount;
+              const rawRate = rawDelta / timeDelta;
+              const validRate = rawRate >= 0 ? rawRate : 0;
+              smoothedTps = smooth(validRate, smoothedTps, SMOOTHING_ALPHA);
+              updateLineChart(chartTps, nowLabel, smoothedTps);
+            } else {
+              smoothedTps = 0;
+            }
+            previousTpsCount = currentTotal;
+          }
+
+          // 4. Memory
+          if (data['go_memstats_heap_inuse_bytes']) {
+            const mem = data['go_memstats_heap_inuse_bytes'][0].value;
+            updateLineChart(chartMem, nowLabel, mem);
+          }
+
+          // 5. Disk I/O
+          let currentRead = 0,
+            currentWrite = 0;
+          if (data['disk_read_bytes_total'])
+            currentRead = data['disk_read_bytes_total'].reduce(
+              (acc, curr) => acc + curr.value,
+              0,
+            );
+          if (data['disk_write_bytes_total'])
+            currentWrite = data['disk_write_bytes_total'].reduce(
+              (acc, curr) => acc + curr.value,
+              0,
+            );
+
+          if (!firstRun) {
+            const readRaw = (currentRead - previousDiskRead) / timeDelta;
+            const writeRaw = (currentWrite - previousDiskWrite) / timeDelta;
+            const validRead = readRaw >= 0 ? readRaw : 0;
+            const validWrite = writeRaw >= 0 ? writeRaw : 0;
+            smoothedDiskRead = smooth(
+              validRead,
+              smoothedDiskRead,
+              SMOOTHING_ALPHA,
+            );
+            smoothedDiskWrite = smooth(
+              validWrite,
+              smoothedDiskWrite,
+              SMOOTHING_ALPHA,
+            );
+
+            chartDisk.data.labels.push(nowLabel);
+            chartDisk.data.datasets[0].data.push(smoothedDiskRead);
+            chartDisk.data.datasets[1].data.push(smoothedDiskWrite);
+            if (chartDisk.data.labels.length > MAX_HISTORY) {
+              chartDisk.data.labels.shift();
+              chartDisk.data.datasets[0].data.shift();
+              chartDisk.data.datasets[1].data.shift();
+            }
+            chartDisk.update();
+          }
+          previousDiskRead = currentRead;
+          previousDiskWrite = currentWrite;
+
+          // 6. Network I/O
+          let currentNetRx = 0,
+            currentNetTx = 0;
+          if (data['net_receive_bytes_total'])
+            currentNetRx = data['net_receive_bytes_total'].reduce(
+              (acc, curr) => acc + curr.value,
+              0,
+            );
+          if (data['net_send_bytes_total'])
+            currentNetTx = data['net_send_bytes_total'].reduce(
+              (acc, curr) => acc + curr.value,
+              0,
+            );
+
+          if (!firstRun) {
+            const rxRaw = (currentNetRx - previousNetRx) / timeDelta;
+            const txRaw = (currentNetTx - previousNetTx) / timeDelta;
+            const validRx = rxRaw >= 0 ? rxRaw : 0;
+            const validTx = txRaw >= 0 ? txRaw : 0;
+            smoothedNetRx = smooth(validRx, smoothedNetRx, SMOOTHING_ALPHA);
+            smoothedNetTx = smooth(validTx, smoothedNetTx, SMOOTHING_ALPHA);
+
+            chartNet.data.labels.push(nowLabel);
+            chartNet.data.datasets[0].data.push(smoothedNetRx);
+            chartNet.data.datasets[1].data.push(smoothedNetTx);
+            if (chartNet.data.labels.length > MAX_HISTORY) {
+              chartNet.data.labels.shift();
+              chartNet.data.datasets[0].data.shift();
+              chartNet.data.datasets[1].data.shift();
+            }
+            chartNet.update();
+          }
+          previousNetRx = currentNetRx;
+          previousNetTx = currentNetTx;
+
+          // 7. Errors
+          let currentErrs = 0;
+          if (data['method_to_success_or_failure']) {
+            const failMetric = data['method_to_success_or_failure'].find(
+              (m) => m.labels.status === 'failure',
+            );
+            if (failMetric) currentErrs = failMetric.value;
+          }
+          document.getElementById('failCount').innerText = currentErrs;
+          if (!firstRun) {
+            const rawErrDelta = currentErrs - previousErrCount;
+            const rawErrRate = rawErrDelta / timeDelta;
+            const validErrRate = rawErrRate >= 0 ? rawErrRate : 0;
+            smoothedErr = smooth(validErrRate, smoothedErr, SMOOTHING_ALPHA);
+            updateLineChart(chartErr, nowLabel, smoothedErr);
+          }
+          previousErrCount = currentErrs;
+
+          // 8. Cache
+          if (data['cache_hit_miss_total']) {
+            const hits =
+              data['cache_hit_miss_total'].find(
+                (m) => m.labels.result === 'hit',
+              )?.value || 0;
+            const misses =
+              data['cache_hit_miss_total'].find(
+                (m) => m.labels.result === 'miss',
+              )?.value || 0;
+            chartCache.data.datasets[0].data = [hits, misses];
+            chartCache.update();
+          }
+
+          lastTime = currentTime;
+          firstRun = false;
+        } catch (e) {
+          console.error(e);
+          const statusDot = document.getElementById('status-dot');
+          const statusText = document.getElementById('status-text');
+          const statusPill = document.getElementById('status-pill');
+
+          statusDot.classList.remove('bg-success');
+          statusDot.classList.add('bg-danger');
+          statusText.innerText = 'Disconnected';
+          statusText.classList.remove('text-success');
+          statusText.classList.add('text-danger');
+          statusPill.classList.remove('border-success/30', 'bg-success/10');
+        }
+      }
+
+      function updateLineChart(chart, label, data) {
+        chart.data.labels.push(label);
+        chart.data.datasets[0].data.push(data);
+        if (chart.data.labels.length > MAX_HISTORY) {
+          chart.data.labels.shift();
+          chart.data.datasets[0].data.shift();
+        }
+        chart.update();
+      }
+
+      setInterval(updateMetrics, 1000);
+      updateMetrics();
+      setInterval(loadConfig, 2000);
+      loadConfig();
+    </script>
+  </body>
+</html>

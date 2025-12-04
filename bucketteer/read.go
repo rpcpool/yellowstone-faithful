@@ -6,20 +6,26 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"math"
 	"os"
 	"slices"
+	"time"
+	"unsafe"
 
 	bin "github.com/gagliardetto/binary"
 	"github.com/rpcpool/yellowstone-faithful/indexmeta"
+	"github.com/valyala/bytebufferpool"
 	"golang.org/x/exp/mmap"
+	"golang.org/x/sys/unix"
 )
 
 type Reader struct {
-	contentReader  io.ReaderAt
-	meta           *indexmeta.Meta
-	prefixToOffset *bucketToOffset
-	prefixToSize   map[uint16]uint64
+	contentReader   io.ReaderAt
+	meta            *indexmeta.Meta
+	prefixToOffset  *bucketToOffset
+	prefixToSize    map[uint16]uint64
+	headerTotalSize int64 // Store this to calculate real file offset
 }
 
 type bucketToOffset [math.MaxUint16 + 1]uint64
@@ -64,7 +70,14 @@ func OpenMMAP(path string) (*Reader, error) {
 	if err != nil {
 		return nil, err
 	}
-	return NewReader(file)
+	stat, err := os.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+	if stat.Size() == 0 {
+		return nil, fmt.Errorf("file is empty: %s", path)
+	}
+	return NewReader(file, stat.Size())
 }
 
 func Open(path string) (*Reader, error) {
@@ -79,7 +92,14 @@ func Open(path string) (*Reader, error) {
 	if err != nil {
 		return nil, err
 	}
-	return NewReader(file)
+	stat, err := file.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if stat.Size() == 0 {
+		return nil, fmt.Errorf("file is empty: %s", path)
+	}
+	return NewReader(file, stat.Size())
 }
 
 func isEmptyFile(path string) (bool, error) {
@@ -110,7 +130,7 @@ func isReaderEmpty(reader io.ReaderAt) (bool, error) {
 	return len(buf) == 0, nil
 }
 
-func NewReader(reader io.ReaderAt) (*Reader, error) {
+func NewReader(reader io.ReaderAt, fileSize int64) (*Reader, error) {
 	empty, err := isReaderEmpty(reader)
 	if err != nil {
 		return nil, fmt.Errorf("failed to check if reader is empty: %w", err)
@@ -128,7 +148,139 @@ func NewReader(reader io.ReaderAt) (*Reader, error) {
 	r.meta = meta
 	r.prefixToOffset = prefixToOffset
 	r.prefixToSize = calcSizeOfBuckets(*prefixToOffset)
-	r.contentReader = io.NewSectionReader(reader, headerTotalSize, 1<<63-1)
+	r.headerTotalSize = headerTotalSize
+	r.contentReader = io.NewSectionReader(reader, headerTotalSize, fileSize-headerTotalSize)
+
+	type fileDescriptor interface {
+		Fd() uintptr
+		Name() string
+	}
+	if f, ok := reader.(fileDescriptor); ok {
+		// fadvise random access pattern for the whole file
+		err := unix.Fadvise(int(f.Fd()), 0, 0, unix.FADV_RANDOM)
+		if err != nil {
+			slog.Warn("fadvise(RANDOM) failed", "error", err)
+		}
+		{
+			slog.Info("Warming up drives for bucket offsets (bucketteer)...", "file", f.Name())
+			startedWarmup := time.Now()
+			dummyBuf := make([]byte, 1)
+			warmedBuckets := 0
+			for _, offset := range *r.prefixToOffset {
+				if offset != math.MaxUint64 {
+					if _, err := r.contentReader.ReadAt(dummyBuf, int64(offset)); err != nil {
+						if !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
+							slog.Warn("Cache warmup read failed", "offset", offset, "error", err)
+						}
+					}
+					warmedBuckets++
+				}
+			}
+			slog.Info(
+				"Drive warmup complete",
+				"buckets_warmed", warmedBuckets,
+				"duration", time.Since(startedWarmup).String(),
+				"file", f.Name(),
+			)
+		}
+	} else {
+		slog.Warn("Reader does not have an Fd(); cannot use posix_fadvise to manage cache.")
+	}
+
+	// if klog.V(4).Enabled() {
+	// 	// debug: print all prefixes and their offsets and sizes
+	// 	sizeSum := uint64(0)
+	// 	for prefix, offset := range *prefixToOffset {
+	// 		if offset == math.MaxUint64 {
+	// 			continue
+	// 		}
+	// 		prefixAsUint16 := uint16(prefix)
+	// 		size, ok := r.prefixToSize[prefixAsUint16]
+	// 		if !ok {
+	// 			continue
+	// 		}
+	// 		sizeSum += size
+	// 	}
+
+	// 	// try reading one random bucket andtime it
+	// 	startedReadAt := time.Now()
+	// 	prefix := uint16(0x1234)
+	// 	offset := r.prefixToOffset[prefix]
+	// 	if offset != math.MaxUint64 {
+	// 		size, ok := r.prefixToSize[prefix]
+	// 		if ok && size > 0 {
+	// 			bucketReader := io.NewSectionReader(r.contentReader, int64(offset)+4, int64(size-4))
+	// 			buf := make([]byte, size-4)
+	// 			_, err := bucketReader.Read(buf)
+	// 			if err != nil {
+	// 				return nil, fmt.Errorf("failed to read bucket for prefix %x: %w", uint16ToPrefix(prefix), err)
+	// 			}
+	// 			slog.Info(
+	// 				"debug_read_bucket",
+	// 				"prefix", uint16ToPrefix(prefix),
+	// 				"offset", offset,
+	// 				"size", size,
+	// 				"duration", time.Since(startedReadAt).String(),
+	// 			)
+	// 		}
+	// 	}
+	// 	latencies := make([]time.Duration, 0)
+	// 	for range 50 {
+	// 		// now do a search in the bucket
+	// 		sig := [64]byte{}
+	// 		rand.Read(sig[:])
+	// 		startedSearchAt := time.Now()
+	// 		found, err := r.Has(sig)
+	// 		if err != nil {
+	// 			return nil, fmt.Errorf("failed to search in bucket for prefix %x: %w", uint16ToPrefix(prefix), err)
+	// 		}
+	// 		dur := time.Since(startedSearchAt)
+	// 		slog.Info(
+	// 			"debug_search_bucket",
+	// 			"prefix", uint16ToPrefix(prefix),
+	// 			"found", found,
+	// 			"duration", dur.String(),
+	// 		)
+	// 		latencies = append(latencies, dur)
+	// 	}
+	// 	{
+	// 		sig := solana.MustSignatureFromBase58("2oSE6aiUGWCXUupFnYHgjofV8VSARaUepNDJ3vj2NCK2zFFUNNP6cinjy56vgGXD4WYrKWRkRFcvvC41TgRHM5ML")
+	// 		startedSearchAt := time.Now()
+	// 		found, err := r.Has(sig)
+	// 		if err != nil {
+	// 			return nil, fmt.Errorf("failed to search in bucket for prefix %x: %w", uint16ToPrefix(prefix), err)
+	// 		}
+	// 		dur := time.Since(startedSearchAt)
+	// 		slog.Info(
+	// 			"debug_search_bucket_known_sig",
+	// 			"prefix", uint16ToPrefix(prefix),
+	// 			"found", found,
+	// 			"duration", dur.String(),
+	// 		)
+	// 		if !found {
+	// 			return nil, fmt.Errorf("known signature not found in bucket for prefix %x", uint16ToPrefix(prefix))
+	// 		}
+	// 	}
+	// 	// porint all latencies
+	// 	totalLatency := time.Duration(0)
+	// 	for _, lat := range latencies {
+	// 		totalLatency += lat
+	// 	}
+	// 	avgLatency := totalLatency / time.Duration(len(latencies))
+	// 	slog.Info(
+	// 		"debug_search_bucket_summary",
+	// 		"prefix", uint16ToPrefix(prefix),
+	// 		"num_searches", len(latencies),
+	// 		"average_duration", avgLatency.String(),
+	// 	)
+	// 	for _, lat := range latencies {
+	// 		slog.Info(
+	// 			"debug_search_bucket_latency",
+	// 			"prefix", uint16ToPrefix(prefix),
+	// 			"duration", lat.String(),
+	// 		)
+	// 	}
+	// }
 	return r, nil
 }
 
@@ -247,6 +399,7 @@ func readHeader(reader io.ReaderAt) (*bucketToOffset, *indexmeta.Meta, int64, er
 }
 
 func (r *Reader) Has(sig [64]byte) (bool, error) {
+	// start := time.Now()
 	prefix := [2]byte{sig[0], sig[1]}
 	offset := r.prefixToOffset[prefixToUint16(prefix)]
 	if offset == math.MaxUint64 {
@@ -254,8 +407,11 @@ func (r *Reader) Has(sig [64]byte) (bool, error) {
 		return false, nil
 	}
 	size, ok := r.prefixToSize[prefixToUint16(prefix)]
-	if !ok || size < 4 {
-		return false, fmt.Errorf("invalid bucket size for prefix %x", prefix)
+	if !ok || size == 0 {
+		return false, nil
+	}
+	if size < 4 {
+		return false, fmt.Errorf("invalid bucket size (%v) for prefix %x", size, prefix)
 	}
 	sizeMinus4 := size - 4
 	numHashes := sizeMinus4 / 8
@@ -263,30 +419,67 @@ func (r *Reader) Has(sig [64]byte) (bool, error) {
 		// Empty bucket.
 		return false, nil
 	}
-	bucketReader := io.NewSectionReader(r.contentReader, int64(offset)+4, int64(numHashes*8))
-
-	// hashes:
-	wantedHash := Hash(sig)
-	got, err := searchEytzinger(0, int(numHashes), wantedHash, func(index int) (uint64, error) {
-		pos := int64(index * 8)
-		return readUint64Le(bucketReader, pos)
-	})
-	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			return false, nil
-		}
-		return false, err
+	// if remainer, then size is invalid
+	if sizeMinus4%8 != 0 {
+		return false, fmt.Errorf("invalid bucket size for prefix %x: size minus 4 is not multiple of 8", prefix)
 	}
-	return got == wantedHash, nil
+	// slog.Info(
+	// 	"has_lookup_bucket_details",
+	// 	"prefix", prefix,
+	// 	"offset", offset,
+	// 	"size", size,
+	// 	"num_hashes", numHashes,
+	// 	"duration", time.Since(start).String(),
+	// )
+	// startSectionReaderGet := time.Now()
+	// bucketReader := r.sectionReaders[prefixToUint16(prefix)]
+	// bucketReader := io.NewSectionReader(r.contentReader, int64(offset)+4, int64(numHashes*8))
+	bucketReader := io.NewSectionReader(r.contentReader, int64(offset+4), int64(size-4))
+	{
+		// startReadWhole := time.Now()
+		wholeBucketBuf := bytebufferpool.Get()
+		defer bytebufferpool.Put(wholeBucketBuf)
+		wholeBucketBuf.Reset()
+		// wholeBucketBuf := make([]byte, sizeMinus4)
+		_, err := wholeBucketBuf.ReadFrom(bucketReader)
+		if err != nil {
+			return false, fmt.Errorf("failed to read whole bucket for prefix %x: %w", prefix, err)
+		}
+		// tookReadWhole := time.Since(startReadWhole)
+		// create zero-copy []uint64 from wholeBucketBuf
+		hashes := unsafe.Slice((*uint64)(unsafe.Pointer(&wholeBucketBuf.B[0])), numHashes)
+		wantedHash := Hash(sig)
+		foundHash, err := searchEytzingerSlice(hashes, wantedHash)
+		// slog.Info(
+		// 	"has_lookup_bucket_search_whole",
+		// 	"prefix", prefix,
+		// 	"offset", offset,
+		// 	"size", size,
+		// 	"num_hashes", numHashes,
+		// 	"wanted_hash", wantedHash,
+		// 	"found_hash", foundHash,
+		// 	"duration", time.Since(start).String(),
+		// 	"duration_read_whole", tookReadWhole.String(),
+		// 	"duration_section_reader_get", time.Since(startSectionReaderGet).String(),
+		// )
+		if err != nil {
+			if errors.Is(err, ErrNotFound) {
+				return false, nil
+			}
+			return false, err
+		}
+		if foundHash == wantedHash {
+			return true, nil
+		}
+		return false, nil
+	}
 }
 
-func searchEytzinger(min int, max int, x uint64, getter func(int) (uint64, error)) (uint64, error) {
+func searchEytzingerSlice(hashes []uint64, x uint64) (uint64, error) {
 	var index int
+	max := len(hashes)
 	for index < max {
-		k, err := getter(index)
-		if err != nil {
-			return 0, err
-		}
+		k := hashes[index]
 		if k == x {
 			return k, nil
 		}
@@ -298,13 +491,13 @@ func searchEytzinger(min int, max int, x uint64, getter func(int) (uint64, error
 	return 0, ErrNotFound
 }
 
-var ErrNotFound = fmt.Errorf("not found")
-
-func readUint64Le(reader io.ReaderAt, pos int64) (uint64, error) {
-	buf := make([]byte, 8)
-	_, err := reader.ReadAt(buf, pos)
-	if err != nil {
-		return 0, err
+func init() {
+	// panic if os is big endian
+	var i uint16 = 0x1
+	bs := (*[2]byte)(unsafe.Pointer(&i))
+	if bs[0] == 0 {
+		panic("big endian not supported")
 	}
-	return binary.LittleEndian.Uint64(buf), nil
 }
+
+var ErrNotFound = fmt.Errorf("not found")

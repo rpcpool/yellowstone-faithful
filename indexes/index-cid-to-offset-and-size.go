@@ -194,7 +194,3 @@ func (r *CidToOffsetAndSize_Reader) Close() error {
 func (r *CidToOffsetAndSize_Reader) Meta() *Metadata {
 	return r.meta
 }
-
-func (r *CidToOffsetAndSize_Reader) Prefetch(b bool) {
-	r.index.Prefetch(b)
-}

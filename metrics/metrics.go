@@ -1,6 +1,8 @@
 package metrics
 
 import (
+	"log"
+	"net"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -140,7 +142,8 @@ var IndexLookupTotal = promauto.NewCounterVec(
 
 var latencyBuckets = []float64{
 	// fractional seconds from 0 to 1, with increments of 0.05 (= 50 ms)
-	0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45,
+	0, 0.025,
+	0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45,
 	0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95,
 	1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5, 10,
 }
@@ -151,3 +154,54 @@ var ErrBlockNotFound = promauto.NewCounter(
 		Help: "A block was not found because either skipped or not available in current set of epochs",
 	},
 )
+
+var diskCollectorInstance *diskCollector
+
+func init() {
+	diskCollectorInstance = NewDiskCollector(nil)
+	prometheus.MustRegister(diskCollectorInstance)
+}
+
+func MaybeAddDiskDevice(device string) {
+	if diskCollectorInstance != nil {
+		diskCollectorInstance.AddDevice(device)
+	}
+}
+
+var RemoteFileHttpRequestsTotal = promauto.NewCounterVec(
+	prometheus.CounterOpts{
+		Name: "splitcarfetcher_http_requests_total",
+		Help: "Total number of HTTP requests made by splitcarfetcher.",
+	},
+	[]string{"method", "code"},
+)
+
+func init() {
+	{
+		ifaces := []string{"enp193s0f0np0", "eth0", "enp0s3", "en0"}
+		for _, iface := range ifaces {
+			if isInterfaceAvailable(iface) {
+				netCollector := NewNetCollector([]string{iface})
+				prometheus.MustRegister(netCollector)
+				break
+			}
+		}
+	}
+}
+
+// isInterfaceAvailable checks if a network interface with the given name exists.
+// bash command to list interfaces: ip link show
+func isInterfaceAvailable(name string) bool {
+	interfaces, err := net.Interfaces()
+	if err != nil {
+		log.Printf("Error getting network interfaces: %v", err)
+		return false
+	}
+
+	for _, iface := range interfaces {
+		if iface.Name == name {
+			return true
+		}
+	}
+	return false
+}

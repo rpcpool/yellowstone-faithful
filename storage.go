@@ -4,12 +4,14 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/ipfs/go-cid"
 	carv2 "github.com/ipld/go-car/v2"
 	"github.com/rpcpool/yellowstone-faithful/carreader"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
+	"github.com/rpcpool/yellowstone-faithful/metrics"
 	splitcarfetcher "github.com/rpcpool/yellowstone-faithful/split-car-fetcher"
 	"github.com/rpcpool/yellowstone-faithful/tooling"
 	"golang.org/x/exp/mmap"
@@ -28,39 +30,55 @@ func openIndexStorage(
 	ctx context.Context,
 	where string,
 	useMmapForLocalIndexes bool,
-) (carreader.ReaderAtCloser, error) {
+) (carreader.ReaderAtCloser, int64, error) {
 	where = strings.TrimSpace(where)
 	if isHTTP(where) {
 		klog.Infof("opening index file from %q as HTTP remote file", where)
 		rac, size, err := splitcarfetcher.NewRemoteHTTPFileAsIoReaderAt(ctx, where)
 		if err != nil {
-			return nil, fmt.Errorf("failed to open remote index file %q: %w", where, err)
+			return nil, -1, fmt.Errorf("failed to open remote index file %q: %w", where, err)
 		}
 		if !klog.V(5).Enabled() {
-			return rac, nil
+			return rac, size, nil
 		}
-		return &readCloserWrapper{
+		return &readCloserWrapperForStats{
 			rac:      rac,
 			name:     where,
 			isRemote: true,
 			size:     size,
-		}, nil
+		}, size, nil
 	}
-	rac, err := openMMapFile(where, useMmapForLocalIndexes)
+	stat, err := os.Stat(where)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open local index file: %w", err)
+		return nil, -1, fmt.Errorf("failed to stat local index file %q: %w", where, err)
+	}
+	size := stat.Size()
+	if size == 0 {
+		return nil, -1, fmt.Errorf("local index file %q is empty", where)
+	}
+	rac, err := openFile(where, useMmapForLocalIndexes)
+	if err != nil {
+		return nil, -1, fmt.Errorf("failed to open local index file: %w", err)
 	}
 	if !klog.V(5).Enabled() {
-		return rac, nil
+		return rac, size, nil
 	}
-	return &readCloserWrapper{
+	{
+		device, err := metrics.GetDeviceForDirectory(filepath.Dir(where))
+		if err != nil {
+			klog.Warningf("failed to get device for directory %q: %v", filepath.Dir(where), err)
+		} else {
+			metrics.MaybeAddDiskDevice(device)
+		}
+	}
+	return &readCloserWrapperForStats{
 		rac:      rac,
 		name:     where,
 		isRemote: false,
-	}, nil
+	}, size, nil
 }
 
-func openMMapFile(filePath string, useMmap bool) (carreader.ReaderAtCloser, error) {
+func openFile(filePath string, useMmap bool) (carreader.ReaderAtCloser, error) {
 	if useMmap {
 		return mmap.Open(filePath)
 	}
@@ -79,13 +97,20 @@ func openCarStorage(
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to open remote CAR file %q: %w", where, err)
 		}
-		return nil, &readCloserWrapper{
+		return nil, &readCloserWrapperForStats{
 			rac:  rem,
 			name: where,
 			size: size,
 		}, nil
 	}
-
+	{
+		device, err := metrics.GetDeviceForDirectory(filepath.Dir(where))
+		if err != nil {
+			klog.Warningf("failed to get device for directory %q: %v", filepath.Dir(where), err)
+		} else {
+			metrics.MaybeAddDiskDevice(device)
+		}
+	}
 	if useMmap {
 		carReader, err := carv2.OpenReader(where)
 		if err != nil {
