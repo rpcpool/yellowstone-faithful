@@ -72,7 +72,12 @@ func main() {
 		panic(err)
 	}
 	defer mmr.Close()
-	buRd, err := bucketteer.NewReader(mmr)
+	info, err := os.Stat(file)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println("file size:", humanize.Comma(info.Size()))
+	buRd, err := bucketteer.NewReader(mmr, info.Size())
 	if err != nil {
 		panic(err)
 	}
