@@ -25,28 +25,30 @@ import (
 	"time"
 
 	jd "github.com/josephburnett/jd/v2"
+	"github.com/rpcpool/yellowstone-faithful/slottools"
 )
 
 // Config holds the command line arguments
 type Config struct {
-	RefRPC          string
-	TargetRPC       string
-	SlotsPerEpoch   int
-	MaxTxsToCheck   int
-	Verbose         bool
-	SlotsInEpoch    int64 // Standard Solana slots per epoch
-	StopOnDiff      bool
-	FullSig         bool
-	SkipEpochs      FlagUint64Slice
-	RunGRPCLoadTest bool
-	GRPCTarget      string
-	GRPCToken       string
-	GRPCProto       string
-	GRPCConcurrency int
-	RunTxLoadTest   bool
-	TxConcurrency   int
-	MetricsURL      string
-	WebPort         int
+	RefRPC               string
+	TargetRPC            string
+	SlotsPerEpoch        int
+	MaxTxsToCheck        int
+	Verbose              bool
+	SlotsInEpoch         int64 // Standard Solana slots per epoch
+	StopOnDiff           bool
+	FullSig              bool
+	SkipEpochs           FlagUint64Slice
+	IgnoreCompatibleLogs bool
+	RunGRPCLoadTest      bool
+	GRPCTarget           string
+	GRPCToken            string
+	GRPCProto            string
+	GRPCConcurrency      int
+	RunTxLoadTest        bool
+	TxConcurrency        int
+	MetricsURL           string
+	WebPort              int
 }
 
 // EpochResponse matches the structure {"epochs":[...]}
@@ -121,6 +123,7 @@ func main() {
 	flag.StringVar(&cfg.MetricsURL, "metrics-url", "", "URL to fetch Prometheus metrics from (e.g. http://localhost:8080/metrics)")
 	flag.IntVar(&cfg.WebPort, "web-port", 3000, "Port to serve the metrics dashboard")
 	flag.Var(&cfg.SkipEpochs, "skip-epoch", "Epoch number to skip (can be specified multiple times)")
+	flag.BoolVar(&cfg.IgnoreCompatibleLogs, "ignore-compatible-logs", false, "Ignore differences in compatible logs between ref and target")
 	flag.Parse()
 
 	// Configure logger to remove timestamps for cleaner output (we can add them back if strictly needed,
@@ -318,8 +321,9 @@ func processSlot(client *http.Client, cfg Config, slot uint64) {
 	// 4. Fetch Block from Target (now that Txs are checked)
 	targetBlock, targetLat, targetErr := callRPC(ctx, client, cfg.TargetRPC, "getBlock", params)
 
+	epoch := slottools.CalcEpochForSlot(slot)
 	// Log Slot Header with Latency (now that we have both)
-	logLatency(fmt.Sprintf("📦 SLOT %d", slot), refLat, targetLat)
+	logLatency(fmt.Sprintf("(epoch %v) 📦 SLOT %d", epoch, slot), refLat, targetLat)
 
 	// Handle availability issues
 	if targetErr != nil {
@@ -333,7 +337,7 @@ func processSlot(client *http.Client, cfg Config, slot uint64) {
 	json.Unmarshal(targetBlock, &targetData)
 
 	if !reflect.DeepEqual(refData, targetData) {
-		compareJSON(refBlock, targetBlock, fmt.Sprintf("Block %d", slot), cfg.StopOnDiff)
+		compareJSON(refBlock, targetBlock, fmt.Sprintf("Block %d", slot), cfg.StopOnDiff, cfg.IgnoreCompatibleLogs)
 	} else if cfg.Verbose {
 		log.Printf("   ✅ Content Match")
 	}
@@ -369,7 +373,7 @@ func compareTransaction(client *http.Client, cfg Config, signature string) {
 	json.Unmarshal(targetTx, &targetData)
 
 	if !reflect.DeepEqual(refData, targetData) {
-		compareJSON(refTx, targetTx, signature, cfg.StopOnDiff)
+		compareJSON(refTx, targetTx, signature, cfg.StopOnDiff, cfg.IgnoreCompatibleLogs)
 	} else if cfg.Verbose {
 		log.Printf("      ✅ Match")
 	}
@@ -463,7 +467,7 @@ func logLatency(label string, ref, target time.Duration) {
 		paddedLabel, refMs, targetMs, diffMs, factor, perfStatus)
 }
 
-func compareJSON(ref []byte, target []byte, label string, stopOnDiff bool) {
+func compareJSON(ref []byte, target []byte, label string, stopOnDiff, ignoreCompatibleLogs bool) {
 	// Pre-process to scrub fields
 	var refObj, targetObj interface{}
 	if err := json.Unmarshal(ref, &refObj); err != nil {
@@ -477,7 +481,9 @@ func compareJSON(ref []byte, target []byte, label string, stopOnDiff bool) {
 
 	scrubKey(refObj, "stackHeight")
 	scrubKey(targetObj, "stackHeight")
-	scrubCompatibleLogs(refObj, targetObj)
+	if ignoreCompatibleLogs {
+		scrubCompatibleLogs(refObj, targetObj)
+	}
 	scrubKey(targetObj, "position")
 	scrubKey(refObj, "rewards")
 	scrubKey(targetObj, "rewards")
