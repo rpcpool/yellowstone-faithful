@@ -1493,7 +1493,7 @@ This means that during replay, you can reproduce the bank hashes.
 
 ## Performing your own validation of Epoch 208
 
-Currently, Triton One and Anza Labs have validated epoch 208. We encourage other parties to run their own validation. The tooling is basic but should enable you to re‑run the validation completely. You will need access to the required slots of a Google Bigtable archive (or other archive).
+Currently, Triton One and Anza Labs have validated Epoch 208. We encourage other parties to run their own validation. The tooling is basic but should enable you to re‑run the validation completely. You will need access to the required slots of a Google Bigtable archive (or other archive).
 
 ### Pre‑requisites
 
