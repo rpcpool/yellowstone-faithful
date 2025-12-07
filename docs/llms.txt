@@ -22,7 +22,7 @@ generates follow a schema specifically developed for Solana’s
 historical archives.
 
     The content's addressable nature means that each epoch, block, transaction, 
-and shredding is uniquely identified by a content hash. By knowing this content 
+and shred is uniquely identified by a content hash. By knowing this content 
 hash, a user can retrieve a specific object of interest in a trustless manner, 
 i.e., retrieve an object verifiably from a non‑trusted source.  
 
