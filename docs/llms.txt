@@ -1665,3 +1665,144 @@ After running this process, the `$WORKING_DIR_E208/ledger-after-gap/89865552/` d
 
 The two archive files, however, are slightly different in size since the process isn’t precisely reproducible regarding the specific compressed file. If used on the two snapshot-*.tar.zst files, SHA256SUM will return two different hashes. However, if compared, the contents (account states) are the same.
 
+
+# Examples
+
+Token Optional
+
+The `x-token` header is only required if you have enabled it in the configuration or you are accessing a hosted Old Faithful version that requires it.
+
+## Protocol File
+
+All `grpcurl` commands require the proto file to be passed. You can find it in the Old Faithful repository.
+
+## Unary Methods
+
+Unary commands return a single response. They are similar to standard JSON‑RPC methods, but you can send an arbitrary number of messages over a persistent, bi‑direction connection.
+
+### OldFaithful.OldFaithful/GetVersion
+
+```bash
+grpcurl \
+  -proto old-faithful.proto \
+  -d '' \
+  -H 'x-token: <redacted-token>' \
+  customer-endpoint-2608.mainnet.rpcpool.com:443 \
+  OldFaithful.OldFaithful/GetVersion
+```
+
+### OldFaithful.OldFaithful/GetBlockTime
+
+```bash
+grpcurl \
+  -proto old-faithful.proto \
+  -H 'x-token: <redacted-token>' \
+  -d '{"slot": 307152000}' \
+  customer-endpoint-2608.mainnet.rpcpool.com:443 \
+  OldFaithful.OldFaithful/GetBlockTime
+```
+
+### OldFaithful.OldFaithful/GetBlock
+
+```bash
+grpcurl \
+  -proto old-faithful.proto \
+  -H 'x-token: <redacted-token>' \
+  -d '{"slot": 307152000}' \
+  customer-endpoint-2608.mainnet.rpcpool.com:443 \
+  OldFaithful.OldFaithful/GetBlock
+```
+
+### OldFaithful.OldFaithful/GetTransaction
+
+```bash
+grpcurl \
+  -proto old-faithful.proto \
+  -H 'x-token: <redacted-token>' \
+  -d '{"signature": "GbXoI+D7hhgeiUwovUhtaxog6zsxFcd5PKfhQM85GR6+NqmiFmQDf9cCCVj8BRj+DR1RvgR/E2E/ckbSGuQKCg=="}' \
+  customer-endpoint-2608.mainnet.rpcpool.com:443 \
+  OldFaithful.OldFaithful/GetTransaction
+```
+
+## Streaming Methods
+
+Streaming methods will stream the response to the client. These methods allow you to retrieve data in large contiguous chunks, scoped by a `start_slot` and `end_slot` parameter.
+
+Streaming commands also support a filter that will reduce the messages you receive.
+
+### OldFaithful.OldFaithful/StreamBlocks
+
+The following filters are available for `StreamBlocks`:
+
+- `account_include`: Array of base58 strings
+
+#### No Filters
+
+```bash
+grpcurl \
+  -proto old-faithful.proto \
+  -H 'x-token: <redacted-token>' \
+  -d '{"start_slot": 307152000, "end_slot": 307152010}' \
+  customer-endpoint-2608.mainnet.rpcpool.com:443 \
+  OldFaithful.OldFaithful/StreamBlocks
+```
+
+#### Filtered
+
+```bash
+grpcurl \
+  -proto old-faithful.proto \
+  -H 'x-token: <redacted-token>' \
+  -d '{"start_slot": 307152000, "end_slot": 307152010, "filter": {"account_include": ["Vote111111111111111111111111111111111111111"]}}' \
+  customer-endpoint-2608.mainnet.rpcpool.com:443 \
+  OldFaithful.OldFaithful/StreamBlocks
+```
+
+### OldFaithful.OldFaithful/StreamTransactions
+
+The following filters are available for `StreamTransactions`:
+
+- `vote`: boolean
+- `failed`: boolean
+- `account_include`: Array of base58 strings
+- `account_exclude`: Array of base58 strings
+- `account_required`: Array of base58 strings
+
+#### No Filters
+
+```bash
+grpcurl \
+  -proto old-faithful.proto \
+  -H 'x-token: <redacted-token>' \
+  -d '{"start_slot": 307152000, "end_slot": 307152010}' \
+  customer-endpoint-2608.mainnet.rpcpool.com:443 \
+  OldFaithful.OldFaithful/StreamTransactions
+```
+
+# Architecture
+
+This short page in the Old Faithful documentation serves as a landing
+page for the project’s architecture section. It simply links to two
+sub‑pages that describe how the system organizes data:
+
+- **CAR's & CID's** – explains content identifiers (CIDs) and how they
+  make CAR files verifiable and reproducible across different nodes and
+  storage backends.
+- **Indexes** – outlines the four core index types (slot‑to‑cid,
+  tx‑to‑cid, cid‑to‑offset‑and‑size and sig‑exists) plus the GSFA index
+  used for `getSignaturesForAddress` queries.
+
+These links point to the pages already included above, so readers can
+dive deeper into the architecture details there.
+
+#### Filtered
+
+```bash
+grpcurl \
+  -proto old-faithful.proto \
+  -H 'x-token: <redacted-token>' \
+  -d '{"start_slot": 307152000, "end_slot": 307152010, "filter": {"vote": false, "failed": true}}' \
+  customer-endpoint-2608.mainnet.rpcpool.com:443 \
+  OldFaithful.OldFaithful/StreamTransactions
+```
+
