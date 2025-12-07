@@ -16,7 +16,7 @@ using a standard RPC/gRPC interface.
     ## Content Addressable Archives (CAR's)
 
     The core of the Old Faithful is history archives in Content Addressable 
-aRchives (CAR) format (overview, specs). These represent a 
+Archives (CAR) format (overview, specs). These represent a 
 verifiable, immutable view of Solana's history. The CAR files that this project 
 generates follow a schema specifically developed for Solana’s 
 historical archives.
