@@ -1184,7 +1184,7 @@ been validated in the normal Old Faithful process.
     ```
 
     The latest account state snapshot before the missing slots is at slot 
-8985546. https://storage.googleapis.com/mainnet-beta-ledger-us-ny5/89855469/snapshot-89855469-9i59TwLmzXvbomizFZNuXgPygtx8zJ3P4nWDQuNxrTxK.tar.zst).
+89855469. https://storage.googleapis.com/mainnet-beta-ledger-us-ny5/89855469/snapshot-89855469-9i59TwLmzXvbomizFZNuXgPygtx8zJ3P4nWDQuNxrTxK.tar.zst).
 
     After the gap, the ledger snapshot at 
 https://storage.googleapis.com/mainnet-beta-ledger-us-ny5/89855469/rocksdb.tar.bz2 starts at 89856602. Ledger tool reports:
