@@ -139,8 +139,8 @@ var IndexLookupTotal = promauto.NewCounterVec(
 )
 
 var latencyBuckets = []float64{
-	0.05, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5, 
-	0.75, 1, 
+	0.05, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5,
+	0.75, 1,
 	2.5, 5,
 }
 
