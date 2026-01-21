@@ -1,0 +1,160 @@
+name: Epochs sampling tests
+
+on:
+  push:
+  #   branches: [ main ]
+  # pull_request:
+  #   branches: [ main ]
+  # workflow_dispatch:
+
+env:
+  GO_VERSION: '1.23'
+  NODE_VERSION: '20'
+  RUST_VERSION: 'stable'
+  EPOCH: 0
+  GRPC_CURL_VERSION: '1.8.9'
+  # tx signature from block 1
+  getTxSig: 39V8tR2Q8Ar3WwMBfVTRPFr7AakLHy5wp7skJNBL7ET6ARoikqc1TaMiuXEtHiNPLQKoeiVr5XnKH8QtjdonN4yM
+  getBlock: 1
+
+jobs:
+  sample-epochs:
+    name: Sample epochs
+    runs-on:
+      # this is a 'large runner' 16c 64GB 600GB disk
+      # disk is required to store the various index files we want to test
+      # https://docs.github.com/en/actions/how-tos/manage-runners/larger-runners/use-larger-runners
+      group: Faithful
+    timeout-minutes: 20
+
+    steps:
+    # this will be done by default from November 10, slows down CI runs
+    # https://github.com/actions/runner-images/issues/13213
+    - name: disable man-db
+      run: |
+        sudo rm /var/lib/man-db/auto-update
+
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 1
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: ${{ env.GO_VERSION }}
+
+    - name: Install system dependencies
+      run: |
+        sudo apt-get install -y \
+          build-essential \
+          libssl-dev \
+          pkg-config \
+          protobuf-compiler \
+          aria2
+
+    - name: Install grpcurl
+      run: |
+        wget -q https://github.com/fullstorydev/grpcurl/releases/download/v${{ env.GRPC_CURL_VERSION }}/grpcurl_${{ env.GRPC_CURL_VERSION }}_linux_x86_64.tar.gz
+        tar -xzf grpcurl_${{ env.GRPC_CURL_VERSION }}_linux_x86_64.tar.gz
+        sudo mv grpcurl /usr/local/bin/
+
+    - name: Download Go dependencies
+      run: go mod download
+
+    - name: Build faithful-cli binary
+      run: make
+
+    - name: Download sampled epoch indexes and prepare config files
+      run: |
+        HOSTNAME=https://files.old-faithful.net
+
+        # Get latest Solana epoch
+        LATEST_EPOCH=$(curl -s https://api.mainnet-beta.solana.com -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","id":1,"method":"getEpochInfo"}' | jq -r '.result.epoch')
+        echo "Latest epoch: $LATEST_EPOCH"
+
+        # Generate list of epochs: one per 100 (2, 102, 202, ..., latest), skipping epoch 0
+        EPOCHS=()
+        for ((i=2; i<=LATEST_EPOCH; i+=100)); do
+          EPOCHS+=($i)
+        done
+        # Ensure latest epoch is included (if not already)
+        if [[ ! " ${EPOCHS[@]} " =~ " ${LATEST_EPOCH} " ]]; then
+          EPOCHS+=($LATEST_EPOCH)
+        fi
+        # Sort and deduplicate, filter out epoch 0
+        EPOCHS=($(printf '%s\n' "${EPOCHS[@]}" | sort -n | uniq | grep -v '^0$'))
+        echo "Sampled epochs: ${EPOCHS[@]}"
+
+        # Function to download and configure a single epoch
+        process_epoch() {
+          local EPOCH=$1
+          local INDEX_FOLDER=/tmp/epoch$EPOCH
+          mkdir -p $INDEX_FOLDER
+
+          BAFY=$(curl $HOSTNAME/$EPOCH/epoch-$EPOCH.cid -s)
+          if [ -z "$BAFY" ] || [ "$BAFY" = "null" ]; then
+            echo "Warning: Could not fetch CID for epoch $EPOCH, skipping"
+            return 1
+          fi
+
+          INDEXES=(cid-to-offset-and-size slot-to-blocktime sig-to-cid sig-exists slot-to-cid)
+
+          for INDEX in "${INDEXES[@]}"; do
+            aria2c -x 16 -s 16 -q -d $INDEX_FOLDER \
+            "$HOSTNAME/$EPOCH/epoch-$EPOCH-$BAFY-mainnet-$INDEX.index" || return 1
+          done
+
+          cat << EOF > /tmp/epoch-$EPOCH.yml
+        epoch: $EPOCH
+        version: 1
+        data:
+          car:
+            uri: https://files.old-faithful.net/$EPOCH/epoch-$EPOCH.car
+          filecoin:
+            enable: false
+        indexes:
+          cid_to_offset_and_size:
+            uri: $(ls $INDEX_FOLDER/epoch-$EPOCH-$BAFY-mainnet-cid-to-offset-and-size.index)
+          slot_to_cid:
+            uri: $(ls $INDEX_FOLDER/epoch-$EPOCH-$BAFY-mainnet-slot-to-cid.index)
+          slot_to_blocktime:
+            uri: $(ls $INDEX_FOLDER/epoch-$EPOCH-$BAFY-mainnet-slot-to-blocktime.index)
+          sig_to_cid:
+            uri:  $(ls $INDEX_FOLDER/epoch-$EPOCH-$BAFY-mainnet-sig-to-cid.index)
+          sig_exists:
+            uri: $(ls $INDEX_FOLDER/epoch-$EPOCH-$BAFY-mainnet-sig-exists.index)
+        EOF
+
+          echo "Completed epoch $EPOCH"
+        }
+
+        # Export function for xargs
+        export -f process_epoch
+        export HOSTNAME
+
+        # Process all epochs in parallel using xargs
+        printf '%s\n' "${EPOCHS[@]}" | xargs -P 10 -I {} bash -c 'process_epoch {}'
+        echo "All epochs processed. Config files:"
+        ls -lh /tmp/epoch-*.yml
+        echo "Index folders:"
+        ls -lhd /tmp/epoch*/
+
+    - name: Start faithful-cli server
+      uses: JarvusInnovations/background-action@v1
+      with:
+        run: |
+          ./bin/faithful-cli -v=4 rpc --listen ":7999" --grpc-listen ":8999" -vv --watch /tmp/epoch-*.yml &
+        wait-on: http-get://localhost:7999/health
+        wait-for: 5s
+
+
+    - name: Run HTTP tests
+      run: |
+
+        sleep 5s
+
+        echo "getVersion"
+        curl localhost:7999 -H "Content-Type: application/json" -d '
+          {"jsonrpc":"2.0","id":1, "method":"getVersion"}
+          ' -s | jq -r .result.faithful
