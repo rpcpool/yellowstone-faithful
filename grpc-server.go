@@ -87,7 +87,7 @@ func DefaultGrpcServerConfig() *GrpcServerConfig {
 		ListenOn: "", // Must be set by the caller.
 		KeepAlive: GrpcServerKeepAliveConfig{
 			// ServerParameters:
-			MaxConnectionIdle: 5 * time.Minute,  // Close connections idle for 5 minutes.
+			MaxConnectionIdle: 15 * time.Minute, // Increased to 15m to prevent closure during sparse but long-running checks.
 			Time:              60 * time.Second, // Send a keepalive ping if idle for 60 seconds.
 			Timeout:           30 * time.Second, // Wait 30 seconds for the ping acknowledgment.
 			// EnforcementPolicy:
@@ -96,8 +96,9 @@ func DefaultGrpcServerConfig() *GrpcServerConfig {
 		},
 		MaxRecvMsgSize: 10 * MiB,  // Set a default max incoming message size of 10 MiB.
 		MaxSendMsgSize: 100 * MiB, // Set a default max outgoing message size of 100 MiB.
-		// Limit each client to 20 concurrent calls to prevent resource abuse.
-		MaxConcurrentStreams: 20,
+		// Limit each client to 250 concurrent calls.
+		// PREVIOUS: 20. This was likely the cause of freezes (Head-of-Line blocking on IO).
+		MaxConcurrentStreams: 250,
 	}
 }
 
@@ -491,6 +492,11 @@ func (multi *MultiEpoch) GetTransaction(ctx context.Context, params *old_faithfu
 	ctx, span := telemetry.StartSpan(ctx, "GetTransaction")
 	defer span.End()
 
+	// Ensure we don't leak resources if operations hang
+	// While the client *should* set a deadline, we ensure local cleanup happens.
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	if multi.CountEpochs() == 0 {
 		telemetry.RecordError(span, status.Error(codes.Internal, "no epochs available"), "No epochs available")
 		return nil, status.Errorf(codes.Internal, "no epochs available")
@@ -517,7 +523,11 @@ func (multi *MultiEpoch) GetTransaction(ctx context.Context, params *old_faithfu
 	}
 
 	span.SetAttributes(attribute.Int64("epoch_number", int64(epochNumber)))
-	klog.V(5).Infof("Found signature %s in epoch %d in %s", sig, epochNumber, time.Since(startedEpochLookupAt))
+	lookupDuration := time.Since(startedEpochLookupAt)
+	if lookupDuration > 5*time.Second {
+		klog.Warningf("Slow transaction lookup detected: signature %s took %v to find epoch %d", sig, lookupDuration, epochNumber)
+	}
+	klog.V(5).Infof("Found signature %s in epoch %d in %s", sig, epochNumber, lookupDuration)
 
 	_, getEpochSpan := telemetry.StartSpan(ctx, "GetEpochHandler")
 	epochHandler, err := multi.GetEpoch(uint64(epochNumber))
