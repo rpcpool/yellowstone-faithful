@@ -247,6 +247,7 @@ func readHeader(reader io.ReaderAt) (*bucketToOffset, *indexmeta.Meta, int64, er
 }
 
 func (r *Reader) Has(sig [64]byte) (bool, error) {
+	// start := time.Now()
 	prefix := [2]byte{sig[0], sig[1]}
 	offset := r.prefixToOffset[prefixToUint16(prefix)]
 	if offset == math.MaxUint64 {
@@ -254,14 +255,21 @@ func (r *Reader) Has(sig [64]byte) (bool, error) {
 		return false, nil
 	}
 	size, ok := r.prefixToSize[prefixToUint16(prefix)]
-	if !ok || size < 4 {
-		return false, fmt.Errorf("invalid bucket size for prefix %x", prefix)
+	if !ok || size == 0 {
+		return false, nil
+	}
+	if size < 4 {
+		return false, fmt.Errorf("invalid bucket size (%v) for prefix %x", size, prefix)
 	}
 	sizeMinus4 := size - 4
 	numHashes := sizeMinus4 / 8
 	if numHashes == 0 {
 		// Empty bucket.
 		return false, nil
+	}
+	// if remainer, then size is invalid
+	if sizeMinus4%8 != 0 {
+		return false, fmt.Errorf("invalid bucket size for prefix %x: size minus 4 is not multiple of 8", prefix)
 	}
 	bucketReader := io.NewSectionReader(r.contentReader, int64(offset)+4, int64(numHashes*8))
 
