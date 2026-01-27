@@ -576,7 +576,7 @@ func allowOnlyAsciiPrintable(s string) string {
 
 func isValidLocalMethod(method string) bool {
 	switch method {
-	case "getBlock", "getTransaction", "getSignaturesForAddress", "getBlockTime", "getGenesisHash", "getFirstAvailableBlock", "getSlot":
+	case "getBlock", "getTransaction", "getSignaturesForAddress", "getBlockTime", "getBlocks", "getGenesisHash", "getFirstAvailableBlock", "getSlot":
 		return true
 	default:
 		return false
@@ -585,6 +585,8 @@ func isValidLocalMethod(method string) bool {
 
 // jsonrpc2.RequestHandler interface
 func (ser *MultiEpoch) handleRequest(ctx context.Context, conn *requestContext, req *jsonrpc2.Request) (jerr *jsonrpc2.Error, err error) {
+	// log the method being called
+	klog.Infof("Handling JSON-RPC method: %s", req.Method)
 	switch req.Method {
 	case "getBlock":
 		spanCtx, span := telemetry.StartSpan(ctx, "jsonrpc.handleGetBlock")
@@ -612,6 +614,13 @@ func (ser *MultiEpoch) handleRequest(ctx context.Context, conn *requestContext, 
 		defer span.End()
 		pyroscope.TagWrapper(context.Background(), pyroscope.Labels("rpc_method", "getBlockTime"), func(ctx context.Context) {
 			jerr, err = ser.handleGetBlockTime(spanCtx, conn, req)
+		})
+		return jerr, err
+	case "getBlocks":
+		spanCtx, span := telemetry.StartSpan(ctx, "jsonrpc.handleGetBlocks")
+		defer span.End()
+		pyroscope.TagWrapper(context.Background(), pyroscope.Labels("rpc_method", "getBlocks"), func(ctx context.Context) {
+			jerr, err = ser.handleGetBlocks(spanCtx, conn, req)
 		})
 		return jerr, err
 	case "getGenesisHash":

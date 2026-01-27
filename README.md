@@ -16,6 +16,7 @@ This repo provides the `faithful-cli` command line interface. This tool allows y
   - getTransaction
   - getSignaturesForAddress
   - getBlockTime
+  - getBlocks
   - getGenesisHash (for epoch 0)
   - getFirstAvailableBlock
   - getSlot
@@ -23,7 +24,7 @@ This repo provides the `faithful-cli` command line interface. This tool allows y
 
 ## RPC server
 
-The RPC server is available via the `faithful-cli rpc` command. 
+The RPC server is available via the `faithful-cli rpc` command.
 
 The command accepts a list of [epoch config files](#epoch-configuration-files) and dirs as arguments. Each config file is specific for an epoch and provides the location of the block/transaction data and the indexes for that epoch. The indexes are used to map Solana block numbers, transaction signatures and addresses to their respective CIDs. The indexes are generated from the CAR file and can be generated via the `faithful-cli index` command (see [Index generation](#index-generation)).
 
@@ -106,6 +107,9 @@ indexes: # indexes section (required)
   gsfa: # getSignaturesForAddress index
     # optional; must be a local directory path.
     uri: '/media/runner/solana/indexes/epoch-0/gsfa/epoch-0-bafyreifljyxj55v6jycjf2y7tdibwwwqx75eqf5mn2thip2sswyc536zqq-gsfa.indexdir'
+  blocks: 
+    # required for getblocks
+    uri: '/media/runner/solana/indexes/epoch-0/epoch-0.slots.txt'
 ```
 
 NOTES:
@@ -251,12 +255,12 @@ DESCRIPTION:
    Create various kinds of indexes for CAR files.
 
 COMMANDS:
-   cid-to-offset  
-   slot-to-cid    
-   sig-to-cid     
+   cid-to-offset
+   slot-to-cid
+   sig-to-cid
    all            Create all the necessary indexes for a Solana epoch.
-   gsfa           
-   sig-exists     
+   gsfa
+   sig-exists
    help, h        Shows a list of commands or help for one command
 
 OPTIONS:

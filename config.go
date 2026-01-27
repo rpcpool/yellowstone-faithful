@@ -102,6 +102,9 @@ type Config struct {
 		SlotToBlocktime struct {
 			URI uri.URI `json:"uri" yaml:"uri"`
 		} `json:"slot_to_blocktime" yaml:"slot_to_blocktime"`
+		Blocks struct {
+			URI uri.URI `json:"uri" yaml:"uri"`
+		} `json:"blocks" yaml:"blocks"`
 	} `json:"indexes" yaml:"indexes"`
 	Genesis struct {
 		URI uri.URI `json:"uri" yaml:"uri"`

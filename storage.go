@@ -1,9 +1,13 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"fmt"
+	"io"
+	"log"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/ipfs/go-cid"
@@ -13,6 +17,7 @@ import (
 	splitcarfetcher "github.com/rpcpool/yellowstone-faithful/split-car-fetcher"
 	"github.com/rpcpool/yellowstone-faithful/tooling"
 	"golang.org/x/exp/mmap"
+	"golang.org/x/net/context/ctxhttp"
 	"k8s.io/klog/v2"
 )
 
@@ -136,4 +141,53 @@ func getTransactionAndMetaFromNode(
 		return transactionBuffer, uncompressedMeta, nil
 	}
 	return transactionBuffer, nil, nil
+}
+
+func openBlocksFile(
+	ctx context.Context,
+	where string,
+) ([]uint64, error) {
+	var reader io.ReadCloser
+	var err error
+
+	if isHTTP(where) {
+		klog.Infof("opening blocks file from %q as HTTP remote file", where)
+		resp, err := ctxhttp.Get(ctx, nil, where)
+		if err != nil {
+			return nil, fmt.Errorf("failed to open remote blocks file %q: %w", where, err)
+		}
+		reader = resp.Body
+	} else {
+		reader, err = os.Open(where)
+		if err != nil {
+			return nil, fmt.Errorf("failed to open local blocks file %q: %w", where, err)
+		}
+	}
+
+	defer reader.Close()
+
+	// @TODO preallocate 432,000 slots?
+	data := make([]uint64, 0)
+
+	// 3. Create a new scanner
+	scanner := bufio.NewScanner(reader)
+	// 4. Iterate through the file line by line
+	for scanner.Scan() {
+		line := scanner.Text() // This retrieves the line without the \n
+
+		// append line to list of uint64
+		// convert line to uint64
+		var slot uint64
+		slot, err := strconv.ParseUint(line, 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse slot %q: %w", line, err)
+		}
+		data = append(data, slot)
+	}
+
+	// 5. Check for errors during scanning
+	if err := scanner.Err(); err != nil {
+		log.Fatal(err)
+	}
+	return data, nil
 }
