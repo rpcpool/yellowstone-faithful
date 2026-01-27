@@ -447,3 +447,56 @@ func parseGetBlockTimeRequest(raw *json.RawMessage) (uint64, error) {
 	}
 	return uint64(blockRaw), nil
 }
+
+type GetBlocksRequest struct {
+	StartSlot  uint64 `json:"startSlot"`
+	EndSlot    uint64 `json:"endSlot"`
+	Commitment string `json:"commitment,omitempty"` // default: "finalized"
+}
+
+// Validate validates the request.
+func (req *GetBlocksRequest) Validate() error {
+	if req.StartSlot > req.EndSlot {
+		return fmt.Errorf("startSlot must be less than or equal to endSlot")
+	}
+	return nil
+}
+
+func parseGetBlocksRequest(raw *json.RawMessage) (*GetBlocksRequest, error) {
+	var params []any
+	if err := fasterJson.Unmarshal(*raw, &params); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal params: %w", err)
+	}
+	if len(params) < 2 {
+		return nil, fmt.Errorf("params must have at least two arguments")
+	}
+	startSlotRaw, ok := params[0].(float64)
+	if !ok {
+		return nil, fmt.Errorf("first argument must be a number, got %T", params[0])
+	}
+	endSlotRaw, ok := params[1].(float64)
+	if !ok {
+		return nil, fmt.Errorf("second argument must be a number, got %T", params[1])
+	}
+
+	out := &GetBlocksRequest{
+		StartSlot: uint64(startSlotRaw),
+		EndSlot:   uint64(endSlotRaw),
+	}
+	if len(params) > 2 {
+		optionsRaw, ok := params[2].(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("third argument must be an object, got %T", params[2])
+		}
+		if commitmentRaw, ok := optionsRaw["commitment"]; ok {
+			commitment, ok := commitmentRaw.(string)
+			if !ok {
+				return nil, fmt.Errorf("commitment must be a string, got %T", commitmentRaw)
+			}
+			out.Commitment = commitment
+		} else {
+			out.Commitment = "finalized"
+		}
+	}
+	return out, nil
+}
