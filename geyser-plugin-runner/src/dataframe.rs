@@ -46,14 +46,11 @@ impl DataFrame {
                 data_frame.kind = *kind as u64;
 
                 if *kind as u64 != Kind::DataFrame as u64 {
-                    return Err(Box::new(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        std::format!(
-                            "Wrong kind for DataFrame. Expected {:?}, got {:?}",
-                            Kind::DataFrame,
-                            kind
-                        ),
-                    )));
+                    return Err(Box::new(std::io::Error::other(std::format!(
+                        "Wrong kind for DataFrame. Expected {:?}, got {:?}",
+                        Kind::DataFrame,
+                        kind
+                    ))));
                 }
             }
             if let Some(serde_cbor::Value::Integer(hash)) = array.get(1) {
@@ -100,11 +97,11 @@ impl DataFrame {
 
         let mut map = serde_json::Map::new();
         map.insert("kind".to_string(), serde_json::Value::from(self.kind));
-        if self.hash.is_none() {
-            map.insert("hash".to_string(), serde_json::Value::Null);
-        } else {
-            let hash_as_string = self.hash.unwrap().to_string();
+        if let Some(hash) = self.hash {
+            let hash_as_string = hash.to_string();
             map.insert("hash".to_string(), serde_json::Value::from(hash_as_string));
+        } else {
+            map.insert("hash".to_string(), serde_json::Value::Null);
         }
         if self.index.is_none() {
             map.insert("index".to_string(), serde_json::Value::Null);

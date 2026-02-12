@@ -58,17 +58,17 @@ fn main() -> Result<(), Box<dyn Error>> {
         let mut todo_latest_entry_blockhash = solana_sdk::hash::Hash::default();
         loop {
             let nodes = reader.read_until_block().map_err(|err| {
-                Box::new(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    std::format!("Error reading until block: {:?}", err),
-                ))
+                Box::new(std::io::Error::other(std::format!(
+                    "Error reading until block: {:?}",
+                    err
+                )))
             })?;
             // println!("Nodes: {:?}", nodes.get_cids());
             let block = nodes.get_block().map_err(|err| {
-                Box::new(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    std::format!("Error reading block: {:?}", err),
-                ))
+                Box::new(std::io::Error::other(std::format!(
+                    "Error reading block: {:?}",
+                    err
+                )))
             })?;
 
             println!("Slot: {:?}", block.slot);
@@ -89,23 +89,20 @@ fn main() -> Result<(), Box<dyn Error>> {
                         {
                             let reassembled_metadata =
                                 nodes.reassemble_dataframes(transaction.metadata.clone()).map_err(|err| {
-                                    Box::new(std::io::Error::new(
-                                        std::io::ErrorKind::Other,
+                                    Box::new(std::io::Error::other(
                                         std::format!("Error reassembling metadata: {:?}", err),
                                     ))
                                 })?;
 
                             let decompressed = utils::decompress_zstd(reassembled_metadata.clone()).map_err(|err| {
-                                Box::new(std::io::Error::new(
-                                    std::io::ErrorKind::Other,
+                                Box::new(std::io::Error::other(
                                     std::format!("Error decompressing metadata: {:?}", err),
                                 ))
                             })?;
 
                             let metadata: solana_storage_proto::convert::generated::TransactionStatusMeta =
                                 prost_011::Message::decode(decompressed.as_slice()).map_err(|err| {
-                                    Box::new(std::io::Error::new(
-                                        std::io::ErrorKind::Other,
+                                    Box::new(std::io::Error::other(
                                         std::format!("Error decoding metadata: {:?}", err),
                                     ))
                                 })?;
@@ -113,8 +110,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
                             let as_native_metadata: solana_transaction_status::TransactionStatusMeta =
                                 metadata.try_into().map_err(|err| {
-                                    Box::new(std::io::Error::new(
-                                        std::io::ErrorKind::Other,
+                                    Box::new(std::io::Error::other(
                                         std::format!("Error converting metadata to native: {:?}", err),
                                     ))
                                 })?;
@@ -217,10 +213,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                                         lamports: this_block_reward.lamports,
                                         post_balance: this_block_reward.post_balance,
                                         // commission is Option<u8> , but this_block_reward.commission is string
-                                        commission: match this_block_reward.commission.parse::<u8>() {
-                                            Ok(commission) => Some(commission),
-                                            Err(_err) => None,
-                                        },
+                                        commission: this_block_reward.commission.parse::<u8>().ok(),
                                     };
                                     keyed_rewards.push((solana_sdk::pubkey::Pubkey::from_str(&this_block_reward.pubkey)?, reward));
                                 }
@@ -265,8 +258,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                             let decompressed = utils::decompress_zstd(reassembled)?;
 
                             this_block_rewards = prost_011::Message::decode(decompressed.as_slice()).map_err(|err| {
-                                Box::new(std::io::Error::new(
-                                    std::io::ErrorKind::Other,
+                                Box::new(std::io::Error::other(
                                     std::format!("Error decoding rewards: {:?}", err),
                                 ))
                             })?;
@@ -278,8 +270,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 }
                 Ok(())
             }).map_err(|err| {
-                Box::new(std::io::Error::new(
-                    std::io::ErrorKind::Other,
+                Box::new(std::io::Error::other(
                     std::format!("Error processing node: {:?}", err),
                 ))
             })?;
