@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 
 	bin "github.com/gagliardetto/binary"
 	"github.com/novifinancial/serde-reflection/serde-generate/runtime/golang/bincode"
@@ -4782,11 +4783,11 @@ func DeserializeStoredTransactionStatusMeta(deserializer serde.Deserializer) (St
 	} else {
 		return obj, fmt.Errorf("Failed to deserialize Fee: %w", err)
 	}
+	// TODO: also check if "input is too short" error
 	if val, err := deserialize_vector_u64(deserializer); err == nil {
 		obj.PreBalances = val
 	} else {
-		if errors.Is(err, io.EOF) {
-			deserializer.DecreaseContainerDepth()
+		if errors.Is(err, io.EOF) || strings.Contains(err.Error(), "input is too short") {
 			return obj, nil
 		}
 		return obj, fmt.Errorf("Failed to deserialize PreBalances: %w", err)
@@ -4794,8 +4795,7 @@ func DeserializeStoredTransactionStatusMeta(deserializer serde.Deserializer) (St
 	if val, err := deserialize_vector_u64(deserializer); err == nil {
 		obj.PostBalances = val
 	} else {
-		if errors.Is(err, io.EOF) {
-			deserializer.DecreaseContainerDepth()
+		if errors.Is(err, io.EOF) || strings.Contains(err.Error(), "input is too short") {
 			return obj, nil
 		}
 		return obj, fmt.Errorf("Failed to deserialize PostBalances: %w", err)
@@ -4805,26 +4805,41 @@ func DeserializeStoredTransactionStatusMeta(deserializer serde.Deserializer) (St
 	if val, err := deserialize_option_vector_InnerInstructions(deserializer); err == nil {
 		obj.InnerInstructions = val
 	} else {
+		if errors.Is(err, io.EOF) || strings.Contains(err.Error(), "input is too short") {
+			return obj, nil
+		}
 		return obj, nil
 	}
 	if val, err := deserialize_option_vector_str(deserializer); err == nil {
 		obj.LogMessages = val
 	} else {
+		if errors.Is(err, io.EOF) || strings.Contains(err.Error(), "input is too short") {
+			return obj, nil
+		}
 		return obj, nil
 	}
 	if val, err := deserialize_option_vector_TransactionTokenBalance(deserializer); err == nil {
 		obj.PreTokenBalances = val
 	} else {
+		if errors.Is(err, io.EOF) || strings.Contains(err.Error(), "input is too short") {
+			return obj, nil
+		}
 		return obj, nil
 	}
 	if val, err := deserialize_option_vector_TransactionTokenBalance(deserializer); err == nil {
 		obj.PostTokenBalances = val
 	} else {
+		if errors.Is(err, io.EOF) || strings.Contains(err.Error(), "input is too short") {
+			return obj, nil
+		}
 		return obj, fmt.Errorf("Failed to deserialize PostTokenBalances: %w", err)
 	}
 	if val, err := deserialize_option_vector_Reward(deserializer); err == nil {
 		obj.Rewards = val
 	} else {
+		if errors.Is(err, io.EOF) || strings.Contains(err.Error(), "input is too short") {
+			return obj, nil
+		}
 		return obj, fmt.Errorf("Failed to deserialize Rewards: %w", err)
 	}
 	if val, err := DeserializeLoadedAddresses(deserializer); err == nil {
