@@ -74,7 +74,8 @@ func (multi *MultiEpoch) findEpochNumberFromSignature(ctx context.Context, sig s
 		epochNumber := numbers[i]
 		jobGroup.Add(func(ctx context.Context) (uint64, error) {
 			if ctx.Err() != nil {
-				return 0, ctx.Err()
+				klog.Errorf("Context error while searching for signature %s in epoch %d: %v", sig, epochNumber, ctx.Err())
+				return 0, ErrNotFound // context error, return ErrNotFound to indicate not found
 			}
 			bucket, ok := buckets[epochNumber]
 			if !ok {
@@ -83,7 +84,8 @@ func (multi *MultiEpoch) findEpochNumberFromSignature(ctx context.Context, sig s
 			hasStartedAt := time.Now()
 			has, err := bucket.Has(sig)
 			if err != nil {
-				return 0, fmt.Errorf("failed to check if signature exists in bucket: %w", err)
+				klog.Errorf("Error checking signature %s in epoch %d: %v", sig, epochNumber, err)
+				return 0, ErrNotFound // treat error as not found, since we don't want one bad epoch to cause the whole search to fail
 			}
 			klog.V(4).Infof("Checked existence of signature %s in epoch %d in %s", sig, epochNumber, time.Since(hasStartedAt))
 			if !has {
@@ -92,7 +94,8 @@ func (multi *MultiEpoch) findEpochNumberFromSignature(ctx context.Context, sig s
 			startedGetEpochAt := time.Now()
 			epoch, err := multi.GetEpoch(epochNumber)
 			if err != nil {
-				return 0, fmt.Errorf("failed to get epoch %d: %w", epochNumber, err)
+				klog.Errorf("Error getting epoch handler for epoch %d: %v", epochNumber, err)
+				return 0, ErrNotFound // treat error as not found, since we don't want one bad epoch to cause the whole search to fail
 			}
 			klog.V(4).Infof("Retrieved epoch %d in %s", epochNumber, time.Since(startedGetEpochAt))
 			findCidFromSigStartedAt := time.Now()
