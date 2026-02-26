@@ -16,8 +16,6 @@ import (
 	"github.com/rpcpool/yellowstone-faithful/telemetry"
 	"github.com/sourcegraph/jsonrpc2"
 	"go.opentelemetry.io/otel/attribute"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 	"k8s.io/klog/v2"
 )
 
@@ -240,7 +238,10 @@ func (multi *MultiEpoch) handleGetTransaction(ctx context.Context, conn *request
 			blocktime, err := blocktimeIndex.Get(uint64(transactionNode.Slot))
 			blocktimeSpan.End()
 			if err != nil {
-				return nil, status.Errorf(codes.Internal, "Failed to get block: %v", err)
+				return &jsonrpc2.Error{
+					Code:    jsonrpc2.CodeInternalError,
+					Message: "Internal error",
+				}, errctx.Wrap(fmt.Errorf("failed to get block: %v", err), "GetTransaction_GetBlockTime")
 			}
 			if blocktime == 0 {
 				response.Null("blockTime")
