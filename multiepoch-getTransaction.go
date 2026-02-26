@@ -10,6 +10,7 @@ import (
 	"github.com/gagliardetto/solana-go"
 	"github.com/gagliardetto/solana-go/rpc"
 	"github.com/rpcpool/yellowstone-faithful/compactindexsized"
+	"github.com/rpcpool/yellowstone-faithful/errctx"
 	"github.com/rpcpool/yellowstone-faithful/nodetools"
 	solanatxmetaparsers "github.com/rpcpool/yellowstone-faithful/solana-tx-meta-parsers"
 	"github.com/rpcpool/yellowstone-faithful/telemetry"
@@ -133,7 +134,7 @@ func (multi *MultiEpoch) handleGetTransaction(ctx context.Context, conn *request
 		return &jsonrpc2.Error{
 			Code:    jsonrpc2.CodeInternalError,
 			Message: "no epochs available",
-		}, fmt.Errorf("no epochs available")
+		}, errctx.Wrap(fmt.Errorf("no epochs available"), "GetTransaction_NoEpochsAvailable")
 	}
 
 	params, err := parseGetTransactionRequest(req.Params)
@@ -141,13 +142,13 @@ func (multi *MultiEpoch) handleGetTransaction(ctx context.Context, conn *request
 		return &jsonrpc2.Error{
 			Code:    jsonrpc2.CodeInvalidParams,
 			Message: "Invalid params",
-		}, fmt.Errorf("failed to parse params: %w", err)
+		}, errctx.Wrap(fmt.Errorf("failed to parse params: %w", err), "GetTransaction_ParseParams")
 	}
 	if err := params.Validate(); err != nil {
 		return &jsonrpc2.Error{
 			Code:    jsonrpc2.CodeInvalidParams,
 			Message: err.Error(),
-		}, fmt.Errorf("failed to validate params: %w", err)
+		}, errctx.Wrap(fmt.Errorf("failed to validate params: %w", err), "GetTransaction_ValidateParams")
 	}
 
 	sig := params.Signature
@@ -164,12 +165,12 @@ func (multi *MultiEpoch) handleGetTransaction(ctx context.Context, conn *request
 			return &jsonrpc2.Error{
 				Code:    CodeNotFound,
 				Message: "Transaction not found",
-			}, fmt.Errorf("failed to find epoch number from signature %s: %w", sig, err)
+			}, errctx.Wrap(fmt.Errorf("failed to find epoch number from signature %s: %w", sig, err), "GetTransaction_FindEpochFromSignature_NotFound")
 		}
 		return &jsonrpc2.Error{
 			Code:    jsonrpc2.CodeInternalError,
 			Message: "Internal error",
-		}, fmt.Errorf("failed to get epoch for signature %s: %w", sig, err)
+		}, errctx.Wrap(fmt.Errorf("failed to get epoch for signature %s: %w", sig, err), "GetTransaction_FindEpochFromSignature")
 	}
 	klog.V(4).Infof("Found signature %s in epoch %d in %s", sig, epochNumber, time.Since(startedEpochLookupAt))
 
@@ -178,7 +179,7 @@ func (multi *MultiEpoch) handleGetTransaction(ctx context.Context, conn *request
 		return &jsonrpc2.Error{
 			Code:    CodeNotFound,
 			Message: fmt.Sprintf("Epoch %d is not available from this RPC", epochNumber),
-		}, fmt.Errorf("failed to get handler for epoch %d: %w", epochNumber, err)
+		}, errctx.Wrap(fmt.Errorf("failed to get handler for epoch %d: %w", epochNumber, err), "GetTransaction_GetEpochHandler")
 	}
 
 	// Start span for getting transaction from epoch
@@ -195,12 +196,12 @@ func (multi *MultiEpoch) handleGetTransaction(ctx context.Context, conn *request
 			return &jsonrpc2.Error{
 				Code:    CodeNotFound,
 				Message: "Transaction not found",
-			}, fmt.Errorf("transaction %s not found", sig)
+			}, errctx.Wrap(fmt.Errorf("transaction %s not found", sig), "GetTransaction_GetTransactionFromEpoch_NotFound")
 		}
 		return &jsonrpc2.Error{
 			Code:    jsonrpc2.CodeInternalError,
 			Message: "Internal error",
-		}, fmt.Errorf("failed to get Transaction: %w", err)
+		}, errctx.Wrap(fmt.Errorf("failed to get Transaction: %w", err), "GetTransaction_GetTransactionFromEpoch")
 	}
 	{
 		conn.ctx.Response.Header.Set("DAG-Root-CID", transactionCid.String())
@@ -214,7 +215,7 @@ func (multi *MultiEpoch) handleGetTransaction(ctx context.Context, conn *request
 		return &jsonrpc2.Error{
 			Code:    jsonrpc2.CodeInternalError,
 			Message: "Internal error",
-		}, fmt.Errorf("failed to decode transaction: %w", err)
+		}, errctx.Wrap(fmt.Errorf("failed to decode transaction: %w", err), "GetTransaction_ParseTransactionMeta")
 	}
 	out := solanatxmetaparsers.NewEncodedTransactionWithStatusMeta(
 		tx,
@@ -226,7 +227,7 @@ func (multi *MultiEpoch) handleGetTransaction(ctx context.Context, conn *request
 		return &jsonrpc2.Error{
 			Code:    jsonrpc2.CodeInternalError,
 			Message: "Internal error",
-		}, fmt.Errorf("failed to encode transaction: %w", err)
+		}, errctx.Wrap(fmt.Errorf("failed to encode transaction: %w", err), "GetTransaction_EncodeTransaction")
 	}
 
 	response.Uint("slot", uint64(transactionNode.Slot))
@@ -251,7 +252,7 @@ func (multi *MultiEpoch) handleGetTransaction(ctx context.Context, conn *request
 			return &jsonrpc2.Error{
 				Code:    jsonrpc2.CodeInternalError,
 				Message: "Internal error",
-			}, fmt.Errorf("failed to get blocktime: blocktime index is not available")
+			}, errctx.Wrap(fmt.Errorf("failed to get blocktime: blocktime index is not available"), "GetTransaction_GetBlockTime")
 		}
 	}
 
@@ -268,7 +269,7 @@ func (multi *MultiEpoch) handleGetTransaction(ctx context.Context, conn *request
 		response,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to reply: %w", err)
+		return nil, errctx.Wrap(fmt.Errorf("failed to reply: %w", err), "GetTransaction_Reply")
 	}
 	return nil, nil
 }
