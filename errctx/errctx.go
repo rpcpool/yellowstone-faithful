@@ -12,6 +12,7 @@ type ErrorWithLocation struct {
 	Location string
 }
 
+// Error implements the error interface.
 func (e *ErrorWithLocation) Error() string {
 	if e == nil {
 		return "<nil>"
@@ -19,6 +20,7 @@ func (e *ErrorWithLocation) Error() string {
 	return fmt.Sprintf("error at %s: %v", e.Location, e.Err)
 }
 
+// Unwrap enables compatibility with errors.Is and errors.As.
 func (e *ErrorWithLocation) Unwrap() error {
 	if e == nil {
 		return nil
