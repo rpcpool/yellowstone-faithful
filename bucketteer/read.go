@@ -1,3 +1,4 @@
+// read.go
 package bucketteer
 
 import (
@@ -133,7 +134,6 @@ func (r *Reader) CopyBucket(prefix [2]byte) (*bytes.Buffer, error) {
 	}
 
 	buf := bytes.NewBuffer(make([]byte, 0, size))
-	// Use explicit content boundaries.
 	section := io.NewSectionReader(r.contentReader, int64(offset), int64(size))
 	_, err := io.Copy(buf, section)
 	return buf, err
