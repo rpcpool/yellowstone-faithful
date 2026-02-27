@@ -58,7 +58,9 @@ func TestFilterStateMachine(t *testing.T) {
 		{
 			name: "Account Include - No Match -> Exclude",
 			filter: &StreamTransactionsFilterExecutable{
-				AccountInclude: solana.PublicKeySlice{pk1},
+				AccountInclude: map[solana.PublicKey]struct{}{
+					pk1: {},
+				},
 			},
 			tx:             makeMockTx([]solana.PublicKey{pk2}, false),
 			expectExcluded: true,
@@ -66,7 +68,9 @@ func TestFilterStateMachine(t *testing.T) {
 		{
 			name: "Account Exclude - Match -> Exclude",
 			filter: &StreamTransactionsFilterExecutable{
-				AccountExclude: solana.PublicKeySlice{pk2},
+				AccountExclude: map[solana.PublicKey]struct{}{
+					pk2: {},
+				},
 			},
 			tx:             makeMockTx([]solana.PublicKey{pk1, pk2}, false),
 			expectExcluded: true,

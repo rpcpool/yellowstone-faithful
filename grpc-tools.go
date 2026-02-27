@@ -30,8 +30,8 @@ const (
 type StreamTransactionsFilterExecutable struct {
 	Vote            *bool
 	Failed          *bool
-	AccountInclude  solana.PublicKeySlice
-	AccountExclude  solana.PublicKeySlice
+	AccountInclude  map[solana.PublicKey]struct{}
+	AccountExclude  map[solana.PublicKey]struct{}
 	AccountRequired solana.PublicKeySlice
 }
 
@@ -51,14 +51,20 @@ func fromStreamTransactionsFilter(filter *old_faithful_grpc.StreamTransactionsFi
 	}
 
 	var err error
-	out.AccountInclude, err = stringSliceToPublicKeySlice(filter.AccountInclude)
+	include, err := stringSliceToPublicKeySlice(filter.AccountInclude)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse AccountInclude: %w", err)
 	}
+	if len(include) > 0 {
+		out.AccountInclude = sliceToMap(include)
+	}
 
-	out.AccountExclude, err = stringSliceToPublicKeySlice(filter.AccountExclude)
+	exclude, err := stringSliceToPublicKeySlice(filter.AccountExclude)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse AccountExclude: %w", err)
+	}
+	if len(exclude) > 0 {
+		out.AccountExclude = sliceToMap(exclude)
 	}
 
 	out.AccountRequired, err = stringSliceToPublicKeySlice(filter.AccountRequired)
@@ -67,6 +73,14 @@ func fromStreamTransactionsFilter(filter *old_faithful_grpc.StreamTransactionsFi
 	}
 
 	return out, nil
+}
+
+func sliceToMap(slice solana.PublicKeySlice) map[solana.PublicKey]struct{} {
+	m := make(map[solana.PublicKey]struct{}, len(slice))
+	for _, pk := range slice {
+		m[pk] = struct{}{}
+	}
+	return m
 }
 
 // FilterStep is a single unit of logic in the state machine.
@@ -82,57 +96,60 @@ func (f *StreamTransactionsFilterExecutable) CompileExclusion() (filterPipeline,
 		return pipeline, nil
 	}
 
-	// 2. Vote check (Strict equality)
+	// 2. Vote check (Strict equality matching Rust logic)
 	if f.Vote != nil {
 		pipeline = append(pipeline, func(tx *solana.Transaction, meta *solanatxmetaparsers.TransactionStatusMetaContainer, allAccounts solana.PublicKeySlice) (FilterAction, FilterFlow) {
-			isVote := IsSimpleVoteTransaction(tx)
-			if *f.Vote != isVote {
-				klog.V(5).Infof("Step: Vote mismatch (expected %v, got %v) -> Exclude", *f.Vote, isVote)
+			if *f.Vote != IsSimpleVoteTransaction(tx) {
 				return ActionExclude, FlowStop
 			}
 			return ActionNeutral, FlowContinue
 		})
 	}
 
-	// 3. Failed check (Strict equality)
+	// 3. Failed check (Strict equality matching Rust logic)
 	if f.Failed != nil {
 		pipeline = append(pipeline, func(tx *solana.Transaction, meta *solanatxmetaparsers.TransactionStatusMetaContainer, allAccounts solana.PublicKeySlice) (FilterAction, FilterFlow) {
 			isFailed := meta != nil && meta.IsErr()
 			if *f.Failed != isFailed {
-				klog.V(5).Infof("Step: Failed mismatch (expected %v, got %v) -> Exclude", *f.Failed, isFailed)
 				return ActionExclude, FlowStop
 			}
 			return ActionNeutral, FlowContinue
 		})
 	}
 
-	// 4. Account Include (Intersection check)
+	// 4. Account Include (Whitelist / Intersection)
 	if len(f.AccountInclude) > 0 {
 		pipeline = append(pipeline, func(tx *solana.Transaction, meta *solanatxmetaparsers.TransactionStatusMetaContainer, allAccounts solana.PublicKeySlice) (FilterAction, FilterFlow) {
-			if !allAccounts.ContainsAny(f.AccountInclude...) {
-				klog.V(5).Info("Step: AccountInclude mismatch -> Exclude")
+			found := false
+			for _, acc := range allAccounts {
+				if _, ok := f.AccountInclude[acc]; ok {
+					found = true
+					break
+				}
+			}
+			if !found {
 				return ActionExclude, FlowStop
 			}
 			return ActionNeutral, FlowContinue
 		})
 	}
 
-	// 5. Account Exclude (Negative intersection check)
+	// 5. Account Exclude (Blacklist / Negative Intersection)
 	if len(f.AccountExclude) > 0 {
 		pipeline = append(pipeline, func(tx *solana.Transaction, meta *solanatxmetaparsers.TransactionStatusMetaContainer, allAccounts solana.PublicKeySlice) (FilterAction, FilterFlow) {
-			if allAccounts.ContainsAny(f.AccountExclude...) {
-				klog.V(5).Info("Step: AccountExclude match -> Exclude")
-				return ActionExclude, FlowStop
+			for _, acc := range allAccounts {
+				if _, ok := f.AccountExclude[acc]; ok {
+					return ActionExclude, FlowStop
+				}
 			}
 			return ActionNeutral, FlowContinue
 		})
 	}
 
-	// 6. Account Required (Subset check)
+	// 6. Account Required (Mandatory Subset)
 	if len(f.AccountRequired) > 0 {
 		pipeline = append(pipeline, func(tx *solana.Transaction, meta *solanatxmetaparsers.TransactionStatusMetaContainer, allAccounts solana.PublicKeySlice) (FilterAction, FilterFlow) {
 			if !allAccounts.ContainsAll(f.AccountRequired) {
-				klog.V(5).Info("Step: AccountRequired missing keys -> Exclude")
 				return ActionExclude, FlowStop
 			}
 			return ActionNeutral, FlowContinue
@@ -146,9 +163,8 @@ func (f *StreamTransactionsFilterExecutable) CompileExclusion() (filterPipeline,
 func (p filterPipeline) Do(tx *solana.Transaction, meta *solanatxmetaparsers.TransactionStatusMetaContainer) bool {
 	allAccounts := getAllAccountsFromTransaction(tx, meta)
 
-	// Default state: Include. Any guard mismatch will transition to Exclude and Stop.
+	// Default state is Include. Any mismatches in the pipeline guards transition to Exclude.
 	currentAction := ActionInclude
-
 	for _, step := range p {
 		action, flow := step(tx, meta, allAccounts)
 		if action != ActionNeutral {
@@ -162,16 +178,23 @@ func (p filterPipeline) Do(tx *solana.Transaction, meta *solanatxmetaparsers.Tra
 	return currentAction == ActionExclude
 }
 
+// getAllAccountsFromTransaction aggregates keys from message and meta.
 func getAllAccountsFromTransaction(
 	tx *solana.Transaction,
 	meta *solanatxmetaparsers.TransactionStatusMetaContainer,
 ) solana.PublicKeySlice {
-	allAccounts := tx.Message.AccountKeys
-	if meta != nil {
-		writable, readonly := meta.GetLoadedAccounts()
-		allAccounts = append(allAccounts, writable...)
-		allAccounts = append(allAccounts, readonly...)
+	if meta == nil {
+		return tx.Message.AccountKeys
 	}
+
+	writable, readonly := meta.GetLoadedAccounts()
+	total := len(tx.Message.AccountKeys) + len(writable) + len(readonly)
+
+	allAccounts := make(solana.PublicKeySlice, 0, total)
+	allAccounts = append(allAccounts, tx.Message.AccountKeys...)
+	allAccounts = append(allAccounts, writable...)
+	allAccounts = append(allAccounts, readonly...)
+
 	return allAccounts
 }
 

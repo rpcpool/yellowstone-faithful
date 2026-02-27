@@ -987,7 +987,7 @@ func (multi *MultiEpoch) processSlotTransactions(
 	wg.SetLimit(maxConcurrentAccounts)
 
 	for accI := range compilableFilter.AccountInclude {
-		account := compilableFilter.AccountInclude[accI]
+		account := accI
 		wg.Go(func() error {
 			return func(pKey solana.PK) error {
 				queryCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
