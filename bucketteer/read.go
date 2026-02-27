@@ -15,6 +15,9 @@ import (
 	"golang.org/x/exp/mmap"
 )
 
+// ErrNotFound is returned when a hash is not in the bucket.
+var ErrNotFound = errors.New("not found")
+
 type Reader struct {
 	contentReader  io.ReaderAt
 	meta           *indexmeta.Meta
@@ -24,17 +27,9 @@ type Reader struct {
 
 type bucketToOffset [math.MaxUint16 + 1]uint64
 
-func newUint16Layout() bucketToOffset {
-	var layout bucketToOffset
-	for _, i := range layout {
-		layout[i] = math.MaxUint64
-	}
-	return layout
-}
-
 func newUint16LayoutPointer() *bucketToOffset {
 	var layout bucketToOffset
-	for _, i := range layout {
+	for i := range layout {
 		layout[i] = math.MaxUint64
 	}
 	return &layout
@@ -44,74 +39,43 @@ func prefixToUint16(prefix [2]byte) uint16 {
 	return binary.LittleEndian.Uint16(prefix[:])
 }
 
-func uint16ToPrefix(num uint16) [2]byte {
-	var prefix [2]byte
-	binary.LittleEndian.PutUint16(prefix[:], num)
-	return prefix
-}
-
-// OpenMMAP opens a Bucketteer file in read-only mode,
-// using memory-mapped IO.
+// OpenMMAP opens using memory-mapped IO.
 func OpenMMAP(path string) (*Reader, error) {
-	empty, err := isEmptyFile(path)
-	if err != nil {
-		return nil, err
-	}
-	if empty {
-		return nil, fmt.Errorf("file is empty: %s", path)
-	}
 	file, err := mmap.Open(path)
 	if err != nil {
 		return nil, err
 	}
-	return NewReader(file)
+	info, err := os.Stat(path)
+	if err != nil {
+		_ = file.Close()
+		return nil, err
+	}
+	r, err := NewReaderWithSizer(file, info.Size())
+	if err != nil {
+		_ = file.Close()
+		return nil, err
+	}
+	return r, nil
 }
 
 func Open(path string) (*Reader, error) {
-	empty, err := isEmptyFile(path)
-	if err != nil {
-		return nil, err
-	}
-	if empty {
-		return nil, fmt.Errorf("file is empty: %s", path)
-	}
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
-	return NewReader(file)
+	info, err := file.Stat()
+	if err != nil {
+		_ = file.Close()
+		return nil, err
+	}
+	r, err := NewReaderWithSizer(file, info.Size())
+	if err != nil {
+		_ = file.Close()
+		return nil, err
+	}
+	return r, nil
 }
 
-func isEmptyFile(path string) (bool, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return false, err
-	}
-	defer file.Close()
-	stat, err := file.Stat()
-	if err != nil {
-		return false, err
-	}
-	return stat.Size() == 0, nil
-}
-
-func isReaderEmpty(reader io.ReaderAt) (bool, error) {
-	if reader == nil {
-		return false, errors.New("reader is nil")
-	}
-	buf := make([]byte, 1)
-	_, err := reader.ReadAt(buf, 0)
-	if err != nil {
-		if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
-			return true, nil
-		}
-		return false, err
-	}
-	return len(buf) == 0, nil
-}
-
-// NewReader initializes a Reader from an io.ReaderAt.
-// It attempts to detect the size of the reader via Stat or Size().
 func NewReader(reader io.ReaderAt) (*Reader, error) {
 	size := int64(-1)
 	if s, ok := reader.(interface{ Size() int64 }); ok {
@@ -121,34 +85,33 @@ func NewReader(reader io.ReaderAt) (*Reader, error) {
 			size = info.Size()
 		}
 	}
-	if size == -1 {
-		return nil, errors.New("could not determine size of reader; use NewReaderWithSizer")
+	if size <= 0 {
+		return nil, errors.New("cannot detect size or file is empty; use NewReaderWithSizer")
 	}
 	return NewReaderWithSizer(reader, size)
 }
 
 func NewReaderWithSizer(reader io.ReaderAt, totalSize int64) (*Reader, error) {
-	empty, err := isReaderEmpty(reader)
-	if err != nil {
-		return nil, fmt.Errorf("failed to check if reader is empty: %w", err)
+	if reader == nil {
+		return nil, errors.New("reader is nil")
 	}
-	if empty {
-		return nil, fmt.Errorf("reader is empty")
-	}
-	r := &Reader{
-		prefixToOffset: newUint16LayoutPointer(),
-	}
+
 	prefixToOffset, meta, headerTotalSize, err := readHeader(reader)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read header: %w", err)
 	}
-	contentSize := uint64(totalSize - headerTotalSize)
 
-	r.meta = meta
-	r.prefixToOffset = prefixToOffset
-	r.prefixToSize = calcSizeOfBuckets(*prefixToOffset, contentSize)
-	r.contentReader = io.NewSectionReader(reader, headerTotalSize, 1<<63-1)
-	return r, nil
+	if int64(headerTotalSize) > totalSize {
+		return nil, errors.New("header size exceeds total file size")
+	}
+
+	contentSize := uint64(totalSize - headerTotalSize)
+	return &Reader{
+		meta:           meta,
+		prefixToOffset: prefixToOffset,
+		prefixToSize:   calcSizeOfBuckets(*prefixToOffset, contentSize),
+		contentReader:  io.NewSectionReader(reader, headerTotalSize, int64(contentSize)),
+	}, nil
 }
 
 func (r *Reader) Close() error {
@@ -158,22 +121,24 @@ func (r *Reader) Close() error {
 	return nil
 }
 
-func (r *Reader) Meta() *indexmeta.Meta {
-	return r.meta
-}
-
-func readHeaderSize(reader io.ReaderAt) (int64, error) {
-	// read header size:
-	headerSizeBuf := make([]byte, 4)
-	if _, err := reader.ReadAt(headerSizeBuf, 0); err != nil {
-		return 0, err
+func (r *Reader) CopyBucket(prefix [2]byte) (*bytes.Buffer, error) {
+	p := prefixToUint16(prefix)
+	offset := r.prefixToOffset[p]
+	if offset == math.MaxUint64 {
+		return nil, fmt.Errorf("bucket not found for prefix %x", prefix)
 	}
-	headerSize := int64(binary.LittleEndian.Uint32(headerSizeBuf))
-	return headerSize, nil
+	size := r.prefixToSize[p]
+	if size == 0 {
+		return bytes.NewBuffer(nil), nil
+	}
+
+	buf := bytes.NewBuffer(make([]byte, 0, size))
+	// Use explicit content boundaries.
+	section := io.NewSectionReader(r.contentReader, int64(offset), int64(size))
+	_, err := io.Copy(buf, section)
+	return buf, err
 }
 
-// calcSizeOfBuckets calculates the size of each bucket.
-// The bug for the last bucket is fixed by using the total content size as the upper bound.
 func calcSizeOfBuckets(offsets bucketToOffset, totalContentSize uint64) map[uint16]uint64 {
 	sizeMap := make(map[uint16]uint64)
 	var active []uint16
@@ -187,120 +152,88 @@ func calcSizeOfBuckets(offsets bucketToOffset, totalContentSize uint64) map[uint
 	for i, p := range active {
 		offset := offsets[p]
 		if i+1 < len(active) {
-			nextOffset := offsets[active[i+1]]
-			sizeMap[p] = nextOffset - offset
+			sizeMap[p] = offsets[active[i+1]] - offset
 		} else {
-			// FIXED: Use total content size for the last bucket in the file.
 			if totalContentSize >= offset {
 				sizeMap[p] = totalContentSize - offset
 			} else {
 				sizeMap[p] = 0
-				fmt.Printf("ERROR: Last bucket offset %d exceeds total content size %d\n", offset, totalContentSize)
 			}
 		}
 	}
 	return sizeMap
 }
 
-func sortUint16s(arr []uint16) {
-	slices.Sort(arr)
-}
-
 func readHeader(reader io.ReaderAt) (*bucketToOffset, *indexmeta.Meta, int64, error) {
-	// read header size:
-	headerSize, err := readHeaderSize(reader)
-	if err != nil {
-		return nil, nil, 0, fmt.Errorf("failed to read header size: %w", err)
+	sizeBuf := make([]byte, 4)
+	if _, err := reader.ReadAt(sizeBuf, 0); err != nil {
+		return nil, nil, 0, err
 	}
-	// read header bytes:
+	headerSize := int64(binary.LittleEndian.Uint32(sizeBuf))
+
 	headerBuf := make([]byte, headerSize)
 	if _, err := reader.ReadAt(headerBuf, 4); err != nil {
-		return nil, nil, 0, fmt.Errorf("failed to read header bytes: %w", err)
+		return nil, nil, 0, err
 	}
-	// decode header:
-	decoder := bin.NewBorshDecoder(headerBuf)
 
-	// magic:
-	{
-		magicBuf := make([]byte, len(_Magic[:]))
-		_, err := decoder.Read(magicBuf)
-		if err != nil {
-			return nil, nil, 0, fmt.Errorf("failed to read magic: %w", err)
-		}
-		if !bytes.Equal(magicBuf, _Magic[:]) {
-			return nil, nil, 0, fmt.Errorf("invalid magic: %x", string(magicBuf))
-		}
+	decoder := bin.NewBorshDecoder(headerBuf)
+	magic := make([]byte, 8)
+	if _, err := decoder.Read(magic); err != nil || !bytes.Equal(magic, _Magic[:]) {
+		return nil, nil, 0, errors.New("invalid magic")
 	}
-	// version:
-	{
-		got, err := decoder.ReadUint64(bin.LE)
-		if err != nil {
-			return nil, nil, 0, fmt.Errorf("failed to read version: %w", err)
-		}
-		if got != Version {
-			return nil, nil, 0, fmt.Errorf("expected version %d, got %d", Version, got)
-		}
+
+	ver, err := decoder.ReadUint64(bin.LE)
+	if err != nil || ver != Version {
+		return nil, nil, 0, fmt.Errorf("version mismatch: %d", ver)
 	}
-	// read meta:
+
 	var meta indexmeta.Meta
-	// read key-value pairs
 	if err := meta.UnmarshalWithDecoder(decoder); err != nil {
-		return nil, nil, 0, fmt.Errorf("failed to unmarshal metadata: %w", err)
+		return nil, nil, 0, err
 	}
-	// numPrefixes:
+
 	numPrefixes, err := decoder.ReadUint64(bin.LE)
 	if err != nil {
-		return nil, nil, 0, fmt.Errorf("failed to read numPrefixes: %w", err)
+		return nil, nil, 0, err
 	}
-	// prefix -> offset:
-	prefixToOffset := newUint16Layout()
+
+	prefixToOffset := newUint16LayoutPointer()
 	for i := uint64(0); i < numPrefixes; i++ {
-		var prefix [2]byte
-		_, err := decoder.Read(prefix[:])
-		if err != nil {
-			return nil, nil, 0, fmt.Errorf("failed to read prefixes[%d]: %w", i, err)
+		var p [2]byte
+		if _, err := decoder.Read(p[:]); err != nil {
+			return nil, nil, 0, err
 		}
-		offset, err := decoder.ReadUint64(bin.LE)
+		off, err := decoder.ReadUint64(bin.LE)
 		if err != nil {
-			return nil, nil, 0, fmt.Errorf("failed to read offsets[%d]: %w", i, err)
+			return nil, nil, 0, err
 		}
-		prefixToOffset[prefixToUint16(prefix)] = offset
+		prefixToOffset[prefixToUint16(p)] = off
 	}
-	return &prefixToOffset, &meta, headerSize + 4, err
+	return prefixToOffset, &meta, headerSize + 4, nil
 }
 
 func (r *Reader) Has(sig [64]byte) (bool, error) {
-	// start := time.Now()
-	prefix := [2]byte{sig[0], sig[1]}
-	offset := r.prefixToOffset[prefixToUint16(prefix)]
+	pUint := prefixToUint16([2]byte{sig[0], sig[1]})
+	offset := r.prefixToOffset[pUint]
 	if offset == math.MaxUint64 {
-		// This prefix doesn't exist, so the signature can't.
 		return false, nil
 	}
-	size, ok := r.prefixToSize[prefixToUint16(prefix)]
-	if !ok || size == 0 {
-		return false, nil
-	}
-	if size < 4 {
-		return false, fmt.Errorf("invalid bucket size (%v) for prefix %x", size, prefix)
-	}
-	sizeMinus4 := size - 4
-	numHashes := sizeMinus4 / 8
-	if numHashes == 0 {
-		// Empty bucket.
-		return false, nil
-	}
-	// if remainer, then size is invalid
-	if sizeMinus4%8 != 0 {
-		return false, fmt.Errorf("invalid bucket size for prefix %x: size minus 4 is not multiple of 8", prefix)
-	}
-	bucketReader := io.NewSectionReader(r.contentReader, int64(offset)+4, int64(numHashes*8))
 
-	// hashes:
+	size := r.prefixToSize[pUint]
+	if size < 12 || (size-4)%8 != 0 {
+		return false, nil
+	}
+
+	numHashes := int((size - 4) / 8)
 	wantedHash := Hash(sig)
-	got, err := searchEytzinger(0, int(numHashes), wantedHash, func(index int) (uint64, error) {
-		pos := int64(index * 8)
-		return readUint64Le(bucketReader, pos)
+
+	var scratch [8]byte
+	got, err := searchEytzinger(0, numHashes, wantedHash, func(index int) (uint64, error) {
+		pos := int64(offset) + 4 + int64(index*8)
+		if _, err := r.contentReader.ReadAt(scratch[:], pos); err != nil {
+			return 0, err
+		}
+		return binary.LittleEndian.Uint64(scratch[:]), nil
 	})
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
@@ -311,31 +244,24 @@ func (r *Reader) Has(sig [64]byte) (bool, error) {
 	return got == wantedHash, nil
 }
 
-func searchEytzinger(min int, max int, x uint64, getter func(int) (uint64, error)) (uint64, error) {
-	var index int
-	for index < max {
-		k, err := getter(index)
+func searchEytzinger(min, max int, x uint64, getter func(int) (uint64, error)) (uint64, error) {
+	idx := 0
+	for idx < max {
+		k, err := getter(idx)
 		if err != nil {
 			return 0, err
 		}
 		if k == x {
 			return k, nil
 		}
-		index = index<<1 | 1
+		idx = idx<<1 | 1
 		if k < x {
-			index++
+			idx++
 		}
 	}
 	return 0, ErrNotFound
 }
 
-var ErrNotFound = fmt.Errorf("not found")
-
-func readUint64Le(reader io.ReaderAt, pos int64) (uint64, error) {
-	buf := make([]byte, 8)
-	_, err := reader.ReadAt(buf, pos)
-	if err != nil {
-		return 0, err
-	}
-	return binary.LittleEndian.Uint64(buf), nil
+func (r *Reader) Meta() *indexmeta.Meta {
+	return r.meta
 }

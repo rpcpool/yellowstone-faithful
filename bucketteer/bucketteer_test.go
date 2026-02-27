@@ -181,7 +181,7 @@ func TestBucketteer(t *testing.T) {
 			mmr, err := mmap.Open(path)
 			require.NoError(t, err)
 			defer mmr.Close()
-			reader, err := NewReader(mmr)
+			reader, err := NewReaderWithSizer(mmr, int64(mmr.Len()))
 			require.NoError(t, err)
 			ok, err := reader.Has(firstSig)
 			require.NoError(t, err)

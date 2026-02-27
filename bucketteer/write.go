@@ -326,3 +326,9 @@ func isDir(path string) (bool, error) {
 	}
 	return info.IsDir(), nil
 }
+
+func uint16ToPrefix(num uint16) [2]byte {
+	var prefix [2]byte
+	binary.LittleEndian.PutUint16(prefix[:], num)
+	return prefix
+}
