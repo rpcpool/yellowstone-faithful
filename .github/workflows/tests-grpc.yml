@@ -1,0 +1,187 @@
+name: (g)RPC Integration Tests
+
+on:
+  push:
+  #   branches: [ main ]
+  # pull_request:
+  #   branches: [ main ]
+  # workflow_dispatch:
+
+env:
+  GO_VERSION: '1.23'
+  NODE_VERSION: '20'
+  RUST_VERSION: 'stable'
+  EPOCH: 0
+  GRPC_CURL_VERSION: '1.8.9'
+  # tx signature from block 1
+  getTxSig: 39V8tR2Q8Ar3WwMBfVTRPFr7AakLHy5wp7skJNBL7ET6ARoikqc1TaMiuXEtHiNPLQKoeiVr5XnKH8QtjdonN4yM
+  getBlock: 1
+
+jobs:
+  integration-tests-grpc:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    
+    steps:
+    # this will be done by default from November 10, slows down CI runs
+    # https://github.com/actions/runner-images/issues/13213
+    - name: disable man-db
+      run: |
+        sudo rm /var/lib/man-db/auto-update
+
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 1
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: ${{ env.GO_VERSION }}
+
+    - name: Install system dependencies
+      run: |
+        sudo apt-get install -y \
+          build-essential \
+          libssl-dev \
+          pkg-config \
+          protobuf-compiler \
+          aria2
+
+    - name: Install grpcurl
+      run: |
+        wget -q https://github.com/fullstorydev/grpcurl/releases/download/v${{ env.GRPC_CURL_VERSION }}/grpcurl_${{ env.GRPC_CURL_VERSION }}_linux_x86_64.tar.gz
+        tar -xzf grpcurl_${{ env.GRPC_CURL_VERSION }}_linux_x86_64.tar.gz
+        sudo mv grpcurl /usr/local/bin/
+
+    - name: Download Go dependencies
+      run: go mod download
+
+    - name: Build faithful-cli binary
+      run: make
+      
+    - name: Download epoch 0 indexes and prepare config file
+      run: | 
+        HOSTNAME=https://files.old-faithful.net
+        EPOCH=${{ env.EPOCH }}
+        BAFY=$(curl $HOSTNAME/$EPOCH/epoch-$EPOCH.cid -s)
+        INDEX_FOLDER=/tmp/epoch0
+        INDEXES=(cid-to-offset-and-size slot-to-blocktime sig-to-cid sig-exists slot-to-cid)
+        
+        for INDEX in "${INDEXES[@]}"; do
+            aria2c -x 16 -s 16 -q -d $INDEX_FOLDER \
+            "$HOSTNAME/$EPOCH/epoch-$EPOCH-$BAFY-mainnet-$INDEX.index"
+        done
+
+        wget -q -O $INDEX_FOLDER/genesis.tar.bz2 https://api.mainnet-beta.solana.com/genesis.tar.bz2
+
+        cat << EOF > /tmp/$EPOCH.yml
+        epoch: $EPOCH
+        version: 1
+        data:
+          car:
+            uri: https://files.old-faithful.net/$EPOCH/epoch-$EPOCH.car
+          filecoin:
+            enable: false
+        genesis:
+          uri: $INDEX_FOLDER/genesis.tar.bz2
+        indexes:
+          cid_to_offset_and_size:
+            uri: $(ls $INDEX_FOLDER/epoch-$EPOCH-$BAFY-mainnet-cid-to-offset-and-size.index)
+          slot_to_cid:
+            uri: $(ls $INDEX_FOLDER/epoch-$EPOCH-$BAFY-mainnet-slot-to-cid.index)
+          slot_to_blocktime:
+            uri: $(ls $INDEX_FOLDER/epoch-$EPOCH-$BAFY-mainnet-slot-to-blocktime.index)
+          sig_to_cid:
+            uri:  $(ls $INDEX_FOLDER/epoch-$EPOCH-$BAFY-mainnet-sig-to-cid.index)
+          sig_exists:
+            uri: $(ls $INDEX_FOLDER/epoch-$EPOCH-$BAFY-mainnet-sig-exists.index)
+        EOF
+
+        cat /tmp/$EPOCH.yml
+        ls -lha /tmp/epoch0
+
+    - name: Start faithful-cli server
+      uses: JarvusInnovations/background-action@v1
+      with:
+        run: ./bin/faithful-cli -v=4 rpc --listen ":7999" --grpc-listen ":8999" -vv --watch /tmp/$EPOCH.yml &
+        wait-on: http-get://localhost:7999/health
+        wait-for: 5s
+
+    - name: Run HTTP tests
+      run: |
+  
+        sleep 5s
+
+        echo "getVersion"
+        curl localhost:7999 -H "Content-Type: application/json" -d '
+          {"jsonrpc":"2.0","id":1, "method":"getVersion"}
+          ' -s | jq -r .result.faithful
+
+        echo "getSlot"
+        curl localhost:7999 -H "Content-Type: application/json" -d '
+          {"jsonrpc":"2.0","id":1, "method":"getSlot"}
+          ' -s | jq -r .result | grep -q 431999 || exit 1
+
+        echo "getGenesisHash"
+        curl localhost:7999 -H "Content-Type: application/json" -d '
+          {"jsonrpc":"2.0","id":1, "method":"getGenesisHash"}
+          ' -s | jq -r .result | grep -q "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d" || exit 1
+
+        echo "getFirstAvailableBlock"
+        curl localhost:7999 -H "Content-Type: application/json" -d '
+        {"jsonrpc":"2.0","id":1, "method":"getFirstAvailableBlock"}
+        ' -s | jq -r .result | grep -q 0 || exit 1
+
+        echo "getBlock"
+        curl localhost:7999 -H "Content-Type: application/json" -d '
+          {"jsonrpc":"2.0","id":1, "method":"getBlock","params": [${{ env.getBlock }}]}
+          ' -s | jq -r . | md5sum | grep -q 41b5e45d40d5e2b3c90eb575b2603455 || exit 1
+
+        echo "getBlockTime"
+        curl localhost:7999 -H "Content-Type: application/json" -d '
+          {"jsonrpc":"2.0","id":1, "method":"getBlockTime","params": [${{ env.getBlock }}]}
+          ' -s | jq -r .result | grep -q null || exit 1
+
+        echo "getTransaction"
+        curl localhost:7999 -H "Content-Type: application/json" -d '
+          {"jsonrpc":"2.0","id":1, "method":"getTransaction","params": ["${{ env.getTxSig }}"]}
+          ' -s | jq -r . | md5sum | grep -q 17d7cbf3d719b19ce3f4fe35a048f1fc || exit 1
+
+    - name: Run gRPC tests
+      env: 
+        proto_flag: -proto old-faithful-proto/proto/old-faithful.proto
+        endpoint: -plaintext localhost:8999
+        # epoch 1 borked, fetch 0 instead
+        #getBlock: 0
+        # from slot 2
+        #getTxSig: 5yVkF5fa41s1kond6SoC8rMAmbSeNuV5v4mnJboycJSdonNdjEqX7Vzvw3KSHa99Jjvo8e46NghJmm5ZS4r1rjjG
+      run: |
+        
+        echo "GetVersion"
+        grpcurl ${{ env.proto_flag }} ${{ env.endpoint }} OldFaithful.OldFaithful/GetVersion
+
+        # echo "GetSlot"
+        # not available from grpc interface
+        # grpcurl ${{ env.proto_flag }} ${{ env.endpoint }} OldFaithful.OldFaithful/GetSlot 
+        
+        echo "GetBlock"
+        grpcurl ${{ env.proto_flag }} -d '{"slot": ${{ env.getBlock }}}' ${{ env.endpoint }} OldFaithful.OldFaithful/GetBlock #| jq -r | md5sum | grep -q 4060788729dd4bf38bef2310728e15d6
+        
+        echo "GetBlockTime"
+        grpcurl ${{ env.proto_flag }} -d '{"slot": ${{ env.getBlock }}}' ${{ env.endpoint }} OldFaithful.OldFaithful/GetBlockTime | jq -r | grep -q "{}"
+        
+        echo "GetTransaction"
+        grpcurl ${{ env.proto_flag }} -d '{"signature": "${{ env.getTxSig }}"}' ${{ env.endpoint }} OldFaithful.OldFaithful/GetTransaction 
+        
+        # echo "GetFirstAvailableBlock"
+        # not available from grpc interface
+        # grpcurl ${{ env.proto_flag }} ${{ env.endpoint }} OldFaithful.OldFaithful/GetFirstAvailableBlock 
+
+        echo "StreamBlocks"
+        grpcurl ${{ env.proto_flag }} -d '{"start_slot": 2, "end_slot": 10}' ${{ env.endpoint }} OldFaithful.OldFaithful/StreamBlocks \
+        | jq -r | md5sum | grep -q c9bbabb28ee30743f9fc7b91870fe29e
+
+        echo "StreamTransactions"
+        grpcurl ${{ env.proto_flag }} -d '{"start_slot": 2, "end_slot": 3, "filter": {"vote": true, "failed": false}}' ${{ env.endpoint }} OldFaithful.OldFaithful/StreamTransactions | jq -r | md5sum | grep -q ef4ede37466326b25df41babf60d9037
