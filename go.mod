@@ -64,7 +64,7 @@ require (
 require (
 	github.com/allegro/bigcache/v3 v3.1.0
 	github.com/anjor/carlet v0.0.0-00010101000000-000000000000
-	github.com/bytedance/sonic v1.14.1
+	github.com/bytedance/sonic v1.15.0
 	github.com/filecoin-project/go-address v1.1.0
 	github.com/filecoin-project/go-fil-commcid v0.1.0
 	github.com/filecoin-project/go-fil-commp-hashhash v0.2.0
@@ -111,7 +111,7 @@ require (
 	github.com/bep/debounce v1.2.1 // indirect
 	github.com/blendle/zapdriver v1.3.1 // indirect
 	github.com/bytedance/gopkg v0.1.3 // indirect
-	github.com/bytedance/sonic/loader v0.3.0 // indirect
+	github.com/bytedance/sonic/loader v0.5.0 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cespare/xxhash v1.1.0 // indirect
 	github.com/cloudwego/base64x v0.1.6 // indirect

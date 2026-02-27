@@ -12,6 +12,36 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+func MakeMockTxErrTxMetaContainer(writable []solana.PublicKey, readonly []solana.PublicKey) *TransactionStatusMetaContainer {
+	return &TransactionStatusMetaContainer{
+		vProtobuf: &confirmed_block.TransactionStatusMeta{
+			Err: &confirmed_block.TransactionError{
+				Err: []byte{1, 2, 3},
+			},
+			LoadedWritableAddresses: bytesSliceFromPubkeys(writable),
+			LoadedReadonlyAddresses: bytesSliceFromPubkeys(readonly),
+		},
+	}
+}
+
+func bytesSliceFromPubkeys(pubkeys []solana.PublicKey) [][]byte {
+	bytesSlice := make([][]byte, len(pubkeys))
+	for i, pubkey := range pubkeys {
+		bytesSlice[i] = pubkey.Bytes()
+	}
+	return bytesSlice
+}
+
+func MakeMockTxSuccessTxMetaContainer(writable []solana.PublicKey, readonly []solana.PublicKey) *TransactionStatusMetaContainer {
+	return &TransactionStatusMetaContainer{
+		vProtobuf: &confirmed_block.TransactionStatusMeta{
+			Err:                     nil,
+			LoadedWritableAddresses: bytesSliceFromPubkeys(writable),
+			LoadedReadonlyAddresses: bytesSliceFromPubkeys(readonly),
+		},
+	}
+}
+
 type TransactionStatusMetaContainer struct {
 	vProtobuf *confirmed_block.TransactionStatusMeta
 	vSerde    *serde_agave.StoredTransactionStatusMeta

@@ -1,3 +1,4 @@
+// bucketteer.go
 package bucketteer
 
 import (
@@ -14,6 +15,8 @@ func Magic() [8]byte {
 
 const Version = uint64(2)
 
+// sortWithCompare sorts the slice according to the comparator and then
+// rearranges it into a 1-based Eytzinger layout.
 func sortWithCompare[T any](a []T, compare func(i, j int) int) {
 	sort.Slice(a, func(i, j int) bool {
 		return compare(i, j) < 0
@@ -23,6 +26,8 @@ func sortWithCompare[T any](a []T, compare func(i, j int) int) {
 	copy(a, sorted)
 }
 
+// eytzinger performs a recursive traversal to convert a sorted slice into
+// an Eytzinger layout.
 func eytzinger[T any](in, out []T, i, k int) int {
 	if k <= len(in) {
 		i = eytzinger(in, out, i, 2*k)
@@ -33,6 +38,7 @@ func eytzinger[T any](in, out []T, i, k int) int {
 	return i
 }
 
+// Hash generates a 64-bit hash from the signature using xxhash.
 func Hash(sig [64]byte) uint64 {
 	return xxhash.Sum64(sig[:])
 }

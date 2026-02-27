@@ -10,13 +10,12 @@ import (
 	"github.com/gagliardetto/solana-go"
 	"github.com/gagliardetto/solana-go/rpc"
 	"github.com/rpcpool/yellowstone-faithful/compactindexsized"
+	"github.com/rpcpool/yellowstone-faithful/errctx"
 	"github.com/rpcpool/yellowstone-faithful/nodetools"
 	solanatxmetaparsers "github.com/rpcpool/yellowstone-faithful/solana-tx-meta-parsers"
 	"github.com/rpcpool/yellowstone-faithful/telemetry"
 	"github.com/sourcegraph/jsonrpc2"
 	"go.opentelemetry.io/otel/attribute"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 	"k8s.io/klog/v2"
 )
 
@@ -74,7 +73,8 @@ func (multi *MultiEpoch) findEpochNumberFromSignature(ctx context.Context, sig s
 		epochNumber := numbers[i]
 		jobGroup.Add(func(ctx context.Context) (uint64, error) {
 			if ctx.Err() != nil {
-				return 0, ctx.Err()
+				klog.Errorf("Context error while searching for signature %s in epoch %d: %v", sig, epochNumber, ctx.Err())
+				return 0, ErrNotFound // context error, return ErrNotFound to indicate not found
 			}
 			bucket, ok := buckets[epochNumber]
 			if !ok {
@@ -83,7 +83,8 @@ func (multi *MultiEpoch) findEpochNumberFromSignature(ctx context.Context, sig s
 			hasStartedAt := time.Now()
 			has, err := bucket.Has(sig)
 			if err != nil {
-				return 0, fmt.Errorf("failed to check if signature exists in bucket: %w", err)
+				klog.Errorf("Error checking signature %s in epoch %d: %v", sig, epochNumber, err)
+				return 0, ErrNotFound // treat error as not found, since we don't want one bad epoch to cause the whole search to fail
 			}
 			klog.V(4).Infof("Checked existence of signature %s in epoch %d in %s", sig, epochNumber, time.Since(hasStartedAt))
 			if !has {
@@ -92,7 +93,8 @@ func (multi *MultiEpoch) findEpochNumberFromSignature(ctx context.Context, sig s
 			startedGetEpochAt := time.Now()
 			epoch, err := multi.GetEpoch(epochNumber)
 			if err != nil {
-				return 0, fmt.Errorf("failed to get epoch %d: %w", epochNumber, err)
+				klog.Errorf("Error getting epoch handler for epoch %d: %v", epochNumber, err)
+				return 0, ErrNotFound // treat error as not found, since we don't want one bad epoch to cause the whole search to fail
 			}
 			klog.V(4).Infof("Retrieved epoch %d in %s", epochNumber, time.Since(startedGetEpochAt))
 			findCidFromSigStartedAt := time.Now()
@@ -130,7 +132,7 @@ func (multi *MultiEpoch) handleGetTransaction(ctx context.Context, conn *request
 		return &jsonrpc2.Error{
 			Code:    jsonrpc2.CodeInternalError,
 			Message: "no epochs available",
-		}, fmt.Errorf("no epochs available")
+		}, errctx.Wrap(fmt.Errorf("no epochs available"), "GetTransaction_NoEpochsAvailable")
 	}
 
 	params, err := parseGetTransactionRequest(req.Params)
@@ -138,13 +140,13 @@ func (multi *MultiEpoch) handleGetTransaction(ctx context.Context, conn *request
 		return &jsonrpc2.Error{
 			Code:    jsonrpc2.CodeInvalidParams,
 			Message: "Invalid params",
-		}, fmt.Errorf("failed to parse params: %w", err)
+		}, errctx.Wrap(fmt.Errorf("failed to parse params: %w", err), "GetTransaction_ParseParams")
 	}
 	if err := params.Validate(); err != nil {
 		return &jsonrpc2.Error{
 			Code:    jsonrpc2.CodeInvalidParams,
 			Message: err.Error(),
-		}, fmt.Errorf("failed to validate params: %w", err)
+		}, errctx.Wrap(fmt.Errorf("failed to validate params: %w", err), "GetTransaction_ValidateParams")
 	}
 
 	sig := params.Signature
@@ -161,12 +163,12 @@ func (multi *MultiEpoch) handleGetTransaction(ctx context.Context, conn *request
 			return &jsonrpc2.Error{
 				Code:    CodeNotFound,
 				Message: "Transaction not found",
-			}, fmt.Errorf("failed to find epoch number from signature %s: %w", sig, err)
+			}, errctx.Wrap(fmt.Errorf("failed to find epoch number from signature %s: %w", sig, err), "GetTransaction_FindEpochFromSignature_NotFound")
 		}
 		return &jsonrpc2.Error{
 			Code:    jsonrpc2.CodeInternalError,
 			Message: "Internal error",
-		}, fmt.Errorf("failed to get epoch for signature %s: %w", sig, err)
+		}, errctx.Wrap(fmt.Errorf("failed to get epoch for signature %s: %w", sig, err), "GetTransaction_FindEpochFromSignature")
 	}
 	klog.V(4).Infof("Found signature %s in epoch %d in %s", sig, epochNumber, time.Since(startedEpochLookupAt))
 
@@ -175,7 +177,7 @@ func (multi *MultiEpoch) handleGetTransaction(ctx context.Context, conn *request
 		return &jsonrpc2.Error{
 			Code:    CodeNotFound,
 			Message: fmt.Sprintf("Epoch %d is not available from this RPC", epochNumber),
-		}, fmt.Errorf("failed to get handler for epoch %d: %w", epochNumber, err)
+		}, errctx.Wrap(fmt.Errorf("failed to get handler for epoch %d: %w", epochNumber, err), "GetTransaction_GetEpochHandler")
 	}
 
 	// Start span for getting transaction from epoch
@@ -192,12 +194,12 @@ func (multi *MultiEpoch) handleGetTransaction(ctx context.Context, conn *request
 			return &jsonrpc2.Error{
 				Code:    CodeNotFound,
 				Message: "Transaction not found",
-			}, fmt.Errorf("transaction %s not found", sig)
+			}, errctx.Wrap(fmt.Errorf("transaction %s not found", sig), "GetTransaction_GetTransactionFromEpoch_NotFound")
 		}
 		return &jsonrpc2.Error{
 			Code:    jsonrpc2.CodeInternalError,
 			Message: "Internal error",
-		}, fmt.Errorf("failed to get Transaction: %w", err)
+		}, errctx.Wrap(fmt.Errorf("failed to get Transaction: %w", err), "GetTransaction_GetTransactionFromEpoch")
 	}
 	{
 		conn.ctx.Response.Header.Set("DAG-Root-CID", transactionCid.String())
@@ -211,7 +213,7 @@ func (multi *MultiEpoch) handleGetTransaction(ctx context.Context, conn *request
 		return &jsonrpc2.Error{
 			Code:    jsonrpc2.CodeInternalError,
 			Message: "Internal error",
-		}, fmt.Errorf("failed to decode transaction: %w", err)
+		}, errctx.Wrap(fmt.Errorf("failed to decode transaction: %w", err), "GetTransaction_ParseTransactionMeta")
 	}
 	out := solanatxmetaparsers.NewEncodedTransactionWithStatusMeta(
 		tx,
@@ -223,7 +225,7 @@ func (multi *MultiEpoch) handleGetTransaction(ctx context.Context, conn *request
 		return &jsonrpc2.Error{
 			Code:    jsonrpc2.CodeInternalError,
 			Message: "Internal error",
-		}, fmt.Errorf("failed to encode transaction: %w", err)
+		}, errctx.Wrap(fmt.Errorf("failed to encode transaction: %w", err), "GetTransaction_EncodeTransaction")
 	}
 
 	response.Uint("slot", uint64(transactionNode.Slot))
@@ -236,7 +238,10 @@ func (multi *MultiEpoch) handleGetTransaction(ctx context.Context, conn *request
 			blocktime, err := blocktimeIndex.Get(uint64(transactionNode.Slot))
 			blocktimeSpan.End()
 			if err != nil {
-				return nil, status.Errorf(codes.Internal, "Failed to get block: %v", err)
+				return &jsonrpc2.Error{
+					Code:    jsonrpc2.CodeInternalError,
+					Message: "Internal error",
+				}, errctx.Wrap(fmt.Errorf("failed to get block: %v", err), "GetTransaction_GetBlockTime")
 			}
 			if blocktime == 0 {
 				response.Null("blockTime")
@@ -248,7 +253,7 @@ func (multi *MultiEpoch) handleGetTransaction(ctx context.Context, conn *request
 			return &jsonrpc2.Error{
 				Code:    jsonrpc2.CodeInternalError,
 				Message: "Internal error",
-			}, fmt.Errorf("failed to get blocktime: blocktime index is not available")
+			}, errctx.Wrap(fmt.Errorf("failed to get blocktime: blocktime index is not available"), "GetTransaction_GetBlockTime")
 		}
 	}
 
@@ -265,7 +270,7 @@ func (multi *MultiEpoch) handleGetTransaction(ctx context.Context, conn *request
 		response,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to reply: %w", err)
+		return nil, errctx.Wrap(fmt.Errorf("failed to reply: %w", err), "GetTransaction_Reply")
 	}
 	return nil, nil
 }
