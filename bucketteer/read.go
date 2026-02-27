@@ -26,7 +26,7 @@ type bucketToOffset [math.MaxUint16 + 1]uint64
 
 func newUint16Layout() bucketToOffset {
 	var layout bucketToOffset
-	for i := 0; i <= math.MaxUint16; i++ {
+	for _, i := range layout {
 		layout[i] = math.MaxUint64
 	}
 	return layout
@@ -34,7 +34,7 @@ func newUint16Layout() bucketToOffset {
 
 func newUint16LayoutPointer() *bucketToOffset {
 	var layout bucketToOffset
-	for i := 0; i <= math.MaxUint16; i++ {
+	for _, i := range layout {
 		layout[i] = math.MaxUint64
 	}
 	return &layout
@@ -110,7 +110,24 @@ func isReaderEmpty(reader io.ReaderAt) (bool, error) {
 	return len(buf) == 0, nil
 }
 
+// NewReader initializes a Reader from an io.ReaderAt.
+// It attempts to detect the size of the reader via Stat or Size().
 func NewReader(reader io.ReaderAt) (*Reader, error) {
+	size := int64(-1)
+	if s, ok := reader.(interface{ Size() int64 }); ok {
+		size = s.Size()
+	} else if f, ok := reader.(*os.File); ok {
+		if info, err := f.Stat(); err == nil {
+			size = info.Size()
+		}
+	}
+	if size == -1 {
+		return nil, errors.New("could not determine size of reader; use NewReaderWithSizer")
+	}
+	return NewReaderWithSizer(reader, size)
+}
+
+func NewReaderWithSizer(reader io.ReaderAt, totalSize int64) (*Reader, error) {
 	empty, err := isReaderEmpty(reader)
 	if err != nil {
 		return nil, fmt.Errorf("failed to check if reader is empty: %w", err)
@@ -125,9 +142,11 @@ func NewReader(reader io.ReaderAt) (*Reader, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to read header: %w", err)
 	}
+	contentSize := uint64(totalSize - headerTotalSize)
+
 	r.meta = meta
 	r.prefixToOffset = prefixToOffset
-	r.prefixToSize = calcSizeOfBuckets(*prefixToOffset)
+	r.prefixToSize = calcSizeOfBuckets(*prefixToOffset, contentSize)
 	r.contentReader = io.NewSectionReader(reader, headerTotalSize, 1<<63-1)
 	return r, nil
 }
@@ -153,30 +172,34 @@ func readHeaderSize(reader io.ReaderAt) (int64, error) {
 	return headerSize, nil
 }
 
-func calcSizeOfBuckets(prefixToOffset bucketToOffset) map[uint16]uint64 {
-	prefixToBucketSize := make(map[uint16]uint64)
-	var prefixes []uint16
-	for prefixAsUint16 := range prefixToOffset {
-		prefixes = append(prefixes, uint16(prefixAsUint16))
-	}
-	// sort prefixes
-	sortUint16s(prefixes)
-	for i, prefixAsUint16 := range prefixes {
-		offset := prefixToOffset[prefixAsUint16]
-		var nextOffset uint64
-		if i+1 < len(prefixes) {
-			nextPrefixAsUint16 := prefixes[i+1]
-			nextOffset = prefixToOffset[nextPrefixAsUint16]
-		} else {
-			nextOffset = math.MaxUint64
-		}
-		if nextOffset == math.MaxUint64 {
-			prefixToBucketSize[prefixAsUint16] = 0
-		} else {
-			prefixToBucketSize[prefixAsUint16] = nextOffset - offset
+// calcSizeOfBuckets calculates the size of each bucket.
+// The bug for the last bucket is fixed by using the total content size as the upper bound.
+func calcSizeOfBuckets(offsets bucketToOffset, totalContentSize uint64) map[uint16]uint64 {
+	sizeMap := make(map[uint16]uint64)
+	var active []uint16
+	for p, off := range offsets {
+		if off != math.MaxUint64 {
+			active = append(active, uint16(p))
 		}
 	}
-	return prefixToBucketSize
+	slices.Sort(active)
+
+	for i, p := range active {
+		offset := offsets[p]
+		if i+1 < len(active) {
+			nextOffset := offsets[active[i+1]]
+			sizeMap[p] = nextOffset - offset
+		} else {
+			// FIXED: Use total content size for the last bucket in the file.
+			if totalContentSize >= offset {
+				sizeMap[p] = totalContentSize - offset
+			} else {
+				sizeMap[p] = 0
+				fmt.Printf("ERROR: Last bucket offset %d exceeds total content size %d\n", offset, totalContentSize)
+			}
+		}
+	}
+	return sizeMap
 }
 
 func sortUint16s(arr []uint16) {
