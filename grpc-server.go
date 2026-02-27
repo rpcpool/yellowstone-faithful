@@ -1292,3 +1292,30 @@ func validateAccountSlice(accounts []string, fieldName string) error {
 	}
 	return nil
 }
+
+func blockContainsAccounts(block *old_faithful_grpc.BlockResponse, accounts solana.PublicKeySlice) bool {
+	for _, tx := range block.Transactions {
+		solTx, err := solana.TransactionFromBytes(tx.GetTransaction())
+		if err != nil {
+			klog.Errorf("Failed to decode transaction: %v", err)
+			continue
+		}
+
+		if accounts.ContainsAny(solTx.Message.AccountKeys...) {
+			return true
+		}
+
+		meta, err := solanatxmetaparsers.ParseTransactionStatusMetaContainer(tx.Meta)
+		if err != nil {
+			klog.Errorf("Failed to parse transaction meta: %v", err)
+			continue
+		}
+
+		writable, readonly := meta.GetLoadedAccounts()
+		if writable.ContainsAny(accounts...) || readonly.ContainsAny(accounts...) {
+			return true
+		}
+	}
+
+	return false
+}
