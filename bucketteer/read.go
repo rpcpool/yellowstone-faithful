@@ -59,6 +59,7 @@ func OpenMMAP(path string) (*Reader, error) {
 	return r, nil
 }
 
+// Open opens using standard OS calls.
 func Open(path string) (*Reader, error) {
 	file, err := os.Open(path)
 	if err != nil {
@@ -77,6 +78,7 @@ func Open(path string) (*Reader, error) {
 	return r, nil
 }
 
+// NewReader initializes a Reader from an io.ReaderAt.
 func NewReader(reader io.ReaderAt) (*Reader, error) {
 	size := int64(-1)
 	if s, ok := reader.(interface{ Size() int64 }); ok {
@@ -92,6 +94,7 @@ func NewReader(reader io.ReaderAt) (*Reader, error) {
 	return NewReaderWithSizer(reader, size)
 }
 
+// NewReaderWithSizer initializes a Reader with a known total size.
 func NewReaderWithSizer(reader io.ReaderAt, totalSize int64) (*Reader, error) {
 	if reader == nil {
 		return nil, errors.New("reader is nil")
@@ -103,7 +106,7 @@ func NewReaderWithSizer(reader io.ReaderAt, totalSize int64) (*Reader, error) {
 	}
 
 	if int64(headerTotalSize) > totalSize {
-		return nil, errors.New("header size exceeds total file size")
+		return nil, fmt.Errorf("header size (%d) exceeds total file size (%d)", headerTotalSize, totalSize)
 	}
 
 	contentSize := uint64(totalSize - headerTotalSize)
@@ -165,50 +168,72 @@ func calcSizeOfBuckets(offsets bucketToOffset, totalContentSize uint64) map[uint
 }
 
 func readHeader(reader io.ReaderAt) (*bucketToOffset, *indexmeta.Meta, int64, error) {
+	// 1. Read the 4-byte header size field.
 	sizeBuf := make([]byte, 4)
 	if _, err := reader.ReadAt(sizeBuf, 0); err != nil {
-		return nil, nil, 0, err
+		return nil, nil, 0, fmt.Errorf("failed to read header size field: %w", err)
 	}
 	headerSize := int64(binary.LittleEndian.Uint32(sizeBuf))
 
+	// 2. Read the rest of the header.
 	headerBuf := make([]byte, headerSize)
 	if _, err := reader.ReadAt(headerBuf, 4); err != nil {
-		return nil, nil, 0, err
+		return nil, nil, 0, fmt.Errorf("failed to read header content: %w", err)
 	}
 
 	decoder := bin.NewBorshDecoder(headerBuf)
-	magic := make([]byte, 8)
-	if _, err := decoder.Read(magic); err != nil || !bytes.Equal(magic, _Magic[:]) {
-		return nil, nil, 0, errors.New("invalid magic")
+
+	// 3. Verify Magic.
+	if len(headerBuf) < 8 {
+		return nil, nil, 0, errors.New("header too short to contain magic")
+	}
+	magicBytes := headerBuf[:8]
+	if !bytes.Equal(magicBytes, _Magic[:]) {
+		return nil, nil, 0, fmt.Errorf("version mismatch or invalid magic: expected %x, got %x", _Magic[:], magicBytes)
 	}
 
+	// CRITICAL: Advance the decoder pointer past the 8 magic bytes.
+	// We read into a temporary buffer to ensure the internal offset is moved.
+	tmpMagic := make([]byte, 8)
+	if _, err := decoder.Read(tmpMagic); err != nil {
+		return nil, nil, 0, fmt.Errorf("failed to advance decoder: %w", err)
+	}
+
+	// 4. Verify Version.
 	ver, err := decoder.ReadUint64(bin.LE)
-	if err != nil || ver != Version {
-		return nil, nil, 0, fmt.Errorf("version mismatch: %d", ver)
+	if err != nil {
+		return nil, nil, 0, fmt.Errorf("failed to read version: %w", err)
+	}
+	if ver != Version {
+		return nil, nil, 0, fmt.Errorf("version mismatch: expected %d, got %d", Version, ver)
 	}
 
+	// 5. Unmarshal Metadata.
 	var meta indexmeta.Meta
 	if err := meta.UnmarshalWithDecoder(decoder); err != nil {
-		return nil, nil, 0, err
+		return nil, nil, 0, fmt.Errorf("failed to unmarshal metadata: %w", err)
 	}
 
+	// 6. Read Num Prefixes.
 	numPrefixes, err := decoder.ReadUint64(bin.LE)
 	if err != nil {
-		return nil, nil, 0, err
+		return nil, nil, 0, fmt.Errorf("failed to read numPrefixes: %w", err)
 	}
 
+	// 7. Read Prefix Index.
 	prefixToOffset := newUint16LayoutPointer()
 	for i := uint64(0); i < numPrefixes; i++ {
 		var p [2]byte
 		if _, err := decoder.Read(p[:]); err != nil {
-			return nil, nil, 0, err
+			return nil, nil, 0, fmt.Errorf("failed to read prefix at index %d: %w", i, err)
 		}
 		off, err := decoder.ReadUint64(bin.LE)
 		if err != nil {
-			return nil, nil, 0, err
+			return nil, nil, 0, fmt.Errorf("failed to read offset at index %d: %w", i, err)
 		}
 		prefixToOffset[prefixToUint16(p)] = off
 	}
+
 	return prefixToOffset, &meta, headerSize + 4, nil
 }
 
