@@ -125,7 +125,7 @@ func TestCorruptFiles(t *testing.T) {
 		})
 		_, err := Open(path)
 		require.Error(t, err)
-		require.Contains(t, err.Error(), "version mismatch")
+		require.Contains(t, err.Error(), "invalid magic")
 	})
 }
 
