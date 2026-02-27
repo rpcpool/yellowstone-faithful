@@ -74,6 +74,8 @@ func (f *StreamTransactionsFilterExecutable) CompileExclusion() (assertionSlice,
 		klog.V(4).Info("Filter is nil, no exclusion rules will be compiled")
 		return asserts, nil
 	}
+	// true => continue excluding this transaction
+	// false => stop exclusion and MUST include this transaction
 
 	klog.V(4).Info("Compiling StreamTransactions filter exclusion rules")
 
@@ -85,7 +87,7 @@ func (f *StreamTransactionsFilterExecutable) CompileExclusion() (assertionSlice,
 			if isVote {
 				klog.V(5).Info("Excluding vote transaction")
 			}
-			return isVote
+			return isVote // If NOT vote, include immediately regardless of other filters; if is vote, then we exclude this transaction (unless other filters say we MUST include it)
 		})
 	}
 	if f.Failed != nil && !*f.Failed { // If failed is false, we should filter out failed transactions
@@ -94,16 +96,16 @@ func (f *StreamTransactionsFilterExecutable) CompileExclusion() (assertionSlice,
 			// If is not failed, then exclude=true
 			if meta == nil {
 				klog.V(5).Info("Including transaction with no meta (can't determine if failed)")
-				return false // No meta means we can't determine if it failed, so we include it
+				return true // No meta means we can't determine if it failed, so we include it
 			}
 			isFailed := meta.IsErr()
 			if isFailed {
-				klog.V(5).Info("Including failed transaction")
-				return false
+				klog.V(5).Info("Excluding failed transaction")
 			} else {
-				klog.V(5).Info("Excluding successful transaction")
-				return true
+				klog.V(5).Info("Including successful transaction")
 			}
+			return isFailed // the the filter says we exclude failed transactions;
+			// if isFailed is true, then we exclude this transaction (unless other filters say we MUST include it)
 		})
 	}
 	if len(f.AccountInclude) > 0 {
@@ -173,6 +175,8 @@ type assertionSlice []func(tx *solana.Transaction, meta *solanatxmetaparsers.Tra
 func (s assertionSlice) Do(tx *solana.Transaction, meta *solanatxmetaparsers.TransactionStatusMetaContainer) bool {
 	allAccounts := getAllAccountsFromTransaction(tx, meta)
 	for _, assert := range s {
+		// if the assertion returns true => continue excluding this transaction
+		// if the assertion returns false => stop exclusion and MUST include this transaction immediately (ignoring the rest of the assertions)
 		if !assert(tx, meta, allAccounts) {
 			return false
 		}
