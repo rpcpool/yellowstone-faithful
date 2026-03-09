@@ -217,6 +217,17 @@ func (me *MultiEpoch) GetVersion(context.Context, *old_faithful_grpc.VersionRequ
 }
 
 func (multi *MultiEpoch) GetBlock(ctx context.Context, params *old_faithful_grpc.BlockRequest) (*old_faithful_grpc.BlockResponse, error) {
+	resp, cleanup, err := multi._GetBlock(ctx, params)
+	if cleanup != nil {
+		defer cleanup()
+	}
+	if err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+func (multi *MultiEpoch) _GetBlock(ctx context.Context, params *old_faithful_grpc.BlockRequest) (*old_faithful_grpc.BlockResponse, func(), error) {
 	ctx, span := telemetry.StartSpan(ctx, "GetBlock")
 	defer span.End()
 	span.SetAttributes(attribute.Int64("slot", int64(params.Slot)))
@@ -232,7 +243,14 @@ func (multi *MultiEpoch) GetBlock(ctx context.Context, params *old_faithful_grpc
 
 	if err != nil {
 		telemetry.RecordError(span, err, "Epoch not available")
-		return nil, status.Errorf(codes.NotFound, "Epoch %d is not available", epochNumber)
+		return nil, nil, status.Errorf(codes.NotFound, "Epoch %d is not available", epochNumber)
+	}
+
+	cleanups := []func(){}
+	cleanup := func() {
+		for _, c := range cleanups {
+			c()
+		}
 	}
 
 	/////////////////////////////////
@@ -241,29 +259,31 @@ func (multi *MultiEpoch) GetBlock(ctx context.Context, params *old_faithful_grpc
 	childCid, err := epochHandler.FindCidFromSlot(ctx, slot)
 	if err != nil {
 		if errors.Is(err, compactindexsized.ErrNotFound) {
-			return nil, status.Errorf(codes.NotFound, "Slot %d was skipped, or missing in long-term storage", slot)
+			return nil, nil, status.Errorf(codes.NotFound, "Slot %d was skipped, or missing in long-term storage", slot)
 		} else {
-			return nil, status.Errorf(codes.Internal, "Failed to get block: %v", err)
+			return nil, nil, status.Errorf(codes.Internal, "Failed to get block: %v", err)
 		}
 	}
 	// Find CAR file oasChild for CID in index.
 	oasChild, err := epochHandler.FindOffsetAndSizeFromCid(ctx, childCid)
 	if err != nil {
 		// not found or error
-		return nil, fmt.Errorf("failed to find offset for CID %s: %w", childCid, err)
+		return nil, nil, fmt.Errorf("failed to find offset for CID %s: %w", childCid, err)
 	}
 	childData, err := epochHandler.GetNodeByOffsetAndSizeBuffer(ctx, &childCid, oasChild)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "Failed to get block: %v", err)
+		return nil, nil, status.Errorf(codes.Internal, "Failed to get block: %v", err)
 	}
 	block, err := iplddecoders.DecodeBlock(childData.Bytes())
 	if err != nil {
-		return nil, fmt.Errorf("failed to decode block: %w", err)
+		return nil, nil, fmt.Errorf("failed to decode block: %w", err)
 	}
 	if uint64(block.Slot) != slot {
-		return nil, fmt.Errorf("expected slot %d, got %d", slot, block.Slot)
+		return nil, nil, fmt.Errorf("expected slot %d, got %d", slot, block.Slot)
 	}
-	bytebufferpool.Put(childData) // return the buffer to the pool
+	cleanups = append(cleanups, func() {
+		bytebufferpool.Put(childData) // return the buffer to the pool
+	})
 
 	parentSlot := block.GetParentSlot()
 	parentIsInPreviousEpoch := slottools.ParentIsInPreviousEpoch(parentSlot, (slot))
@@ -293,42 +313,48 @@ func (multi *MultiEpoch) GetBlock(ctx context.Context, params *old_faithful_grpc
 		return offsetParent, parentCid, nil
 	}()
 	if err != nil {
-		return nil, status.Error(codes.Internal, "Failed to get block")
+		return nil, cleanup, status.Error(codes.Internal, "Failed to get block")
 	}
 	totalSize := oasChild.Offset + oasChild.Size - offsetParent
 
 	if totalSize > GiB*2 {
-		return nil, status.Error(codes.Internal, "Internal error")
+		return nil, cleanup, status.Error(codes.Internal, "Internal error")
 	}
 	reader, err := epochHandler.GetEpochReaderAt()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get epoch reader: %w", err)
+		return nil, cleanup, fmt.Errorf("failed to get epoch reader: %w", err)
 	}
 	// TODO: save this info immediately so for next getBlock(thisBlock) we know immediately where to read in the CAR file,
 	// and whether the parent is in the previous epoch or not.
 	section, err := carreader.ReadIntoBuffer(offsetParent, totalSize, reader)
 	if err != nil {
 		slog.Error("failed to read node from CAR", "error", err)
-		return nil, fmt.Errorf("failed to read node from CAR: %w", err)
+		return nil, cleanup, fmt.Errorf("failed to read node from CAR: %w", err)
 	}
 	tim.time("read section from CAR")
 
 	nodes, err := nodetools.SplitIntoDataAndCids(section.Bytes())
 	if err != nil {
 		slog.Error("failed to split section into nodes", "error", err)
-		return nil, status.Errorf(codes.Internal, "Internal error")
+		return nil, cleanup, status.Errorf(codes.Internal, "Internal error")
 	}
-	defer nodes.Put() // return the nodes to the pool
+	cleanups = append(cleanups, func() {
+		nodes.Put() // return the nodes to the pool
+	})
 	nodes.SortByCid()
-	bytebufferpool.Put(section) // return the buffer to the pool
+	cleanups = append(cleanups, func() {
+		bytebufferpool.Put(section) // return the buffer to the pool
+	})
 	tim.time("nodes")
 
 	parsedNodes, err := nodes.ToParsedAndCidSlice()
 	if err != nil {
 		slog.Error("failed to convert nodes to parsed nodes", "error", err)
-		return nil, status.Errorf(codes.Internal, "Internal error")
+		return nil, cleanup, status.Errorf(codes.Internal, "Internal error")
 	}
-	defer parsedNodes.Put() // return the parsed nodes to the pool
+	cleanups = append(cleanups, func() {
+		parsedNodes.Put() // return the parsed nodes to the pool
+	})
 	// parsedNodes.SortByCid() // NOTE: already sorted by CIDs in SplitIntoDataAndCids; ToParsedAndCidSlice maintains the same order.
 	tim.time("parsedNodes")
 
@@ -337,7 +363,7 @@ func (multi *MultiEpoch) GetBlock(ctx context.Context, params *old_faithful_grpc
 	lastEntryCid := block.Entries[len(block.Entries)-1]
 	lastEntry, err := parsedNodes.EntryByCid(lastEntryCid.(cidlink.Link).Cid)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get last entry: %w", err)
+		return nil, cleanup, fmt.Errorf("failed to get last entry: %w", err)
 	}
 	lastEntryHash := solana.HashFromBytes(lastEntry.Hash)
 	tim.time("get entries")
@@ -356,7 +382,7 @@ func (multi *MultiEpoch) GetBlock(ctx context.Context, params *old_faithful_grpc
 				"rewards_cid", rewardsCid.String(),
 				"error", err,
 			)
-			return nil, status.Errorf(codes.Internal, "Failed to get rewards: %v", err)
+			return nil, cleanup, status.Errorf(codes.Internal, "Failed to get rewards: %v", err)
 		} else {
 			resp.Rewards = uncompressedRewards
 			{
@@ -380,7 +406,7 @@ func (multi *MultiEpoch) GetBlock(ctx context.Context, params *old_faithful_grpc
 			{
 				tx, meta, err := nodetools.GetRawTransactionAndMeta(parsedNodes, transactionNode)
 				if err != nil {
-					return nil, status.Errorf(codes.Internal, "Failed to get transaction: %v", err)
+					return nil, cleanup, status.Errorf(codes.Internal, "Failed to get transaction: %v", err)
 				}
 				txResp := old_faithful_grpc.GetTransaction()
 				txResp.Transaction = tx
@@ -449,7 +475,7 @@ func (multi *MultiEpoch) GetBlock(ctx context.Context, params *old_faithful_grpc
 			if err != nil {
 				telemetry.RecordError(parentSpan, err, "Failed to get parent block")
 				parentSpan.End()
-				return nil, status.Errorf(codes.Internal, "Failed to get parent block: %v", err)
+				return nil, cleanup, status.Errorf(codes.Internal, "Failed to get parent block: %v", err)
 			}
 			if len(parentBlock.Entries) > 0 {
 				lastEntryCidOfParent := parentBlock.Entries[len(parentBlock.Entries)-1].(cidlink.Link).Cid
@@ -458,7 +484,7 @@ func (multi *MultiEpoch) GetBlock(ctx context.Context, params *old_faithful_grpc
 				if err != nil {
 					telemetry.RecordError(parentSpan, err, "Failed to get parent entry")
 					parentSpan.End()
-					return nil, status.Errorf(codes.Internal, "Failed to get parent entry: %v", err)
+					return nil, cleanup, status.Errorf(codes.Internal, "Failed to get parent entry: %v", err)
 				}
 				parentEntryHash := solana.HashFromBytes(parentEntryNode.Hash)
 				resp.PreviousBlockhash = parentEntryHash[:]
@@ -483,7 +509,7 @@ func (multi *MultiEpoch) GetBlock(ctx context.Context, params *old_faithful_grpc
 	)
 	responseSpan.End()
 
-	return resp, nil
+	return resp, cleanup, nil
 }
 
 func (multi *MultiEpoch) GetTransaction(ctx context.Context, params *old_faithful_grpc.TransactionRequest) (*old_faithful_grpc.TransactionResponse, error) {
@@ -884,13 +910,14 @@ func (multi *MultiEpoch) processSlotTransactions(
 			default:
 			}
 
-			block, err := multi.GetBlock(WithDontGC(ctx), &old_faithful_grpc.BlockRequest{Slot: slot})
+			block, cleanup, err := multi._GetBlock(WithDontGC(ctx), &old_faithful_grpc.BlockRequest{Slot: slot})
 			if err != nil {
 				if status.Code(err) == codes.NotFound {
 					continue // This block is not available, skip it (either skipped or not available)
 				}
 				return err
 			}
+			defer cleanup()
 
 			for _, tx := range block.Transactions {
 				txn, err := solana.TransactionFromBytes(tx.GetTransaction())
@@ -960,7 +987,7 @@ func (multi *MultiEpoch) processSlotTransactions(
 	wg.SetLimit(maxConcurrentAccounts)
 
 	for accI := range compilableFilter.AccountInclude {
-		account := compilableFilter.AccountInclude[accI]
+		account := accI
 		wg.Go(func() error {
 			return func(pKey solana.PK) error {
 				queryCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
@@ -1264,4 +1291,31 @@ func validateAccountSlice(accounts []string, fieldName string) error {
 		}
 	}
 	return nil
+}
+
+func blockContainsAccounts(block *old_faithful_grpc.BlockResponse, accounts solana.PublicKeySlice) bool {
+	for _, tx := range block.Transactions {
+		solTx, err := solana.TransactionFromBytes(tx.GetTransaction())
+		if err != nil {
+			klog.Errorf("Failed to decode transaction: %v", err)
+			continue
+		}
+
+		if accounts.ContainsAny(solTx.Message.AccountKeys...) {
+			return true
+		}
+
+		meta, err := solanatxmetaparsers.ParseTransactionStatusMetaContainer(tx.Meta)
+		if err != nil {
+			klog.Errorf("Failed to parse transaction meta: %v", err)
+			continue
+		}
+
+		writable, readonly := meta.GetLoadedAccounts()
+		if writable.ContainsAny(accounts...) || readonly.ContainsAny(accounts...) {
+			return true
+		}
+	}
+
+	return false
 }

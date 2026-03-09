@@ -1,9 +1,11 @@
+// write.go
 package bucketteer
 
 import (
 	"bufio"
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -26,9 +28,9 @@ type prefixToHashes [math.MaxUint16 + 1][]uint64 // prefix -> hashes
 
 func newPrefixToHashes() *prefixToHashes {
 	var out prefixToHashes
-	for i := range out {
-		out[i] = make([]uint64, 0, 16_000)
-	}
+	// Optimization: Do not pre-allocate huge slices for every bucket.
+	// 65536 buckets * 16,000 capacity * 8 bytes = ~8GB RAM overhead.
+	// We initialize with nil and allocate only when Put is called.
 	return &out
 }
 
@@ -58,18 +60,30 @@ func NewWriter(path string) (*Writer, error) {
 // Put adds the given signature to the Bucketteer.
 // Cannot be called concurrently.
 func (b *Writer) Put(sig [64]byte) {
+	if b == nil {
+		panic("Put called on nil Writer")
+	}
 	var prefix [2]byte
 	copy(prefix[:], sig[:2])
 	pU16 := prefixToUint16(prefix)
+
+	// Lazy allocation for specific bucket
+	if b.prefixToHashes[pU16] == nil {
+		b.prefixToHashes[pU16] = make([]uint64, 0, 1024)
+	}
 	b.prefixToHashes[pU16] = append(b.prefixToHashes[pU16], Hash(sig))
 }
 
-// Has returns true if the Bucketteer has seen the given signature.
+// Has returns true if the Bucketteer has seen the given signature in memory.
 func (b *Writer) Has(sig [64]byte) bool {
+	if b == nil {
+		return false
+	}
 	var prefix [2]byte
 	copy(prefix[:], sig[:2])
 	hash := Hash(sig)
-	for _, h := range b.prefixToHashes[prefixToUint16(prefix)] {
+	bucket := b.prefixToHashes[prefixToUint16(prefix)]
+	for _, h := range bucket {
 		if h == hash {
 			return true
 		}
@@ -78,62 +92,77 @@ func (b *Writer) Has(sig [64]byte) bool {
 }
 
 func (b *Writer) close() error {
-	if b.writer != nil {
-		if err := b.writer.Flush(); err != nil {
-			return fmt.Errorf("failed to flush writer: %w", err)
-		}
-	}
-	if b.destination == nil {
+	if b == nil {
 		return nil
 	}
-	if err := b.destination.Sync(); err != nil {
-		return fmt.Errorf("failed to sync file: %w", err)
+	var errs []error
+	if b.writer != nil {
+		if err := b.writer.Flush(); err != nil {
+			errs = append(errs, fmt.Errorf("failed to flush writer: %w", err))
+		}
 	}
-	return b.destination.Close()
+	if b.destination != nil {
+		if err := b.destination.Sync(); err != nil {
+			errs = append(errs, fmt.Errorf("failed to sync file: %w", err))
+		}
+		if err := b.destination.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("failed to close destination: %w", err))
+		}
+		b.destination = nil
+	}
+	if len(errs) > 0 {
+		return errors.Join(errs...)
+	}
+	return nil
 }
 
-// SealAndClose writes the Bucketteer's state to the given writer.
+// SealAndClose writes the Bucketteer's state to disk and closes resources.
 func (b *Writer) SealAndClose(meta indexmeta.Meta) (int64, error) {
+	if b == nil {
+		return 0, errors.New("SealAndClose called on nil Writer")
+	}
+
+	klog.V(1).Infof("Sealing bucketteer to %s", b.path)
+
 	file, err := os.Create(b.path)
 	if err != nil {
 		return 0, fmt.Errorf("failed to create file: %w", err)
 	}
-	b.writer = bufio.NewWriterSize(file, writeBufSize)
 	b.destination = file
+	b.writer = bufio.NewWriterSize(file, writeBufSize)
 
-	// truncate file and seek to beginning:
-	if err := b.destination.Truncate(0); err != nil {
-		return 0, err
-	}
-	if _, err := b.destination.Seek(0, 0); err != nil {
-		return 0, err
-	}
+	// In case of any error before the continuity chain finishes, ensure we close.
+	success := false
+	defer func() {
+		if !success {
+			_ = b.close()
+		}
+	}()
+
 	newHeader, size, err := seal(b.writer, b.prefixToHashes, meta)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("failed to seal buckets: %w", err)
 	}
-	{
-		// flush the writer:
-		if err := b.writer.Flush(); err != nil {
-			return 0, fmt.Errorf("failed to flush writer: %w", err)
-		}
-		// sync the file:
-		if err := b.destination.Sync(); err != nil {
-			return 0, fmt.Errorf("failed to sync file: %w", err)
-		}
+
+	if err := b.writer.Flush(); err != nil {
+		return 0, fmt.Errorf("failed to flush final buckets: %w", err)
 	}
-	return size,
-		continuity.New().
-			Thenf("overwriteHeader", func() error {
-				return overwriteFileContentAt(b.destination, 0, newHeader)
-			}).
-			Thenf("close", func() error {
-				if err := b.close(); err != nil {
-					return fmt.Errorf("failed to close index: %w", err)
-				}
-				return nil
-			}).
-			Err()
+	if err := b.destination.Sync(); err != nil {
+		return 0, fmt.Errorf("failed to sync file: %w", err)
+	}
+
+	err = continuity.New().
+		Thenf("overwriteHeader", func() error {
+			klog.V(2).Infof("Overwriting header at offset 0 (header size: %d)", len(newHeader))
+			return overwriteFileContentAt(b.destination, 0, newHeader)
+		}).
+		Thenf("close", func() error {
+			success = true // Continuity handles closing now
+			return b.close()
+		}).
+		Err()
+
+	return size, err
 }
 
 func createHeader(
@@ -146,56 +175,47 @@ func createHeader(
 	tmpHeaderBuf := new(bytes.Buffer)
 	headerWriter := bin.NewBorshEncoder(tmpHeaderBuf)
 
-	// write header size:
+	// 1. Header Size (4 bytes)
 	if err := headerWriter.WriteUint32(headerSizeIn, binary.LittleEndian); err != nil {
 		return nil, err
 	}
-	// write magic:
+	// 2. Magic (8 bytes)
 	if n, err := headerWriter.Write(magic[:]); err != nil {
 		return nil, err
-	} else {
-		if n != 8 {
-			return nil, fmt.Errorf("invalid number of bytes written for magic: %d", n)
-		}
+	} else if n != 8 {
+		return nil, fmt.Errorf("invalid number of bytes written for magic: %d", n)
 	}
-	// write version uint64
+	// 3. Version (8 bytes)
 	if err := headerWriter.WriteUint64(version, binary.LittleEndian); err != nil {
 		return nil, err
 	}
-	// write meta
-	{
-		metaBuf, err := meta.MarshalBinary()
-		if err != nil {
-			return nil, fmt.Errorf("failed to marshal metadata: %w", err)
-		}
-		if _, err := headerWriter.Write(metaBuf); err != nil {
-			return nil, fmt.Errorf("failed to write metadata: %w", err)
-		}
+	// 4. Metadata
+	metaBuf, err := meta.MarshalBinary()
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal metadata: %w", err)
 	}
-	// write num buckets
+	if _, err := headerWriter.Write(metaBuf); err != nil {
+		return nil, fmt.Errorf("failed to write metadata: %w", err)
+	}
+	// 5. Num Buckets (8 bytes)
 	if err := headerWriter.WriteUint64(uint64(len(prefixToOffset)), binary.LittleEndian); err != nil {
 		return nil, err
 	}
 
-	// write prefix+offset pairs
-	for prefixAsUint16 := range prefixToOffset {
-		prefix := uint16ToPrefix(uint16(prefixAsUint16))
+	// 6. Prefix-Offset Index (65536 * 10 bytes)
+	for i := range prefixToOffset {
+		prefix := uint16ToPrefix(uint16(i))
 		if _, err := headerWriter.Write(prefix[:]); err != nil {
 			return nil, err
 		}
-		offset := prefixToOffset[prefixAsUint16]
-		if err := headerWriter.WriteUint64(offset, binary.LittleEndian); err != nil {
+		if err := headerWriter.WriteUint64(prefixToOffset[i], binary.LittleEndian); err != nil {
 			return nil, err
 		}
 	}
 	return tmpHeaderBuf.Bytes(), nil
 }
 
-func overwriteFileContentAt(
-	file *os.File,
-	offset int64,
-	data []byte,
-) error {
+func overwriteFileContentAt(file *os.File, offset int64, data []byte) error {
 	wrote, err := file.WriteAt(data, offset)
 	if err != nil {
 		return err
@@ -203,7 +223,7 @@ func overwriteFileContentAt(
 	if wrote != len(data) {
 		return fmt.Errorf("wrote %d bytes, expected to write %d bytes", wrote, len(data))
 	}
-	return err
+	return nil
 }
 
 func seal(
@@ -212,20 +232,10 @@ func seal(
 	meta indexmeta.Meta,
 ) ([]byte, int64, error) {
 	prefixToOffset := bucketToOffset{}
-	for prefixAsUint16 := range prefixToHashes {
-		// initialize all offsets to 0:
-		prefixToOffset[prefixAsUint16] = 0
-	}
-
 	totalWritten := int64(0)
-	// create and write draft header:
-	header, err := createHeader(
-		_Magic,
-		Version,
-		0, // header size
-		meta,
-		prefixToOffset,
-	)
+
+	// Write draft header to reserve space.
+	header, err := createHeader(_Magic, Version, 0, meta, prefixToOffset)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -234,6 +244,8 @@ func seal(
 		return nil, 0, err
 	}
 	totalWritten += int64(headerSize)
+
+	klog.V(2).Infof("Header draft written: %d bytes. Starting bucket serialization.", headerSize)
 
 	previousOffset := uint64(0)
 	for prefix := range prefixToHashes {
@@ -254,18 +266,22 @@ func seal(
 		})
 
 		thisSize := 4 + len(entries)*8
-		// write the clean set to the buckets buffer
+
+		// Map current prefix to its relative offset within the content section.
+		prefixToOffset[prefix] = previousOffset
+
+		// Write bucket metadata (count)
 		if err := binary.Write(out, binary.LittleEndian, uint32(len(entries))); err != nil {
 			return nil, 0, err
 		}
+		// Write hashes
 		for _, h := range entries {
 			if err := binary.Write(out, binary.LittleEndian, h); err != nil {
 				return nil, 0, err
 			}
 		}
 
-		prefixToOffset[prefix] = previousOffset
-		previousOffset = previousOffset + uint64(thisSize)
+		previousOffset += uint64(thisSize)
 		totalWritten += int64(thisSize)
 	}
 
@@ -273,28 +289,26 @@ func seal(
 	if err := out.Flush(); err != nil {
 		return nil, 0, err
 	}
-
-	// write final header by overwriting the draft header:
 	updatedHeader, err := createHeader(
 		_Magic,
 		Version,
-		uint32(headerSize-4), // -4 because we don't count the header size itself (it's a uint32, so 4 bytes long)
+		uint32(headerSize-4), // Borsh doesn't count the size field itself in some protocols.
 		meta,
 		prefixToOffset,
 	)
 	if err != nil {
 		return nil, 0, err
 	}
-	return updatedHeader, totalWritten, err
+	return updatedHeader, totalWritten, nil
 }
 
-// getCleanSet returns a sorted, deduplicated copy of getCleanSet.
 func getCleanSet(entries []uint64) []uint64 {
-	// sort:
+	if len(entries) == 0 {
+		return nil
+	}
 	sort.Slice(entries, func(i, j int) bool {
 		return entries[i] < entries[j]
 	})
-	// dedup:
 	out := make([]uint64, 0, len(entries))
 	for i := 0; i < len(entries); i++ {
 		if i > 0 && entries[i] == entries[i-1] {
@@ -325,4 +339,10 @@ func isDir(path string) (bool, error) {
 		return false, err
 	}
 	return info.IsDir(), nil
+}
+
+func uint16ToPrefix(num uint16) [2]byte {
+	var prefix [2]byte
+	binary.LittleEndian.PutUint16(prefix[:], num)
+	return prefix
 }
