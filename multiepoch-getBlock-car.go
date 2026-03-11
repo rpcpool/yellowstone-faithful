@@ -102,7 +102,10 @@ func (multi *MultiEpoch) handleGetBlock_car(ctx context.Context, conn *requestCo
 		return nil, fmt.Errorf("failed to decode block: %w", err)
 	}
 	if uint64(block.Slot) != slot {
-		return nil, fmt.Errorf("expected slot %d, got %d", slot, block.Slot)
+		return &jsonrpc2.Error{
+			Code:    CodeNotFound,
+			Message: fmt.Sprintf("Slot %d was skipped, or missing in long-term storage", slot),
+		}, err
 	}
 	bytebufferpool.Put(childData) // return the buffer to the pool
 	{

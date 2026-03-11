@@ -279,7 +279,7 @@ func (multi *MultiEpoch) _GetBlock(ctx context.Context, params *old_faithful_grp
 		return nil, nil, fmt.Errorf("failed to decode block: %w", err)
 	}
 	if uint64(block.Slot) != slot {
-		return nil, nil, fmt.Errorf("expected slot %d, got %d", slot, block.Slot)
+		return nil, nil, status.Errorf(codes.NotFound, "Slot %d was skipped, or missing in long-term storage", slot)
 	}
 	cleanups = append(cleanups, func() {
 		bytebufferpool.Put(childData) // return the buffer to the pool
