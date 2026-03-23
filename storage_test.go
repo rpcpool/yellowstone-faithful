@@ -2,30 +2,32 @@ package main
 
 import (
 	"context"
-	"io"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 )
 
-// mockReadCloser implements io.ReadCloser for testing
-type mockReadCloser struct {
-	data []byte
-	read bool
-}
-
-func (m *mockReadCloser) Read(p []byte) (int, error) {
-	if m.read {
-		return 0, io.EOF
+func uint64SliceEqual(a, b []uint64) bool {
+	if len(a) != len(b) {
+		return false
 	}
-	m.read = true
-	copy(p, m.data)
-	return len(m.data), io.EOF
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
-func (m *mockReadCloser) Close() error {
-	return nil
+func uint64SliceToFileContent(slots []uint64) []byte {
+	lines := make([]string, len(slots))
+	for i, s := range slots {
+		lines[i] = fmt.Sprintf("%d", s)
+	}
+	return []byte(strings.Join(lines, "\n"))
 }
 
 func Test_openBlocksFile_local(t *testing.T) {
@@ -35,7 +37,8 @@ func Test_openBlocksFile_local(t *testing.T) {
 	}
 	defer os.Remove(tempFile.Name())
 
-	content := []byte("test-blocks-data")
+	expected := []uint64{100, 200, 300}
+	content := uint64SliceToFileContent(expected)
 	if _, err := tempFile.Write(content); err != nil {
 		t.Fatalf("failed to write to temp file: %v", err)
 	}
@@ -46,13 +49,14 @@ func Test_openBlocksFile_local(t *testing.T) {
 	if err != nil {
 		t.Fatalf("openBlocksFile failed: %v", err)
 	}
-	if string(data) != string(content) {
-		t.Errorf("expected %q, got %q", content, data)
+	if !uint64SliceEqual(data, expected) {
+		t.Errorf("expected %v, got %v", expected, data)
 	}
 }
 
 func Test_openBlocksFile_remote(t *testing.T) {
-	mockData := []byte("remote-blocks-data")
+	expected := []uint64{400, 500, 600}
+	mockData := uint64SliceToFileContent(expected)
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write(mockData)
 	}))
@@ -63,7 +67,7 @@ func Test_openBlocksFile_remote(t *testing.T) {
 	if err != nil {
 		t.Fatalf("openBlocksFile failed: %v", err)
 	}
-	if string(data) != string(mockData) {
-		t.Errorf("expected %q, got %q", mockData, data)
+	if !uint64SliceEqual(data, expected) {
+		t.Errorf("expected %v, got %v", expected, data)
 	}
 }
