@@ -407,25 +407,10 @@ jobs:
         gosec -fmt sarif -out gosec-results.sarif -exclude-dir=third_party -exclude-dir=vendor ./... || true
       continue-on-error: true
 
-    - name: Run Trivy vulnerability scanner
-      uses: aquasecurity/trivy-action@master
-      with:
-        scan-type: 'fs'
-        scan-ref: '.'
-        format: 'sarif'
-        output: 'trivy-results.sarif'
-      continue-on-error: true
-
     - name: Upload security scan results
       if: always()
       uses: github/codeql-action/upload-sarif@v3
       with:
         sarif_file: 'gosec-results.sarif'
       continue-on-error: true
-
-    - name: Upload Trivy scan results
-      if: always()
-      uses: github/codeql-action/upload-sarif@v3
-      with:
-        sarif_file: 'trivy-results.sarif'
-      continue-on-error: true
+      
