@@ -581,7 +581,7 @@ func allowOnlyAsciiPrintable(s string) string {
 
 func isValidLocalMethod(method string) bool {
 	switch method {
-	case "getBlock", "getTransaction", "getSignaturesForAddress", "getBlockTime", "getBlocks", "getGenesisHash", "getFirstAvailableBlock", "getSlot":
+	case "getBlock", "getTransaction", "getSignaturesForAddress", "getBlockTime", "getBlocks", "getBlocksWithLimit", "getGenesisHash", "getFirstAvailableBlock", "getSlot":
 		return true
 	default:
 		return false
@@ -626,6 +626,13 @@ func (ser *MultiEpoch) handleRequest(ctx context.Context, conn *requestContext, 
 		defer span.End()
 		pyroscope.TagWrapper(context.Background(), pyroscope.Labels("rpc_method", "getBlocks"), func(ctx context.Context) {
 			jerr, err = ser.handleGetBlocks(spanCtx, conn, req)
+		})
+		return jerr, err
+	case "getBlocksWithLimit":
+		spanCtx, span := telemetry.StartSpan(ctx, "jsonrpc.handleGetBlocksWithLimit")
+		defer span.End()
+		pyroscope.TagWrapper(context.Background(), pyroscope.Labels("rpc_method", "getBlocksWithLimit"), func(ctx context.Context) {
+			jerr, err = ser.handleGetBlocksWithLimit(spanCtx, conn, req)
 		})
 		return jerr, err
 	case "getGenesisHash":

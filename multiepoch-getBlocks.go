@@ -31,54 +31,13 @@ func (multi *MultiEpoch) handleGetBlocks(ctx context.Context, conn *requestConte
 	}
 	tim.time("parseGetBlockRequest")
 
-	startEpochNumber := slottools.CalcEpochForSlot(params.StartSlot)
-	endEpochNumber := slottools.CalcEpochForSlot(params.EndSlot)
+	klog.Infof("GetBlocks request for slots %d to %d", params.StartSlot, params.EndSlot)
 
-	klog.Infof("GetBlocks request for slots %d to %d (epochs %d to %d)", params.StartSlot, params.EndSlot, startEpochNumber, endEpochNumber)
-
-	// Load all the requested epochs
-	var epochs []*Epoch
-	_, epochLookupSpan := telemetry.StartSpan(rpcSpanCtx, "GetBlocks_EpochLookups")
-	for epochNumber := startEpochNumber; epochNumber <= endEpochNumber; epochNumber++ {
-		epoch, err := multi.GetEpoch(epochNumber)
-		if err != nil {
-			return &jsonrpc2.Error{
-				Code:    jsonrpc2.CodeInternalError,
-				Message: "Failed to get epoch",
-			}, fmt.Errorf("failed to get epoch %d: %w", epochNumber, err)
-		}
-		if epoch == nil {
-			return &jsonrpc2.Error{
-				Code:    CodeNotFound,
-				Message: fmt.Sprintf("Epoch %d not found", epochNumber),
-			}, fmt.Errorf("epoch %d not found", epochNumber)
-		}
-		epochs = append(epochs, epoch)
-	}
-	epochLookupSpan.End()
-	tim.time("loadEpochs")
-
-	// Find the index of the start slot in the first epoch using binary search
-	var resultBlocks []uint64
-	_, blockSearchSpan := telemetry.StartSpan(rpcSpanCtx, "GetBlocks_BlockSearch")
-
-	startIdx := findSlotIndexBinarySearch(params.StartSlot, epochs[0].blocks)
-	endIdx := findSlotIndexBinarySearch(params.EndSlot, epochs[len(epochs)-1].blocks)
-	// startIdx is now the index of the first block >= StartSlot in epochs[0].blocks
-	if len(epochs) == 1 {
-		// If we are only in one epoch, we can directly slice the blocks
-		resultBlocks = epochs[0].blocks[startIdx:endIdx]
-	} else {
-		// Otherwise, we need to gather blocks from multiple epochs
-		resultBlocks = append(resultBlocks, epochs[0].blocks[startIdx:]...)
-		for i := 1; i < len(epochs)-1; i++ {
-			resultBlocks = append(resultBlocks, epochs[i].blocks...)
-		}
-		resultBlocks = append(resultBlocks, epochs[len(epochs)-1].blocks[:endIdx]...)
+	resultBlocks, rpcErr, err := multi.getBlocksInRange(rpcSpanCtx, params.StartSlot, params.EndSlot)
+	if rpcErr != nil || err != nil {
+		return rpcErr, err
 	}
 	tim.time("findBlocks")
-
-	blockSearchSpan.End()
 
 	err = conn.Reply(
 		ctx,
@@ -95,6 +54,104 @@ func (multi *MultiEpoch) handleGetBlocks(ctx context.Context, conn *requestConte
 	}
 
 	return nil, nil
+}
+
+func (multi *MultiEpoch) handleGetBlocksWithLimit(ctx context.Context, conn *requestContext, req *jsonrpc2.Request) (*jsonrpc2.Error, error) {
+	rpcSpanCtx, rpcSpan := telemetry.StartSpan(ctx, "jsonrpc.GetBlocksWithLimit")
+	defer rpcSpan.End()
+
+	tim := newTimer(getRequestIDFromContext(rpcSpanCtx))
+	params, err := parseGetBlocksWithLimitRequest(req.Params)
+	if err != nil {
+		return &jsonrpc2.Error{
+			Code:    jsonrpc2.CodeInvalidParams,
+			Message: "Invalid params",
+		}, fmt.Errorf("failed to parse params: %w", err)
+	}
+
+	if err := params.Validate(); err != nil {
+		return &jsonrpc2.Error{
+			Code:    jsonrpc2.CodeInvalidParams,
+			Message: err.Error(),
+		}, fmt.Errorf("failed to validate params: %w", err)
+	}
+	tim.time("parseGetBlocksWithLimitRequest")
+
+	endSlot := params.StartSlot + params.Limit - 1
+	klog.Infof("GetBlocksWithLimit request for slots %d to %d (limit %d)", params.StartSlot, endSlot, params.Limit)
+
+	resultBlocks, rpcErr, err := multi.getBlocksInRange(rpcSpanCtx, params.StartSlot, endSlot)
+	if rpcErr != nil || err != nil {
+		return rpcErr, err
+	}
+	tim.time("findBlocks")
+
+	// Truncate to the requested limit.
+	if uint64(len(resultBlocks)) > params.Limit {
+		resultBlocks = resultBlocks[:params.Limit]
+	}
+
+	err = conn.Reply(
+		ctx,
+		req.ID,
+		func() any {
+			if len(resultBlocks) > 0 {
+				return resultBlocks
+			}
+			return nil
+		}(),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to reply: %w", err)
+	}
+
+	return nil, nil
+}
+
+// getBlocksInRange returns all confirmed block slots in [startSlot, endSlot].
+func (multi *MultiEpoch) getBlocksInRange(ctx context.Context, startSlot, endSlot uint64) ([]uint64, *jsonrpc2.Error, error) {
+	startEpochNumber := slottools.CalcEpochForSlot(startSlot)
+	endEpochNumber := slottools.CalcEpochForSlot(endSlot)
+
+	var epochs []*Epoch
+	_, epochLookupSpan := telemetry.StartSpan(ctx, "GetBlocks_EpochLookups")
+	for epochNumber := startEpochNumber; epochNumber <= endEpochNumber; epochNumber++ {
+		epoch, err := multi.GetEpoch(epochNumber)
+		if err != nil {
+			epochLookupSpan.End()
+			return nil, &jsonrpc2.Error{
+				Code:    jsonrpc2.CodeInternalError,
+				Message: "Failed to get epoch",
+			}, fmt.Errorf("failed to get epoch %d: %w", epochNumber, err)
+		}
+		if epoch == nil {
+			epochLookupSpan.End()
+			return nil, &jsonrpc2.Error{
+				Code:    CodeNotFound,
+				Message: fmt.Sprintf("Epoch %d not found", epochNumber),
+			}, fmt.Errorf("epoch %d not found", epochNumber)
+		}
+		epochs = append(epochs, epoch)
+	}
+	epochLookupSpan.End()
+
+	var resultBlocks []uint64
+	_, blockSearchSpan := telemetry.StartSpan(ctx, "GetBlocks_BlockSearch")
+
+	startIdx := findSlotIndexBinarySearch(startSlot, epochs[0].blocks)
+	endIdx := findSlotIndexBinarySearch(endSlot, epochs[len(epochs)-1].blocks)
+	if len(epochs) == 1 {
+		resultBlocks = epochs[0].blocks[startIdx:endIdx]
+	} else {
+		resultBlocks = append(resultBlocks, epochs[0].blocks[startIdx:]...)
+		for i := 1; i < len(epochs)-1; i++ {
+			resultBlocks = append(resultBlocks, epochs[i].blocks...)
+		}
+		resultBlocks = append(resultBlocks, epochs[len(epochs)-1].blocks[:endIdx]...)
+	}
+
+	blockSearchSpan.End()
+	return resultBlocks, nil, nil
 }
 
 // findSlotIndexBinarySearch returns the index of the first block >= slot in blocks.

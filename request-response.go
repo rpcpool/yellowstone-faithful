@@ -500,3 +500,60 @@ func parseGetBlocksRequest(raw *json.RawMessage) (*GetBlocksRequest, error) {
 	}
 	return out, nil
 }
+
+const GetBlocksWithLimitMaxLimit = 500_000
+
+type GetBlocksWithLimitRequest struct {
+	StartSlot  uint64 `json:"startSlot"`
+	Limit      uint64 `json:"limit"`
+	Commitment string `json:"commitment,omitempty"` // default: "finalized"
+}
+
+func (req *GetBlocksWithLimitRequest) Validate() error {
+	if req.Limit == 0 {
+		return fmt.Errorf("limit must be greater than 0")
+	}
+	if req.Limit > GetBlocksWithLimitMaxLimit {
+		return fmt.Errorf("limit must be less than or equal to %d", GetBlocksWithLimitMaxLimit)
+	}
+	return nil
+}
+
+func parseGetBlocksWithLimitRequest(raw *json.RawMessage) (*GetBlocksWithLimitRequest, error) {
+	var params []any
+	if err := fasterJson.Unmarshal(*raw, &params); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal params: %w", err)
+	}
+	if len(params) < 2 {
+		return nil, fmt.Errorf("params must have at least two arguments")
+	}
+	startSlotRaw, ok := params[0].(float64)
+	if !ok {
+		return nil, fmt.Errorf("first argument must be a number, got %T", params[0])
+	}
+	limitRaw, ok := params[1].(float64)
+	if !ok {
+		return nil, fmt.Errorf("second argument must be a number, got %T", params[1])
+	}
+
+	out := &GetBlocksWithLimitRequest{
+		StartSlot: uint64(startSlotRaw),
+		Limit:     uint64(limitRaw),
+	}
+	if len(params) > 2 {
+		optionsRaw, ok := params[2].(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("third argument must be an object, got %T", params[2])
+		}
+		if commitmentRaw, ok := optionsRaw["commitment"]; ok {
+			commitment, ok := commitmentRaw.(string)
+			if !ok {
+				return nil, fmt.Errorf("commitment must be a string, got %T", commitmentRaw)
+			}
+			out.Commitment = commitment
+		} else {
+			out.Commitment = "finalized"
+		}
+	}
+	return out, nil
+}
