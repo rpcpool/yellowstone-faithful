@@ -128,12 +128,12 @@ func Test_getBlocks_slicing(t *testing.T) {
 
 func Test_parseGetBlocksWithLimitRequest(t *testing.T) {
 	tests := []struct {
-		name        string
-		params      string
-		wantStart   uint64
-		wantLimit   uint64
-		wantCommit  string
-		wantErr     bool
+		name       string
+		params     string
+		wantStart  uint64
+		wantLimit  uint64
+		wantCommit string
+		wantErr    bool
 	}{
 		{
 			name:       "valid startSlot and limit",

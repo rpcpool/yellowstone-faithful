@@ -1,0 +1,56 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+
+  - repo: local
+    hooks:
+      # Matches lint-go.yml: gofmt -s (simplify flag required by CI)
+      - id: go-fmt
+        name: gofmt
+        language: system
+        entry: gofmt -s -w
+        types: [go]
+        exclude: ^(vendor/|third_party/)
+
+      # Matches lint-go.yml formatting-check: goimports (excludes vendor, third_party, .pb.go)
+      - id: go-imports
+        name: goimports
+        language: system
+        entry: goimports -w
+        types: [go]
+        exclude: ^(vendor/|third_party/|.*\.pb\.go$)
+
+      # Matches lint-go.yml: go vet ./... (all packages, not per-file)
+      - id: go-vet
+        name: go vet
+        language: system
+        entry: go vet ./...
+        pass_filenames: false
+        types: [go]
+
+      # Matches tests-go.yml: go build ./...
+      #      - id: go-build
+      #  name: go build
+      #  language: system
+      #  entry: go build ./...
+      #  pass_filenames: false
+      #  types: [go]
+
+      # Matches lint-go.yml dependency-check: go mod tidy
+      - id: go-mod-tidy
+        name: go mod tidy
+        language: system
+        entry: go mod tidy
+        pass_filenames: false
+        files: (go\.mod|go\.sum)
+
+#  - repo: https://github.com/golangci/golangci-lint
+#    rev: v1.62.2
+#    hooks:
+#      - id: golangci-lint
