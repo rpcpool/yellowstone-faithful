@@ -112,7 +112,9 @@ func remoteReadAt(client *http.Client, url string, p []byte, off int64) (n int, 
 		req.Header.Set("Keep-Alive", "timeout=600")
 	}
 
-	req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", off, off+int64(len(p))))
+	end := off + int64(len(p)) - 1
+
+	req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", off, end))
 
 	var resp *http.Response
 	err = retryExpotentialBackoff(
@@ -131,6 +133,9 @@ func remoteReadAt(client *http.Client, url string, p []byte, off int64) (n int, 
 		n, err := io.ReadFull(resp.Body, p)
 		if err != nil {
 			return 0, err
+		}
+		if n != len(p) {
+			return n, fmt.Errorf("short read: expected %d bytes, got %d", len(p), n)
 		}
 		return n, nil
 	}

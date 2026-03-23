@@ -17,6 +17,7 @@ import (
 	"github.com/libp2p/go-reuseport"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rpcpool/yellowstone-faithful/compactindexsized"
+	"github.com/rpcpool/yellowstone-faithful/errctx"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"github.com/rpcpool/yellowstone-faithful/metrics"
 	old_faithful_grpc "github.com/rpcpool/yellowstone-faithful/old-faithful-proto/old-faithful-grpc"
@@ -446,6 +447,10 @@ func newMultiEpochHandler(handler *MultiEpoch, lsConf *ListenerConfig) func(ctx 
 				metrics.ErrBlockNotFound.Inc()
 			} else {
 				klog.Errorf("[%s] failed to handle %q: %v", reqID, sanitizeMethod(method), err)
+				// if error is error with location, add a header with the location
+				if loc := errctx.GetLocation(err); loc != "" {
+					reqCtx.Response.Header.Set("X-Error-Location", loc)
+				}
 			}
 		}
 		if errorResp != nil {

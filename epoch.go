@@ -739,7 +739,7 @@ func (s *Epoch) ReadAtFromCar(ctx context.Context, offset uint64, length uint64)
 func (s *Epoch) GetNodeByOffsetAndSize(ctx context.Context, wantedCid *cid.Cid, offsetAndSize *indexes.OffsetAndSize) ([]byte, error) {
 	buf, err := s.GetNodeByOffsetAndSizeBuffer(ctx, wantedCid, offsetAndSize)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get node by offset and size: %w", err)
+		return nil, fmt.Errorf("failed to get node by offset and size (o=%d s=%d): %w", offsetAndSize.Offset, offsetAndSize.Size, err)
 	}
 	return buf.B, nil
 }
