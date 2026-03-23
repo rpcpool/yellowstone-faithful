@@ -61,6 +61,8 @@ type Epoch struct {
 	blocktimeindex              *blocktimeindex.Index
 	onClose                     []func() error
 	allCache                    *hugecache.Cache
+	// Blocks, contains a list of blocks
+	blocks []uint64
 }
 
 func (r *Epoch) GetCache() *hugecache.Cache {
@@ -533,6 +535,24 @@ func NewEpochFromConfig(
 			return nil, fmt.Errorf("epoch mismatch in slot-to-blocktime index: expected %d, got %d", ep.Epoch(), blocktimeIndex.Epoch())
 		}
 		ep.blocktimeindex = blocktimeIndex
+	}
+
+	{
+		// @TODO if the blocks index is present in the config file then load the blocks file using openBlocksFile
+		// and convert it into a list of uint64
+		if !config.Indexes.Blocks.URI.IsZero() {
+			blocksData, err := openBlocksFile(
+				c.Context,
+				string(config.Indexes.Blocks.URI),
+			)
+			if err != nil {
+				return nil, fmt.Errorf("failed to open blocks index file: %w", err)
+			}
+			ep.blocks = blocksData
+			// report number of blocks loaded
+			klog.Infof("Loaded %d blocks from blocks index for epoch %d", len(ep.blocks), ep.Epoch())
+		}
+
 	}
 
 	ep.rootCid = lastRootCid
