@@ -200,7 +200,7 @@ func parseGetBlockRequest(raw *json.RawMessage) (*GetBlockRequest, error) {
 			transactionDetails := defaultTransactionDetails()
 			out.Options.TransactionDetails = &transactionDetails
 		}
-		if rewardsRaw, ok := optionsRaw["rewards"]; ok {
+		if rewardsRaw, ok := optionsRaw["rewards"]; ok && rewardsRaw != nil {
 			rewards, ok := rewardsRaw.(bool)
 			if !ok {
 				return nil, fmt.Errorf("rewards must be a boolean, got %T", rewardsRaw)
