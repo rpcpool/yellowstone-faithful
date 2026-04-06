@@ -175,7 +175,7 @@ func (multi *MultiEpoch) handleGetTransaction(ctx context.Context, conn *request
 	epochHandler, err := multi.GetEpoch(uint64(epochNumber))
 	if err != nil {
 		return &jsonrpc2.Error{
-			Code:    CodeNotFound,
+			Code:    CodeNotAvailable,
 			Message: fmt.Sprintf("Epoch %d is not available from this RPC", epochNumber),
 		}, errctx.Wrap(fmt.Errorf("failed to get handler for epoch %d: %w", epochNumber, err), "GetTransaction_GetEpochHandler")
 	}

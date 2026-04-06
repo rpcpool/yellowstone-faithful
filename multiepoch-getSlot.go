@@ -12,7 +12,7 @@ func (multi *MultiEpoch) handleGetSlot(ctx context.Context, conn *requestContext
 	lastBlock, err := multi.GetMostRecentAvailableBlock(ctx)
 	if err != nil {
 		return &jsonrpc2.Error{
-			Code:    CodeNotFound,
+			Code:    CodeNotAvailable,
 			Message: "Internal error",
 		}, fmt.Errorf("failed to get first available block: %w", err)
 	}

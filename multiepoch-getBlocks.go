@@ -127,7 +127,7 @@ func (multi *MultiEpoch) getBlocksInRange(ctx context.Context, startSlot, endSlo
 		if epoch == nil {
 			epochLookupSpan.End()
 			return nil, &jsonrpc2.Error{
-				Code:    CodeNotFound,
+				Code:    CodeNotAvailable,
 				Message: fmt.Sprintf("Epoch %d not found", epochNumber),
 			}, fmt.Errorf("epoch %d not found", epochNumber)
 		}

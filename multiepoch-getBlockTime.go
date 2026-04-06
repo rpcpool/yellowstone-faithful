@@ -22,7 +22,7 @@ func (multi *MultiEpoch) handleGetBlockTime(ctx context.Context, conn *requestCo
 	epochHandler, err := multi.GetEpoch(epochNumber)
 	if err != nil {
 		return &jsonrpc2.Error{
-			Code:    CodeNotFound,
+			Code:    CodeNotAvailable,
 			Message: fmt.Sprintf("Epoch %d is not available", epochNumber),
 		}, fmt.Errorf("failed to get epoch %d: %w", epochNumber, err)
 	}
@@ -32,7 +32,7 @@ func (multi *MultiEpoch) handleGetBlockTime(ctx context.Context, conn *requestCo
 			blockTime, err := blocktimeIndex.Get(blockNum)
 			if err != nil {
 				return &jsonrpc2.Error{
-					Code:    CodeNotFound,
+					Code:    CodeSkipped,
 					Message: fmt.Sprintf("Slot %d was skipped, or missing in long-term storage", blockNum),
 				}, fmt.Errorf("failed to get blocktime: %w", err)
 			}

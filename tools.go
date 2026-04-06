@@ -128,3 +128,5 @@ func rewardTypeStringToInt(typ string) int {
 }
 
 const CodeNotFound = -32009
+const CodeSkipped = -32009
+const CodeNotAvailable = -32004
