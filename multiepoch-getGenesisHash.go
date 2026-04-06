@@ -14,7 +14,7 @@ func (multi *MultiEpoch) handleGetGenesisHash(ctx context.Context, conn *request
 	if err != nil {
 		// If epoch 0 is not available, then the genesis config is not available.
 		return &jsonrpc2.Error{
-			Code:    CodeNotFound,
+			Code:    CodeNotAvailable,
 			Message: fmt.Sprintf("Epoch %d is not available", epochNumber),
 		}, fmt.Errorf("failed to get epoch %d: %w", epochNumber, err)
 	}
@@ -22,7 +22,7 @@ func (multi *MultiEpoch) handleGetGenesisHash(ctx context.Context, conn *request
 	genesis := epochHandler.GetGenesis()
 	if genesis == nil {
 		return &jsonrpc2.Error{
-			Code:    CodeNotFound,
+			Code:    CodeNotAvailable,
 			Message: "Genesis is not available",
 		}, fmt.Errorf("genesis is nil")
 	}

@@ -64,7 +64,7 @@ func (multi *MultiEpoch) handleGetBlock_car(ctx context.Context, conn *requestCo
 	epochLookupSpan.End()
 	if err != nil {
 		return &jsonrpc2.Error{
-			Code:    CodeNotFound,
+			Code:    CodeNotAvailable,
 			Message: fmt.Sprintf("Epoch %d is not available", epochNumber),
 		}, fmt.Errorf("failed to get epoch %d: %w", epochNumber, err)
 	}
@@ -74,7 +74,7 @@ func (multi *MultiEpoch) handleGetBlock_car(ctx context.Context, conn *requestCo
 	if err != nil {
 		if errors.Is(err, compactindexsized.ErrNotFound) {
 			return &jsonrpc2.Error{
-				Code:    CodeNotFound,
+				Code:    CodeSkipped,
 				Message: fmt.Sprintf("Slot %d was skipped, or missing in long-term storage", slot),
 			}, err
 		} else {
@@ -103,7 +103,7 @@ func (multi *MultiEpoch) handleGetBlock_car(ctx context.Context, conn *requestCo
 	}
 	if uint64(block.Slot) != slot {
 		return &jsonrpc2.Error{
-			Code:    CodeNotFound,
+			Code:    CodeSkipped,
 			Message: fmt.Sprintf("Slot %d was skipped, or missing in long-term storage", slot),
 		}, err
 	}

@@ -11,7 +11,7 @@ func (multi *MultiEpoch) handleGetFirstAvailableBlock(ctx context.Context, conn 
 	firstBlock, err := multi.GetFirstAvailableBlock(ctx)
 	if err != nil {
 		return &jsonrpc2.Error{
-			Code:    CodeNotFound,
+			Code:    CodeNotAvailable,
 			Message: "Internal error",
 		}, fmt.Errorf("failed to get first available block: %w", err)
 	}
