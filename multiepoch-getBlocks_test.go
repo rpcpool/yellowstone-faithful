@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 
@@ -223,6 +224,147 @@ func Test_GetBlocksWithLimitRequest_Validate(t *testing.T) {
 			} else {
 				assert.NoError(t, err)
 			}
+		})
+	}
+}
+
+func newTestMultiEpoch(epochBlocks map[uint64][]uint64) *MultiEpoch {
+	epochs := make(map[uint64]*Epoch, len(epochBlocks))
+	for epochNum, blocks := range epochBlocks {
+		epochs[epochNum] = &Epoch{epoch: epochNum, blocks: blocks}
+	}
+	return &MultiEpoch{epochs: epochs}
+}
+
+func Test_getBlocksInRange(t *testing.T) {
+	// Epoch length is 432000 slots. Epoch 0: 0–431999, Epoch 1: 432000–863999, etc.
+	const epochLen = uint64(432000)
+
+	tests := []struct {
+		name        string
+		epochBlocks map[uint64][]uint64 // epoch number -> sorted confirmed block slots
+		startSlot   uint64
+		endSlot     uint64
+		expected    []uint64
+		wantErr     bool
+	}{
+		// --- Same-epoch cases ---
+		{
+			name:        "same epoch: end slot exists and is inclusive",
+			epochBlocks: map[uint64][]uint64{0: {100, 200, 300, 400, 500}},
+			startSlot:   200,
+			endSlot:     400,
+			expected:    []uint64{200, 300, 400},
+		},
+		{
+			name:        "same epoch: end slot is not a confirmed block (skipped slot)",
+			epochBlocks: map[uint64][]uint64{0: {100, 200, 300, 400, 500}},
+			startSlot:   200,
+			endSlot:     350,
+			expected:    []uint64{200, 300},
+		},
+		{
+			name:        "same epoch: end slot is the last block in the epoch",
+			epochBlocks: map[uint64][]uint64{0: {100, 200, 300}},
+			startSlot:   100,
+			endSlot:     300,
+			expected:    []uint64{100, 200, 300},
+		},
+		{
+			name:        "same epoch: start and end are the same confirmed slot",
+			epochBlocks: map[uint64][]uint64{0: {100, 200, 300}},
+			startSlot:   200,
+			endSlot:     200,
+			expected:    []uint64{200},
+		},
+		{
+			name:        "same epoch: end slot exceeds all blocks in epoch",
+			epochBlocks: map[uint64][]uint64{0: {100, 200, 300}},
+			startSlot:   200,
+			endSlot:     999,
+			expected:    []uint64{200, 300},
+		},
+		{
+			name:        "same epoch: no confirmed blocks in range",
+			epochBlocks: map[uint64][]uint64{0: {100, 200, 300}},
+			startSlot:   150,
+			endSlot:     180,
+			expected:    []uint64{},
+		},
+		// --- Multi-epoch cases ---
+		{
+			name: "two epochs: end slot exists in second epoch and is inclusive",
+			epochBlocks: map[uint64][]uint64{
+				0: {epochLen - 2, epochLen - 1},
+				1: {epochLen, epochLen + 1, epochLen + 2},
+			},
+			startSlot: epochLen - 2,
+			endSlot:   epochLen + 2,
+			expected:  []uint64{epochLen - 2, epochLen - 1, epochLen, epochLen + 1, epochLen + 2},
+		},
+		{
+			name: "two epochs: end slot is not a confirmed block in second epoch",
+			epochBlocks: map[uint64][]uint64{
+				0: {epochLen - 2, epochLen - 1},
+				1: {epochLen, epochLen + 2, epochLen + 4},
+			},
+			startSlot: epochLen - 2,
+			endSlot:   epochLen + 3,
+			expected:  []uint64{epochLen - 2, epochLen - 1, epochLen, epochLen + 2},
+		},
+		{
+			name: "two epochs: end slot is the last block in the second epoch's list",
+			epochBlocks: map[uint64][]uint64{
+				0: {epochLen - 1},
+				1: {epochLen, epochLen + 1, epochLen + 2},
+			},
+			startSlot: epochLen - 1,
+			endSlot:   epochLen + 2,
+			expected:  []uint64{epochLen - 1, epochLen, epochLen + 1, epochLen + 2},
+		},
+		{
+			name: "three epochs: end slot exists in third epoch and is inclusive",
+			epochBlocks: map[uint64][]uint64{
+				0: {epochLen - 1},
+				1: {epochLen, epochLen + 100},
+				2: {2 * epochLen, 2*epochLen + 1},
+			},
+			startSlot: epochLen - 1,
+			endSlot:   2*epochLen + 1,
+			expected:  []uint64{epochLen - 1, epochLen, epochLen + 100, 2 * epochLen, 2*epochLen + 1},
+		},
+		{
+			name: "three epochs: end slot is not a confirmed block in third epoch",
+			epochBlocks: map[uint64][]uint64{
+				0: {epochLen - 1},
+				1: {epochLen, epochLen + 100},
+				2: {2 * epochLen, 2*epochLen + 5},
+			},
+			startSlot: epochLen - 1,
+			endSlot:   2*epochLen + 3,
+			expected:  []uint64{epochLen - 1, epochLen, epochLen + 100, 2 * epochLen},
+		},
+		// --- Error cases ---
+		{
+			name:        "missing epoch returns error",
+			epochBlocks: map[uint64][]uint64{0: {100, 200}},
+			startSlot:   100,
+			endSlot:     epochLen + 1, // requires epoch 1, which is not loaded
+			wantErr:     true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			multi := newTestMultiEpoch(tt.epochBlocks)
+			got, rpcErr, err := multi.getBlocksInRange(context.Background(), tt.startSlot, tt.endSlot)
+			if tt.wantErr {
+				assert.True(t, rpcErr != nil || err != nil, "expected an error but got none")
+				return
+			}
+			require.NoError(t, err)
+			assert.Nil(t, rpcErr)
+			assert.Equal(t, tt.expected, got)
 		})
 	}
 }
