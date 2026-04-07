@@ -139,7 +139,12 @@ func (multi *MultiEpoch) getBlocksInRange(ctx context.Context, startSlot, endSlo
 	_, blockSearchSpan := telemetry.StartSpan(ctx, "GetBlocks_BlockSearch")
 
 	startIdx := findSlotIndexBinarySearch(startSlot, epochs[0].blocks)
-	endIdx := findSlotIndexBinarySearch(endSlot, epochs[len(epochs)-1].blocks)
+	lastEpochBlocks := epochs[len(epochs)-1].blocks
+	endIdx := findSlotIndexBinarySearch(endSlot, lastEpochBlocks)
+	// Include endSlot if it exists in the list.
+	if endIdx < len(lastEpochBlocks) && lastEpochBlocks[endIdx] == endSlot {
+		endIdx++
+	}
 	if len(epochs) == 1 {
 		resultBlocks = epochs[0].blocks[startIdx:endIdx]
 	} else {
