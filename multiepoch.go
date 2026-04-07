@@ -140,6 +140,17 @@ func (m *MultiEpoch) CountEpochs() int {
 	return len(m.epochs)
 }
 
+func (m *MultiEpoch) GetEpochConfigFilepaths() []string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	paths := make([]string, 0, len(m.epochs))
+	for _, ep := range m.epochs {
+		paths = append(paths, ep.config.ConfigFilepath())
+	}
+	sort.Strings(paths)
+	return paths
+}
+
 // GetEpochNumbers returns a list of epoch numbers, sorted from most recent to oldest.
 func (m *MultiEpoch) GetEpochNumbers() []uint64 {
 	m.mu.RLock()
@@ -183,11 +194,24 @@ func (m *MultiEpoch) GetFirstAvailableBlock(ctx context.Context) (*ipldbindcode.
 }
 
 func (m *MultiEpoch) GetMostRecentAvailableBlock(ctx context.Context) (*ipldbindcode.Block, error) {
-	mostRecentEpoch, err := m.GetMostRecentAvailableEpoch()
-	if err != nil {
-		return nil, err
+	numbers := m.GetEpochNumbers()
+	if len(numbers) == 0 {
+		return nil, fmt.Errorf("no epochs available")
 	}
-	return mostRecentEpoch.GetMostRecentAvailableBlock(ctx)
+	var errs []error
+	for _, epochNumber := range numbers {
+		epoch, err := m.GetEpoch(epochNumber)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("epoch %d: %w", epochNumber, err))
+			continue
+		}
+		block, err := epoch.GetMostRecentAvailableBlock(ctx)
+		if err == nil {
+			return block, nil
+		}
+		errs = append(errs, fmt.Errorf("epoch %d: %w", epochNumber, err))
+	}
+	return nil, errors.Join(errs...)
 }
 
 func (m *MultiEpoch) GetMostRecentAvailableEpochNumber() (uint64, error) {
