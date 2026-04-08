@@ -5,6 +5,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/sourcegraph/jsonrpc2"
 	"gopkg.in/yaml.v3"
 	"k8s.io/klog/v2"
 )
@@ -127,6 +128,38 @@ func rewardTypeStringToInt(typ string) int {
 	}
 }
 
-const CodeNotFound = -32009
-const CodeSkipped = -32009
-const CodeNotAvailable = -32004
+const (
+	CodeNotFoundOrSkipped = -32009
+	CodeNotAvailable      = -32004
+	// strings for error messages:
+	InternalErrorString = "Internal error"
+	InvalidParamsString = "Invalid params"
+)
+
+func NewSlotWasSkippedOrMissingError(slot uint64) *jsonrpc2.Error {
+	return &jsonrpc2.Error{
+		Code:    CodeNotFoundOrSkipped,
+		Message: fmt.Sprintf("Slot %d was skipped, or missing in long-term storage", slot),
+	}
+}
+
+func NewInternalError() *jsonrpc2.Error {
+	return &jsonrpc2.Error{
+		Code:    jsonrpc2.CodeInternalError,
+		Message: InternalErrorString,
+	}
+}
+
+func NewInvalidParamsError(message string) *jsonrpc2.Error {
+	return &jsonrpc2.Error{
+		Code:    jsonrpc2.CodeInvalidParams,
+		Message: message,
+	}
+}
+
+func NewBlockNotAvailableForSlotError(slot uint64) *jsonrpc2.Error {
+	return &jsonrpc2.Error{
+		Code:    CodeNotAvailable,
+		Message: fmt.Sprintf("Block not available for slot %d", slot),
+	}
+}

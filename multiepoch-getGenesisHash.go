@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/rpcpool/yellowstone-faithful/errctx"
 	"github.com/sourcegraph/jsonrpc2"
 )
 
@@ -13,18 +14,12 @@ func (multi *MultiEpoch) handleGetGenesisHash(ctx context.Context, conn *request
 	epochHandler, err := multi.GetEpoch(epochNumber)
 	if err != nil {
 		// If epoch 0 is not available, then the genesis config is not available.
-		return &jsonrpc2.Error{
-			Code:    CodeNotAvailable,
-			Message: fmt.Sprintf("Epoch %d is not available", epochNumber),
-		}, fmt.Errorf("failed to get epoch %d: %w", epochNumber, err)
+		return NewSlotWasSkippedOrMissingError(0), errctx.Wrap(fmt.Errorf("failed to get epoch %d: %w", epochNumber, err), "GetGenesisHash_GetEpochHandler")
 	}
 
 	genesis := epochHandler.GetGenesis()
 	if genesis == nil {
-		return &jsonrpc2.Error{
-			Code:    CodeNotAvailable,
-			Message: "Genesis is not available",
-		}, fmt.Errorf("genesis is nil")
+		return NewSlotWasSkippedOrMissingError(0), fmt.Errorf("genesis is nil")
 	}
 
 	genesisHash := genesis.Hash

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/rpcpool/yellowstone-faithful/errctx"
 	"github.com/sourcegraph/jsonrpc2"
 )
 
@@ -11,10 +12,7 @@ func (multi *MultiEpoch) handleGetSlot(ctx context.Context, conn *requestContext
 	// TODO: parse params?
 	lastBlock, err := multi.GetMostRecentAvailableBlock(ctx)
 	if err != nil {
-		return &jsonrpc2.Error{
-			Code:    CodeNotAvailable,
-			Message: "Internal error",
-		}, fmt.Errorf("failed to get first available block: %w", err)
+		return NewInternalError(), errctx.Wrap(fmt.Errorf("failed to get first available block: %w", err), "GetSlot_GetMostRecentAvailableBlock")
 	}
 
 	slotNumber := uint64(lastBlock.Slot)
