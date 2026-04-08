@@ -10,10 +10,7 @@ import (
 func (multi *MultiEpoch) handleGetFirstAvailableBlock(ctx context.Context, conn *requestContext, req *jsonrpc2.Request) (*jsonrpc2.Error, error) {
 	firstBlock, err := multi.GetFirstAvailableBlock(ctx)
 	if err != nil {
-		return &jsonrpc2.Error{
-			Code:    CodeNotAvailable,
-			Message: "Internal error",
-		}, fmt.Errorf("failed to get first available block: %w", err)
+		return NewInternalError(), fmt.Errorf("failed to get first available block: %w", err)
 	}
 
 	slotNumber := uint64(firstBlock.Slot)

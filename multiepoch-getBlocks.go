@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/rpcpool/yellowstone-faithful/errctx"
 	"github.com/rpcpool/yellowstone-faithful/slottools"
 	"github.com/rpcpool/yellowstone-faithful/telemetry"
 	"github.com/sourcegraph/jsonrpc2"
@@ -17,17 +18,11 @@ func (multi *MultiEpoch) handleGetBlocks(ctx context.Context, conn *requestConte
 	tim := newTimer(getRequestIDFromContext(rpcSpanCtx))
 	params, err := parseGetBlocksRequest(req.Params)
 	if err != nil {
-		return &jsonrpc2.Error{
-			Code:    jsonrpc2.CodeInvalidParams,
-			Message: "Invalid params",
-		}, fmt.Errorf("failed to parse params: %w", err)
+		return NewInvalidParamsError(InvalidParamsString), fmt.Errorf("failed to parse params: %w", err)
 	}
 
 	if err := params.Validate(); err != nil {
-		return &jsonrpc2.Error{
-			Code:    jsonrpc2.CodeInvalidParams,
-			Message: err.Error(),
-		}, fmt.Errorf("failed to validate params: %w", err)
+		return NewInvalidParamsError(err.Error()), fmt.Errorf("failed to validate params: %w", err)
 	}
 	tim.time("parseGetBlockRequest")
 
@@ -63,17 +58,11 @@ func (multi *MultiEpoch) handleGetBlocksWithLimit(ctx context.Context, conn *req
 	tim := newTimer(getRequestIDFromContext(rpcSpanCtx))
 	params, err := parseGetBlocksWithLimitRequest(req.Params)
 	if err != nil {
-		return &jsonrpc2.Error{
-			Code:    jsonrpc2.CodeInvalidParams,
-			Message: "Invalid params",
-		}, fmt.Errorf("failed to parse params: %w", err)
+		return NewInvalidParamsError(InvalidParamsString), fmt.Errorf("failed to parse params: %w", err)
 	}
 
 	if err := params.Validate(); err != nil {
-		return &jsonrpc2.Error{
-			Code:    jsonrpc2.CodeInvalidParams,
-			Message: err.Error(),
-		}, fmt.Errorf("failed to validate params: %w", err)
+		return NewInvalidParamsError(err.Error()), fmt.Errorf("failed to validate params: %w", err)
 	}
 	tim.time("parseGetBlocksWithLimitRequest")
 
@@ -119,17 +108,11 @@ func (multi *MultiEpoch) getBlocksInRange(ctx context.Context, startSlot, endSlo
 		epoch, err := multi.GetEpoch(epochNumber)
 		if err != nil {
 			epochLookupSpan.End()
-			return nil, &jsonrpc2.Error{
-				Code:    jsonrpc2.CodeInternalError,
-				Message: "Failed to get epoch",
-			}, fmt.Errorf("failed to get epoch %d: %w", epochNumber, err)
+			return nil, NewInternalError(), errctx.Wrap(fmt.Errorf("failed to get epoch %d: %w", epochNumber, err), "GetBlocks_GetEpoch")
 		}
 		if epoch == nil {
 			epochLookupSpan.End()
-			return nil, &jsonrpc2.Error{
-				Code:    CodeNotAvailable,
-				Message: fmt.Sprintf("Epoch %d not found", epochNumber),
-			}, fmt.Errorf("epoch %d not found", epochNumber)
+			return nil, NewInternalError(), errctx.Wrap(fmt.Errorf("epoch %d not found", epochNumber), "GetBlocks_EpochNotFound")
 		}
 		epochs = append(epochs, epoch)
 	}

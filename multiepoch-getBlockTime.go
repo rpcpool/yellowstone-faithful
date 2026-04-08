@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/rpcpool/yellowstone-faithful/errctx"
 	"github.com/rpcpool/yellowstone-faithful/slottools"
 	"github.com/sourcegraph/jsonrpc2"
 )
@@ -11,30 +12,21 @@ import (
 func (multi *MultiEpoch) handleGetBlockTime(ctx context.Context, conn *requestContext, req *jsonrpc2.Request) (*jsonrpc2.Error, error) {
 	blockNum, err := parseGetBlockTimeRequest(req.Params)
 	if err != nil {
-		return &jsonrpc2.Error{
-			Code:    jsonrpc2.CodeInvalidParams,
-			Message: "Invalid params",
-		}, fmt.Errorf("failed to parse params: %w", err)
+		return NewInvalidParamsError(InvalidParamsString), fmt.Errorf("failed to parse params: %w", err)
 	}
 
 	// find the epoch that contains the requested slot
 	epochNumber := slottools.CalcEpochForSlot(blockNum)
 	epochHandler, err := multi.GetEpoch(epochNumber)
 	if err != nil {
-		return &jsonrpc2.Error{
-			Code:    CodeNotAvailable,
-			Message: fmt.Sprintf("Epoch %d is not available", epochNumber),
-		}, fmt.Errorf("failed to get epoch %d: %w", epochNumber, err)
+		return NewSlotWasSkippedOrMissingError(blockNum), errctx.Wrap(fmt.Errorf("failed to get epoch %d: %w", epochNumber, err), "GetBlockTime_GetEpochHandler")
 	}
 	{
 		blocktimeIndex := epochHandler.GetBlocktimeIndex()
 		if blocktimeIndex != nil {
 			blockTime, err := blocktimeIndex.Get(blockNum)
 			if err != nil {
-				return &jsonrpc2.Error{
-					Code:    CodeSkipped,
-					Message: fmt.Sprintf("Slot %d was skipped, or missing in long-term storage", blockNum),
-				}, fmt.Errorf("failed to get blocktime: %w", err)
+				return NewSlotWasSkippedOrMissingError(blockNum), errctx.Wrap(fmt.Errorf("failed to get blocktime: %w", err), "GetBlockTime_GetBlocktime")
 			}
 			err = conn.Reply(
 				ctx,
@@ -51,10 +43,7 @@ func (multi *MultiEpoch) handleGetBlockTime(ctx context.Context, conn *requestCo
 			}
 			return nil, nil
 		} else {
-			return &jsonrpc2.Error{
-				Code:    jsonrpc2.CodeInternalError,
-				Message: "Failed to get block",
-			}, fmt.Errorf("failed to get blocktime: blocktime index is nil")
+			return NewInternalError(), errctx.Wrap(fmt.Errorf("failed to get blocktime: blocktime index is nil"), "GetBlockTime_GetBlocktimeIndexNil")
 		}
 	}
 }
