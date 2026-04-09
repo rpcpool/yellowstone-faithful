@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"log"
 	"os"
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -403,10 +405,27 @@ func newCmd_rpc() *cli.Command {
 							{
 								startedAt := time.Now()
 								klog.V(3).Infof("File %q was created; processing...", event.Name)
-								// find the config file, load it, and add it to the multi-epoch (if not already added)
-								config, err := LoadConfig(event.Name)
+								// Retry loading the config file a few times in case of transient errors (e.g., file not fully written yet)
+								var config *Config
+								var err error
+								const maxRetries = 5
+								const retryDelay = 300 * time.Millisecond
+								for attempt := 1; attempt <= maxRetries; attempt++ {
+									config, err = LoadConfig(event.Name)
+									if err == nil {
+										break
+									}
+									// If the error is EOF or temporary, retry
+									if errors.Is(err, io.EOF) || (err != nil && strings.Contains(err.Error(), "EOF")) {
+										klog.Warningf("Attempt %d/%d: error loading config file %q: %s (will retry)", attempt, maxRetries, event.Name, err.Error())
+										time.Sleep(retryDelay)
+										continue
+									}
+									// For other errors, break and log
+									break
+								}
 								if err != nil {
-									klog.Errorf("error loading config file %q: %s", event.Name, err.Error())
+									klog.Errorf("error loading config file %q after %d attempts: %s", event.Name, maxRetries, err.Error())
 									return
 								}
 								epoch, err := NewEpochFromConfig(
