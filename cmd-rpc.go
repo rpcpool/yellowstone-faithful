@@ -413,6 +413,9 @@ func newCmd_rpc() *cli.Command {
 								for attempt := 1; attempt <= maxRetries; attempt++ {
 									config, err = LoadConfig(event.Name)
 									if err == nil {
+										if attempt > 1 {
+											klog.V(3).Infof("Successfully loaded config file %q on attempt %d", event.Name, attempt)
+										}
 										break
 									}
 									// If the error is EOF or temporary, retry
