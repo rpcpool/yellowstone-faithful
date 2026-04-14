@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -235,6 +236,33 @@ func defaultEncoding() solana.EncodingType {
 
 func defaultTransactionDetails() rpc.TransactionDetailsType {
 	return rpc.TransactionDetailsFull
+}
+
+const maxRPCParamsLogLen = 512
+
+func compactRawParamsForLog(raw *json.RawMessage) string {
+	if raw == nil {
+		return "<nil>"
+	}
+	if len(*raw) == 0 {
+		return "<empty>"
+	}
+
+	var compact bytes.Buffer
+	if err := json.Compact(&compact, *raw); err != nil {
+		return truncateForLog(string(*raw), maxRPCParamsLogLen)
+	}
+	return truncateForLog(compact.String(), maxRPCParamsLogLen)
+}
+
+func truncateForLog(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	if maxLen <= 3 {
+		return s[:maxLen]
+	}
+	return s[:maxLen-3] + "..."
 }
 
 type GetTransactionRequest struct {

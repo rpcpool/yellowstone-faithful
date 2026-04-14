@@ -43,10 +43,25 @@ func (multi *MultiEpoch) handleGetBlock_car(ctx context.Context, conn *requestCo
 	tim := newTimer(getRequestIDFromContext(rpcSpanCtx))
 	params, err := parseGetBlockRequest(req.Params)
 	if err != nil {
+		clientAddr := "<unknown>"
+		userAgent := ""
+		if conn != nil && conn.ctx != nil {
+			clientAddr = conn.ctx.RemoteIP().String()
+			userAgent = truncateForLog(
+				allowOnlyAsciiPrintable(string(conn.ctx.Request.Header.UserAgent())),
+				128,
+			)
+		}
 		return &jsonrpc2.Error{
 			Code:    jsonrpc2.CodeInvalidParams,
 			Message: "Invalid params",
-		}, fmt.Errorf("failed to parse params: %w", err)
+		}, fmt.Errorf(
+			"failed to parse params: %w; raw_params=%s; remote_addr=%s; user_agent=%q",
+			err,
+			compactRawParamsForLog(req.Params),
+			clientAddr,
+			userAgent,
+		)
 	}
 	if err := params.Validate(); err != nil {
 		return &jsonrpc2.Error{

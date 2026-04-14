@@ -1,11 +1,14 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 
+	"github.com/sourcegraph/jsonrpc2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/valyala/fasthttp"
 )
 
 func Test_parseGetBlockRequest_rewards(t *testing.T) {
@@ -63,4 +66,28 @@ func Test_parseGetBlockRequest_rewards(t *testing.T) {
 
 func boolPtr(b bool) *bool {
 	return &b
+}
+
+func Test_handleGetBlockCar_parseErrorIncludesRawParams(t *testing.T) {
+	req := &jsonrpc2.Request{
+		Method: "getBlock",
+		Params: rawMessagePtr(`[100, {"encoding": null}]`),
+	}
+	reqCtx := &fasthttp.RequestCtx{}
+	reqCtx.Request.Header.SetUserAgent("solana-web3.js/1.95.0")
+
+	_, err := (&MultiEpoch{}).handleGetBlock_car(
+		context.Background(),
+		&requestContext{ctx: reqCtx},
+		req,
+	)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `encoding must be a string, got <nil>`)
+	assert.Contains(t, err.Error(), `raw_params=[100,{"encoding":null}]`)
+	assert.Contains(t, err.Error(), `user_agent="solana-web3.js/1.95.0"`)
+}
+
+func rawMessagePtr(s string) *json.RawMessage {
+	raw := json.RawMessage(s)
+	return &raw
 }
