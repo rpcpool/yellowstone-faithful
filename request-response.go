@@ -170,7 +170,7 @@ func parseGetBlockRequest(raw *json.RawMessage) (*GetBlockRequest, error) {
 			commitmentType := defaultCommitment()
 			out.Options.Commitment = &commitmentType
 		}
-		if encodingRaw, ok := optionsRaw["encoding"]; ok {
+		if encodingRaw, ok := optionsRaw["encoding"]; ok && encodingRaw != nil {
 			encoding, ok := encodingRaw.(string)
 			if !ok {
 				return nil, fmt.Errorf("encoding must be a string, got %T", encodingRaw)
