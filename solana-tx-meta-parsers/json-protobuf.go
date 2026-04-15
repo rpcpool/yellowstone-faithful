@@ -8,8 +8,8 @@ import (
 
 	"github.com/gagliardetto/solana-go"
 	"github.com/rpcpool/yellowstone-faithful/jsonbuilder"
-	transaction_status_meta_serde_agave "github.com/rpcpool/yellowstone-faithful/parse_legacy_transaction_status_meta"
 	"github.com/rpcpool/yellowstone-faithful/third_party/solana_proto/confirmed_block"
+	"k8s.io/klog/v2"
 )
 
 // From:
@@ -25,25 +25,32 @@ func ProtobufTransactionStatusMetaToUi(meta *confirmed_block.TransactionStatusMe
 		// pub err: Option<TransactionError>,
 		storedErr := meta.Err
 		if storedErr != nil && storedErr.Err != nil && len(storedErr.Err) > 0 {
-			unmarshaledErr, err := transaction_status_meta_serde_agave.BincodeDeserializeTransactionError(storedErr.Err)
+			unmarshaledErr, err := decodeProtobufTransactionError(storedErr.Err)
 			if err != nil {
-				return nil, fmt.Errorf("failed to unmarshal error: %w", err)
-			}
-			status, err := ErrorToUi(
-				unmarshaledErr,
-			)
-			if err != nil {
-				return nil, fmt.Errorf("failed to serialize error: %w", err)
-			}
-			resp.Apply("err", func() any {
-				return status
-			})
-			{
-				// .status
-				// pub status: TransactionResult<()>, // This field is deprecated.  See https://github.com/solana-labs/solana/issues/9302
+				// A malformed protobuf error payload should not fail the entire block.
+				// Preserve the failure signal with a generic RPC-compatible string.
+				klog.Warningf("failed to decode protobuf transaction error payload, falling back to generic error: %v", err)
+				resp.String("err", "UnsupportedTransactionError")
 				resp.ObjectFunc("status", func(oj *jsonbuilder.OrderedJSONObject) {
-					oj.Raw("Err", status)
+					oj.String("Err", "UnsupportedTransactionError")
 				})
+			} else {
+				status, err := ErrorToUi(
+					unmarshaledErr,
+				)
+				if err != nil {
+					return nil, fmt.Errorf("failed to serialize error: %w", err)
+				}
+				resp.Apply("err", func() any {
+					return status
+				})
+				{
+					// .status
+					// pub status: TransactionResult<()>, // This field is deprecated.  See https://github.com/solana-labs/solana/issues/9302
+					resp.ObjectFunc("status", func(oj *jsonbuilder.OrderedJSONObject) {
+						oj.Raw("Err", status)
+					})
+				}
 			}
 		} else {
 			resp.Null("err")

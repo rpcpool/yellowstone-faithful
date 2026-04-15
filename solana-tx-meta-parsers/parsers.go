@@ -92,23 +92,46 @@ func (c *TransactionStatusMetaContainer) IsErr() bool {
 	return false
 }
 
+func decodeProtobufTransactionError(buf []byte) (transaction_status_meta_serde_agave.TransactionError, error) {
+	txErr, err := transaction_status_meta_serde_agave.BincodeDeserializeTransactionError(buf)
+	if err == nil {
+		return txErr, nil
+	}
+
+	// Some producers appear to store a bincode-serialized Result<TransactionError>
+	// instead of the raw TransactionError bytes inside the protobuf wrapper.
+	// Try that format as a compatibility fallback before giving up.
+	result, resultErr := transaction_status_meta_serde_agave.BincodeDeserializeResult(buf)
+	if resultErr == nil {
+		if okResult, ok := result.(*transaction_status_meta_serde_agave.Result__Ok); ok {
+			_ = okResult
+			return nil, fmt.Errorf("protobuf transaction error payload unexpectedly decoded to Ok result")
+		}
+		if errResult, ok := result.(*transaction_status_meta_serde_agave.Result__Err); ok {
+			return errResult.Value, nil
+		}
+		return nil, fmt.Errorf("unexpected result type in protobuf transaction error payload: %T", result)
+	}
+
+	return nil, fmt.Errorf(
+		"failed to decode protobuf transaction error payload: %w",
+		errors.Join(
+			fmt.Errorf("as transaction error: %w", err),
+			fmt.Errorf("as result: %w", resultErr),
+		),
+	)
+}
+
 func (c *TransactionStatusMetaContainer) GetTxError() (transaction_status_meta_serde_agave.TransactionError, bool, error) {
 	if c.vProtobuf != nil {
 		if c.vProtobuf.Err == nil {
 			return nil, false, nil
 		}
-		unmarshaledErr, err := transaction_status_meta_serde_agave.BincodeDeserializeResult(c.vProtobuf.Err.Err)
+		unmarshaledErr, err := decodeProtobufTransactionError(c.vProtobuf.Err.Err)
 		if err != nil {
 			return nil, false, fmt.Errorf("failed to unmarshal error: %w", err)
 		}
-		if _, ok := unmarshaledErr.(*transaction_status_meta_serde_agave.Result__Ok); ok {
-			return nil, false, nil
-		}
-		if e, ok := unmarshaledErr.(*transaction_status_meta_serde_agave.Result__Err); !ok {
-			return nil, false, fmt.Errorf("unexpected error type: %T", unmarshaledErr)
-		} else {
-			return e.Value, true, nil
-		}
+		return unmarshaledErr, true, nil
 	}
 	if c.vSerde != nil {
 		if c.vSerde.Status == nil {
