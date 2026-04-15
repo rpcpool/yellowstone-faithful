@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/gagliardetto/solana-go"
 	"github.com/sourcegraph/jsonrpc2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -64,6 +65,50 @@ func Test_parseGetBlockRequest_rewards(t *testing.T) {
 	}
 }
 
+func Test_parseGetBlockRequest_encoding(t *testing.T) {
+	tests := []struct {
+		name         string
+		params       string
+		wantEncoding solana.EncodingType
+		wantErr      bool
+	}{
+		{
+			name:         "encoding null defaults to json",
+			params:       `[100, {"encoding": null}]`,
+			wantEncoding: solana.EncodingJSON,
+		},
+		{
+			name:         "encoding absent defaults to json",
+			params:       `[100, {}]`,
+			wantEncoding: solana.EncodingJSON,
+		},
+		{
+			name:         "encoding explicit string",
+			params:       `[100, {"encoding": "base64"}]`,
+			wantEncoding: solana.EncodingBase64,
+		},
+		{
+			name:    "encoding invalid type",
+			params:  `[100, {"encoding": 123}]`,
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			raw := json.RawMessage(tt.params)
+			got, err := parseGetBlockRequest(&raw)
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.NotNil(t, got.Options.Encoding)
+			assert.Equal(t, tt.wantEncoding, *got.Options.Encoding)
+		})
+	}
+}
+
 func boolPtr(b bool) *bool {
 	return &b
 }
@@ -71,7 +116,7 @@ func boolPtr(b bool) *bool {
 func Test_handleGetBlockCar_parseErrorIncludesRawParams(t *testing.T) {
 	req := &jsonrpc2.Request{
 		Method: "getBlock",
-		Params: rawMessagePtr(`[100, {"encoding": null}]`),
+		Params: rawMessagePtr(`[100, {"encoding": 123}]`),
 	}
 	reqCtx := &fasthttp.RequestCtx{}
 	reqCtx.Request.Header.SetUserAgent("solana-web3.js/1.95.0")
@@ -82,8 +127,8 @@ func Test_handleGetBlockCar_parseErrorIncludesRawParams(t *testing.T) {
 		req,
 	)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), `encoding must be a string, got <nil>`)
-	assert.Contains(t, err.Error(), `raw_params=[100,{"encoding":null}]`)
+	assert.Contains(t, err.Error(), `encoding must be a string, got float64`)
+	assert.Contains(t, err.Error(), `raw_params=[100,{"encoding":123}]`)
 	assert.Contains(t, err.Error(), `user_agent="solana-web3.js/1.95.0"`)
 }
 
