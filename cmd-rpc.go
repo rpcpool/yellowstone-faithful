@@ -2,13 +2,16 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"log"
 	"os"
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -25,6 +28,8 @@ import (
 	"golang.org/x/sync/errgroup"
 	"k8s.io/klog/v2"
 )
+
+const configReconcileInterval = 15 * time.Second
 
 func newCmd_rpc() *cli.Command {
 	var listenOn string
@@ -43,6 +48,8 @@ func newCmd_rpc() *cli.Command {
 	var useMmapForLocalIndexes bool
 	defaultGrpcServerConfig := DefaultGrpcServerConfig()
 	var useMmapForSigExistsIndex bool
+	var configRetryMax int
+	var configRetryDelay time.Duration
 	return &cli.Command{
 		Name:        "rpc",
 		Usage:       "Start a Solana JSON RPC server.",
@@ -142,6 +149,18 @@ func newCmd_rpc() *cli.Command {
 				Usage:       "Use mmap for the sig-exists index file (instead of os.Open)",
 				Value:       false,
 				Destination: &useMmapForSigExistsIndex,
+			},
+			&cli.IntFlag{
+				Name:        "config-retry-max",
+				Usage:       "Maximum number of retries when loading a newly created config file",
+				Value:       0,
+				Destination: &configRetryMax,
+			},
+			&cli.DurationFlag{
+				Name:        "config-retry-delay",
+				Usage:       "Delay between retries when loading a newly created config file",
+				Value:       0,
+				Destination: &configRetryDelay,
 			},
 			// grpc server flags:
 			&cli.IntFlag{
@@ -297,57 +316,38 @@ func newCmd_rpc() *cli.Command {
 				}
 			}()
 
+			if err := bootstrapMostRecentHealthyEpoch(
+				configs,
+				multi,
+				c,
+				allCache,
+				minerInfo,
+				useMmapForLocalCars,
+				useMmapForLocalIndexes,
+				useMmapForSigExistsIndex,
+			); err != nil {
+				klog.Warningf("bootstrap could not load an initial epoch before serving: %v", err)
+			}
+
 			startedInitiatingEpochsAt := time.Now()
 			go func() {
-				// Sort epochs by epoch number:
-				sort.Slice(configs, func(i, j int) bool {
-					return *configs[i].Epoch < *configs[j].Epoch
-				})
-
-				numFailed := new(atomic.Int32)
-				numSucceeded := new(atomic.Int32)
-
-				wg := new(errgroup.Group)
-				wg.SetLimit(epochLoadConcurrency)
-				for confIndex := range configs {
-					config := configs[confIndex]
-					wg.Go(func() error {
-						epochNum := *config.Epoch
-						err := func() error {
-							epoch, err := NewEpochFromConfig(
-								config,
-								c,
-								allCache,
-								minerInfo,
-								useMmapForLocalCars,
-								useMmapForLocalIndexes,
-								useMmapForSigExistsIndex,
-							)
-							if err != nil {
-								return fmt.Errorf("failed to create epoch from config %q: %s", config.ConfigFilepath(), err.Error())
-							}
-							if err := multi.AddEpoch(epoch.Epoch(), epoch); err != nil {
-								return fmt.Errorf("failed to add epoch %d: %s", epoch.Epoch(), err.Error())
-							}
-							return nil
-						}()
-						if err != nil {
-							metrics.EpochsAvailable.WithLabelValues(fmt.Sprintf("%d", epochNum)).Set(0)
-							klog.Error(err)
-							numFailed.Add(1)
-							// NOTE: DO NOT return the error here, as we want to continue loading other epochs
-							return nil
-						}
-						metrics.EpochsAvailable.WithLabelValues(fmt.Sprintf("%d", epochNum)).Set(1)
-						numSucceeded.Add(1)
-						return nil
-					})
-				}
-				if err := wg.Wait(); err != nil {
-					klog.Errorf("fatal error initializing epochs: %s", err.Error())
-				}
+				numFailed, numSucceeded := reconcileEpochConfigs(
+					c.Context,
+					configFiles,
+					multi,
+					c,
+					allCache,
+					minerInfo,
+					useMmapForLocalCars,
+					useMmapForLocalIndexes,
+					useMmapForSigExistsIndex,
+					epochLoadConcurrency,
+				)
 				tookInitializingEpochs := time.Since(startedInitiatingEpochsAt)
-				klog.Infof("Initialized %d/%d epochs in %s", numSucceeded.Load(), len(configs), tookInitializingEpochs)
+				klog.Infof("Initialized %d/%d epochs in %s", numSucceeded, len(configs), tookInitializingEpochs)
+				if numFailed > 0 {
+					klog.Warningf("%d epoch(s) were still unavailable after initial reconciliation; watch/retry will keep reconciling", numFailed)
+				}
 			}()
 
 			if watch {
@@ -378,13 +378,13 @@ func newCmd_rpc() *cli.Command {
 						}
 						klog.V(3).Infof("File event: name=%q, op=%q", event.Name, event.Op)
 
-						if event.Op != fsnotify.Remove && multi.HasEpochWithSameHashAsFile(event.Name) {
+						if event.Op&fsnotify.Remove == 0 && multi.HasEpochWithSameHashAsFile(event.Name) {
 							klog.V(3).Infof("Epoch with same hash as file %q is already loaded; do nothing", event.Name)
 							return
 						}
 
-						switch event.Op {
-						case fsnotify.Write:
+						switch {
+						case event.Op&fsnotify.Write != 0:
 							{
 								startedAt := time.Now()
 								klog.V(3).Infof("File %q was modified; processing...", event.Name)
@@ -415,14 +415,40 @@ func newCmd_rpc() *cli.Command {
 								klog.V(2).Infof("Epoch %d added/replaced in %s", epoch.Epoch(), time.Since(startedAt))
 								metrics.EpochsAvailable.WithLabelValues(fmt.Sprintf("%d", epoch.Epoch())).Set(1)
 							}
-						case fsnotify.Create:
+						case event.Op&fsnotify.Create != 0:
 							{
 								startedAt := time.Now()
 								klog.V(3).Infof("File %q was created; processing...", event.Name)
-								// find the config file, load it, and add it to the multi-epoch (if not already added)
-								config, err := LoadConfig(event.Name)
+								// Retry loading the config file a few times in case of transient errors (e.g., file not fully written yet)
+								var config *Config
+								var err error
+								maxRetries := configRetryMax
+								retryDelay := configRetryDelay
+								if maxRetries <= 0 {
+									maxRetries = 5
+								}
+								if retryDelay <= 0 {
+									retryDelay = 300 * time.Millisecond
+								}
+								for attempt := 1; attempt <= maxRetries; attempt++ {
+									config, err = LoadConfig(event.Name)
+									if err == nil {
+										if attempt > 1 {
+											klog.V(3).Infof("Successfully loaded config file %q on attempt %d", event.Name, attempt)
+										}
+										break
+									}
+									// If the error is EOF or temporary, retry
+									if errors.Is(err, io.EOF) || (err != nil && strings.Contains(err.Error(), "EOF")) {
+										klog.Warningf("Attempt %d/%d: error loading config file %q: %s (will retry)", attempt, maxRetries, event.Name, err.Error())
+										time.Sleep(retryDelay)
+										continue
+									}
+									// For other errors, break and log
+									break
+								}
 								if err != nil {
-									klog.Errorf("error loading config file %q: %s", event.Name, err.Error())
+									klog.Errorf("error loading config file %q after %d attempts: %s", event.Name, maxRetries, err.Error())
 									return
 								}
 								epoch, err := NewEpochFromConfig(
@@ -446,7 +472,7 @@ func newCmd_rpc() *cli.Command {
 								klog.V(2).Infof("Epoch %d added in %s", epoch.Epoch(), time.Since(startedAt))
 								metrics.EpochsAvailable.WithLabelValues(fmt.Sprintf("%d", epoch.Epoch())).Set(1)
 							}
-						case fsnotify.Remove:
+						case event.Op&fsnotify.Remove != 0:
 							{
 								startedAt := time.Now()
 								klog.V(3).Infof("File %q was removed; processing...", event.Name)
@@ -458,9 +484,9 @@ func newCmd_rpc() *cli.Command {
 								klog.V(2).Infof("Epoch %d removed in %s", epNumber, time.Since(startedAt))
 								metrics.EpochsAvailable.WithLabelValues(fmt.Sprintf("%d", epNumber)).Set(0)
 							}
-						case fsnotify.Rename:
-							klog.V(3).Infof("File %q was renamed; do nothing", event.Name)
-						case fsnotify.Chmod:
+						case event.Op&fsnotify.Rename != 0:
+							klog.V(3).Infof("File %q was renamed; periodic reconciliation will refresh state", event.Name)
+						case event.Op&fsnotify.Chmod != 0:
 							klog.V(3).Infof("File %q had its permissions changed; do nothing", event.Name)
 						default:
 							klog.V(3).Infof("File %q had an unknown event %q; do nothing", event.Name, event.Op)
@@ -469,6 +495,20 @@ func newCmd_rpc() *cli.Command {
 				if err != nil {
 					return cli.Exit(err.Error(), 1)
 				}
+				go reconcileEpochConfigsPeriodically(
+					ctx,
+					src,
+					includePatterns.Value(),
+					excludePatterns.Value(),
+					multi,
+					c,
+					allCache,
+					minerInfo,
+					useMmapForLocalCars,
+					useMmapForLocalIndexes,
+					useMmapForSigExistsIndex,
+					epochLoadConcurrency,
+				)
 			}
 
 			var listenerConfig *ListenerConfig
@@ -505,6 +545,200 @@ func newCmd_rpc() *cli.Command {
 
 			return allListeners.Wait()
 		},
+	}
+}
+
+func bootstrapMostRecentHealthyEpoch(
+	configs ConfigSlice,
+	multi *MultiEpoch,
+	c *cli.Context,
+	allCache *hugecache.Cache,
+	minerInfo *splitcarfetcher.MinerInfoCache,
+	useMmapForLocalCars bool,
+	useMmapForLocalIndexes bool,
+	useMmapForSigExistsIndex bool,
+) error {
+	if len(configs) == 0 {
+		return fmt.Errorf("no epoch configs available")
+	}
+	ordered := append(ConfigSlice(nil), configs...)
+	sort.Slice(ordered, func(i, j int) bool {
+		return *ordered[i].Epoch > *ordered[j].Epoch
+	})
+	var errs []error
+	for _, config := range ordered {
+		epoch, err := loadEpochFromConfig(
+			config,
+			c,
+			allCache,
+			minerInfo,
+			useMmapForLocalCars,
+			useMmapForLocalIndexes,
+			useMmapForSigExistsIndex,
+		)
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		if err := multi.ReplaceOrAddEpoch(epoch.Epoch(), epoch); err != nil {
+			epoch.Close()
+			errs = append(errs, fmt.Errorf("failed to add epoch %d: %w", epoch.Epoch(), err))
+			continue
+		}
+		metrics.EpochsAvailable.WithLabelValues(fmt.Sprintf("%d", epoch.Epoch())).Set(1)
+		klog.Infof("Bootstrapped epoch %d before starting listeners", epoch.Epoch())
+		return nil
+	}
+	return errors.Join(errs...)
+}
+
+func loadEpochFromConfig(
+	config *Config,
+	c *cli.Context,
+	allCache *hugecache.Cache,
+	minerInfo *splitcarfetcher.MinerInfoCache,
+	useMmapForLocalCars bool,
+	useMmapForLocalIndexes bool,
+	useMmapForSigExistsIndex bool,
+) (*Epoch, error) {
+	epoch, err := NewEpochFromConfig(
+		config,
+		c,
+		allCache,
+		minerInfo,
+		useMmapForLocalCars,
+		useMmapForLocalIndexes,
+		useMmapForSigExistsIndex,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create epoch from config %q: %w", config.ConfigFilepath(), err)
+	}
+	return epoch, nil
+}
+
+func reconcileEpochConfigs(
+	ctx context.Context,
+	configFiles []string,
+	multi *MultiEpoch,
+	c *cli.Context,
+	allCache *hugecache.Cache,
+	minerInfo *splitcarfetcher.MinerInfoCache,
+	useMmapForLocalCars bool,
+	useMmapForLocalIndexes bool,
+	useMmapForSigExistsIndex bool,
+	epochLoadConcurrency int,
+) (int32, int32) {
+	numFailed := new(atomic.Int32)
+	numSucceeded := new(atomic.Int32)
+	wg := new(errgroup.Group)
+	wg.SetLimit(epochLoadConcurrency)
+	for _, configFile := range configFiles {
+		configFile := configFile
+		wg.Go(func() error {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			default:
+			}
+			if multi.HasEpochWithSameHashAsFile(configFile) {
+				return nil
+			}
+			config, err := LoadConfig(configFile)
+			if err != nil {
+				klog.Errorf("error loading config file %q: %s", configFile, err.Error())
+				numFailed.Add(1)
+				return nil
+			}
+			epoch, err := loadEpochFromConfig(
+				config,
+				c,
+				allCache,
+				minerInfo,
+				useMmapForLocalCars,
+				useMmapForLocalIndexes,
+				useMmapForSigExistsIndex,
+			)
+			if err != nil {
+				metrics.EpochsAvailable.WithLabelValues(fmt.Sprintf("%d", *config.Epoch)).Set(0)
+				klog.Error(err)
+				numFailed.Add(1)
+				return nil
+			}
+			if err := multi.ReplaceOrAddEpoch(epoch.Epoch(), epoch); err != nil {
+				epoch.Close()
+				metrics.EpochsAvailable.WithLabelValues(fmt.Sprintf("%d", epoch.Epoch())).Set(0)
+				klog.Errorf("failed to add or replace epoch %d: %s", epoch.Epoch(), err.Error())
+				numFailed.Add(1)
+				return nil
+			}
+			metrics.EpochsAvailable.WithLabelValues(fmt.Sprintf("%d", epoch.Epoch())).Set(1)
+			numSucceeded.Add(1)
+			return nil
+		})
+	}
+	if err := wg.Wait(); err != nil && !errors.Is(err, context.Canceled) {
+		klog.Errorf("fatal error reconciling epochs: %s", err.Error())
+	}
+
+	configFileSet := make(map[string]struct{}, len(configFiles))
+	for _, configFile := range configFiles {
+		configFileSet[configFile] = struct{}{}
+	}
+	for _, loadedConfigFile := range multi.GetEpochConfigFilepaths() {
+		if _, ok := configFileSet[loadedConfigFile]; ok {
+			continue
+		}
+		epNumber, err := multi.RemoveEpochByConfigFilepath(loadedConfigFile)
+		if err != nil {
+			klog.Errorf("error removing epoch for config file %q: %s", loadedConfigFile, err.Error())
+			continue
+		}
+		metrics.EpochsAvailable.WithLabelValues(fmt.Sprintf("%d", epNumber)).Set(0)
+		klog.Infof("Removed epoch %d because config file %q is no longer present", epNumber, loadedConfigFile)
+	}
+
+	return numFailed.Load(), numSucceeded.Load()
+}
+
+func reconcileEpochConfigsPeriodically(
+	ctx context.Context,
+	src []string,
+	includePatterns []string,
+	excludePatterns []string,
+	multi *MultiEpoch,
+	c *cli.Context,
+	allCache *hugecache.Cache,
+	minerInfo *splitcarfetcher.MinerInfoCache,
+	useMmapForLocalCars bool,
+	useMmapForLocalIndexes bool,
+	useMmapForSigExistsIndex bool,
+	epochLoadConcurrency int,
+) {
+	ticker := time.NewTicker(configReconcileInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			configFiles, err := GetListOfConfigFiles(src, includePatterns, excludePatterns)
+			if err != nil {
+				klog.Errorf("error listing config files during reconciliation: %s", err.Error())
+				continue
+			}
+			reconcileEpochConfigs(
+				ctx,
+				configFiles,
+				multi,
+				c,
+				allCache,
+				minerInfo,
+				useMmapForLocalCars,
+				useMmapForLocalIndexes,
+				useMmapForSigExistsIndex,
+				epochLoadConcurrency,
+			)
+		}
 	}
 }
 

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -169,7 +170,7 @@ func parseGetBlockRequest(raw *json.RawMessage) (*GetBlockRequest, error) {
 			commitmentType := defaultCommitment()
 			out.Options.Commitment = &commitmentType
 		}
-		if encodingRaw, ok := optionsRaw["encoding"]; ok {
+		if encodingRaw, ok := optionsRaw["encoding"]; ok && encodingRaw != nil {
 			encoding, ok := encodingRaw.(string)
 			if !ok {
 				return nil, fmt.Errorf("encoding must be a string, got %T", encodingRaw)
@@ -189,7 +190,7 @@ func parseGetBlockRequest(raw *json.RawMessage) (*GetBlockRequest, error) {
 			maxSupportedTransactionVersionUint64 := uint64(maxSupportedTransactionVersion)
 			out.Options.MaxSupportedTransactionVersion = &maxSupportedTransactionVersionUint64
 		}
-		if transactionDetailsRaw, ok := optionsRaw["transactionDetails"]; ok {
+		if transactionDetailsRaw, ok := optionsRaw["transactionDetails"]; ok && transactionDetailsRaw != nil {
 			// TODO: add support for this, and validate the value.
 			transactionDetails, ok := transactionDetailsRaw.(string)
 			if !ok {
@@ -235,6 +236,33 @@ func defaultEncoding() solana.EncodingType {
 
 func defaultTransactionDetails() rpc.TransactionDetailsType {
 	return rpc.TransactionDetailsFull
+}
+
+const maxRPCParamsLogLen = 512
+
+func compactRawParamsForLog(raw *json.RawMessage) string {
+	if raw == nil {
+		return "<nil>"
+	}
+	if len(*raw) == 0 {
+		return "<empty>"
+	}
+
+	var compact bytes.Buffer
+	if err := json.Compact(&compact, *raw); err != nil {
+		return truncateForLog(string(*raw), maxRPCParamsLogLen)
+	}
+	return truncateForLog(compact.String(), maxRPCParamsLogLen)
+}
+
+func truncateForLog(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	if maxLen <= 3 {
+		return s[:maxLen]
+	}
+	return s[:maxLen-3] + "..."
 }
 
 type GetTransactionRequest struct {
