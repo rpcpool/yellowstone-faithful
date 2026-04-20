@@ -190,7 +190,7 @@ func parseGetBlockRequest(raw *json.RawMessage) (*GetBlockRequest, error) {
 			maxSupportedTransactionVersionUint64 := uint64(maxSupportedTransactionVersion)
 			out.Options.MaxSupportedTransactionVersion = &maxSupportedTransactionVersionUint64
 		}
-		if transactionDetailsRaw, ok := optionsRaw["transactionDetails"]; ok {
+		if transactionDetailsRaw, ok := optionsRaw["transactionDetails"]; ok && transactionDetailsRaw != nil {
 			// TODO: add support for this, and validate the value.
 			transactionDetails, ok := transactionDetailsRaw.(string)
 			if !ok {
