@@ -48,6 +48,8 @@ func newCmd_rpc() *cli.Command {
 	var useMmapForLocalIndexes bool
 	defaultGrpcServerConfig := DefaultGrpcServerConfig()
 	var useMmapForSigExistsIndex bool
+	var configRetryMax int
+	var configRetryDelay time.Duration
 	return &cli.Command{
 		Name:        "rpc",
 		Usage:       "Start a Solana JSON RPC server.",
@@ -147,6 +149,18 @@ func newCmd_rpc() *cli.Command {
 				Usage:       "Use mmap for the sig-exists index file (instead of os.Open)",
 				Value:       false,
 				Destination: &useMmapForSigExistsIndex,
+			},
+			&cli.IntFlag{
+				Name:        "config-retry-max",
+				Usage:       "Maximum number of retries when loading a newly created config file",
+				Value:       0,
+				Destination: &configRetryMax,
+			},
+			&cli.DurationFlag{
+				Name:        "config-retry-delay",
+				Usage:       "Delay between retries when loading a newly created config file",
+				Value:       0,
+				Destination: &configRetryDelay,
 			},
 			// grpc server flags:
 			&cli.IntFlag{
@@ -408,8 +422,14 @@ func newCmd_rpc() *cli.Command {
 								// Retry loading the config file a few times in case of transient errors (e.g., file not fully written yet)
 								var config *Config
 								var err error
-								const maxRetries = 5
-								const retryDelay = 300 * time.Millisecond
+								maxRetries := configRetryMax
+								retryDelay := configRetryDelay
+								if maxRetries <= 0 {
+									maxRetries = 5
+								}
+								if retryDelay <= 0 {
+									retryDelay = 300 * time.Millisecond
+								}
 								for attempt := 1; attempt <= maxRetries; attempt++ {
 									config, err = LoadConfig(event.Name)
 									if err == nil {

@@ -53,15 +53,15 @@ func (multi *MultiEpoch) handleGetBlock_car(ctx context.Context, conn *requestCo
 			)
 		}
 		return &jsonrpc2.Error{
-			Code:    jsonrpc2.CodeInvalidParams,
-			Message: "Invalid params",
-		}, fmt.Errorf(
-			"failed to parse params: %w; raw_params=%s; remote_addr=%s; user_agent=%q",
-			err,
-			compactRawParamsForLog(req.Params),
-			clientAddr,
-			userAgent,
-		)
+				Code:    jsonrpc2.CodeInvalidParams,
+				Message: "Invalid params",
+			}, fmt.Errorf(
+				"failed to parse params: %w; raw_params=%s; remote_addr=%s; user_agent=%q",
+				err,
+				compactRawParamsForLog(req.Params),
+				clientAddr,
+				userAgent,
+			)
 	}
 	if err := params.Validate(); err != nil {
 		return &jsonrpc2.Error{
