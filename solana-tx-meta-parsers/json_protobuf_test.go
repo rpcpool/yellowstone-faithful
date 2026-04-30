@@ -2,6 +2,7 @@ package solanatxmetaparsers
 
 import (
 	"encoding/json"
+	"errors"
 	"testing"
 
 	transaction_status_meta_serde_agave "github.com/rpcpool/yellowstone-faithful/parse_legacy_transaction_status_meta"
@@ -37,6 +38,13 @@ func TestDecodeProtobufTransactionError_AcceptsWrappedResultErr(t *testing.T) {
 	}
 	if _, ok := got.(*transaction_status_meta_serde_agave.TransactionError__AccountInUse); !ok {
 		t.Fatalf("unexpected decoded type: %T", got)
+	}
+}
+
+func TestDecodeProtobufTransactionError_ClassifiesIncompletePayloadAsUnsupported(t *testing.T) {
+	_, err := decodeProtobufTransactionError([]byte{8, 0, 0, 0})
+	if !errors.Is(err, ErrUnsupportedProtobufTransactionErrorPayload) {
+		t.Fatalf("expected unsupported payload error, got: %v", err)
 	}
 }
 

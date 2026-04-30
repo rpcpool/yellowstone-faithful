@@ -3,6 +3,7 @@ package solanatxmetaparsers
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 
@@ -27,9 +28,11 @@ func ProtobufTransactionStatusMetaToUi(meta *confirmed_block.TransactionStatusMe
 		if storedErr != nil && storedErr.Err != nil && len(storedErr.Err) > 0 {
 			unmarshaledErr, err := decodeProtobufTransactionError(storedErr.Err)
 			if err != nil {
-				// A malformed protobuf error payload should not fail the entire block.
+				// An unsupported protobuf error payload should not fail the entire block.
 				// Preserve the failure signal with a generic RPC-compatible string.
-				klog.Warningf("failed to decode protobuf transaction error payload, falling back to generic error: %v", err)
+				if !errors.Is(err, ErrUnsupportedProtobufTransactionErrorPayload) {
+					klog.Warningf("failed to decode protobuf transaction error payload, falling back to generic error: %v", err)
+				}
 				resp.String("err", "UnsupportedTransactionError")
 				resp.ObjectFunc("status", func(oj *jsonbuilder.OrderedJSONObject) {
 					oj.String("Err", "UnsupportedTransactionError")

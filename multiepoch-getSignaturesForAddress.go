@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"sync"
@@ -14,6 +15,7 @@ import (
 	"github.com/rpcpool/yellowstone-faithful/metrics"
 	"github.com/rpcpool/yellowstone-faithful/nodetools"
 	"github.com/rpcpool/yellowstone-faithful/slottools"
+	solanatxmetaparsers "github.com/rpcpool/yellowstone-faithful/solana-tx-meta-parsers"
 	"github.com/rpcpool/yellowstone-faithful/telemetry"
 	"github.com/sourcegraph/jsonrpc2"
 	"go.opentelemetry.io/otel/attribute"
@@ -248,7 +250,11 @@ func (multi *MultiEpoch) handleGetSignaturesForAddress(ctx context.Context, conn
 						if err == nil {
 							e, hasErr, err := meta.GetTxError()
 							if err != nil {
-								klog.Errorf("failed to get transaction error: %v", err)
+								if errors.Is(err, solanatxmetaparsers.ErrUnsupportedProtobufTransactionErrorPayload) {
+									response[ii]["err"] = "UnsupportedTransactionError"
+								} else {
+									klog.Errorf("failed to get transaction error: %v", err)
+								}
 							} else if hasErr {
 								response[ii]["err"] = e
 							} else {

@@ -3,6 +3,7 @@ package solanatxmetaparsers
 import (
 	"errors"
 	"fmt"
+	"io"
 	"sync"
 
 	"github.com/gagliardetto/solana-go"
@@ -46,6 +47,8 @@ type TransactionStatusMetaContainer struct {
 	vProtobuf *confirmed_block.TransactionStatusMeta
 	vSerde    *serde_agave.StoredTransactionStatusMeta
 }
+
+var ErrUnsupportedProtobufTransactionErrorPayload = errors.New("unsupported protobuf transaction error payload")
 
 // HasMeta returns true if the container holds a value.
 func (c *TransactionStatusMetaContainer) HasMeta() bool {
@@ -111,6 +114,10 @@ func decodeProtobufTransactionError(buf []byte) (transaction_status_meta_serde_a
 			return errResult.Value, nil
 		}
 		return nil, fmt.Errorf("unexpected result type in protobuf transaction error payload: %T", result)
+	}
+
+	if len(buf) > 0 && errors.Is(err, io.EOF) {
+		return nil, fmt.Errorf("%w: incomplete transaction error bytes", ErrUnsupportedProtobufTransactionErrorPayload)
 	}
 
 	return nil, fmt.Errorf(
