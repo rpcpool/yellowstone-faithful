@@ -166,7 +166,8 @@ func (obj *InstructionError__Immutable) GetVariantIndex() int { return 42 }
 
 func (obj *InstructionError__IncorrectAuthority) GetVariantIndex() int { return 43 }
 
-func (obj *InstructionError__BorshIoError) GetVariantIndex() int { return 44 }
+func (obj *InstructionError__BorshIoError) GetVariantIndex() int       { return 44 }
+func (obj *InstructionError__BorshIoErrorLegacy) GetVariantIndex() int { return 44 }
 
 func (obj *InstructionError__AccountNotRentExempt) GetVariantIndex() int { return 45 }
 

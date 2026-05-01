@@ -50,6 +50,25 @@ type TransactionStatusMetaContainer struct {
 
 var ErrUnsupportedProtobufTransactionErrorPayload = errors.New("unsupported protobuf transaction error payload")
 
+// tryDecodeLegacyBorshIoError recovers InstructionError(X, BorshIoError) from the 9-byte
+// pattern written by old Solana validators before BorshIoError gained its String argument.
+func tryDecodeLegacyBorshIoError(buf []byte) (transaction_status_meta_serde_agave.TransactionError, bool) {
+	// bincode layout: variant(InstructionError=8, 4B LE) + errorCode(1B) + variant(BorshIoError=44, 4B LE)
+	if len(buf) != 9 {
+		return nil, false
+	}
+	if buf[0] != 8 || buf[1] != 0 || buf[2] != 0 || buf[3] != 0 {
+		return nil, false
+	}
+	if buf[5] != 44 || buf[6] != 0 || buf[7] != 0 || buf[8] != 0 {
+		return nil, false
+	}
+	return &transaction_status_meta_serde_agave.TransactionError__InstructionError{
+		ErrorCode: buf[4],
+		Error:     &transaction_status_meta_serde_agave.InstructionError__BorshIoErrorLegacy{},
+	}, true
+}
+
 // HasMeta returns true if the container holds a value.
 func (c *TransactionStatusMetaContainer) HasMeta() bool {
 	return c.vProtobuf != nil || c.vSerde != nil
@@ -117,6 +136,11 @@ func decodeProtobufTransactionError(buf []byte) (transaction_status_meta_serde_a
 	}
 
 	if len(buf) > 0 && errors.Is(err, io.EOF) {
+		// Old Solana validators stored BorshIoError as a unit variant (no String payload).
+		// Pattern: TransactionError::InstructionError (4B) + instruction index (1B) + InstructionError::BorshIoError (4B)
+		if recovered, ok := tryDecodeLegacyBorshIoError(buf); ok {
+			return recovered, nil
+		}
 		return nil, fmt.Errorf("%w: incomplete transaction error bytes", ErrUnsupportedProtobufTransactionErrorPayload)
 	}
 

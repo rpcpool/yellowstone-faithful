@@ -30,7 +30,9 @@ func ProtobufTransactionStatusMetaToUi(meta *confirmed_block.TransactionStatusMe
 			if err != nil {
 				// An unsupported protobuf error payload should not fail the entire block.
 				// Preserve the failure signal with a generic RPC-compatible string.
-				if !errors.Is(err, ErrUnsupportedProtobufTransactionErrorPayload) {
+				if errors.Is(err, ErrUnsupportedProtobufTransactionErrorPayload) {
+					klog.Warningf("unsupported protobuf transaction error payload; returning UnsupportedTransactionError which may differ from the canonical RPC response: %v", err)
+				} else {
 					klog.Warningf("failed to decode protobuf transaction error payload, falling back to generic error: %v", err)
 				}
 				resp.String("err", "UnsupportedTransactionError")
