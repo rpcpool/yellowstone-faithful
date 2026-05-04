@@ -42,6 +42,8 @@ It supports the following flags:
 - `--epoch-search-concurrency=3`: How many epochs to search in parallel when looking for data. Defaults to 3. This is useful for performance tuning when serving requests across multiple epochs.
 - `--max-cache=<megabytes>`: How much memory to use for caching. Defaults to 0 (no limit). This is useful when you want to limit the memory usage of the RPC server.
 - `--filecoin-api-address`: Filecoin API endpoint address for direct Filecoin retrievals, e.g. `--filecoin-api-address=https://api.node.glif.io`
+- `--config-retry-max=<n>`: Maximum number of retries when loading a newly created config file (e.g. when `--watch` detects a new file). Defaults to 5. Useful when config files may be written non-atomically and could be read before they are fully flushed.
+- `--config-retry-delay=<duration>`: Delay between retries when loading a newly created config file, e.g. `--config-retry-delay=300ms`. Defaults to 300ms.
 
 NOTES:
 
