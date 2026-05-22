@@ -373,6 +373,10 @@ func (obj InstructionError__BorshIoError) MarshalJSON() ([]byte, error) {
 	)
 }
 
+func (obj InstructionError__BorshIoErrorLegacy) MarshalJSON() ([]byte, error) {
+	return []byte(`"BorshIoError"`), nil
+}
+
 func (obj InstructionError__AccountNotRentExempt) MarshalJSON() ([]byte, error) {
 	return []byte(`"AccountNotRentExempt"`), nil
 }

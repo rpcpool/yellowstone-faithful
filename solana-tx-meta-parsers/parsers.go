@@ -3,6 +3,7 @@ package solanatxmetaparsers
 import (
 	"errors"
 	"fmt"
+	"io"
 	"sync"
 
 	"github.com/gagliardetto/solana-go"
@@ -45,6 +46,27 @@ func MakeMockTxSuccessTxMetaContainer(writable []solana.PublicKey, readonly []so
 type TransactionStatusMetaContainer struct {
 	vProtobuf *confirmed_block.TransactionStatusMeta
 	vSerde    *serde_agave.StoredTransactionStatusMeta
+}
+
+var ErrUnsupportedProtobufTransactionErrorPayload = errors.New("unsupported protobuf transaction error payload")
+
+// tryDecodeLegacyBorshIoError recovers InstructionError(X, BorshIoError) from the 9-byte
+// pattern written by old Solana validators before BorshIoError gained its String argument.
+func tryDecodeLegacyBorshIoError(buf []byte) (transaction_status_meta_serde_agave.TransactionError, bool) {
+	// bincode layout: variant(InstructionError=8, 4B LE) + errorCode(1B) + variant(BorshIoError=44, 4B LE)
+	if len(buf) != 9 {
+		return nil, false
+	}
+	if buf[0] != 8 || buf[1] != 0 || buf[2] != 0 || buf[3] != 0 {
+		return nil, false
+	}
+	if buf[5] != 44 || buf[6] != 0 || buf[7] != 0 || buf[8] != 0 {
+		return nil, false
+	}
+	return &transaction_status_meta_serde_agave.TransactionError__InstructionError{
+		ErrorCode: buf[4],
+		Error:     &transaction_status_meta_serde_agave.InstructionError__BorshIoErrorLegacy{},
+	}, true
 }
 
 // HasMeta returns true if the container holds a value.
@@ -92,23 +114,55 @@ func (c *TransactionStatusMetaContainer) IsErr() bool {
 	return false
 }
 
+func decodeProtobufTransactionError(buf []byte) (transaction_status_meta_serde_agave.TransactionError, error) {
+	txErr, err := transaction_status_meta_serde_agave.BincodeDeserializeTransactionError(buf)
+	if err == nil {
+		return txErr, nil
+	}
+
+	// Some producers appear to store a bincode-serialized Result<TransactionError>
+	// instead of the raw TransactionError bytes inside the protobuf wrapper.
+	// Try that format as a compatibility fallback before giving up.
+	result, resultErr := transaction_status_meta_serde_agave.BincodeDeserializeResult(buf)
+	if resultErr == nil {
+		if okResult, ok := result.(*transaction_status_meta_serde_agave.Result__Ok); ok {
+			_ = okResult
+			return nil, fmt.Errorf("protobuf transaction error payload unexpectedly decoded to Ok result")
+		}
+		if errResult, ok := result.(*transaction_status_meta_serde_agave.Result__Err); ok {
+			return errResult.Value, nil
+		}
+		return nil, fmt.Errorf("unexpected result type in protobuf transaction error payload: %T", result)
+	}
+
+	if len(buf) > 0 && errors.Is(err, io.EOF) {
+		// Old Solana validators stored BorshIoError as a unit variant (no String payload).
+		// Pattern: TransactionError::InstructionError (4B) + instruction index (1B) + InstructionError::BorshIoError (4B)
+		if recovered, ok := tryDecodeLegacyBorshIoError(buf); ok {
+			return recovered, nil
+		}
+		return nil, fmt.Errorf("%w: incomplete transaction error bytes", ErrUnsupportedProtobufTransactionErrorPayload)
+	}
+
+	return nil, fmt.Errorf(
+		"failed to decode protobuf transaction error payload: %w",
+		errors.Join(
+			fmt.Errorf("as transaction error: %w", err),
+			fmt.Errorf("as result: %w", resultErr),
+		),
+	)
+}
+
 func (c *TransactionStatusMetaContainer) GetTxError() (transaction_status_meta_serde_agave.TransactionError, bool, error) {
 	if c.vProtobuf != nil {
 		if c.vProtobuf.Err == nil {
 			return nil, false, nil
 		}
-		unmarshaledErr, err := transaction_status_meta_serde_agave.BincodeDeserializeResult(c.vProtobuf.Err.Err)
+		unmarshaledErr, err := decodeProtobufTransactionError(c.vProtobuf.Err.Err)
 		if err != nil {
 			return nil, false, fmt.Errorf("failed to unmarshal error: %w", err)
 		}
-		if _, ok := unmarshaledErr.(*transaction_status_meta_serde_agave.Result__Ok); ok {
-			return nil, false, nil
-		}
-		if e, ok := unmarshaledErr.(*transaction_status_meta_serde_agave.Result__Err); !ok {
-			return nil, false, fmt.Errorf("unexpected error type: %T", unmarshaledErr)
-		} else {
-			return e.Value, true, nil
-		}
+		return unmarshaledErr, true, nil
 	}
 	if c.vSerde != nil {
 		if c.vSerde.Status == nil {

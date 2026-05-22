@@ -2107,6 +2107,32 @@ type InstructionError__BorshIoError string
 
 func (*InstructionError__BorshIoError) isInstructionError() {}
 
+// InstructionError__BorshIoErrorLegacy represents BorshIoError stored without a string
+// payload by old Solana validator versions (before BorshIoError gained its String argument).
+type InstructionError__BorshIoErrorLegacy struct{}
+
+func (*InstructionError__BorshIoErrorLegacy) isInstructionError() {}
+
+func (obj *InstructionError__BorshIoErrorLegacy) Serialize(serializer serde.Serializer) error {
+	if err := serializer.IncreaseContainerDepth(); err != nil {
+		return err
+	}
+	serializer.SerializeVariantIndex(44)
+	serializer.DecreaseContainerDepth()
+	return nil
+}
+
+func (obj *InstructionError__BorshIoErrorLegacy) BincodeSerialize() ([]byte, error) {
+	if obj == nil {
+		return nil, fmt.Errorf("Cannot serialize null object")
+	}
+	serializer := bincode.NewSerializer()
+	if err := obj.Serialize(serializer); err != nil {
+		return nil, err
+	}
+	return serializer.GetBytes(), nil
+}
+
 func (obj *InstructionError__BorshIoError) Serialize(serializer serde.Serializer) error {
 	if err := serializer.IncreaseContainerDepth(); err != nil {
 		return err

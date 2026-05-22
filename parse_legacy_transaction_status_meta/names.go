@@ -60,6 +60,7 @@ func (*InstructionError__ProgramFailedToCompile) String() string  { return "Prog
 func (*InstructionError__Immutable) String() string               { return "Immutable" }
 func (*InstructionError__IncorrectAuthority) String() string      { return "IncorrectAuthority" }
 func (*InstructionError__BorshIoError) String() string            { return "BorshIoError" }
+func (*InstructionError__BorshIoErrorLegacy) String() string      { return "BorshIoError" }
 func (*InstructionError__AccountNotRentExempt) String() string    { return "AccountNotRentExempt" }
 func (*InstructionError__InvalidAccountOwner) String() string     { return "InvalidAccountOwner" }
 func (*InstructionError__ArithmeticOverflow) String() string      { return "ArithmeticOverflow" }

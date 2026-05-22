@@ -389,12 +389,35 @@ func (multi *MultiEpoch) handleGetBlock_car(ctx context.Context, conn *requestCo
 				response.String("previousBlockhash", parentEntryHash)
 				// response.Null("previousBlockhash")
 			}
-		} else {
-			// TODO: handle the case when the parent is in a different epoch.
-			if slot != 0 {
-				klog.V(4).Infof("parent slot is in a different epoch, not implemented yet (can't get previousBlockhash)")
-				// is previous epoch available?
-				// if yes, get the parent block from there
+		} else if slot != 0 && epochNumber > 0 {
+			// Parent is in the previous epoch; look up its block hash there.
+			prevEpochHandler, err := multi.GetEpoch(epochNumber - 1)
+			if err != nil {
+				klog.V(4).Infof("previous epoch %d not available, can't get previousBlockhash: %v", epochNumber-1, err)
+			} else {
+				parentBlock, _, err := prevEpochHandler.GetBlock(parentSpanCtx, parentSlot)
+				if err != nil {
+					telemetry.RecordError(parentSpan, err, "Failed to get parent block from previous epoch")
+					parentSpan.End()
+					return &jsonrpc2.Error{
+						Code:    jsonrpc2.CodeInternalError,
+						Message: "Internal error",
+					}, fmt.Errorf("failed to get parent block from previous epoch: %v", err)
+				}
+				if len(parentBlock.Entries) > 0 {
+					lastEntryCidOfParent := parentBlock.Entries[len(parentBlock.Entries)-1].(cidlink.Link).Cid
+					parentEntryNode, err := prevEpochHandler.GetEntryByCid(parentSpanCtx, lastEntryCidOfParent)
+					if err != nil {
+						telemetry.RecordError(parentSpan, err, "Failed to get parent entry from previous epoch")
+						parentSpan.End()
+						return &jsonrpc2.Error{
+							Code:    jsonrpc2.CodeInternalError,
+							Message: "Internal error",
+						}, fmt.Errorf("failed to get parent entry from previous epoch: %v", err)
+					}
+					parentEntryHash := solana.HashFromBytes(parentEntryNode.Hash).String()
+					response.String("previousBlockhash", parentEntryHash)
+				}
 			}
 		}
 		parentSpan.End()
