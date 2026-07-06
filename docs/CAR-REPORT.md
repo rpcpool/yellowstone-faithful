@@ -983,7 +983,7 @@
 | 17 | [epoch-17.car](https://files.old-faithful.net/17/epoch-17.car) | [4e1670f](https://files.old-faithful.net/17/epoch-17.sha256) | [26307c1](https://files.old-faithful.net/17/epoch-17.b3sum) | 15 GB | [✅](https://files.old-faithful.net/17/tx-metadata-check.log) | [✅](https://files.old-faithful.net/17/poh-check.log) | ✅ | 6 GB | [17.slots.txt](https://files.old-faithful.net/17/17.slots.txt) |
 | 16 | [epoch-16.car](https://files.old-faithful.net/16/epoch-16.car) | [04cb02a](https://files.old-faithful.net/16/epoch-16.sha256) | [93d09a8](https://files.old-faithful.net/16/epoch-16.b3sum) | 15 GB | [✅](https://files.old-faithful.net/16/tx-metadata-check.log) | [✅](https://files.old-faithful.net/16/poh-check.log) | ✅ | 6 GB | [16.slots.txt](https://files.old-faithful.net/16/16.slots.txt) |
 | 15 | [epoch-15.car](https://files.old-faithful.net/15/epoch-15.car) | [9e0f340](https://files.old-faithful.net/15/epoch-15.sha256) | [60b1407](https://files.old-faithful.net/15/epoch-15.b3sum) | 15 GB | [✅](https://files.old-faithful.net/15/tx-metadata-check.log) | [✅](https://files.old-faithful.net/15/poh-check.log) | ✅ | 6 GB | [15.slots.txt](https://files.old-faithful.net/15/15.slots.txt) |
-| 14 | [epoch-14.car](https://files.old-faithful.net/14/epoch-14.car) | [57c1c8b](https://files.old-faithful.net/14/epoch-14.sha256) | [4226019](https://files.old-faithful.net/14/epoch-14.b3sum) | 15 GB | [✅](https://files.old-faithful.net/14/tx-metadata-check.log) | [✅](https://files.old-faithful.net/14/poh-check.log) | ✅ | 6 GB | [14.slots.txt](https://files.old-faithful.net/14/14.slots.txt) |
+| 14 | [epoch-14.car](https://files.old-faithful.net/14/epoch-14.car) | [57c1c8b](https://files.old-faithful.net/14/epoch-14.sha256) | [4226019](https://files.old-faithful.net/14/epoch-14.b3sum) | 15 GB | [✅](https://files.old-faithful.net/14/tx-metadata-check.log) | [✅](https://files.old-faithful.net/14/poh-check.log) | ❌ | ❌ | [14.slots.txt](https://files.old-faithful.net/14/14.slots.txt) |
 | 13 | [epoch-13.car](https://files.old-faithful.net/13/epoch-13.car) | [1c18971](https://files.old-faithful.net/13/epoch-13.sha256) | [343dc41](https://files.old-faithful.net/13/epoch-13.b3sum) | 15 GB | [✅](https://files.old-faithful.net/13/tx-metadata-check.log) | [✅](https://files.old-faithful.net/13/poh-check.log) | ✅ | 6 GB | [13.slots.txt](https://files.old-faithful.net/13/13.slots.txt) |
 | 12 | [epoch-12.car](https://files.old-faithful.net/12/epoch-12.car) | [97f7f39](https://files.old-faithful.net/12/epoch-12.sha256) | [8eeb4b6](https://files.old-faithful.net/12/epoch-12.b3sum) | 15 GB | [✅](https://files.old-faithful.net/12/tx-metadata-check.log) | [✅](https://files.old-faithful.net/12/poh-check.log) | ✅ | 6 GB | [12.slots.txt](https://files.old-faithful.net/12/12.slots.txt) |
 | 11 | [epoch-11.car](https://files.old-faithful.net/11/epoch-11.car) | [972da04](https://files.old-faithful.net/11/epoch-11.sha256) | [92fbd8b](https://files.old-faithful.net/11/epoch-11.b3sum) | 15 GB | [✅](https://files.old-faithful.net/11/tx-metadata-check.log) | [✅](https://files.old-faithful.net/11/poh-check.log) | ✅ | 6 GB | [11.slots.txt](https://files.old-faithful.net/11/11.slots.txt) |
@@ -1005,6 +1005,8 @@
 ★★ = epoch 208 POH validation is handled differently, see more in https://docs.old-faithful.net/validation
 
 ### Summary of Issues
+- Epoch 14: failed to get CID
+- Epoch 14: missing indices, missing indices size
 - Epoch 18: failed tx meta check
 - Epoch 30: failed tx meta check
 - Epoch 39: failed tx meta check
