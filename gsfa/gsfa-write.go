@@ -77,12 +77,12 @@ func NewGsfaWriter(
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	index := &GsfaWriter{
-		fullBufferWriterChan: make(chan linkedlog.KeyToOffsetAndSizeAndBlocktime, 50), // TODO: make this configurable
-		popRank:              newRollingRankOfTopPerformers(10_000),
-		offsets:              hashmap.New[solana.PublicKey, [2]uint64](int(1_000_000)),
-		accum:                hashmap.New[solana.PublicKey, []linkedlog.OffsetAndSizeAndSlot](int(1_000_000)),
-		ctx:                  ctx,
-		cancel:               cancel,
+		fullBufferWriterChan:   make(chan linkedlog.KeyToOffsetAndSizeAndBlocktime, 50), // TODO: make this configurable
+		popRank:                newRollingRankOfTopPerformers(10_000),
+		offsets:                hashmap.New[solana.PublicKey, [2]uint64](int(1_000_000)),
+		accum:                  hashmap.New[solana.PublicKey, []linkedlog.OffsetAndSizeAndSlot](int(1_000_000)),
+		ctx:                    ctx,
+		cancel:                 cancel,
 		fullBufferWriterDone:   make(chan struct{}),
 		indexRootDir:           indexRootDir,
 		exiting:                new(atomic.Bool),
