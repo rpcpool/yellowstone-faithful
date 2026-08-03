@@ -1,11 +1,13 @@
 package gsfa
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -28,12 +30,20 @@ type GsfaWriter struct {
 	ll                   *linkedlog.LinkedLog
 	man                  *manifest.Manifest
 	fullBufferWriterChan chan linkedlog.KeyToOffsetAndSizeAndBlocktime
-	accum                *hashmap.Map[solana.PublicKey, []*linkedlog.OffsetAndSizeAndSlot]
+	accum                *hashmap.Map[solana.PublicKey, []linkedlog.OffsetAndSizeAndSlot]
 	offsetsWriter        *indexes.PubkeyToOffsetAndSize_Writer
 	ctx                  context.Context
 	cancel               context.CancelFunc
 	exiting              *atomic.Bool
 	fullBufferWriterDone chan struct{}
+	// writerErr holds the first error encountered by the fullBufferWriter
+	// goroutine (the sole writer to the linked log). It is written only by that
+	// goroutine before it signals fullBufferWriterDone, and read by Close after
+	// receiving that signal, so no additional synchronization is required.
+	writerErr error
+	// periodicFlushThreshold is the accumulator size above which the periodic
+	// drain runs. Configurable so tests can exercise the drain path cheaply.
+	periodicFlushThreshold int
 
 	// meta
 	epoch   uint64
@@ -67,15 +77,16 @@ func NewGsfaWriter(
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	index := &GsfaWriter{
-		fullBufferWriterChan: make(chan linkedlog.KeyToOffsetAndSizeAndBlocktime, 50), // TODO: make this configurable
-		popRank:              newRollingRankOfTopPerformers(10_000),
-		offsets:              hashmap.New[solana.PublicKey, [2]uint64](int(1_000_000)),
-		accum:                hashmap.New[solana.PublicKey, []*linkedlog.OffsetAndSizeAndSlot](int(1_000_000)),
-		ctx:                  ctx,
-		cancel:               cancel,
-		fullBufferWriterDone: make(chan struct{}),
-		indexRootDir:         indexRootDir,
-		exiting:              new(atomic.Bool),
+		fullBufferWriterChan:   make(chan linkedlog.KeyToOffsetAndSizeAndBlocktime, 50), // TODO: make this configurable
+		popRank:                newRollingRankOfTopPerformers(10_000),
+		offsets:                hashmap.New[solana.PublicKey, [2]uint64](int(1_000_000)),
+		accum:                  hashmap.New[solana.PublicKey, []linkedlog.OffsetAndSizeAndSlot](int(1_000_000)),
+		ctx:                    ctx,
+		cancel:                 cancel,
+		fullBufferWriterDone:   make(chan struct{}),
+		indexRootDir:           indexRootDir,
+		exiting:                new(atomic.Bool),
+		periodicFlushThreshold: 100_000,
 
 		tmpDir: tmpDir,
 		// meta
@@ -104,7 +115,28 @@ func NewGsfaWriter(
 func (a *GsfaWriter) fullBufferWriter() {
 	numReadFromChan := uint64(0)
 	howManyBuffersToFlushConcurrently := 256
-	tmpBuf := make(linkedlog.KeyToOffsetAndSizeAndBlocktimeSlice, howManyBuffersToFlushConcurrently)
+	// NOTE: cap, not len. Previously this was make(..., 256), i.e. a slice of 256
+	// EMPTY entries, which made `len(tmpBuf) == 256` true immediately and then
+	// never again — so instead of flushing every 256 buffers, tmpBuf grew until a
+	// duplicate key happened to arrive.
+	tmpBuf := make(linkedlog.KeyToOffsetAndSizeAndBlocktimeSlice, 0, howManyBuffersToFlushConcurrently)
+
+	flush := func() {
+		for _, buf := range tmpBuf {
+			if len(buf.Values) == 0 {
+				continue
+			}
+			// Write the buffer to the linked log.
+			klog.V(5).Infof("Flushing %d transactions for key %s", len(buf.Values), buf.Key)
+			if err := a.flushKVs(buf); err != nil {
+				klog.Errorf("Error while flushing transactions for key %s: %v", buf.Key, err)
+				if a.writerErr == nil {
+					a.writerErr = err
+				}
+			}
+		}
+		tmpBuf = tmpBuf[:0]
+	}
 
 	for {
 		// fmt.Println("numReadFromChan", numReadFromChan, "len(a.fullBufferWriterChan)", len(a.fullBufferWriterChan), "a.exiting.Load()", a.exiting.Load())
@@ -112,6 +144,10 @@ func (a *GsfaWriter) fullBufferWriter() {
 			klog.Infof("remaining %d buffers to flush", len(a.fullBufferWriterChan))
 		}
 		if a.exiting.Load() && len(a.fullBufferWriterChan) == 0 {
+			// Flush whatever is still buffered before exiting. Previously this
+			// returned without flushing, silently dropping every buffer still in
+			// tmpBuf (a timing-dependent set of transactions) from the index.
+			flush()
 			a.fullBufferWriterDone <- struct{}{}
 			return // exit
 		}
@@ -121,17 +157,7 @@ func (a *GsfaWriter) fullBufferWriter() {
 				numReadFromChan++
 				has := tmpBuf.Has(buffer.Key)
 				if len(tmpBuf) == howManyBuffersToFlushConcurrently || has {
-					for _, buf := range tmpBuf {
-						if len(buf.Values) == 0 {
-							continue
-						}
-						// Write the buffer to the linked log.
-						klog.V(5).Infof("Flushing %d transactions for key %s", len(buf.Values), buf.Key)
-						if err := a.flushKVs(buf); err != nil {
-							klog.Errorf("Error while flushing transactions for key %s: %v", buf.Key, err)
-						}
-					}
-					tmpBuf = make(linkedlog.KeyToOffsetAndSizeAndBlocktimeSlice, howManyBuffersToFlushConcurrently)
+					flush()
 				}
 				tmpBuf = append(tmpBuf, buffer)
 			}
@@ -154,7 +180,9 @@ func (a *GsfaWriter) Push(
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	oas := &linkedlog.OffsetAndSizeAndSlot{
+	// Value (not pointer): the accumulator holds these inline, so the slices are
+	// pointer-free and the GC never has to scan the (very large) accumulator.
+	oas := linkedlog.OffsetAndSizeAndSlot{
 		Offset: offset,
 		Size:   length,
 		Slot:   slot,
@@ -163,41 +191,67 @@ func (a *GsfaWriter) Push(
 	oas.SetIsSuccess(isSuccess)
 	oas.SetIsVote(isVote)
 
-	publicKeys = publicKeys.Dedupe()
-	publicKeys.Sort()
-	if slot%500 == 0 && a.accum.Len() > 100_000 {
-		// flush all
-		klog.V(4).Infof("Flushing all %d keys", a.accum.Len())
-
-		var keys solana.PublicKeySlice = a.accum.Keys()
-		keys.Sort()
+	// NOTE: publicKeys must already be deduplicated by the caller. Deduplication
+	// (which sorts internally) is done in the parallel decode workers rather than
+	// here, because this method runs on a single consumer goroutine and profiling
+	// showed the sort dominating it.
+	if slot%500 == 0 && a.accum.Len() > a.periodicFlushThreshold {
+		// Periodically drain the less-active keys so the in-memory accumulator
+		// stays bounded.
+		//
+		// This used to allocate ALL keys via Keys(), sort the whole set, then
+		// Get() each one back out of the map. Profiling a full-epoch run showed
+		// that full sort (~33% of total CPU) and the per-key Get (~20%)
+		// dominating this single consumer goroutine — even though only a small
+		// unpopular subset is actually flushed while the popular keys are
+		// re-sorted every time for nothing.
+		//
+		// Instead we iterate the map in place with Scan (key+value together, no
+		// Keys() allocation, no per-key Get) and collect only the subset to drain.
+		// The batches are handed to the single fullBufferWriter goroutine (see
+		// below) rather than written here, so that ALL linked-log writes happen on
+		// one goroutine in a deterministic order — which is what makes the gsfa
+		// index byte-for-byte reproducible across runs. We still sort the drained
+		// subset so the enqueue order is deterministic regardless of map iteration
+		// order.
+		klog.V(4).Infof("Flushing less-active keys from %d accumulated", a.accum.Len())
 
 		a.popRank.purge()
 
-		for iii := range keys {
-			key := keys[iii]
-			values, _ := a.accum.Get(key)
+		var toFlush []linkedlog.KeyToOffsetAndSizeAndBlocktime
+		a.accum.Scan(func(key solana.PublicKey, values []linkedlog.OffsetAndSizeAndSlot) bool {
 			// The objective is to have as big of a batch for each key as possible (max is 1000).
 			// So we optimize for delaying the flush for the most popular keys (popular=has been flushed a lot of times).
 			// And we flush the less popular keys, periodically if they haven't seen much activity.
 
 			// if this key has less than 100 values and is not in the top list of keys by flush count, then
 			// it's very likely that this key isn't going to get a lot of values soon
-			if len(values) < 100 && len(values) > 0 && !a.popRank.has(key) {
-				if err := a.flushKVs(linkedlog.KeyToOffsetAndSizeAndBlocktime{
+			if len(values) > 0 && len(values) < 100 && !a.popRank.has(key) {
+				toFlush = append(toFlush, linkedlog.KeyToOffsetAndSizeAndBlocktime{
 					Key:    key,
 					Values: values,
-				}); err != nil {
-					return err
-				}
-				a.accum.Delete(key)
+				})
 			}
+			return true
+		})
+
+		// Enqueue in pubkey order so the write order is deterministic.
+		sort.Slice(toFlush, func(i, j int) bool {
+			return bytes.Compare(toFlush[i].Key[:], toFlush[j].Key[:]) < 0
+		})
+
+		for i := range toFlush {
+			// Hand off to the single writer goroutine, then remove from the
+			// accumulator. After the delete only the enqueued batch references the
+			// values slice, so the writer can safely own it.
+			a.fullBufferWriterChan <- toFlush[i]
+			a.accum.Delete(toFlush[i].Key)
 		}
 	}
 	for _, publicKey := range publicKeys {
 		current, ok := a.accum.Get(publicKey)
 		if !ok {
-			current = make([]*linkedlog.OffsetAndSizeAndSlot, 0, itemsPerBatch)
+			current = make([]linkedlog.OffsetAndSizeAndSlot, 0, itemsPerBatch)
 			current = append(current, oas)
 			a.accum.Set(publicKey, current)
 		} else {
@@ -230,14 +284,19 @@ const itemsPerBatch = 1000
 func (a *GsfaWriter) Close() error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if err := a.flushAccum(a.accum); err != nil {
-		return err
-	}
+	// Enqueue the remaining accumulated batches to the single writer goroutine,
+	// then signal it to drain and exit. All linked-log writes therefore happen on
+	// that one goroutine, in a deterministic order.
+	a.flushAccum(a.accum)
 	a.exiting.Store(true)
 	klog.Info("Closing linked log...")
 	<-a.fullBufferWriterDone
 	klog.Info("Closing full buffer writer...")
 	a.cancel()
+	// The writer is the sole linked-log writer; surface any error it hit.
+	if a.writerErr != nil {
+		return fmt.Errorf("error while writing linked log: %w", a.writerErr)
+	}
 	{
 		{
 			keys := solana.PublicKeySlice(a.offsets.Keys())
@@ -279,21 +338,22 @@ func (a *GsfaWriter) Close() error {
 	)
 }
 
-func (a *GsfaWriter) flushAccum(m *hashmap.Map[solana.PublicKey, []*linkedlog.OffsetAndSizeAndSlot]) error {
+// flushAccum enqueues all remaining accumulated batches to the single writer
+// goroutine, in pubkey order (deterministic). It does not write to the linked
+// log directly; the writer does, so ordering stays deterministic and a.offsets
+// has a single writer.
+func (a *GsfaWriter) flushAccum(m *hashmap.Map[solana.PublicKey, []linkedlog.OffsetAndSizeAndSlot]) {
 	keys := solana.PublicKeySlice(m.Keys())
 	keys.Sort()
 	for ii := range keys {
 		key := keys[ii]
 		vals, _ := m.Get(key)
-		if err := a.flushKVs(linkedlog.KeyToOffsetAndSizeAndBlocktime{
+		a.fullBufferWriterChan <- linkedlog.KeyToOffsetAndSizeAndBlocktime{
 			Key:    key,
 			Values: vals,
-		}); err != nil {
-			return err
 		}
 		m.Delete(key)
 	}
-	return nil
 }
 
 func (a *GsfaWriter) flushKVs(kvs ...linkedlog.KeyToOffsetAndSizeAndBlocktime) error {

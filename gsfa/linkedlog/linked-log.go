@@ -180,7 +180,7 @@ func (s KeyToOffsetAndSizeAndBlocktimeSlice) Has(key solana.PublicKey) bool {
 
 type KeyToOffsetAndSizeAndBlocktime struct {
 	Key    solana.PublicKey
-	Values []*OffsetAndSizeAndSlot
+	Values []OffsetAndSizeAndSlot
 }
 
 func (s *LinkedLog) Put(
@@ -205,7 +205,7 @@ func (s *LinkedLog) Put(
 		if len(val.Values) == 0 {
 			continue
 		}
-		slices.Reverse[[]*OffsetAndSizeAndSlot](val.Values) // reverse the slice so that the most recent indexes are first
+		slices.Reverse(val.Values) // reverse the slice so that the most recent indexes are first
 		err := func() error {
 			encodedIndexes, err := createIndexesPayload(val.Values)
 			if err != nil {
@@ -245,7 +245,7 @@ func (s *LinkedLog) Put(
 	return uint64(previousSize), nil
 }
 
-func createIndexesPayload(indexes []*OffsetAndSizeAndSlot) ([]byte, error) {
+func createIndexesPayload(indexes []OffsetAndSizeAndSlot) ([]byte, error) {
 	buf := make([]byte, 0, 9*len(indexes))
 	for _, index := range indexes {
 		buf = append(buf, index.Bytes()...)

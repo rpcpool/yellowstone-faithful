@@ -154,6 +154,30 @@ Flags:
 - `--tmp-dir=/path/to/tmp/dir`: Where to store temporary files. Defaults to the system temp dir. (optional)
 - `--verify`: Verify the indexes after generation. (optional)
 - `--network=<network>`: Which network to use for the gsfa index. Defaults to `mainnet` (other options: `testnet`, `devnet`). (optional)
+- `--workers=<n>`: Number of workers used to decode CAR nodes in parallel (applies to both `index all` and `index gsfa`). Defaults to `number of CPUs * 3`. (optional)
+- `--cpuprofile=<file>`: (`index gsfa` only) Write a Go CPU profile to `<file>` for performance debugging. The profile is flushed both on normal completion and on `Ctrl-C` (`SIGINT`/`SIGTERM`), so you can interrupt a long-running generation and still get a valid profile. (optional)
+
+Both `index all` and `index gsfa` read the CAR file sequentially (a CAR is a single append-only stream and cannot be seeked), but the CPU-heavy per-node work — decoding blocks/transactions, reassembling metadata, and verifying signatures (gsfa) — is fanned out across a pool of `--workers` workers. The results are applied to the indexes on a single writer in the original order, so the generated indexes are identical regardless of the worker count. On multi-core machines this substantially speeds up generation; the gsfa index benefits most because of signature verification. Set `--workers=1` to fall back to fully sequential processing.
+
+#### Profiling gsfa index generation
+
+Generating the gsfa index for a large epoch can take many hours. If you need to investigate where the time is spent, run it with `--cpuprofile`:
+
+```bash
+faithful-cli index gsfa \
+  --epoch 994 \
+  --car epoch-994.car \
+  --index-dir /storage/indexes/epoch-994 \
+  --cpuprofile /tmp/gsfa-994.pprof
+```
+
+Let the run reach steady state, then either let it finish or press `Ctrl-C` — the profile is flushed either way. Analyze it with the standard Go tooling, passing the same `faithful-cli` binary you ran (needed for symbol resolution):
+
+```bash
+go tool pprof -top -nodecount=30 ./faithful-cli /tmp/gsfa-994.pprof
+# or open an interactive web UI / flamegraph:
+go tool pprof -http=:8080 ./faithful-cli /tmp/gsfa-994.pprof
+```
 
 ### Filecoin fetch via CID
 
