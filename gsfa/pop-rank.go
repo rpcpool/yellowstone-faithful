@@ -52,17 +52,20 @@ func (r *rollingRankOfTopPerformers) purge() {
 		return
 	}
 
-	// remove the lowest values
-	for _, value := range values[:len(values)-r.rankListSize] {
-		for _, key := range r.set.Keys() {
-			if v, _ := r.set.Get(key); v == value {
-				r.set.Delete(key)
-			}
+	// Keep only keys whose value is within the top rankListSize distinct values;
+	// everything below the threshold is removed. This is a single O(N) pass over
+	// the keys (plus the O(N log N) sort above) rather than the previous
+	// O(distinctValues * N) nested scan, which grew super-linearly over an epoch
+	// as hot accounts accumulated large, widely-distributed counts.
+	threshold := values[len(values)-r.rankListSize]
+	for _, key := range r.set.Keys() {
+		if v, _ := r.set.Get(key); v < threshold {
+			r.set.Delete(key)
 		}
 	}
 
 	// update the min and max values
-	r.minValue = values[len(values)-r.rankListSize]
+	r.minValue = threshold
 	r.maxValue = values[len(values)-1]
 }
 

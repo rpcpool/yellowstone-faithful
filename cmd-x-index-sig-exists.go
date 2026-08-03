@@ -50,9 +50,10 @@ func newCmd_Index_sigExists() *cli.Command {
 			},
 			// w number of workers:
 			&cli.UintFlag{
-				Name:  "w",
-				Usage: "number of workers",
-				Value: uint(runtime.NumCPU()) * 3,
+				Name:    "workers",
+				Aliases: []string{"w"},
+				Usage:   "number of workers",
+				Value:   uint(runtime.NumCPU()) * 3,
 			},
 			&cli.BoolFlag{
 				Name:        "verify",
@@ -127,7 +128,7 @@ func newCmd_Index_sigExists() *cli.Command {
 			dotEvery := 100_000
 			klog.Infof("A dot is printed every %s transactions", humanize.Comma(int64(dotEvery)))
 
-			numWorkers := c.Uint("w")
+			numWorkers := c.Uint("workers")
 
 			if numWorkers == 0 {
 				numWorkers = uint(runtime.NumCPU())
