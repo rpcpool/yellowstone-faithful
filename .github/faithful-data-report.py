@@ -19,9 +19,13 @@ class EpochData:
     txmeta_url: str = "n/a"
     indices: str = "n/a"
     indices_size: str = "n/a"
+    slot_range_index: str = "n/a"
+    slot_range_index_issue: Optional[str] = None
     slots_url: str = "n/a"
 
 class FaithfulDataReport:
+    SLOT_RANGE_INDEX_SIZE = 5_184_000
+
     def __init__(self):
         self.host = "https://files.old-faithful.net"
         self.txmeta_first_epoch = 10
@@ -66,6 +70,26 @@ class FaithfulDataReport:
         except:
             pass
         return "n/a"
+
+    async def get_slot_range_index(
+        self, session: aiohttp.ClientSession, epoch: int
+    ) -> tuple[str, Optional[str]]:
+        url = f"{self.host}/{epoch}/epoch-{epoch}-slot-ranges.raw"
+        try:
+            async with session.head(url, allow_redirects=True) as response:
+                if response.status != 200:
+                    return "n/a", "missing slot range index"
+
+                size = int(response.headers.get("content-length", 0))
+                if size != self.SLOT_RANGE_INDEX_SIZE:
+                    return "n/a", (
+                        f"invalid slot range index size ({size} bytes, "
+                        f"expected {self.SLOT_RANGE_INDEX_SIZE})"
+                    )
+
+                return url, None
+        except (aiohttp.ClientError, TypeError, ValueError):
+            return "n/a", "failed to validate slot range index"
 
     async def check_gsfa_magic(self, session: aiohttp.ClientSession, epoch: int) -> bool:
         """
@@ -160,10 +184,19 @@ class FaithfulDataReport:
         poh_url = f"{self.host}/{epoch}/poh-check.log"
         txmeta_url = f"{self.host}/{epoch}/tx-metadata-check.log"
 
-        # Check if CAR exists first
-        car_exists = await self.check_url(session, car_url)
+        # The slot range index is expected for every completed epoch, even if
+        # other report data is unavailable.
+        car_exists, slot_range_result = await asyncio.gather(
+            self.check_url(session, car_url),
+            self.get_slot_range_index(session, epoch),
+        )
+        slot_range_index, slot_range_index_issue = slot_range_result
         if not car_exists:
-            return EpochData(epoch=epoch)
+            return EpochData(
+                epoch=epoch,
+                slot_range_index=slot_range_index,
+                slot_range_index_issue=slot_range_index_issue,
+            )
 
         # Gather all data concurrently
         sha, size, poh, txmeta, indices, indices_size, b3 = await asyncio.gather(
@@ -193,6 +226,8 @@ class FaithfulDataReport:
             txmeta_url=txmeta_url,
             indices=indices,
             indices_size=indices_size,
+            slot_range_index=slot_range_index,
+            slot_range_index_issue=slot_range_index_issue,
             slots_url=slots_url
         )
 
@@ -228,6 +263,9 @@ class FaithfulDataReport:
 
         indices_cell = "✅" if data.indices != "n/a" else "❌"
         indices_size_cell = f"{data.indices_size} GB" if data.indices_size != "n/a" else "❌"
+        slot_range_index_cell = (
+            f"[✅]({data.slot_range_index})" if data.slot_range_index != "n/a" else "❌"
+        )
         slots_cell = f"[{data.epoch}.slots.txt]({data.slots_url})" if data.slots_url != "n/a" else "❌"
 
         # Track issues for summary report
@@ -244,11 +282,12 @@ class FaithfulDataReport:
             issues.append("failed tx meta check")
         if data.indices == "n/a": issues.append("missing indices")
         if data.indices_size == "n/a": issues.append("missing indices size")
+        if data.slot_range_index_issue: issues.append(data.slot_range_index_issue)
         
         if issues:
             self.issues.append((data.epoch, issues))
 
-        return f"| {data.epoch} | {car_cell} | {sha_cell} | {b3_cell} | {size_cell} | {txmeta_cell} | {poh_cell} | {indices_cell} | {indices_size_cell} | {slots_cell} |"
+        return f"| {data.epoch} | {car_cell} | {sha_cell} | {b3_cell} | {size_cell} | {txmeta_cell} | {poh_cell} | {indices_cell} | {indices_size_cell} | {slot_range_index_cell} | {slots_cell} |"
 
     async def get_current_epoch(self) -> int:
         async with aiohttp.ClientSession() as session:
@@ -263,9 +302,9 @@ class FaithfulDataReport:
         current_epoch = await self.get_current_epoch()
         epochs = range((current_epoch-1), -1, -1)  # descending order
 
-        print("| Epoch #  | CAR  | CAR SHA256 | CAR B3 | CAR filesize | tx meta check | poh check | Indices | Indices Size | Slots |")
-        print("|---|---|---|---|---|---|---|---|---|---|")
-        print("|%s|ongoing|-|-|-|-|-|-|-|-|" % current_epoch)
+        print("| Epoch #  | CAR  | CAR SHA256 | CAR B3 | CAR filesize | tx meta check | poh check | Indices | Indices Size | Slot Range Index | Slots |")
+        print("|---|---|---|---|---|---|---|---|---|---|---|")
+        print("|%s|ongoing|-|-|-|-|-|-|-|-|-|" % current_epoch)
 
         # concurrency levels
         chunk_size = 50  
@@ -286,7 +325,7 @@ class FaithfulDataReport:
         indices_size_tb = int(round(self.total_indices_size / 1024, 0))
         total_epochs = len(epochs)
         missing_cars = total_epochs - self.total_car_count
-        print(f"| **Total** | {self.total_car_count} | ({missing_cars} behind) | - | {car_size_tb:,} TB | - | - | - | {indices_size_tb:,} TB | - |")
+        print(f"| **Total** | {self.total_car_count} | ({missing_cars} behind) | - | {car_size_tb:,} TB | - | - | - | {indices_size_tb:,} TB | - | - |")
 
         print("\n★ = tx meta validation skipped (epochs 0-%s where tx meta wasn't enabled yet)" % self.txmeta_first_epoch)
         print("\n★★ = epoch 208 POH validation is handled differently, see more in https://docs.old-faithful.net/validation")
