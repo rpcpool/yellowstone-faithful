@@ -1,7 +1,7 @@
 | Epoch #  | CAR  | CAR SHA256 | CAR B3 | CAR filesize | tx meta check | poh check | Indices | Indices Size | Slot Range Index | Slots |
 |---|---|---|---|---|---|---|---|---|---|---|
 |1015|ongoing|-|-|-|-|-|-|-|-|-|
-| 1014 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| 1014 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | [✅](https://files.old-faithful.net/1014/epoch-1014-slot-ranges.raw) | ❌ |
 | 1013 | [epoch-1013.car](https://files.old-faithful.net/1013/epoch-1013.car) | [fc52c08](https://files.old-faithful.net/1013/epoch-1013.sha256) | [da3dede](https://files.old-faithful.net/1013/epoch-1013.b3sum) | 1003 GB | [✅](https://files.old-faithful.net/1013/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1013/poh-check.log) | ✅ | 103 GB | [✅](https://files.old-faithful.net/1013/epoch-1013-slot-ranges.raw) | [1013.slots.txt](https://files.old-faithful.net/1013/1013.slots.txt) |
 | 1012 | [epoch-1012.car](https://files.old-faithful.net/1012/epoch-1012.car) | [5b06d49](https://files.old-faithful.net/1012/epoch-1012.sha256) | [4e3e712](https://files.old-faithful.net/1012/epoch-1012.b3sum) | 984 GB | [✅](https://files.old-faithful.net/1012/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1012/poh-check.log) | ✅ | 100 GB | [✅](https://files.old-faithful.net/1012/epoch-1012-slot-ranges.raw) | [1012.slots.txt](https://files.old-faithful.net/1012/1012.slots.txt) |
 | 1011 | [epoch-1011.car](https://files.old-faithful.net/1011/epoch-1011.car) | [3d3ca58](https://files.old-faithful.net/1011/epoch-1011.sha256) | [b52eaa2](https://files.old-faithful.net/1011/epoch-1011.b3sum) | 951 GB | [✅](https://files.old-faithful.net/1011/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1011/poh-check.log) | ✅ | 96 GB | [✅](https://files.old-faithful.net/1011/epoch-1011-slot-ranges.raw) | [1011.slots.txt](https://files.old-faithful.net/1011/1011.slots.txt) |
@@ -1029,4 +1029,4 @@
 - Epoch 49: failed tx meta check
 - Epoch 50: failed tx meta check
 - Epoch 208: failed tx meta check
-- Epoch 1014: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size, missing slot range index
+- Epoch 1014: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size
