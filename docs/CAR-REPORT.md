@@ -1,7 +1,7 @@
 | Epoch #  | CAR  | CAR SHA256 | CAR B3 | CAR filesize | tx meta check | poh check | Indices | Indices Size | Slot Range Index | Slots |
 |---|---|---|---|---|---|---|---|---|---|---|
 |1018|ongoing|-|-|-|-|-|-|-|-|-|
-| 1017 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | [✅](https://files.old-faithful.net/1017/epoch-1017-slot-ranges.raw) | ❌ |
+| 1017 | [epoch-1017.car](https://files.old-faithful.net/1017/epoch-1017.car) | [9e08114](https://files.old-faithful.net/1017/epoch-1017.sha256) | [764ed68](https://files.old-faithful.net/1017/epoch-1017.b3sum) | 902 GB | [✅](https://files.old-faithful.net/1017/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1017/poh-check.log) | ✅ | 94 GB | [✅](https://files.old-faithful.net/1017/epoch-1017-slot-ranges.raw) | [1017.slots.txt](https://files.old-faithful.net/1017/1017.slots.txt) |
 | 1016 | [epoch-1016.car](https://files.old-faithful.net/1016/epoch-1016.car) | [e3179d1](https://files.old-faithful.net/1016/epoch-1016.sha256) | [7336628](https://files.old-faithful.net/1016/epoch-1016.b3sum) | 1072 GB | [✅](https://files.old-faithful.net/1016/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1016/poh-check.log) | ✅ | 112 GB | [✅](https://files.old-faithful.net/1016/epoch-1016-slot-ranges.raw) | [1016.slots.txt](https://files.old-faithful.net/1016/1016.slots.txt) |
 | 1015 | [epoch-1015.car](https://files.old-faithful.net/1015/epoch-1015.car) | [55b34bf](https://files.old-faithful.net/1015/epoch-1015.sha256) | [fb37cb7](https://files.old-faithful.net/1015/epoch-1015.b3sum) | 1103 GB | ❌ | [✅](https://files.old-faithful.net/1015/poh-check.log) | ✅ | 113 GB | [✅](https://files.old-faithful.net/1015/epoch-1015-slot-ranges.raw) | [1015.slots.txt](https://files.old-faithful.net/1015/1015.slots.txt) |
 | 1014 | [epoch-1014.car](https://files.old-faithful.net/1014/epoch-1014.car) | [5b79372](https://files.old-faithful.net/1014/epoch-1014.sha256) | [0021bff](https://files.old-faithful.net/1014/epoch-1014.b3sum) | 1098 GB | [✅](https://files.old-faithful.net/1014/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1014/poh-check.log) | ✅ | 113 GB | [✅](https://files.old-faithful.net/1014/epoch-1014-slot-ranges.raw) | [1014.slots.txt](https://files.old-faithful.net/1014/1014.slots.txt) |
@@ -1019,7 +1019,7 @@
 | 2 | [epoch-2.car](https://files.old-faithful.net/2/epoch-2.car) | [54bba04](https://files.old-faithful.net/2/epoch-2.sha256) | [3e5de39](https://files.old-faithful.net/2/epoch-2.b3sum) | 14 GB | [★](https://files.old-faithful.net/2/tx-metadata-check.log) | [✅](https://files.old-faithful.net/2/poh-check.log) | ✅ | 6 GB | [✅](https://files.old-faithful.net/2/epoch-2-slot-ranges.raw) | [2.slots.txt](https://files.old-faithful.net/2/2.slots.txt) |
 | 1 | [epoch-1.car](https://files.old-faithful.net/1/epoch-1.car) | [611ca99](https://files.old-faithful.net/1/epoch-1.sha256) | [2955f7d](https://files.old-faithful.net/1/epoch-1.b3sum) | 8 GB | [★](https://files.old-faithful.net/1/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1/poh-check.log) | ✅ | 6 GB | [✅](https://files.old-faithful.net/1/epoch-1-slot-ranges.raw) | [1.slots.txt](https://files.old-faithful.net/1/1.slots.txt) |
 | 0 | [epoch-0.car](https://files.old-faithful.net/0/epoch-0.car) | [3c6347f](https://files.old-faithful.net/0/epoch-0.sha256) | [c1393eb](https://files.old-faithful.net/0/epoch-0.b3sum) | 4 GB | [★](https://files.old-faithful.net/0/tx-metadata-check.log) | [✅](https://files.old-faithful.net/0/poh-check.log) | ✅ | 6 GB | [✅](https://files.old-faithful.net/0/epoch-0-slot-ranges.raw) | [0.slots.txt](https://files.old-faithful.net/0/0.slots.txt) |
-| **Total** | 1017 | (1 behind) | - | 466 TB | - | - | - | 55 TB | - | - |
+| **Total** | 1018 | (0 behind) | - | 467 TB | - | - | - | 55 TB | - | - |
 
 ★ = tx meta validation skipped (epochs 0-10 where tx meta wasn't enabled yet)
 
@@ -1046,4 +1046,3 @@
 - Epoch 736: missing SHA
 - Epoch 782: missing SHA
 - Epoch 1015: missing tx meta check
-- Epoch 1017: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size
