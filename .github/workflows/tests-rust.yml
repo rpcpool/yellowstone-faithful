@@ -41,7 +41,7 @@ jobs:
       - name: Install protoc
         run: |
           sudo apt-get update
-          sudo apt-get install -y protobuf-compiler libudev-dev
+          sudo apt-get install -y protobuf-compiler libudev-dev libclang-dev
 
       - uses: actions/cache@v4
         with:
@@ -84,3 +84,7 @@ jobs:
 
       - name: Run test
         run: cargo test --all-targets
+
+      - name: Test old-faithful-proto
+        working-directory: old-faithful-proto
+        run: cargo test
