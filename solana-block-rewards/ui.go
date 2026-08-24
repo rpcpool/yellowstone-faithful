@@ -2,6 +2,7 @@ package solanablockrewards
 
 import (
 	"fmt"
+	"strconv"
 
 	"github.com/rpcpool/yellowstone-faithful/jsonbuilder"
 	"github.com/rpcpool/yellowstone-faithful/third_party/solana_proto/confirmed_block"
@@ -28,6 +29,11 @@ func RewardsToUi(
 			} else {
 				rewardJson.Null("commission")
 			}
+			// commissionBps (SIMD-0291) is skipped rather than nulled when absent,
+			// matching #[serde(skip_serializing_if = "Option::is_none")] in agave.
+			if reward.CommissionBps != "" {
+				rewardJson.Uint("commissionBps", asUint16(reward.CommissionBps))
+			}
 		}
 		rewardsArray.AddObject(rewardJson)
 	}
@@ -36,6 +42,14 @@ func RewardsToUi(
 		return rewardsArray, &numPart, nil
 	}
 	return rewardsArray, nil, nil
+}
+
+func asUint16(s string) uint64 {
+	v, err := strconv.ParseUint(s, 10, 16)
+	if err != nil {
+		return 0
+	}
+	return v
 }
 
 func asFloat(s string) float64 {
