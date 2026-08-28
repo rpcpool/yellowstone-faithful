@@ -268,6 +268,8 @@ func ProtobufTransactionStatusMetaToUi(meta *confirmed_block.TransactionStatusMe
 				//     pub post_balance: u64, // Account balance in lamports after `lamports` was applied
 				//     pub reward_type: Option<RewardType>,
 				//     pub commission: Option<u8>, // Vote account commission when the reward was credited, only present for voting and staking rewards
+				//     #[serde(skip_serializing_if = "Option::is_none")]
+				//     pub commission_bps: Option<u16>, // Vote account commission in basis points (SIMD-0291)
 				// }
 
 				for _, reward := range meta.Rewards {
@@ -286,8 +288,13 @@ func ProtobufTransactionStatusMetaToUi(meta *confirmed_block.TransactionStatusMe
 								uiReward.String("rewardType", "staking")
 							case confirmed_block.RewardType_Voting:
 								uiReward.String("rewardType", "voting")
+							case confirmed_block.RewardType_Unspecified:
+								uiReward.Null("rewardType")
 							default:
-								panic(fmt.Errorf("unknown reward type: %T", reward.RewardType))
+								// DeactivatedStake (agave 4.1+) and any variant added later:
+								// fall back to the protobuf enum name instead of taking the
+								// whole request down.
+								uiReward.String("rewardType", reward.RewardType.String())
 							}
 						}
 						if reward.Commission != "" {
@@ -302,6 +309,16 @@ func ProtobufTransactionStatusMetaToUi(meta *confirmed_block.TransactionStatusMe
 							}
 						} else {
 							uiReward.Null("commission")
+						}
+						// commissionBps (SIMD-0291) is skipped rather than nulled when
+						// absent, matching skip_serializing_if in agave.
+						if reward.CommissionBps != "" {
+							parsedCommissionBps, err := strconv.ParseUint(reward.CommissionBps, 10, 16)
+							if err != nil {
+								uiReward.Uint("commissionBps", 0)
+							} else {
+								uiReward.Uint("commissionBps", parsedCommissionBps)
+							}
 						}
 					}
 					arr.AddObject(uiReward)
