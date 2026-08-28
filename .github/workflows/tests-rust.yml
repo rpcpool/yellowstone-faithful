@@ -41,7 +41,7 @@ jobs:
       - name: Install protoc
         run: |
           sudo apt-get update
-          sudo apt-get install -y protobuf-compiler libudev-dev
+          sudo apt-get install -y protobuf-compiler libudev-dev libclang-dev
 
       - uses: actions/cache@v4
         with:
@@ -57,8 +57,8 @@ jobs:
 
       - name: Set rust version
         run: |
-          RUST_VERSION="$(grep -oP 'channel = "\K\d\.\d+\.\d+(?=")' rust-toolchain.toml)"
-          echo "RUST_VERSION=$RUST_VERSION" >> "$GITHUB_ENV"
+          echo "WORKSPACE_RUST_VERSION=1.84.0" >> "$GITHUB_ENV"
+          echo "PROTO_RUST_VERSION=$(grep -oP 'channel = "\K\d\.\d+\.\d+(?=")' rust-toolchain.toml)" >> "$GITHUB_ENV"
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -67,20 +67,35 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: ${{ env.RUST_VERSION }}
+          toolchain: 1.84.0
+          components: clippy
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.PROTO_RUST_VERSION }}
           components: clippy
 
       - name: cargo tree
         run: |
-          cargo tree
+          cargo +${{ env.WORKSPACE_RUST_VERSION }} tree
           git checkout Cargo.lock
-          cargo tree --frozen --offline
+          cargo +${{ env.WORKSPACE_RUST_VERSION }} tree --frozen --offline
 
       - name: cargo fmt
         run: cargo +nightly fmt --all -- --check
 
       - name: Run clippy
-        run: cargo clippy --workspace --all-targets --tests -- -Dwarnings
+        # Keep the existing workspace on its original toolchain. Rust 1.96
+        # promotes new lints in unchanged packages to errors under -Dwarnings.
+        run: cargo +${{ env.WORKSPACE_RUST_VERSION }} clippy --workspace --all-targets --tests -- -Dwarnings
+
+      - name: Clippy old-faithful-proto
+        working-directory: old-faithful-proto
+        run: cargo +${{ env.PROTO_RUST_VERSION }} clippy --all-targets --tests -- -Dwarnings
 
       - name: Run test
-        run: cargo test --all-targets
+        run: cargo +${{ env.WORKSPACE_RUST_VERSION }} test --all-targets
+
+      - name: Test old-faithful-proto
+        working-directory: old-faithful-proto
+        run: cargo +${{ env.PROTO_RUST_VERSION }} test
