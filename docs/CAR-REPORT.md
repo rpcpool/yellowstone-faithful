@@ -1,7 +1,7 @@
 | Epoch #  | CAR  | CAR SHA256 | CAR B3 | CAR filesize | tx meta check | poh check | Indices | Indices Size | Slot Range Index | Slots |
 |---|---|---|---|---|---|---|---|---|---|---|
 |1030|ongoing|-|-|-|-|-|-|-|-|-|
-| 1029 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| 1029 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | [✅](https://files.old-faithful.net/1029/epoch-1029-slot-ranges.raw) | ❌ |
 | 1028 | [epoch-1028.car](https://files.old-faithful.net/1028/epoch-1028.car) | [8f41e96](https://files.old-faithful.net/1028/epoch-1028.sha256) | [03a110a](https://files.old-faithful.net/1028/epoch-1028.b3sum) | 582 GB | [✅](https://files.old-faithful.net/1028/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1028/poh-check.log) | ❌ | 33 GB | [✅](https://files.old-faithful.net/1028/epoch-1028-slot-ranges.raw) | [1028.slots.txt](https://files.old-faithful.net/1028/1028.slots.txt) |
 | 1027 | [epoch-1027.car](https://files.old-faithful.net/1027/epoch-1027.car) | [c175279](https://files.old-faithful.net/1027/epoch-1027.sha256) | [b7cb7fb](https://files.old-faithful.net/1027/epoch-1027.b3sum) | 706 GB | [✅](https://files.old-faithful.net/1027/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1027/poh-check.log) | ❌ | 37 GB | [✅](https://files.old-faithful.net/1027/epoch-1027-slot-ranges.raw) | [1027.slots.txt](https://files.old-faithful.net/1027/1027.slots.txt) |
 | 1026 | [epoch-1026.car](https://files.old-faithful.net/1026/epoch-1026.car) | [fd9c2c5](https://files.old-faithful.net/1026/epoch-1026.sha256) | [25e4823](https://files.old-faithful.net/1026/epoch-1026.b3sum) | 791 GB | [✅](https://files.old-faithful.net/1026/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1026/poh-check.log) | ❌ | 38 GB | [✅](https://files.old-faithful.net/1026/epoch-1026-slot-ranges.raw) | [1026.slots.txt](https://files.old-faithful.net/1026/1026.slots.txt) |
@@ -794,7 +794,7 @@
 | 239 | [epoch-239.car](https://files.old-faithful.net/239/epoch-239.car) | [8e76f92](https://files.old-faithful.net/239/epoch-239.sha256) | [0c78203](https://files.old-faithful.net/239/epoch-239.b3sum) | 339 GB | [✅](https://files.old-faithful.net/239/tx-metadata-check.log) | [✅](https://files.old-faithful.net/239/poh-check.log) | ✅ | 49 GB | [✅](https://files.old-faithful.net/239/epoch-239-slot-ranges.raw) | [239.slots.txt](https://files.old-faithful.net/239/239.slots.txt) |
 | 238 | [epoch-238.car](https://files.old-faithful.net/238/epoch-238.car) | [5034ae7](https://files.old-faithful.net/238/epoch-238.sha256) | [4200a84](https://files.old-faithful.net/238/epoch-238.b3sum) | 331 GB | [✅](https://files.old-faithful.net/238/tx-metadata-check.log) | [✅](https://files.old-faithful.net/238/poh-check.log) | ✅ | 48 GB | [✅](https://files.old-faithful.net/238/epoch-238-slot-ranges.raw) | [238.slots.txt](https://files.old-faithful.net/238/238.slots.txt) |
 | 237 | [epoch-237.car](https://files.old-faithful.net/237/epoch-237.car) | [3a7c423](https://files.old-faithful.net/237/epoch-237.sha256) | [f341cd4](https://files.old-faithful.net/237/epoch-237.b3sum) | 334 GB | [✅](https://files.old-faithful.net/237/tx-metadata-check.log) | [✅](https://files.old-faithful.net/237/poh-check.log) | ✅ | 49 GB | [✅](https://files.old-faithful.net/237/epoch-237-slot-ranges.raw) | [237.slots.txt](https://files.old-faithful.net/237/237.slots.txt) |
-| 236 | [epoch-236.car](https://files.old-faithful.net/236/epoch-236.car) | [9fd0cd4](https://files.old-faithful.net/236/epoch-236.sha256) | [9e15f93](https://files.old-faithful.net/236/epoch-236.b3sum) | 334 GB | [✅](https://files.old-faithful.net/236/tx-metadata-check.log) | [✅](https://files.old-faithful.net/236/poh-check.log) | ✅ | 49 GB | [✅](https://files.old-faithful.net/236/epoch-236-slot-ranges.raw) | [236.slots.txt](https://files.old-faithful.net/236/236.slots.txt) |
+| 236 | [epoch-236.car](https://files.old-faithful.net/236/epoch-236.car) | [9fd0cd4](https://files.old-faithful.net/236/epoch-236.sha256) | [9e15f93](https://files.old-faithful.net/236/epoch-236.b3sum) | 334 GB | [✅](https://files.old-faithful.net/236/tx-metadata-check.log) | [✅](https://files.old-faithful.net/236/poh-check.log) | ❌ | 49 GB | [✅](https://files.old-faithful.net/236/epoch-236-slot-ranges.raw) | [236.slots.txt](https://files.old-faithful.net/236/236.slots.txt) |
 | 235 | [epoch-235.car](https://files.old-faithful.net/235/epoch-235.car) | [21c6110](https://files.old-faithful.net/235/epoch-235.sha256) | [8e92d5d](https://files.old-faithful.net/235/epoch-235.b3sum) | 333 GB | [✅](https://files.old-faithful.net/235/tx-metadata-check.log) | [✅](https://files.old-faithful.net/235/poh-check.log) | ✅ | 48 GB | [✅](https://files.old-faithful.net/235/epoch-235-slot-ranges.raw) | [235.slots.txt](https://files.old-faithful.net/235/235.slots.txt) |
 | 234 | [epoch-234.car](https://files.old-faithful.net/234/epoch-234.car) | [94e2193](https://files.old-faithful.net/234/epoch-234.sha256) | [57454e0](https://files.old-faithful.net/234/epoch-234.b3sum) | 326 GB | [✅](https://files.old-faithful.net/234/tx-metadata-check.log) | [✅](https://files.old-faithful.net/234/poh-check.log) | ✅ | 47 GB | [✅](https://files.old-faithful.net/234/epoch-234-slot-ranges.raw) | [234.slots.txt](https://files.old-faithful.net/234/234.slots.txt) |
 | 233 | [epoch-233.car](https://files.old-faithful.net/233/epoch-233.car) | [8ed7882](https://files.old-faithful.net/233/epoch-233.sha256) | [ae5be1a](https://files.old-faithful.net/233/epoch-233.b3sum) | 334 GB | [✅](https://files.old-faithful.net/233/tx-metadata-check.log) | [✅](https://files.old-faithful.net/233/poh-check.log) | ✅ | 47 GB | [✅](https://files.old-faithful.net/233/epoch-233-slot-ranges.raw) | [233.slots.txt](https://files.old-faithful.net/233/233.slots.txt) |
@@ -1044,6 +1044,8 @@
 - Epoch 49: failed tx meta check
 - Epoch 50: failed tx meta check
 - Epoch 208: failed tx meta check
+- Epoch 236: GSFA index file failed magic validation
+- Epoch 236: missing indices
 - Epoch 1021: missing GSFA index file
 - Epoch 1021: missing indices
 - Epoch 1022: missing GSFA index file
@@ -1060,4 +1062,4 @@
 - Epoch 1027: missing indices
 - Epoch 1028: missing GSFA index file
 - Epoch 1028: missing indices
-- Epoch 1029: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size, missing slot range index
+- Epoch 1029: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size
