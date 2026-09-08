@@ -63,9 +63,10 @@ func (final *EncodedTransactionWithStatusMeta) ToUi(
 	resp := jsonbuilder.NewObject()
 
 	if final.Meta != nil {
+		omitLoadedAddresses := encoding == solana.EncodingJSONParsed
 		if final.Meta.IsSerde() {
 			metaSerde := final.Meta.GetSerde()
-			rawJsonMeta, err := SerdeTransactionStatusMetaToUi(metaSerde)
+			rawJsonMeta, err := SerdeTransactionStatusMetaToUi(metaSerde, omitLoadedAddresses)
 			if err != nil {
 				return nil, fmt.Errorf("failed to serialize (serde) transaction status meta: %w", err)
 			}
@@ -83,7 +84,7 @@ func (final *EncodedTransactionWithStatusMeta) ToUi(
 		}
 		if final.Meta.IsProtobuf() {
 			metaProtobuf := final.Meta.GetProtobuf()
-			rawJsonMeta, err := ProtobufTransactionStatusMetaToUi(metaProtobuf)
+			rawJsonMeta, err := ProtobufTransactionStatusMetaToUi(metaProtobuf, omitLoadedAddresses)
 			if err != nil {
 				return nil, fmt.Errorf("failed to serialize (protobuf) transaction status meta: %w", err)
 			}
@@ -214,6 +215,7 @@ func (final *EncodedTransactionWithStatusMeta) ToUi(
 			)
 		case solana.EncodingJSONParsed:
 			{
+				staticAccountKeyCount := len(final.Transaction.Message.AccountKeys)
 				if !jsonparsed.IsEnabled() {
 					return nil, fmt.Errorf("unsupported encoding jsonParsed: jsonparsed is not enabled")
 				}
@@ -285,7 +287,7 @@ func (final *EncodedTransactionWithStatusMeta) ToUi(
 					parsedInstructions = append(parsedInstructions, parsedInstructionJSON)
 				}
 
-				parsedTx, err := jsonparsed.FromTransaction(final.Transaction)
+				parsedTx, err := jsonparsed.FromTransaction(final.Transaction, staticAccountKeyCount)
 				if err != nil {
 					return nil, fmt.Errorf("failed to convert transaction to jsonparsed.Transaction: %w", err)
 				}

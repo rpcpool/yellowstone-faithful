@@ -72,7 +72,7 @@ func TestProtobufTransactionStatusMetaToUi_DecodesLegacyBorshIoError(t *testing.
 		Err: &confirmed_block.TransactionError{
 			Err: []byte{8, 0, 0, 0, 2, 44, 0, 0, 0},
 		},
-	})
+	}, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -104,7 +104,7 @@ func TestProtobufTransactionStatusMetaToUi_FallsBackForMalformedErrorPayload(t *
 		Err: &confirmed_block.TransactionError{
 			Err: []byte{1},
 		},
-	})
+	}, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

@@ -17,7 +17,7 @@ import (
 // - https://github.com/anza-xyz/agave/blob/master/storage-proto/src/convert.rs
 
 // https://github.com/anza-xyz/agave/blob/046f468d26a551dfd14e4f2af7286abe7e168a19/storage-proto/src/convert.rs#L483
-func ProtobufTransactionStatusMetaToUi(meta *confirmed_block.TransactionStatusMeta) (json.RawMessage, error) {
+func ProtobufTransactionStatusMetaToUi(meta *confirmed_block.TransactionStatusMeta, omitLoadedAddresses bool) (json.RawMessage, error) {
 	// Create a new JSON object
 	// #[serde(rename_all = "camelCase")]
 	resp := jsonbuilder.NewObject()
@@ -308,7 +308,7 @@ func ProtobufTransactionStatusMetaToUi(meta *confirmed_block.TransactionStatusMe
 				}
 			})
 	}
-	{
+	if !omitLoadedAddresses {
 		// .loadedAddresses
 		// #[serde(
 		//     default = "OptionSerializer::skip",
