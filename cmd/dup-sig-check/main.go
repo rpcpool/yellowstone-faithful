@@ -103,16 +103,38 @@ func main() {
 	// signature was a 64-bit hash false positive.
 	dups := make([]dupSig, 0, len(occurrences))
 	var extraOccurrences uint64
+	var sameSlotDups, crossSlotDups int
 	for sig, slots := range occurrences {
 		if len(slots) < 2 {
 			continue
 		}
 		sort.Slice(slots, func(i, j int) bool { return slots[i] < slots[j] })
-		dups = append(dups, dupSig{sig: sig, slots: slots})
+		// A "same-slot" duplicate has the signature appearing more than once
+		// within a single slot. `--dedup-txs` keys dedup on (signature -> one
+		// slot), so it cannot separate these — they survive into sig_to_cid and
+		// cause the "hash collision" at seal time. Cross-slot duplicates (each
+		// occurrence in a distinct slot) ARE handled by `--dedup-txs`.
+		sameSlot := false
+		for i := 1; i < len(slots); i++ {
+			if slots[i] == slots[i-1] {
+				sameSlot = true
+				break
+			}
+		}
+		if sameSlot {
+			sameSlotDups++
+		} else {
+			crossSlotDups++
+		}
+		dups = append(dups, dupSig{sig: sig, slots: slots, sameSlot: sameSlot})
 		extraOccurrences += uint64(len(slots) - 1)
 	}
-	// Most-duplicated first, then by signature for a stable order.
+	// Same-slot duplicates first (they are the ones that break sealing), then
+	// most-duplicated, then by signature for a stable order.
 	sort.Slice(dups, func(i, j int) bool {
+		if dups[i].sameSlot != dups[j].sameSlot {
+			return dups[i].sameSlot
+		}
 		if len(dups[i].slots) != len(dups[j].slots) {
 			return len(dups[i].slots) > len(dups[j].slots)
 		}
@@ -120,10 +142,17 @@ func main() {
 	})
 
 	fmt.Println()
-	fmt.Printf("Total transactions scanned:      %s\n", humanize.Comma(int64(totalTxs)))
-	fmt.Printf("Duplicated signatures:           %s\n", humanize.Comma(int64(len(dups))))
-	fmt.Printf("Extra (redundant) occurrences:   %s\n", humanize.Comma(int64(extraOccurrences)))
+	fmt.Printf("Total transactions scanned:        %s\n", humanize.Comma(int64(totalTxs)))
+	fmt.Printf("Duplicated signatures:             %s\n", humanize.Comma(int64(len(dups))))
+	fmt.Printf("Extra (redundant) occurrences:     %s\n", humanize.Comma(int64(extraOccurrences)))
+	fmt.Printf("  cross-slot (fixed by --dedup-txs): %s\n", humanize.Comma(int64(crossSlotDups)))
+	fmt.Printf("  same-slot  (defeat --dedup-txs):   %s\n", humanize.Comma(int64(sameSlotDups)))
 	fmt.Println()
+	if sameSlotDups > 0 {
+		fmt.Printf("=> %s signature(s) appear more than once WITHIN a single slot.\n", humanize.Comma(int64(sameSlotDups)))
+		fmt.Println("   These defeat --dedup-txs and are what makes sig_to_cid sealing fail.")
+		fmt.Println()
+	}
 
 	if len(dups) == 0 {
 		fmt.Println("All suspect hashes were false positives; no byte-identical duplicate signatures.")
@@ -136,7 +165,11 @@ func main() {
 	}
 	for i := 0; i < limit; i++ {
 		d := dups[i]
-		fmt.Printf("%s  x%d  slots=%v\n", d.sig.String(), len(d.slots), d.slots)
+		tag := ""
+		if d.sameSlot {
+			tag = "  [SAME-SLOT]"
+		}
+		fmt.Printf("%s  x%d  slots=%v%s\n", d.sig.String(), len(d.slots), d.slots, tag)
 	}
 	if limit < len(dups) {
 		fmt.Printf("... and %s more (use --out to write the full list, --max-print 0 to print all)\n",
@@ -206,10 +239,12 @@ func streamTxs(carPaths []string, fn func(sig solana.Signature, slot uint64)) er
 }
 
 // dupSig is a signature that appears in more than one transaction, with the
-// sorted list of slots it was found in.
+// sorted list of slots it was found in. sameSlot is true when at least one slot
+// holds the signature more than once (the case --dedup-txs cannot resolve).
 type dupSig struct {
-	sig   solana.Signature
-	slots []uint64
+	sig      solana.Signature
+	slots    []uint64
+	sameSlot bool
 }
 
 func writeReport(path string, dups []dupSig) error {
@@ -218,11 +253,11 @@ func writeReport(path string, dups []dupSig) error {
 		return err
 	}
 	defer f.Close()
-	if _, err := fmt.Fprintln(f, "signature\tcount\tslots"); err != nil {
+	if _, err := fmt.Fprintln(f, "signature\tcount\tsame_slot\tslots"); err != nil {
 		return err
 	}
 	for _, d := range dups {
-		if _, err := fmt.Fprintf(f, "%s\t%d\t", d.sig.String(), len(d.slots)); err != nil {
+		if _, err := fmt.Fprintf(f, "%s\t%d\t%t\t", d.sig.String(), len(d.slots), d.sameSlot); err != nil {
 			return err
 		}
 		for i, s := range d.slots {
