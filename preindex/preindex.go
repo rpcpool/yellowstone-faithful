@@ -1,11 +1,15 @@
 // Package preindex provides a system to build a pre-index for large datasets
-// where keys may be repeated. It is designed to find the *last* value (slot)
-// associated with each key from a stream of (key, slot) pairs.
+// where keys may be repeated. It is designed to find the *last* value
+// associated with each key from a stream of (key, value) pairs, where the value
+// is a discriminator that is unique per occurrence (the transaction's global
+// CAR offset). Using a per-occurrence value (rather than the slot) lets the
+// index single out exactly one occurrence even when the same key appears more
+// than once within a single slot.
 //
 //  1. Build(): Partitions all (key, offset, index) records into temporary
 //     shard files. It then sorts each shard file in-memory (by key, then index)
 //     and streams the sorted data to write a final, reduced, and key-sorted
-//     shard file.
+//     shard file, keeping the last-inserted (highest-offset) record per key.
 //  2. IsLast(): Performs an on-disk binary search within the correct
 //     shard file to find the last-seen offset for a key.
 package preindex
@@ -36,8 +40,12 @@ func (k Key) String() string {
 	return base58.Encode(k[:])
 }
 
-// Value defines the value. Since this is intended for Solana slots, a uint32 is sufficient.
-type Value uint32
+// Value defines the per-key discriminator used to pick a single winning
+// occurrence for each key. It holds the transaction's global CAR offset, which
+// is unique per transaction node; a uint32 is not wide enough for multi-GB CARs,
+// so this is a uint64. (Previously this held the slot, which cannot distinguish
+// two occurrences of the same signature within one slot.)
+type Value uint64
 
 // preIndexBase holds the common state for the writer and reader.
 type preIndexBase struct {
@@ -83,11 +91,11 @@ const (
 	// SCALABILITY (RAM): Set a global buffer limit (e.g., 512MB)
 	defaultMaxTotalBufferSize = 512 * 1024 * 1024
 	// size of a tempRecord on disk (Key + Offset + Index)
-	tempRecordSize = 64 + 4 + 8 // 80 bytes
+	tempRecordSize = 64 + 8 + 8 // 80 bytes
 	// size of a finalRecord on disk (Key + Offset)
-	finalRecordSize = 64 + 4 // 68 bytes
+	finalRecordSize = 64 + 8 // 72 bytes
 	// size of the read buffer for slab reads
-	readBufferSize = (1 * 1024 * 1024 / tempRecordSize) * tempRecordSize // 1MB aligned to 80 bytes
+	readBufferSize = (1 * 1024 * 1024 / tempRecordSize) * tempRecordSize // 1MB aligned to tempRecordSize
 	// fallback capacity for 32-bit overflow
 	fallbackPreallocCap = 1 << 20 // ~1M records
 )
@@ -201,8 +209,8 @@ func (w *PreIndexWriter) Push(key Key, offset Value) error {
 
 	var slab [tempRecordSize]byte
 	copy(slab[0:64], key[:])
-	binary.LittleEndian.PutUint32(slab[64:68], uint32(offset))
-	binary.LittleEndian.PutUint64(slab[68:76], idx)
+	binary.LittleEndian.PutUint64(slab[64:72], uint64(offset))
+	binary.LittleEndian.PutUint64(slab[72:80], idx)
 
 	sb.mu.Lock()
 	if _, err := sb.wr.Write(slab[:]); err != nil {
@@ -401,8 +409,8 @@ func (w *PreIndexWriter) processShard(tmpFile, datFile string) error {
 			var rec tempRecord
 			base := slabBuf[i : i+tempRecordSize]
 			copy(rec.Key[:], base[0:64])
-			rec.Offset = Value(binary.LittleEndian.Uint32(base[64:68]))
-			rec.Index = binary.LittleEndian.Uint64(base[68:76])
+			rec.Offset = Value(binary.LittleEndian.Uint64(base[64:72]))
+			rec.Index = binary.LittleEndian.Uint64(base[72:80])
 			records = append(records, rec)
 		}
 		readOffset += int64(n)
@@ -455,7 +463,7 @@ func (w *PreIndexWriter) processShard(tmpFile, datFile string) error {
 		i = j // Move cursor to the next new key
 
 		copy(writeSlab[0:64], lastRecForKey.Key[:])
-		binary.LittleEndian.PutUint32(writeSlab[64:68], uint32(lastRecForKey.Offset))
+		binary.LittleEndian.PutUint64(writeSlab[64:72], uint64(lastRecForKey.Offset))
 		if _, err := dw.Write(writeSlab[:]); err != nil {
 			df.Close()
 			return fmt.Errorf("failed to write final record: %w", err)
@@ -679,7 +687,7 @@ func (r *PreIndexReader) binarySearchSlab(slab []byte, targetKey Key) (Value, bo
 		cmp := bytes.Compare(recordSlab[0:64], targetKey[:])
 		if cmp == 0 {
 			// Found it. Decode offset.
-			foundOffset := Value(binary.LittleEndian.Uint32(recordSlab[64:68]))
+			foundOffset := Value(binary.LittleEndian.Uint64(recordSlab[64:72]))
 			return foundOffset, true, nil
 		} else if cmp < 0 {
 			// Read key is less than target key, search in upper half

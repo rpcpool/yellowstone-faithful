@@ -108,7 +108,7 @@ func readAllDatFile(t *testing.T, path string) []tempRecord {
 		}
 		var r tempRecord
 		copy(r.Key[:], slab[0:64])
-		r.Offset = Value(binary.LittleEndian.Uint32(slab[64:68]))
+		r.Offset = Value(binary.LittleEndian.Uint64(slab[64:72]))
 		records = append(records, r)
 	}
 	return records
@@ -126,8 +126,8 @@ func writeTmpFile(t *testing.T, path string, records []tempRecord) {
 	var slab [tempRecordSize]byte
 	for _, rec := range records {
 		copy(slab[0:64], rec.Key[:])
-		binary.LittleEndian.PutUint32(slab[64:68], uint32(rec.Offset))
-		binary.LittleEndian.PutUint64(slab[68:76], rec.Index)
+		binary.LittleEndian.PutUint64(slab[64:72], uint64(rec.Offset))
+		binary.LittleEndian.PutUint64(slab[72:80], rec.Index)
 		if _, err := f.Write(slab[:]); err != nil {
 			t.Fatalf("Failed to write tmp file: %v", err)
 		}
@@ -176,6 +176,65 @@ func Test_Writer_Basic(t *testing.T) {
 
 	// Not found check
 	checkIsLast(t, r, key("not-found"), 999, false)
+}
+
+// Test_SameKey_ExactlyOneLast is the regression test for the within-slot
+// deduplication fix. Before the fix the dedup discriminator was the slot, so a
+// signature that appeared multiple times within a single slot mapped to a single
+// stored value and *every* one of those occurrences was considered "last",
+// letting duplicates through into sig_to_cid (which then failed to seal with a
+// hash collision). The discriminator is now the transaction's global CAR offset,
+// which is unique per occurrence, so exactly one occurrence must be "last".
+//
+// It also exercises offsets beyond math.MaxUint32: a real epoch CAR is many GB,
+// so offsets do not fit in the old uint32 Value and must round-trip as uint64.
+func Test_SameKey_ExactlyOneLast(t *testing.T) {
+	w, dir := newTestWriter(t, 4)
+
+	k := key("dup-within-slot")
+	// Distinct global offsets for the same signature, as they would appear if the
+	// same signature occurred several times (including within a single slot). The
+	// values straddle the uint32 boundary to prove the uint64 widening.
+	const aboveUint32 = uint64(1) << 32 // 4_294_967_296, truncates to 0 as uint32
+	offsets := []Value{
+		100,
+		Value(aboveUint32),     // would collide with 0 under uint32 truncation
+		Value(aboveUint32 + 1), // last (highest insertion order)
+	}
+	for _, off := range offsets {
+		mustPush(t, w, k, off)
+	}
+	// A different signature, to make sure it is unaffected.
+	other := key("other-sig")
+	mustPush(t, w, other, 42)
+
+	mustBuild(t, w)
+
+	r := newTestReader(t, dir, 4)
+	if err := r.Load(); err != nil {
+		t.Fatalf("r.Load() failed: %v", err)
+	}
+
+	// Exactly one of the occurrences of k must be reported as last, and it must
+	// be the last-inserted (highest-offset) one.
+	lastCount := 0
+	for _, off := range offsets {
+		isLast, err := r.IsLast(k, off)
+		if err != nil {
+			t.Fatalf("IsLast(k, %d) failed: %v", off, err)
+		}
+		if isLast {
+			lastCount++
+		}
+	}
+	if lastCount != 1 {
+		t.Fatalf("expected exactly one winning occurrence for a duplicated key, got %d", lastCount)
+	}
+	checkIsLast(t, r, k, offsets[len(offsets)-1], true) // highest offset wins
+	checkIsLast(t, r, k, offsets[0], false)             // earlier occurrence loses
+	checkIsLast(t, r, k, Value(aboveUint32), false)     // proves no uint32 truncation
+
+	checkIsLast(t, r, other, 42, true)
 }
 
 func Test_Writer_Lifecycle(t *testing.T) {
@@ -322,7 +381,7 @@ func Test_Reader_binarySearchSlab(t *testing.T) {
 	}
 	for _, rec := range recs {
 		copy(slabBuf[0:64], rec.Key[:])
-		binary.LittleEndian.PutUint32(slabBuf[64:68], uint32(rec.Offset))
+		binary.LittleEndian.PutUint64(slabBuf[64:72], uint64(rec.Offset))
 		slab = append(slab, slabBuf[:]...)
 	}
 
