@@ -184,11 +184,7 @@ func newCmd_Index_all() *cli.Command {
 								if err != nil {
 									return fmt.Errorf("failed to read signature: %w", err)
 								}
-								// Discriminate by the node's global CAR offset (unique per
-								// transaction) rather than the slot, so that a signature that
-								// repeats within a single slot still resolves to exactly one
-								// winning occurrence at dedup time.
-								err = pre.Push(preindex.Key(sig), preindex.Value(totalOffset))
+								err = pre.Push(preindex.Key(sig), preindex.Value(txNode.Slot))
 								if err != nil {
 									return fmt.Errorf("failed to push to preindex: %w", err)
 								}
@@ -504,10 +500,7 @@ func createAllIndexes(
 				numIndexedBlocks++
 			case iplddecoders.KindTransaction:
 				if dedupReader != nil {
-					// Query by the node's global CAR offset — the same per-occurrence
-					// discriminator pushed during the pre-index pass — so exactly one
-					// occurrence of each signature is kept, even within a single slot.
-					last, err := dedupReader.IsLastMustFind(preindex.Key(item.sig), preindex.Value(item.offset))
+					last, err := dedupReader.IsLastMustFind(preindex.Key(item.sig), preindex.Value(item.slot))
 					if err != nil {
 						fail(fmt.Errorf("failed to check dedup preindex: %w", err))
 						continue
