@@ -36,12 +36,9 @@ func ReadFirstSignature(buf []byte) (solana.Signature, error) {
 
 	// v1 (SIMD-0385): message first, signatures last. Decode to locate them.
 	if buf[0] == messageVersionV1Prefix {
-		tx, err := solana.TransactionFromBytes(buf)
+		tx, err := decodeVersionedTransaction(buf)
 		if err != nil {
-			return solana.Signature{}, fmt.Errorf("failed to decode v1 transaction: %w", err)
-		}
-		if len(tx.Signatures) == 0 {
-			return solana.Signature{}, fmt.Errorf("no signatures")
+			return solana.Signature{}, err
 		}
 		return tx.Signatures[0], nil
 	}
@@ -69,4 +66,63 @@ func ReadFirstSignature(buf []byte) (solana.Signature, error) {
 		return sig, fmt.Errorf("unexpected signature length %d", numRead)
 	}
 	return sig, nil
+}
+
+// ReadAllSignatures returns every signature of a serialized transaction. Like
+// ReadFirstSignature it is version-aware: legacy/v0 transactions carry their
+// signatures at the front behind a compact-u16 count, while v1 (SIMD-0385)
+// transactions carry them at the end after the message.
+func ReadAllSignatures(buf []byte) ([]solana.Signature, error) {
+	if len(buf) == 0 {
+		return nil, fmt.Errorf("empty transaction bytes")
+	}
+
+	// v1 (SIMD-0385): message first, signatures last. Decode to locate them.
+	if buf[0] == messageVersionV1Prefix {
+		tx, err := decodeVersionedTransaction(buf)
+		if err != nil {
+			return nil, err
+		}
+		return tx.Signatures, nil
+	}
+
+	// legacy / v0: [compact-u16 numSignatures][signature 0][signature 1]...
+	decoder := bin.NewCompactU16Decoder(buf)
+	numSigs, err := decoder.ReadCompactU16()
+	if err != nil {
+		return nil, err
+	}
+	if numSigs == 0 {
+		return nil, fmt.Errorf("no signatures")
+	}
+	// check that there is at least 64 bytes * numSigs left:
+	if decoder.Remaining() < (64 * numSigs) {
+		return nil, fmt.Errorf("not enough bytes left to read %d signatures", numSigs)
+	}
+
+	sigs := make([]solana.Signature, numSigs)
+	for i := 0; i < numSigs; i++ {
+		numRead, err := decoder.Read(sigs[i][:])
+		if err != nil {
+			return nil, err
+		}
+		if numRead != 64 {
+			return nil, fmt.Errorf("unexpected signature length %d", numRead)
+		}
+	}
+	return sigs, nil
+}
+
+// decodeVersionedTransaction decodes a full transaction with the version-aware
+// decoder (needed for v1, whose signatures live after the message) and ensures
+// it has at least one signature.
+func decodeVersionedTransaction(buf []byte) (*solana.Transaction, error) {
+	tx, err := solana.TransactionFromBytes(buf)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode v1 transaction: %w", err)
+	}
+	if len(tx.Signatures) == 0 {
+		return nil, fmt.Errorf("no signatures")
+	}
+	return tx, nil
 }

@@ -98,3 +98,27 @@ func TestReadFirstSignature_Empty(t *testing.T) {
 	_, err := ReadFirstSignature(nil)
 	require.Error(t, err)
 }
+
+func TestReadAllSignatures(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		v    solana.MessageVersion
+	}{
+		{"legacy", solana.MessageVersionLegacy},
+		{"v0", solana.MessageVersionV0},
+		{"v1", solana.MessageVersionV1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tx := signedTx(t, tc.v)
+			wire, err := tx.MarshalBinary()
+			require.NoError(t, err)
+
+			got, err := ReadAllSignatures(wire)
+			require.NoError(t, err)
+			require.Equal(t, tx.Signatures, got)
+		})
+	}
+
+	_, err := ReadAllSignatures(nil)
+	require.Error(t, err)
+}
