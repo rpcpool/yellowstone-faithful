@@ -62,6 +62,20 @@ func TestReadFirstSignature_Legacy(t *testing.T) {
 	require.Equal(t, tx.Signatures[0], got)
 }
 
+func TestReadFirstSignature_V0(t *testing.T) {
+	tx := signedTx(t, solana.MessageVersionV0)
+	wire, err := tx.MarshalBinary()
+	require.NoError(t, err)
+
+	// v0 shares the legacy signature layout: a compact-u16 count (< 0x80) at the
+	// front, then the signatures. Only the message (inside) carries the version.
+	require.Less(t, wire[0], byte(0x80))
+
+	got, err := ReadFirstSignature(wire)
+	require.NoError(t, err)
+	require.Equal(t, tx.Signatures[0], got)
+}
+
 func TestReadFirstSignature_V1(t *testing.T) {
 	tx := signedTx(t, solana.MessageVersionV1)
 	wire, err := tx.MarshalBinary()
