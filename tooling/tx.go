@@ -7,7 +7,46 @@ import (
 	"github.com/gagliardetto/solana-go"
 )
 
+// messageVersionV1Prefix is the first byte of a v1 (SIMD-0385) transaction.
+// It is 0x80|1; a legacy/v0 transaction begins with a compact-u16 signature
+// count whose first byte is always < 0x80 (a transaction can have at most a
+// handful of signatures), so this byte unambiguously discriminates v1.
+const messageVersionV1Prefix = 0x81
+
+// ReadFirstSignature returns the first signature of a serialized transaction.
+//
+// Legacy and v0 transactions are laid out as
+//
+//	[compact-u16 numSignatures][signature 0][signature 1]...[message]
+//
+// so the first signature can be read cheaply straight off the front. v1
+// transactions (SIMD-0385) invert this: the wire layout is
+//
+//	[0x81][message][signature 0][signature 1]...
+//
+// with the signatures at the *end* and no leading count, so the first signature
+// cannot be located without decoding the message. For v1 we therefore fall back
+// to the version-aware transaction decoder. (A Solana transaction is capped at
+// the 1232-byte packet size, so the whole transaction — including the trailing
+// signatures — always fits in the single data frame handed to us here.)
 func ReadFirstSignature(buf []byte) (solana.Signature, error) {
+	if len(buf) == 0 {
+		return solana.Signature{}, fmt.Errorf("empty transaction bytes")
+	}
+
+	// v1 (SIMD-0385): message first, signatures last. Decode to locate them.
+	if buf[0] == messageVersionV1Prefix {
+		tx, err := solana.TransactionFromBytes(buf)
+		if err != nil {
+			return solana.Signature{}, fmt.Errorf("failed to decode v1 transaction: %w", err)
+		}
+		if len(tx.Signatures) == 0 {
+			return solana.Signature{}, fmt.Errorf("no signatures")
+		}
+		return tx.Signatures[0], nil
+	}
+
+	// legacy / v0: signatures are at the front, prefixed by a compact-u16 count.
 	decoder := bin.NewCompactU16Decoder(buf)
 	numSigs, err := decoder.ReadCompactU16()
 	if err != nil {
