@@ -25,6 +25,8 @@ class EpochData:
 
 class FaithfulDataReport:
     SLOT_RANGE_INDEX_SIZE = 5_184_000
+    # Last epoch with a GSFA index. We stopped generating them after this epoch.
+    GSFA_LAST_EPOCH = 1020
 
     def __init__(self):
         self.host = "https://files.old-faithful.net"
@@ -131,23 +133,25 @@ class FaithfulDataReport:
             if not exists:
                 missing_files.append(f"missing index file: {regular_files[i]}")
         
-        # Check gsfa file existence and validate its magic version
-        gsfa_file = self.index_files[-1]
-        gsfa_exists = await self.check_url(session, f"{self.host}/{epoch}/epoch-{epoch}-{gsfa_file}")
-        gsfa_valid = True
-        if not gsfa_exists:
-            missing_files.append("missing GSFA index file")
-        else:
-            gsfa_valid = await self.check_gsfa_magic(session, epoch)
-            if not gsfa_valid:
-                missing_files.append("GSFA index file failed magic validation")
-        
+        # Check gsfa file existence and validate its magic version.
+        # Epochs after GSFA_LAST_EPOCH have no GSFA index, so skip the check.
+        if epoch <= self.GSFA_LAST_EPOCH:
+            gsfa_file = self.index_files[-1]
+            gsfa_exists = await self.check_url(session, f"{self.host}/{epoch}/epoch-{epoch}-{gsfa_file}")
+            gsfa_valid = True
+            if not gsfa_exists:
+                missing_files.append("missing GSFA index file")
+            else:
+                gsfa_valid = await self.check_gsfa_magic(session, epoch)
+                if not gsfa_valid:
+                    missing_files.append("GSFA index file failed magic validation")
+
+            # Add gsfa validation result to checks
+            checks.append(gsfa_exists and gsfa_valid)
+
         # Add all missing files to issues if any
         if missing_files:
             self.issues.append((epoch, missing_files))
-        
-        # Add gsfa validation result to checks
-        checks.append(gsfa_exists and gsfa_valid)
 
         return f"{self.host}/{epoch}/epoch-{epoch}-indices" if all(checks) else "n/a"
     
@@ -166,8 +170,9 @@ class FaithfulDataReport:
         ])
         
         # Get gsfa size separately since it doesn't include the bafy CID in its filename
-        gsfa_size = await self.get_size(session, f"{self.host}/{epoch}/epoch-{epoch}-{self.index_files[-1]}")
-        sizes.append(gsfa_size)
+        if epoch <= self.GSFA_LAST_EPOCH:
+            gsfa_size = await self.get_size(session, f"{self.host}/{epoch}/epoch-{epoch}-{self.index_files[-1]}")
+            sizes.append(gsfa_size)
 
         # Convert sizes to integers, treating "n/a" as 0
         size_ints = [int(size) if size != "n/a" else 0 for size in sizes]
@@ -329,6 +334,8 @@ class FaithfulDataReport:
 
         print("\n★ = tx meta validation skipped (epochs 0-%s where tx meta wasn't enabled yet)" % self.txmeta_first_epoch)
         print("\n★★ = epoch 208 POH validation is handled differently, see more in https://docs.old-faithful.net/validation")
+
+        print("\nGSFA indexes exist up to epoch %s only. The report does not check for them after that epoch." % self.GSFA_LAST_EPOCH)
 
         # Print summary report
         if self.issues:
