@@ -223,38 +223,11 @@ func (decodedTxObj *Transaction) GetMetadataWithFrameLoader(dataFrameGetter func
 }
 
 func (decoded *Transaction) Signatures() ([]solana.Signature, error) {
-	return readAllSignatures(decoded.Data.Bytes())
+	return tooling.ReadAllSignatures(decoded.Data.Bytes())
 }
 
 func (decoded *Transaction) Signature() (solana.Signature, error) {
 	return tooling.ReadFirstSignature(decoded.Data.Bytes())
-}
-
-func readAllSignatures(buf []byte) ([]solana.Signature, error) {
-	decoder := bin.NewCompactU16Decoder(buf)
-	numSigs, err := decoder.ReadCompactU16()
-	if err != nil {
-		return nil, err
-	}
-	if numSigs == 0 {
-		return nil, fmt.Errorf("no signatures")
-	}
-	// check that there is at least 64 bytes * numSigs left:
-	if decoder.Remaining() < (64 * numSigs) {
-		return nil, fmt.Errorf("not enough bytes left to read %d signatures", numSigs)
-	}
-
-	sigs := make([]solana.Signature, numSigs)
-	for i := 0; i < numSigs; i++ {
-		numRead, err := decoder.Read(sigs[i][:])
-		if err != nil {
-			return nil, err
-		}
-		if numRead != 64 {
-			return nil, fmt.Errorf("unexpected signature length %d", numRead)
-		}
-	}
-	return sigs, nil
 }
 
 // GetBlockHeight returns the 'block_height' field, which indicates
