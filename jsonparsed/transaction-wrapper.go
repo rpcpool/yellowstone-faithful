@@ -25,7 +25,7 @@ type AccountKey struct {
 	Writable bool   `json:"writable"`
 }
 
-func FromTransaction(solTx *solana.Transaction) (Transaction, error) {
+func FromTransaction(solTx *solana.Transaction, staticAccountKeyCount int) (Transaction, error) {
 	tx := Transaction{
 		Message: Message{
 			AccountKeys:  make([]AccountKey, len(solTx.Message.AccountKeys)),
@@ -38,10 +38,14 @@ func FromTransaction(solTx *solana.Transaction) (Transaction, error) {
 		if err != nil {
 			return tx, fmt.Errorf("failed to check if account key #%d is writable: %w", i, err)
 		}
+		source := "transaction"
+		if staticAccountKeyCount > 0 && i >= staticAccountKeyCount {
+			source = "lookupTable"
+		}
 		tx.Message.AccountKeys[i] = AccountKey{
 			Pubkey:   accKey.String(),
 			Signer:   solTx.IsSigner(accKey),
-			Source:   "transaction", // TODO: what is this?
+			Source:   source,
 			Writable: isWr,
 		}
 	}

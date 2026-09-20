@@ -16,7 +16,7 @@ import (
 
 // TransactionStatusMeta.MarshalJSON implements the json.Marshaler interface
 // and is used to serialize the TransactionStatusMeta struct into JSON format.
-func SerdeTransactionStatusMetaToUi(meta *transaction_status_meta_serde_agave.StoredTransactionStatusMeta) (json.RawMessage, error) {
+func SerdeTransactionStatusMetaToUi(meta *transaction_status_meta_serde_agave.StoredTransactionStatusMeta, omitLoadedAddresses bool) (json.RawMessage, error) {
 	// Create a new JSON object
 	// #[serde(rename_all = "camelCase")]
 	resp := jsonbuilder.NewObject()
@@ -294,7 +294,7 @@ func SerdeTransactionStatusMetaToUi(meta *transaction_status_meta_serde_agave.St
 			resp.Value("rewards", make([]any, 0))
 		}
 	}
-	{
+	if !omitLoadedAddresses {
 		// .loadedAddresses
 		// #[serde(
 		//     default = "OptionSerializer::skip",
