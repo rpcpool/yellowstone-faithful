@@ -1,6 +1,7 @@
 | Epoch #  | CAR  | CAR SHA256 | CAR B3 | CAR filesize | tx meta check | poh check | Indices | Indices Size | Slot Range Index | Slots |
 |---|---|---|---|---|---|---|---|---|---|---|
-|1040|ongoing|-|-|-|-|-|-|-|-|-|
+|1041|ongoing|-|-|-|-|-|-|-|-|-|
+| 1040 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | 1039 | [epoch-1039.car](https://files.old-faithful.net/1039/epoch-1039.car) | [0d8d384](https://files.old-faithful.net/1039/epoch-1039.sha256) | [204a3a2](https://files.old-faithful.net/1039/epoch-1039.b3sum) | 763 GB | [✅](https://files.old-faithful.net/1039/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1039/poh-check.log) | ✅ | 37 GB | [✅](https://files.old-faithful.net/1039/epoch-1039-slot-ranges.raw) | [1039.slots.txt](https://files.old-faithful.net/1039/1039.slots.txt) |
 | 1038 | [epoch-1038.car](https://files.old-faithful.net/1038/epoch-1038.car) | [7853c56](https://files.old-faithful.net/1038/epoch-1038.sha256) | [8497e2e](https://files.old-faithful.net/1038/epoch-1038.b3sum) | 699 GB | [✅](https://files.old-faithful.net/1038/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1038/poh-check.log) | ✅ | 35 GB | [✅](https://files.old-faithful.net/1038/epoch-1038-slot-ranges.raw) | [1038.slots.txt](https://files.old-faithful.net/1038/1038.slots.txt) |
 | 1037 | [epoch-1037.car](https://files.old-faithful.net/1037/epoch-1037.car) | [df54e08](https://files.old-faithful.net/1037/epoch-1037.sha256) | [f7cda39](https://files.old-faithful.net/1037/epoch-1037.b3sum) | 695 GB | [✅](https://files.old-faithful.net/1037/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1037/poh-check.log) | ✅ | 35 GB | [✅](https://files.old-faithful.net/1037/epoch-1037-slot-ranges.raw) | [1037.slots.txt](https://files.old-faithful.net/1037/1037.slots.txt) |
@@ -1041,7 +1042,7 @@
 | 2 | [epoch-2.car](https://files.old-faithful.net/2/epoch-2.car) | [54bba04](https://files.old-faithful.net/2/epoch-2.sha256) | [3e5de39](https://files.old-faithful.net/2/epoch-2.b3sum) | 14 GB | [★](https://files.old-faithful.net/2/tx-metadata-check.log) | [✅](https://files.old-faithful.net/2/poh-check.log) | ✅ | 6 GB | [✅](https://files.old-faithful.net/2/epoch-2-slot-ranges.raw) | [2.slots.txt](https://files.old-faithful.net/2/2.slots.txt) |
 | 1 | [epoch-1.car](https://files.old-faithful.net/1/epoch-1.car) | [611ca99](https://files.old-faithful.net/1/epoch-1.sha256) | [2955f7d](https://files.old-faithful.net/1/epoch-1.b3sum) | 8 GB | [★](https://files.old-faithful.net/1/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1/poh-check.log) | ✅ | 6 GB | [✅](https://files.old-faithful.net/1/epoch-1-slot-ranges.raw) | [1.slots.txt](https://files.old-faithful.net/1/1.slots.txt) |
 | 0 | [epoch-0.car](https://files.old-faithful.net/0/epoch-0.car) | [3c6347f](https://files.old-faithful.net/0/epoch-0.sha256) | [c1393eb](https://files.old-faithful.net/0/epoch-0.b3sum) | 4 GB | [★](https://files.old-faithful.net/0/tx-metadata-check.log) | [✅](https://files.old-faithful.net/0/poh-check.log) | ✅ | 6 GB | [✅](https://files.old-faithful.net/0/epoch-0-slot-ranges.raw) | [0.slots.txt](https://files.old-faithful.net/0/0.slots.txt) |
-| **Total** | 1040 | (0 behind) | - | 485 TB | - | - | - | 56 TB | - | - |
+| **Total** | 1040 | (1 behind) | - | 485 TB | - | - | - | 56 TB | - | - |
 
 ★ = tx meta validation skipped (epochs 0-10 where tx meta wasn't enabled yet)
 
@@ -1056,3 +1057,4 @@ GSFA indexes exist up to epoch 1020 only. The report does not check for them aft
 - Epoch 49: failed tx meta check
 - Epoch 50: failed tx meta check
 - Epoch 208: failed tx meta check
+- Epoch 1040: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size, missing slot range index
