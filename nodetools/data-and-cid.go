@@ -203,15 +203,23 @@ func SplitIntoDataAndCids(sections []byte) (DataAndCidSlice, error) {
 		}
 		dataStart := usize + cidLen
 		dataEnd := int(gotLen) + usize
+		if dataEnd > len(sections) || dataStart > dataEnd {
+			return nil, fmt.Errorf("data range [%d:%d] is out of bounds for data length %d", dataStart, dataEnd, len(sections))
+		}
+		data := sections[dataStart:dataEnd]
+
+		// The section header only labels the data; only the hash proves it.
+		computed, err := _cid.Prefix().Sum(data)
+		if err != nil {
+			return nil, fmt.Errorf("failed to hash data at %d element for %s: %w", len(nodes), _cid, err)
+		}
+		if !computed.Equals(_cid) {
+			return nil, fmt.Errorf("CID content mismatch at %d element for %s: data does not hash to its CID (got %s)", len(nodes), _cid, computed)
+		}
 
 		node := getDataAndCid()
 		node.Cid = _cid
-		node.Data.Write(sections[dataStart:dataEnd])
-		{
-			if dataEnd > len(sections) {
-				return nil, fmt.Errorf("dataEnd %d is out of bounds for data length %d", dataEnd, len(sections))
-			}
-		}
+		node.Data.Write(data)
 		nodes = append(nodes, node)
 		sections = sections[dataEnd:]
 	}
