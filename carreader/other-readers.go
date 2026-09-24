@@ -67,6 +67,7 @@ func ParseNodeFromSection(section []byte, wantedCid *cid.Cid) ([]byte, error) {
 // 3. Call CidFromReader to get the CID and its encoded length 'cidLen'.
 // 4. Verify CID identity.
 // 5. Slice original buffer: dataStart (uvarint_size + cid_size) to dataEnd (uvarint_size + gotLen).
+// 6. Verify the sliced data hashes to the CID.
 func ParseNodeFromSectionBuffer(section *bytebufferpool.ByteBuffer, wantedCid *cid.Cid) (*bytebufferpool.ByteBuffer, error) {
 	if section == nil || len(section.B) == 0 {
 		return nil, errors.New("empty section buffer")
@@ -115,6 +116,17 @@ func ParseNodeFromSectionBuffer(section *bytebufferpool.ByteBuffer, wantedCid *c
 
 	// In-place slice update to isolate block data.
 	section.B = section.B[dataStart:dataEnd]
+
+	// The CID checked above is the section's own header; only the hash proves the data.
+	if wantedCid != nil {
+		computed, err := wantedCid.Prefix().Sum(section.B)
+		if err != nil {
+			return nil, fmt.Errorf("failed to hash block data for %s: %w", wantedCid, err)
+		}
+		if !computed.Equals(*wantedCid) {
+			return nil, fmt.Errorf("CID content mismatch for %s: block data does not hash to its CID (got %s)", wantedCid, computed)
+		}
+	}
 
 	return section, nil
 }
