@@ -49,6 +49,9 @@ type SlotMeta struct {
   blocktime           Int
   # Block height of this slot.
   block_height nullable optional Int
+  # Raw Alpenglow block footer marker (VersionedBlockMarker bytes, without the
+  # leading u64 zero entry count). Absent for pre-Alpenglow blocks.
+  block_footer nullable optional Bytes
 } representation tuple
 
 type Shredding struct {
