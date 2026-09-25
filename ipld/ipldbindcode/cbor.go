@@ -289,6 +289,11 @@ func (x *Block) MarshalCBOR() ([]byte, error) {
 	if x.Meta.Block_height != nil && *x.Meta.Block_height != nil {
 		meta.Set(2, uint64(**x.Meta.Block_height))
 	}
+	if x.Meta.Block_footer != nil && *x.Meta.Block_footer != nil {
+		// block_footer is only written when present, so that pre-Alpenglow
+		// blocks keep their 3-element SlotMeta encoding.
+		meta.Set(3, **x.Meta.Block_footer)
+	}
 	arr.Set(4, meta)
 	arr.Set(5, cbor.Tag{Number: 42, Content: append([]byte{0}, x.Rewards.(cidlink.Link).Cid.Bytes()...)})
 	return encodeCBOR(arr)
@@ -403,6 +408,16 @@ func (x *Block) UnmarshalCBOR(data []byte) error {
 				_blockHeight := int(blockHeight)
 				_blockHeight_ptr := &_blockHeight
 				m.Block_height = &_blockHeight_ptr
+			}
+		}
+		if blockFooter, ok := metaArr.Get(3); ok {
+			if blockFooter != nil {
+				blockFooter, ok := blockFooter.([]byte)
+				if !ok {
+					return fmt.Errorf("expected block_footer to be []byte, got %T", metaArr[3])
+				}
+				_blockFooter_ptr := &blockFooter
+				m.Block_footer = &_blockFooter_ptr
 			}
 		}
 		x.Meta = m
