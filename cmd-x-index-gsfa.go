@@ -125,6 +125,9 @@ func newCmd_Index_gsfa() *cli.Command {
 			},
 		},
 		Action: func(c *cli.Context) error {
+			if err := network.ApplyEpochSchedule(); err != nil {
+				return err
+			}
 			if cpuProfilePath := c.String("cpuprofile"); cpuProfilePath != "" {
 				stop, err := startCPUProfile(cpuProfilePath)
 				if err != nil {
