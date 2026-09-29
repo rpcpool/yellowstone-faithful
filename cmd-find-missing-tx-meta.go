@@ -12,6 +12,7 @@ import (
 	"github.com/dustin/go-humanize"
 	"github.com/gagliardetto/solana-go"
 	"github.com/rpcpool/yellowstone-faithful/accum"
+	"github.com/rpcpool/yellowstone-faithful/indexes"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
 	"github.com/rpcpool/yellowstone-faithful/readasonecar"
@@ -22,6 +23,7 @@ import (
 )
 
 func newCmd_find_missing_tx_metadata() *cli.Command {
+	var network indexes.Network
 	return &cli.Command{
 		Name:        "find-missing-tx-metadata",
 		Description: "Find missing transaction metadata in a CAR file.",
@@ -30,6 +32,7 @@ func newCmd_find_missing_tx_metadata() *cli.Command {
 			return nil
 		},
 		Flags: []cli.Flag{
+			newFlag_network(&network),
 			&cli.BoolFlag{
 				Name:  "silent",
 				Usage: "Do not print progress",
@@ -65,6 +68,9 @@ func newCmd_find_missing_tx_metadata() *cli.Command {
 			},
 		},
 		Action: func(c *cli.Context) error {
+			if err := network.ApplyEpochSchedule(); err != nil {
+				return err
+			}
 			carPaths := c.Args().Slice()
 			if len(carPaths) == 0 {
 				klog.Exit("Please provide a CAR file")

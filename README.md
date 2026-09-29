@@ -32,6 +32,7 @@ It supports the following flags:
 
 - `--listen`: The address to listen on for JSON-RPC requests, e.g. `--listen=:8888`
 - `--grpc-listen`: The address to listen on for gRPC requests, e.g. `--grpc-listen=:8889`
+- `--network=<network>`: The cluster being served; selects the epoch schedule used to map slots to epochs. Defaults to `mainnet` (other options: `testnet`, `devnet`). Every epoch's indexes must have been built for a network with the same epoch schedule, otherwise the epoch fails to load. One RPC server serves one cluster.
 - `--include`: You can specify one or more (reuse the same flag multiple times) glob patterns to include files or dirs that match them, e.g. `--include=/path/epoch-*.yml`.
 - `--exclude`: You can specify one or more (reuse the same flag multiple times) glob patterns to exclude files or dirs that match them, e.g. `--exclude=/something-*/epoch-*.yml`.
 - `--debug`: Enable debug logging.
@@ -153,7 +154,7 @@ Flags:
 
 - `--tmp-dir=/path/to/tmp/dir`: Where to store temporary files. Defaults to the system temp dir. (optional)
 - `--verify`: Verify the indexes after generation. (optional)
-- `--network=<network>`: Which network to use for the gsfa index. Defaults to `mainnet` (other options: `testnet`, `devnet`). (optional)
+- `--network=<network>`: The cluster of the epoch; recorded in the index metadata and used to select the epoch schedule (testnet has warmup epochs, so its epoch boundaries differ from mainnet's). Defaults to `mainnet` (other options: `testnet`, `devnet`). (optional)
 - `--workers=<n>`: Number of workers used to decode CAR nodes in parallel (applies to both `index all` and `index gsfa`). Defaults to `number of CPUs * 3`. (optional)
 - `--cpuprofile=<file>`: (`index gsfa` only) Write a Go CPU profile to `<file>` for performance debugging. The profile is flushed both on normal completion and on `Ctrl-C` (`SIGINT`/`SIGTERM`), so you can interrupt a long-running generation and still get a valid profile. (optional)
 
