@@ -51,7 +51,15 @@ func main() {
 	flag.StringVar((*string)(&encoding), "encoding", "base64", "Transaction encoding (base64|json|jsonParsed)")
 	flag.StringVar((*string)(&transactionDetails), "details", "signatures", "Transaction details level (none|signatures|full)")
 	flag.BoolVar(&includeRewards, "rewards", false, "Include rewards in the output")
+	var network string
+	flag.StringVar(&network, "network", "mainnet", "Cluster; selects the epoch schedule (mainnet|testnet|devnet)")
 	flag.Parse()
+	epochSchedule, err := slottools.EpochScheduleForNetwork(network)
+	if err != nil {
+		slog.Error("Invalid network specified. Supported values are: mainnet, testnet, devnet", "got", network)
+		return
+	}
+	slottools.SetEpochSchedule(epochSchedule)
 	if carpath == "" {
 		flag.Usage()
 		return

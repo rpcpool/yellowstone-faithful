@@ -82,11 +82,19 @@ func main() {
 	var jsonResults bool
 	flag.StringVar(&carpath, "car", "", "Path to the CAR file")
 	flag.BoolVar(&jsonResults, "json", false, "Output results as JSON lines")
+	var network string
+	flag.StringVar(&network, "network", "mainnet", "Cluster; selects the epoch schedule (mainnet|testnet|devnet)")
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: %s -car <path-to-car> <pubkey1> [<pubkey2> ...]\n", os.Args[0])
 		flag.PrintDefaults()
 	}
 	flag.Parse()
+	epochSchedule, err := slottools.EpochScheduleForNetwork(network)
+	if err != nil {
+		slog.Error("Invalid network specified. Supported values are: mainnet, testnet, devnet", "got", network)
+		return
+	}
+	slottools.SetEpochSchedule(epochSchedule)
 	if carpath == "" {
 		flag.Usage()
 		return

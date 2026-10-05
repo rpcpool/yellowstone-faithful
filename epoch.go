@@ -33,6 +33,7 @@ import (
 	"github.com/rpcpool/yellowstone-faithful/iplddecoders"
 	"github.com/rpcpool/yellowstone-faithful/metrics"
 	"github.com/rpcpool/yellowstone-faithful/radiance/genesis"
+	"github.com/rpcpool/yellowstone-faithful/slottools"
 	splitcarfetcher "github.com/rpcpool/yellowstone-faithful/split-car-fetcher"
 	"github.com/rpcpool/yellowstone-faithful/telemetry"
 	"github.com/urfave/cli/v2"
@@ -63,6 +64,19 @@ type Epoch struct {
 	allCache                    *hugecache.Cache
 	// Blocks, contains a list of blocks
 	blocks []uint64
+}
+
+// checkIndexEpochSchedule returns an error if the index was built for a network
+// whose epoch schedule differs from the one this process is using.
+func checkIndexEpochSchedule(kind string, network indexes.Network) error {
+	indexSchedule, err := slottools.EpochScheduleForNetwork(string(network))
+	if err != nil {
+		return fmt.Errorf("%s index: %w", kind, err)
+	}
+	if current := slottools.CurrentEpochSchedule(); indexSchedule != current {
+		return fmt.Errorf("%s index was built for network %q (epoch schedule %s), but this process uses epoch schedule %s; set --network accordingly", kind, network, indexSchedule, current)
+	}
+	return nil
 }
 
 func (r *Epoch) GetCache() *hugecache.Cache {
@@ -190,6 +204,9 @@ func NewEpochFromConfig(
 			if ep.Epoch() != cidToOffsetAndSizeIndex.Meta().Epoch {
 				return nil, fmt.Errorf("epoch mismatch in cid-to-offset-and-size index: expected %d, got %d", ep.Epoch(), cidToOffsetAndSizeIndex.Meta().Epoch)
 			}
+			if err := checkIndexEpochSchedule("cid-to-offset-and-size", cidToOffsetAndSizeIndex.Meta().Network); err != nil {
+				return nil, err
+			}
 			lastRootCid = cidToOffsetAndSizeIndex.Meta().RootCid
 		}
 	}
@@ -221,6 +238,9 @@ func NewEpochFromConfig(
 			if lastRootCid != cid.Undef && !lastRootCid.Equals(slotToCidIndex.Meta().RootCid) {
 				return nil, fmt.Errorf("root CID mismatch in slot-to-cid index: expected %s, got %s", lastRootCid, slotToCidIndex.Meta().RootCid)
 			}
+			if err := checkIndexEpochSchedule("slot-to-cid", slotToCidIndex.Meta().Network); err != nil {
+				return nil, err
+			}
 			lastRootCid = slotToCidIndex.Meta().RootCid
 		}
 	}
@@ -251,6 +271,9 @@ func NewEpochFromConfig(
 			}
 			if !lastRootCid.Equals(sigToCidIndex.Meta().RootCid) {
 				return nil, fmt.Errorf("root CID mismatch in sig-to-cid index: expected %s, got %s", lastRootCid, sigToCidIndex.Meta().RootCid)
+			}
+			if err := checkIndexEpochSchedule("sig-to-cid", sigToCidIndex.Meta().Network); err != nil {
+				return nil, err
 			}
 		}
 	}
@@ -518,7 +541,7 @@ func NewEpochFromConfig(
 		if err != nil {
 			return nil, fmt.Errorf("failed to open slot-to-blocktime index file: %w", err)
 		}
-		buf, err := carreader.ReadAllFromReaderAt(slotToBlocktimeFile, uint64(blocktimeindex.DefaultIndexByteSize))
+		buf, err := carreader.ReadAllFromReaderAt(slotToBlocktimeFile, uint64(blocktimeindex.IndexByteSizeForEpoch(ep.Epoch())))
 		if err != nil {
 			return nil, fmt.Errorf("failed to read slot-to-blocktime index: %w", err)
 		}
