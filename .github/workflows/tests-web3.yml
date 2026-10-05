@@ -83,6 +83,8 @@ jobs:
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
         if: success()
+        # Codecov outages must not fail the job; fail_ci_if_error misses CLI download errors.
+        continue-on-error: true
         with:
           file: tests/web3/coverage/lcov.info
           directory: tests/web3/coverage/
