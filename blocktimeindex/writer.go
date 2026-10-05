@@ -39,12 +39,16 @@ func NewIndexer(start, end, capacity uint64) *Index {
 	}
 }
 
+// DefaultCapacityForEpoch is the capacity of a mainnet epoch.
+//
+// Deprecated: epochs are not all the same length (testnet has warmup epochs);
+// use slottools.CurrentEpochSchedule().SlotsInEpoch(epoch).
 const DefaultCapacityForEpoch = 432_000
 
-// NewForEpoch creates a new Index for the given epoch.
+// NewForEpoch creates a new Index for the given epoch, sized by the current epoch schedule.
 func NewForEpoch(epoch uint64) *Index {
 	start, end := slottools.CalcEpochLimits(epoch)
-	return NewIndexer(start, end, DefaultCapacityForEpoch)
+	return NewIndexer(start, end, slottools.CurrentEpochSchedule().SlotsInEpoch(epoch))
 }
 
 // Set sets the blocktime for the given slot.
@@ -66,7 +70,7 @@ func (i *Index) Get(slot uint64) (int64, error) {
 
 func (i *Index) marshalBinary() ([]byte, error) {
 	writer := bytes.NewBuffer(nil)
-	writer.Grow(DefaultIndexByteSize)
+	writer.Grow(indexByteSizeForCapacity(i.capacity))
 	_, err := writer.Write(magic)
 	if err != nil {
 		return nil, fmt.Errorf("failed to write magic: %w", err)
@@ -252,7 +256,22 @@ func FormatFilename(epoch uint64, rootCid cid.Cid, network indexes.Network) stri
 	)
 }
 
-var DefaultIndexByteSize = len(magic) + 8 + 8 + 8 + 8 + (432000 * 4)
+const headerByteSize = 8 + 8 + 8 + 8 // start, end, epoch, capacity
+
+func indexByteSizeForCapacity(capacity uint64) int {
+	return len(magic) + headerByteSize + int(capacity)*4
+}
+
+// DefaultIndexByteSize is the size of a mainnet epoch's index.
+//
+// Deprecated: use IndexByteSizeForEpoch.
+var DefaultIndexByteSize = indexByteSizeForCapacity(DefaultCapacityForEpoch)
+
+// IndexByteSizeForEpoch returns the size in bytes of the index for the given epoch,
+// using the current epoch schedule.
+func IndexByteSizeForEpoch(epoch uint64) int {
+	return indexByteSizeForCapacity(slottools.CurrentEpochSchedule().SlotsInEpoch(epoch))
+}
 
 func (i *Index) Epoch() uint64 {
 	return i.epoch

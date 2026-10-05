@@ -1,6 +1,7 @@
 package ipldbindcode
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -240,6 +241,12 @@ func (n Block) GetBlockHeight() (uint64, bool) {
 	return uint64(**n.Meta.Block_height), true
 }
 
+// GetBlockFooter returns the raw 'block_footer' field (the Alpenglow
+// block footer marker bytes), and a flag indicating whether the field has a value.
+func (n Block) GetBlockFooter() ([]byte, bool) {
+	return n.Meta.GetBlockFooter()
+}
+
 func (n Block) GetRewards() (cid.Cid, bool) {
 	rewardsCid := n.Rewards.(cidlink.Link).Cid
 	if rewardsCid.Equals(dummycid.DummyCID) {
@@ -348,6 +355,20 @@ func (n SlotMeta) GetBlockHeight() (uint64, bool) {
 	return uint64(**n.Block_height), true
 }
 
+// SlotMeta.HasBlockFooter returns whether the 'Block_footer' field is present.
+func (n SlotMeta) HasBlockFooter() bool {
+	return n.Block_footer != nil && *n.Block_footer != nil
+}
+
+// GetBlockFooter returns the value of the 'Block_footer' field (raw Alpenglow
+// block footer marker bytes) and a flag indicating whether the field has a value.
+func (n SlotMeta) GetBlockFooter() ([]byte, bool) {
+	if n.Block_footer == nil || *n.Block_footer == nil {
+		return nil, false
+	}
+	return **n.Block_footer, true
+}
+
 // SlotMeta.Equivalent returns whether the two SlotMeta objects are equivalent.
 func (n SlotMeta) Equivalent(other SlotMeta) bool {
 	if n.Parent_slot != other.Parent_slot {
@@ -362,6 +383,14 @@ func (n SlotMeta) Equivalent(other SlotMeta) bool {
 		return false
 	}
 	if ok1 && bh1 != bh2 {
+		return false
+	}
+	bf1, ok1 := n.GetBlockFooter()
+	bf2, ok2 := other.GetBlockFooter()
+	if ok1 != ok2 {
+		return false
+	}
+	if ok1 && !bytes.Equal(bf1, bf2) {
 		return false
 	}
 	return true
@@ -442,6 +471,7 @@ func (s *SlotMeta) Reset() {
 	s.Blocktime = 0
 	clearIntptrPtr(s.Block_height) // Reset the Block_height pointer to nil.
 	s.Block_height = nil           // Reset the pointer to nil.
+	s.Block_footer = nil           // Reset the pointer to nil (don't touch the bytes, they may be shared).
 }
 
 // Reset resets the Shredding to an empty state.

@@ -1,5 +1,10 @@
 package indexes
 
+import (
+	"github.com/rpcpool/yellowstone-faithful/slottools"
+	"k8s.io/klog/v2"
+)
+
 type Network string
 
 const (
@@ -15,4 +20,21 @@ func IsValidNetwork(network Network) bool {
 	default:
 		return false
 	}
+}
+
+// EpochSchedule returns the epoch schedule of the network.
+func (n Network) EpochSchedule() (slottools.EpochSchedule, error) {
+	return slottools.EpochScheduleForNetwork(string(n))
+}
+
+// ApplyEpochSchedule makes the network's epoch schedule the process-wide one
+// (see slottools.SetEpochSchedule) and logs it.
+func (n Network) ApplyEpochSchedule() error {
+	s, err := n.EpochSchedule()
+	if err != nil {
+		return err
+	}
+	slottools.SetEpochSchedule(s)
+	klog.Infof("Using %s epoch schedule: %s", n, s)
+	return nil
 }

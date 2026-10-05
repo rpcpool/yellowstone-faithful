@@ -91,6 +91,9 @@ func newCmd_Index_all() *cli.Command {
 		},
 		Subcommands: []*cli.Command{},
 		Action: func(c *cli.Context) error {
+			if err := network.ApplyEpochSchedule(); err != nil {
+				return err
+			}
 			indexDir := c.Args().Get(0)
 			tmpDir := c.String("tmp-dir")
 
