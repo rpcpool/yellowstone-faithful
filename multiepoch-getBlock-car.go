@@ -216,9 +216,12 @@ func (multi *MultiEpoch) handleGetBlock_car(ctx context.Context, conn *requestCo
 
 	var rewardsUi *jsonbuilder.ArrayBuilder
 	defer rewardsUi.Put() // recycle the rewards UI array
+	var numRewardPartitions *uint64
 	hasRewards := block.HasRewards()
 	rewardsCid := block.Rewards.(cidlink.Link).Cid
-	if *params.Options.Rewards && hasRewards {
+	wantRewards := *params.Options.Rewards
+	// Like Agave, numRewardPartitions is reported even when rewards aren't requested.
+	if hasRewards {
 		actualRewards, err := nodetools.GetParsedRewards(parsedNodes, rewardsCid)
 		if err != nil {
 			slog.Error(
@@ -227,13 +230,15 @@ func (multi *MultiEpoch) handleGetBlock_car(ctx context.Context, conn *requestCo
 				"rewards_cid", rewardsCid.String(),
 				"error", err,
 			)
-			return &jsonrpc2.Error{
-				Code:    jsonrpc2.CodeInternalError,
-				Message: "Internal error",
-			}, fmt.Errorf("failed to get parsed rewards by CID %s: %v", rewardsCid, err)
-		} else {
+			if wantRewards {
+				return &jsonrpc2.Error{
+					Code:    jsonrpc2.CodeInternalError,
+					Message: "Internal error",
+				}, fmt.Errorf("failed to get parsed rewards by CID %s: %v", rewardsCid, err)
+			}
+		} else if wantRewards {
 			// encode rewards as JSON, then decode it as a map
-			rewards, _, err := solanablockrewards.RewardsToUi(actualRewards)
+			rewards, numPartitions, err := solanablockrewards.RewardsToUi(actualRewards)
 			if err != nil {
 				return &jsonrpc2.Error{
 					Code:    jsonrpc2.CodeInternalError,
@@ -241,9 +246,12 @@ func (multi *MultiEpoch) handleGetBlock_car(ctx context.Context, conn *requestCo
 				}, fmt.Errorf("failed to encode rewards: %v", err)
 			}
 			rewardsUi = rewards
+			numRewardPartitions = numPartitions
+		} else if actualRewards.NumPartitions != nil {
+			numRewardPartitions = &actualRewards.NumPartitions.NumPartitions
 		}
 	} else {
-		klog.V(4).Infof("rewards not requested or not available")
+		klog.V(4).Infof("rewards not available")
 	}
 	tim.time("get rewards")
 
@@ -359,6 +367,9 @@ func (multi *MultiEpoch) handleGetBlock_car(ctx context.Context, conn *requestCo
 		response.Array("rewards", rewardsUi)
 	} else {
 		response.EmptyArray("rewards")
+	}
+	if numRewardPartitions != nil {
+		response.Uint("numRewardPartitions", *numRewardPartitions)
 	}
 	{
 		parentSpanCtx, parentSpan := telemetry.StartSpan(rpcSpanCtx, "GetBlock_GetParentBlockForHash")
