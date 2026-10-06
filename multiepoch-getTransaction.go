@@ -260,6 +260,8 @@ func (multi *MultiEpoch) handleGetTransaction(ctx context.Context, conn *request
 	{
 		pos, ok := transactionNode.GetPositionIndex()
 		if ok {
+			// transactionIndex is Agave's field; position is kept for existing clients.
+			response.Int("transactionIndex", int64(pos))
 			response.Int("position", int64(pos))
 		}
 	}
