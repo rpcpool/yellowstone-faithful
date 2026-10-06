@@ -102,8 +102,7 @@ func TestToUi_JSON_V0AndLegacyUnchanged(t *testing.T) {
 				require.NotContains(t, msg, "addressTableLookups")
 			}
 			ix := msg["instructions"].([]any)[0].(map[string]any)
-			require.Contains(t, ix, "stackHeight")
-			require.Nil(t, ix["stackHeight"])
+			require.Equal(t, float64(1), ix["stackHeight"], "Agave sets top-level stackHeight 1 for every version")
 		})
 	}
 }

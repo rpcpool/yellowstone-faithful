@@ -101,13 +101,9 @@ func transactionVersionToUi(tx *solana.Transaction) any {
 	}
 }
 
-// topLevelStackHeight is the stackHeight reported on top-level instructions.
-// Scoped to v1: Agave 4.3 source sets 1 for every version, but legacy/v0 stay
-// null here until that is confirmed against live Agave output.
+// topLevelStackHeight is the stackHeight reported on top-level instructions:
+// Agave 4.3 sets 1 for every transaction version.
 func topLevelStackHeight(tx *solana.Transaction) *uint32 {
-	if tx.Message.GetVersion() != solana.MessageVersionV1 {
-		return nil
-	}
 	one := uint32(1)
 	return &one
 }
