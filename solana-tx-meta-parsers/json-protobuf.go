@@ -287,7 +287,8 @@ func ProtobufTransactionStatusMetaToUi(meta *confirmed_block.TransactionStatusMe
 							case confirmed_block.RewardType_Voting:
 								uiReward.String("rewardType", "voting")
 							default:
-								panic(fmt.Errorf("unknown reward type: %T", reward.RewardType))
+								// Unspecified or newer types (e.g. DeactivatedStake, VATDebit).
+								uiReward.Null("rewardType")
 							}
 						}
 						if reward.Commission != "" {
