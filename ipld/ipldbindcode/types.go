@@ -38,12 +38,17 @@ type Rewards struct {
 	Data DataFrame `json:"data" yaml:"data"`
 }
 
-type SlotMeta struct {
-	Parent_slot  int      `json:"parent_slot" yaml:"parent_slot"`
-	Blocktime    int      `json:"blocktime" yaml:"blocktime"`
-	Block_height **int    `json:"block_height" yaml:"block_height"`
-	Block_footer **[]byte `json:"block_footer" yaml:"block_footer"`
-}
+type (
+	List__Bytes [][]byte
+	SlotMeta    struct {
+		Parent_slot   int           `json:"parent_slot" yaml:"parent_slot"`
+		Blocktime     int           `json:"blocktime" yaml:"blocktime"`
+		Block_height  **int         `json:"block_height" yaml:"block_height"`
+		Block_footer  **[]byte      `json:"block_footer" yaml:"block_footer"`
+		Block_markers **List__Bytes `json:"block_markers" yaml:"block_markers"`
+		Block_id      **[]byte      `json:"block_id" yaml:"block_id"`
+	}
+)
 type Shredding struct {
 	EntryEndIdx int `json:"entry_end_idx" yaml:"entry_end_idx"`
 	ShredEndIdx int `json:"shred_end_idx" yaml:"shred_end_idx"`

@@ -50,8 +50,14 @@ type SlotMeta struct {
   # Block height of this slot.
   block_height nullable optional Int
   # Raw Alpenglow block footer marker (VersionedBlockMarker bytes, without the
-  # leading u64 zero entry count). Absent for pre-Alpenglow blocks.
+  # leading u64 zero entry count). New writers leave this null and put the
+  # footer in block_markers instead.
   block_footer nullable optional Bytes
+  # Raw Alpenglow block markers (VersionedBlockMarker bytes, without the leading
+  # u64 zero entry count), in block order. Absent for pre-Alpenglow blocks.
+  block_markers nullable optional [ Bytes ]
+  # Alpenglow block id (double merkle root). Absent for pre-Alpenglow blocks.
+  block_id nullable optional Bytes
 } representation tuple
 
 type Shredding struct {
