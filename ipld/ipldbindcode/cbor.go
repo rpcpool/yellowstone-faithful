@@ -291,14 +291,11 @@ func (x *Block) MarshalCBOR() ([]byte, error) {
 	}
 	// Optional trailing fields are only written when present (Set pads any gap
 	// with null), so pre-Alpenglow blocks keep their 3-element SlotMeta encoding.
-	if x.Meta.Block_footer != nil && *x.Meta.Block_footer != nil {
-		meta.Set(3, **x.Meta.Block_footer)
-	}
 	if x.Meta.Block_markers != nil && *x.Meta.Block_markers != nil {
-		meta.Set(4, [][]byte(**x.Meta.Block_markers))
+		meta.Set(3, [][]byte(**x.Meta.Block_markers))
 	}
 	if x.Meta.Block_id != nil && *x.Meta.Block_id != nil {
-		meta.Set(5, **x.Meta.Block_id)
+		meta.Set(4, **x.Meta.Block_id)
 	}
 	arr.Set(4, meta)
 	arr.Set(5, cbor.Tag{Number: 42, Content: append([]byte{0}, x.Rewards.(cidlink.Link).Cid.Bytes()...)})
@@ -416,17 +413,7 @@ func (x *Block) UnmarshalCBOR(data []byte) error {
 				m.Block_height = &_blockHeight_ptr
 			}
 		}
-		if blockFooter, ok := metaArr.Get(3); ok {
-			if blockFooter != nil {
-				blockFooter, ok := blockFooter.([]byte)
-				if !ok {
-					return fmt.Errorf("expected block_footer to be []byte, got %T", metaArr[3])
-				}
-				_blockFooter_ptr := &blockFooter
-				m.Block_footer = &_blockFooter_ptr
-			}
-		}
-		if blockMarkers, ok := metaArr.Get(4); ok {
+		if blockMarkers, ok := metaArr.Get(3); ok {
 			if blockMarkers != nil {
 				rawMarkers, ok := blockMarkers.([]interface{})
 				if !ok {
@@ -444,11 +431,11 @@ func (x *Block) UnmarshalCBOR(data []byte) error {
 				m.Block_markers = &_blockMarkers_ptr
 			}
 		}
-		if blockID, ok := metaArr.Get(5); ok {
+		if blockID, ok := metaArr.Get(4); ok {
 			if blockID != nil {
 				blockID, ok := blockID.([]byte)
 				if !ok {
-					return fmt.Errorf("expected block_id to be []byte, got %T", metaArr[5])
+					return fmt.Errorf("expected block_id to be []byte, got %T", metaArr[4])
 				}
 				if len(blockID) != 32 {
 					return fmt.Errorf("expected block_id to be 32 bytes, got %d", len(blockID))

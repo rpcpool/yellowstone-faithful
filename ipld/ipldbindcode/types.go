@@ -44,7 +44,6 @@ type (
 		Parent_slot   int           `json:"parent_slot" yaml:"parent_slot"`
 		Blocktime     int           `json:"blocktime" yaml:"blocktime"`
 		Block_height  **int         `json:"block_height" yaml:"block_height"`
-		Block_footer  **[]byte      `json:"block_footer" yaml:"block_footer"`
 		Block_markers **List__Bytes `json:"block_markers" yaml:"block_markers"`
 		Block_id      **[]byte      `json:"block_id" yaml:"block_id"`
 	}

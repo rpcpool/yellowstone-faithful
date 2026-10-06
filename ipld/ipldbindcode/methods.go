@@ -376,13 +376,9 @@ func (n SlotMeta) HasBlockFooter() bool {
 	return ok
 }
 
-// GetBlockFooter returns the raw Alpenglow block footer marker bytes and a flag
-// indicating whether there is one. CARs written before block_markers existed
-// store it in 'Block_footer'; newer ones keep it in 'Block_markers'.
+// GetBlockFooter returns the raw Alpenglow block footer marker bytes (the
+// BlockFooter entry of 'Block_markers') and a flag indicating whether there is one.
 func (n SlotMeta) GetBlockFooter() ([]byte, bool) {
-	if n.Block_footer != nil && *n.Block_footer != nil {
-		return **n.Block_footer, true
-	}
 	markers, _ := n.GetBlockMarkers()
 	for _, marker := range markers {
 		if len(marker) > 2 && marker[2] == blockMarkerVariantFooter {
@@ -433,10 +429,6 @@ func (n SlotMeta) Equivalent(other SlotMeta) bool {
 		return false
 	}
 	if ok1 && bh1 != bh2 {
-		return false
-	}
-	// Compare the stored fields, not GetBlockFooter, which falls back to block_markers.
-	if !optionalBytesEqual(n.Block_footer, other.Block_footer) {
 		return false
 	}
 	bm1, ok1 := n.GetBlockMarkers()
@@ -527,8 +519,7 @@ func (s *SlotMeta) Reset() {
 	s.Blocktime = 0
 	clearIntptrPtr(s.Block_height) // Reset the Block_height pointer to nil.
 	s.Block_height = nil           // Reset the pointer to nil.
-	s.Block_footer = nil           // Reset the pointer to nil (don't touch the bytes, they may be shared).
-	s.Block_markers = nil          // Same as above.
+	s.Block_markers = nil          // Reset the pointer to nil (don't touch the bytes, they may be shared).
 	s.Block_id = nil               // Same as above.
 }
 
