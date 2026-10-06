@@ -115,13 +115,24 @@ fn main() -> Result<(), Box<dyn Error>> {
                                 })?;
 
 
+                            // See issue #374.
                             let as_native_metadata: solana_transaction_status::TransactionStatusMeta =
-                                metadata.try_into().map_err(|err| {
-                                    Box::new(std::io::Error::new(
-                                        std::io::ErrorKind::Other,
-                                        std::format!("Error converting metadata to native: {:?}", err),
-                                    ))
-                                })?;
+                                match metadata.try_into() {
+                                    Ok(m) => m,
+                                    Err(err) => {
+                                        let sig = parsed.signatures.first()
+                                            .map(|s| s.to_string())
+                                            .unwrap_or_else(|| "<unknown>".to_string());
+                                        eprintln!(
+                                            "WARN: skipping tx at slot {} index {:?} sig {}: {:?}",
+                                            block.slot,
+                                            transaction.index,
+                                            sig,
+                                            err,
+                                        );
+                                        return Ok(());
+                                    }
+                                };
 
                             let is_vote = is_simple_vote_transaction(&parsed);
 
