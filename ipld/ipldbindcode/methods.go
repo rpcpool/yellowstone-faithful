@@ -241,10 +241,22 @@ func (n Block) GetBlockHeight() (uint64, bool) {
 	return uint64(**n.Meta.Block_height), true
 }
 
-// GetBlockFooter returns the raw 'block_footer' field (the Alpenglow
-// block footer marker bytes), and a flag indicating whether the field has a value.
+// GetBlockFooter returns the raw Alpenglow block footer marker bytes
+// (see SlotMeta.GetBlockFooter), and a flag indicating whether there is one.
 func (n Block) GetBlockFooter() ([]byte, bool) {
 	return n.Meta.GetBlockFooter()
+}
+
+// GetBlockMarkers returns the raw Alpenglow block markers, in block order,
+// and a flag indicating whether the field has a value.
+func (n Block) GetBlockMarkers() ([][]byte, bool) {
+	return n.Meta.GetBlockMarkers()
+}
+
+// GetBlockID returns the Alpenglow block id, and a flag indicating whether
+// the field has a value.
+func (n Block) GetBlockID() ([]byte, bool) {
+	return n.Meta.GetBlockID()
 }
 
 func (n Block) GetRewards() (cid.Cid, bool) {
@@ -355,18 +367,52 @@ func (n SlotMeta) GetBlockHeight() (uint64, bool) {
 	return uint64(**n.Block_height), true
 }
 
-// SlotMeta.HasBlockFooter returns whether the 'Block_footer' field is present.
+// blockMarkerVariantFooter is the VersionedBlockMarker variant byte (offset 2) of a block footer.
+const blockMarkerVariantFooter = 0
+
+// SlotMeta.HasBlockFooter returns whether GetBlockFooter would find a footer.
 func (n SlotMeta) HasBlockFooter() bool {
-	return n.Block_footer != nil && *n.Block_footer != nil
+	_, ok := n.GetBlockFooter()
+	return ok
 }
 
-// GetBlockFooter returns the value of the 'Block_footer' field (raw Alpenglow
-// block footer marker bytes) and a flag indicating whether the field has a value.
+// GetBlockFooter returns the raw Alpenglow block footer marker bytes (the
+// BlockFooter entry of 'Block_markers') and a flag indicating whether there is one.
 func (n SlotMeta) GetBlockFooter() ([]byte, bool) {
-	if n.Block_footer == nil || *n.Block_footer == nil {
+	markers, _ := n.GetBlockMarkers()
+	for _, marker := range markers {
+		if len(marker) > 2 && marker[2] == blockMarkerVariantFooter {
+			return marker, true
+		}
+	}
+	return nil, false
+}
+
+// GetBlockMarkers returns the value of the 'Block_markers' field (raw Alpenglow
+// block markers, in block order) and a flag indicating whether the field has a value.
+func (n SlotMeta) GetBlockMarkers() ([][]byte, bool) {
+	if n.Block_markers == nil || *n.Block_markers == nil {
 		return nil, false
 	}
-	return **n.Block_footer, true
+	return **n.Block_markers, true
+}
+
+// GetBlockID returns the value of the 'Block_id' field (Alpenglow block id)
+// and a flag indicating whether the field has a value.
+func (n SlotMeta) GetBlockID() ([]byte, bool) {
+	if n.Block_id == nil || *n.Block_id == nil {
+		return nil, false
+	}
+	return **n.Block_id, true
+}
+
+func optionalBytesEqual(a, b **[]byte) bool {
+	aOk := a != nil && *a != nil
+	bOk := b != nil && *b != nil
+	if aOk != bOk {
+		return false
+	}
+	return !aOk || bytes.Equal(**a, **b)
 }
 
 // SlotMeta.Equivalent returns whether the two SlotMeta objects are equivalent.
@@ -385,15 +431,17 @@ func (n SlotMeta) Equivalent(other SlotMeta) bool {
 	if ok1 && bh1 != bh2 {
 		return false
 	}
-	bf1, ok1 := n.GetBlockFooter()
-	bf2, ok2 := other.GetBlockFooter()
-	if ok1 != ok2 {
+	bm1, ok1 := n.GetBlockMarkers()
+	bm2, ok2 := other.GetBlockMarkers()
+	if ok1 != ok2 || len(bm1) != len(bm2) {
 		return false
 	}
-	if ok1 && !bytes.Equal(bf1, bf2) {
-		return false
+	for i := range bm1 {
+		if !bytes.Equal(bm1[i], bm2[i]) {
+			return false
+		}
 	}
-	return true
+	return optionalBytesEqual(n.Block_id, other.Block_id)
 }
 
 // Block.HasRewards
@@ -471,7 +519,8 @@ func (s *SlotMeta) Reset() {
 	s.Blocktime = 0
 	clearIntptrPtr(s.Block_height) // Reset the Block_height pointer to nil.
 	s.Block_height = nil           // Reset the pointer to nil.
-	s.Block_footer = nil           // Reset the pointer to nil (don't touch the bytes, they may be shared).
+	s.Block_markers = nil          // Reset the pointer to nil (don't touch the bytes, they may be shared).
+	s.Block_id = nil               // Same as above.
 }
 
 // Reset resets the Shredding to an empty state.

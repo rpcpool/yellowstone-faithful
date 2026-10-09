@@ -4,11 +4,13 @@ import (
 	"context"
 	"time"
 
+	"github.com/rpcpool/yellowstone-faithful/indexes"
 	"github.com/urfave/cli/v2"
 	"k8s.io/klog/v2"
 )
 
 func newCmd_VerifyIndex_cid2offset() *cli.Command {
+	var network indexes.Network
 	return &cli.Command{
 		Name:        "cid-to-offset",
 		Description: "Verify the index of the CAR file that maps CIDs to offsets in the CAR file.",
@@ -17,6 +19,7 @@ func newCmd_VerifyIndex_cid2offset() *cli.Command {
 			return nil
 		},
 		Flags: []cli.Flag{
+			newFlag_network(&network),
 			&cli.StringSliceFlag{
 				Name:  "car",
 				Usage: "Path to a CAR file containing a single Solana epoch, or multiple split CAR files (in order) containing a single Solana epoch",
@@ -27,6 +30,9 @@ func newCmd_VerifyIndex_cid2offset() *cli.Command {
 			},
 		},
 		Action: func(c *cli.Context) error {
+			if err := network.ApplyEpochSchedule(); err != nil {
+				return err
+			}
 			carPaths := c.StringSlice("car")
 			indexFilePath := c.String("index-dir")
 			{
