@@ -2,55 +2,55 @@
 |---|---|---|---|---|---|---|---|---|---|---|
 |1053|ongoing|-|-|-|-|-|-|-|-|-|
 | 1052 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| 1051 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| 1050 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| 1049 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| 1048 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| 1047 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| 1046 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| 1045 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| 1044 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| 1043 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| 1042 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| 1041 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| 1040 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| 1039 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| 1038 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| 1037 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| 1036 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| 1035 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| 1034 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| 1033 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| 1032 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| 1031 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| 1030 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| 1029 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| 1028 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| 1027 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| 1026 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| 1025 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| 1024 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| 1023 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| 1022 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| 1021 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| 1020 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| 1019 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| 1018 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| 1017 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| 1016 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| 1015 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| 1014 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| 1013 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| 1012 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| 1011 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| 1010 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| 1009 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| 1008 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| 1007 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| 1006 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| 1005 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| 1004 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| 1003 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| 1051 | [epoch-1051.car](https://files.old-faithful.net/1051/epoch-1051.car) | [60165fc](https://files.old-faithful.net/1051/epoch-1051.sha256) | [c95a8c7](https://files.old-faithful.net/1051/epoch-1051.b3sum) | 746 GB | [✅](https://files.old-faithful.net/1051/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1051/poh-check.log) | ✅ | ❌ | [✅](https://files.old-faithful.net/1051/epoch-1051-slot-ranges.raw) | [1051.slots.txt](https://files.old-faithful.net/1051/1051.slots.txt) |
+| 1050 | [epoch-1050.car](https://files.old-faithful.net/1050/epoch-1050.car) | [4a315cf](https://files.old-faithful.net/1050/epoch-1050.sha256) | [b644bc8](https://files.old-faithful.net/1050/epoch-1050.b3sum) | 788 GB | [✅](https://files.old-faithful.net/1050/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1050/poh-check.log) | ❌ | ❌ | [✅](https://files.old-faithful.net/1050/epoch-1050-slot-ranges.raw) | [1050.slots.txt](https://files.old-faithful.net/1050/1050.slots.txt) |
+| 1049 | [epoch-1049.car](https://files.old-faithful.net/1049/epoch-1049.car) | [4f57eaa](https://files.old-faithful.net/1049/epoch-1049.sha256) | [7b27110](https://files.old-faithful.net/1049/epoch-1049.b3sum) | 709 GB | [✅](https://files.old-faithful.net/1049/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1049/poh-check.log) | ❌ | ❌ | [✅](https://files.old-faithful.net/1049/epoch-1049-slot-ranges.raw) | [1049.slots.txt](https://files.old-faithful.net/1049/1049.slots.txt) |
+| 1048 | [epoch-1048.car](https://files.old-faithful.net/1048/epoch-1048.car) | [0fd5519](https://files.old-faithful.net/1048/epoch-1048.sha256) | [0267002](https://files.old-faithful.net/1048/epoch-1048.b3sum) | 684 GB | [✅](https://files.old-faithful.net/1048/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1048/poh-check.log) | ✅ | 34 GB | [✅](https://files.old-faithful.net/1048/epoch-1048-slot-ranges.raw) | [1048.slots.txt](https://files.old-faithful.net/1048/1048.slots.txt) |
+| 1047 | [epoch-1047.car](https://files.old-faithful.net/1047/epoch-1047.car) | [fa58c92](https://files.old-faithful.net/1047/epoch-1047.sha256) | [43de770](https://files.old-faithful.net/1047/epoch-1047.b3sum) | 808 GB | [✅](https://files.old-faithful.net/1047/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1047/poh-check.log) | ❌ | ❌ | [✅](https://files.old-faithful.net/1047/epoch-1047-slot-ranges.raw) | [1047.slots.txt](https://files.old-faithful.net/1047/1047.slots.txt) |
+| 1046 | [epoch-1046.car](https://files.old-faithful.net/1046/epoch-1046.car) | [e7b7ba6](https://files.old-faithful.net/1046/epoch-1046.sha256) | [622a292](https://files.old-faithful.net/1046/epoch-1046.b3sum) | 694 GB | [✅](https://files.old-faithful.net/1046/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1046/poh-check.log) | ❌ | ❌ | [✅](https://files.old-faithful.net/1046/epoch-1046-slot-ranges.raw) | [1046.slots.txt](https://files.old-faithful.net/1046/1046.slots.txt) |
+| 1045 | [epoch-1045.car](https://files.old-faithful.net/1045/epoch-1045.car) | [63c7cfc](https://files.old-faithful.net/1045/epoch-1045.sha256) | [8888118](https://files.old-faithful.net/1045/epoch-1045.b3sum) | 702 GB | [✅](https://files.old-faithful.net/1045/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1045/poh-check.log) | ❌ | ❌ | [✅](https://files.old-faithful.net/1045/epoch-1045-slot-ranges.raw) | [1045.slots.txt](https://files.old-faithful.net/1045/1045.slots.txt) |
+| 1044 | [epoch-1044.car](https://files.old-faithful.net/1044/epoch-1044.car) | [641dd0c](https://files.old-faithful.net/1044/epoch-1044.sha256) | [4b5b86e](https://files.old-faithful.net/1044/epoch-1044.b3sum) | 786 GB | [✅](https://files.old-faithful.net/1044/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1044/poh-check.log) | ❌ | ❌ | [✅](https://files.old-faithful.net/1044/epoch-1044-slot-ranges.raw) | [1044.slots.txt](https://files.old-faithful.net/1044/1044.slots.txt) |
+| 1043 | [epoch-1043.car](https://files.old-faithful.net/1043/epoch-1043.car) | [e567b1d](https://files.old-faithful.net/1043/epoch-1043.sha256) | [a1f2617](https://files.old-faithful.net/1043/epoch-1043.b3sum) | 741 GB | [✅](https://files.old-faithful.net/1043/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1043/poh-check.log) | ✅ | 37 GB | [✅](https://files.old-faithful.net/1043/epoch-1043-slot-ranges.raw) | [1043.slots.txt](https://files.old-faithful.net/1043/1043.slots.txt) |
+| 1042 | [epoch-1042.car](https://files.old-faithful.net/1042/epoch-1042.car) | [2439202](https://files.old-faithful.net/1042/epoch-1042.sha256) | [ca490d7](https://files.old-faithful.net/1042/epoch-1042.b3sum) | 752 GB | [✅](https://files.old-faithful.net/1042/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1042/poh-check.log) | ❌ | ❌ | [✅](https://files.old-faithful.net/1042/epoch-1042-slot-ranges.raw) | [1042.slots.txt](https://files.old-faithful.net/1042/1042.slots.txt) |
+| 1041 | [epoch-1041.car](https://files.old-faithful.net/1041/epoch-1041.car) | [a3492cd](https://files.old-faithful.net/1041/epoch-1041.sha256) | [a8ffffe](https://files.old-faithful.net/1041/epoch-1041.b3sum) | 739 GB | [✅](https://files.old-faithful.net/1041/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1041/poh-check.log) | ❌ | ❌ | [✅](https://files.old-faithful.net/1041/epoch-1041-slot-ranges.raw) | [1041.slots.txt](https://files.old-faithful.net/1041/1041.slots.txt) |
+| 1040 | [epoch-1040.car](https://files.old-faithful.net/1040/epoch-1040.car) | [350267d](https://files.old-faithful.net/1040/epoch-1040.sha256) | [3fb4537](https://files.old-faithful.net/1040/epoch-1040.b3sum) | 672 GB | [✅](https://files.old-faithful.net/1040/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1040/poh-check.log) | ❌ | ❌ | [✅](https://files.old-faithful.net/1040/epoch-1040-slot-ranges.raw) | [1040.slots.txt](https://files.old-faithful.net/1040/1040.slots.txt) |
+| 1039 | [epoch-1039.car](https://files.old-faithful.net/1039/epoch-1039.car) | [0d8d384](https://files.old-faithful.net/1039/epoch-1039.sha256) | [204a3a2](https://files.old-faithful.net/1039/epoch-1039.b3sum) | 763 GB | [✅](https://files.old-faithful.net/1039/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1039/poh-check.log) | ❌ | ❌ | [✅](https://files.old-faithful.net/1039/epoch-1039-slot-ranges.raw) | [1039.slots.txt](https://files.old-faithful.net/1039/1039.slots.txt) |
+| 1038 | [epoch-1038.car](https://files.old-faithful.net/1038/epoch-1038.car) | [7853c56](https://files.old-faithful.net/1038/epoch-1038.sha256) | [8497e2e](https://files.old-faithful.net/1038/epoch-1038.b3sum) | 699 GB | [✅](https://files.old-faithful.net/1038/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1038/poh-check.log) | ❌ | ❌ | [✅](https://files.old-faithful.net/1038/epoch-1038-slot-ranges.raw) | [1038.slots.txt](https://files.old-faithful.net/1038/1038.slots.txt) |
+| 1037 | [epoch-1037.car](https://files.old-faithful.net/1037/epoch-1037.car) | [df54e08](https://files.old-faithful.net/1037/epoch-1037.sha256) | [f7cda39](https://files.old-faithful.net/1037/epoch-1037.b3sum) | 695 GB | [✅](https://files.old-faithful.net/1037/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1037/poh-check.log) | ❌ | ❌ | [✅](https://files.old-faithful.net/1037/epoch-1037-slot-ranges.raw) | [1037.slots.txt](https://files.old-faithful.net/1037/1037.slots.txt) |
+| 1036 | [epoch-1036.car](https://files.old-faithful.net/1036/epoch-1036.car) | [72d9040](https://files.old-faithful.net/1036/epoch-1036.sha256) | [b4d557c](https://files.old-faithful.net/1036/epoch-1036.b3sum) | 917 GB | [✅](https://files.old-faithful.net/1036/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1036/poh-check.log) | ❌ | ❌ | [✅](https://files.old-faithful.net/1036/epoch-1036-slot-ranges.raw) | [1036.slots.txt](https://files.old-faithful.net/1036/1036.slots.txt) |
+| 1035 | [epoch-1035.car](https://files.old-faithful.net/1035/epoch-1035.car) | [23e5f26](https://files.old-faithful.net/1035/epoch-1035.sha256) | [c001203](https://files.old-faithful.net/1035/epoch-1035.b3sum) | 798 GB | [✅](https://files.old-faithful.net/1035/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1035/poh-check.log) | ✅ | 38 GB | [✅](https://files.old-faithful.net/1035/epoch-1035-slot-ranges.raw) | [1035.slots.txt](https://files.old-faithful.net/1035/1035.slots.txt) |
+| 1034 | [epoch-1034.car](https://files.old-faithful.net/1034/epoch-1034.car) | [e432852](https://files.old-faithful.net/1034/epoch-1034.sha256) | [7ccf2be](https://files.old-faithful.net/1034/epoch-1034.b3sum) | 763 GB | [✅](https://files.old-faithful.net/1034/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1034/poh-check.log) | ✅ | 37 GB | [✅](https://files.old-faithful.net/1034/epoch-1034-slot-ranges.raw) | [1034.slots.txt](https://files.old-faithful.net/1034/1034.slots.txt) |
+| 1033 | [epoch-1033.car](https://files.old-faithful.net/1033/epoch-1033.car) | [4835fc7](https://files.old-faithful.net/1033/epoch-1033.sha256) | [bcd7f0f](https://files.old-faithful.net/1033/epoch-1033.b3sum) | 715 GB | [✅](https://files.old-faithful.net/1033/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1033/poh-check.log) | ❌ | ❌ | [✅](https://files.old-faithful.net/1033/epoch-1033-slot-ranges.raw) | [1033.slots.txt](https://files.old-faithful.net/1033/1033.slots.txt) |
+| 1032 | [epoch-1032.car](https://files.old-faithful.net/1032/epoch-1032.car) | [580a171](https://files.old-faithful.net/1032/epoch-1032.sha256) | [f9ff89b](https://files.old-faithful.net/1032/epoch-1032.b3sum) | 817 GB | [✅](https://files.old-faithful.net/1032/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1032/poh-check.log) | ❌ | ❌ | [✅](https://files.old-faithful.net/1032/epoch-1032-slot-ranges.raw) | [1032.slots.txt](https://files.old-faithful.net/1032/1032.slots.txt) |
+| 1031 | [epoch-1031.car](https://files.old-faithful.net/1031/epoch-1031.car) | [c65ee44](https://files.old-faithful.net/1031/epoch-1031.sha256) | [eaa1ab9](https://files.old-faithful.net/1031/epoch-1031.b3sum) | 887 GB | [✅](https://files.old-faithful.net/1031/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1031/poh-check.log) | ❌ | ❌ | [✅](https://files.old-faithful.net/1031/epoch-1031-slot-ranges.raw) | [1031.slots.txt](https://files.old-faithful.net/1031/1031.slots.txt) |
+| 1030 | [epoch-1030.car](https://files.old-faithful.net/1030/epoch-1030.car) | [5878690](https://files.old-faithful.net/1030/epoch-1030.sha256) | [8bb852b](https://files.old-faithful.net/1030/epoch-1030.b3sum) | 735 GB | [✅](https://files.old-faithful.net/1030/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1030/poh-check.log) | ✅ | 36 GB | [✅](https://files.old-faithful.net/1030/epoch-1030-slot-ranges.raw) | [1030.slots.txt](https://files.old-faithful.net/1030/1030.slots.txt) |
+| 1029 | [epoch-1029.car](https://files.old-faithful.net/1029/epoch-1029.car) | [c715c84](https://files.old-faithful.net/1029/epoch-1029.sha256) | [44d8fbb](https://files.old-faithful.net/1029/epoch-1029.b3sum) | 669 GB | [✅](https://files.old-faithful.net/1029/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1029/poh-check.log) | ❌ | ❌ | [✅](https://files.old-faithful.net/1029/epoch-1029-slot-ranges.raw) | [1029.slots.txt](https://files.old-faithful.net/1029/1029.slots.txt) |
+| 1028 | [epoch-1028.car](https://files.old-faithful.net/1028/epoch-1028.car) | [8f41e96](https://files.old-faithful.net/1028/epoch-1028.sha256) | [03a110a](https://files.old-faithful.net/1028/epoch-1028.b3sum) | 582 GB | [✅](https://files.old-faithful.net/1028/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1028/poh-check.log) | ❌ | 33 GB | [✅](https://files.old-faithful.net/1028/epoch-1028-slot-ranges.raw) | [1028.slots.txt](https://files.old-faithful.net/1028/1028.slots.txt) |
+| 1027 | [epoch-1027.car](https://files.old-faithful.net/1027/epoch-1027.car) | [c175279](https://files.old-faithful.net/1027/epoch-1027.sha256) | [b7cb7fb](https://files.old-faithful.net/1027/epoch-1027.b3sum) | 706 GB | [✅](https://files.old-faithful.net/1027/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1027/poh-check.log) | ✅ | 37 GB | [✅](https://files.old-faithful.net/1027/epoch-1027-slot-ranges.raw) | [1027.slots.txt](https://files.old-faithful.net/1027/1027.slots.txt) |
+| 1026 | [epoch-1026.car](https://files.old-faithful.net/1026/epoch-1026.car) | [fd9c2c5](https://files.old-faithful.net/1026/epoch-1026.sha256) | [25e4823](https://files.old-faithful.net/1026/epoch-1026.b3sum) | 791 GB | [✅](https://files.old-faithful.net/1026/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1026/poh-check.log) | ❌ | ❌ | [✅](https://files.old-faithful.net/1026/epoch-1026-slot-ranges.raw) | [1026.slots.txt](https://files.old-faithful.net/1026/1026.slots.txt) |
+| 1025 | [epoch-1025.car](https://files.old-faithful.net/1025/epoch-1025.car) | [7341cdc](https://files.old-faithful.net/1025/epoch-1025.sha256) | [d501ddb](https://files.old-faithful.net/1025/epoch-1025.b3sum) | 810 GB | [✅](https://files.old-faithful.net/1025/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1025/poh-check.log) | ❌ | ❌ | [✅](https://files.old-faithful.net/1025/epoch-1025-slot-ranges.raw) | [1025.slots.txt](https://files.old-faithful.net/1025/1025.slots.txt) |
+| 1024 | [epoch-1024.car](https://files.old-faithful.net/1024/epoch-1024.car) | [a5dd634](https://files.old-faithful.net/1024/epoch-1024.sha256) | [be5c2b0](https://files.old-faithful.net/1024/epoch-1024.b3sum) | 856 GB | [✅](https://files.old-faithful.net/1024/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1024/poh-check.log) | ❌ | ❌ | [✅](https://files.old-faithful.net/1024/epoch-1024-slot-ranges.raw) | [1024.slots.txt](https://files.old-faithful.net/1024/1024.slots.txt) |
+| 1023 | [epoch-1023.car](https://files.old-faithful.net/1023/epoch-1023.car) | [d8b1131](https://files.old-faithful.net/1023/epoch-1023.sha256) | [0587a74](https://files.old-faithful.net/1023/epoch-1023.b3sum) | 1059 GB | [✅](https://files.old-faithful.net/1023/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1023/poh-check.log) | ✅ | 44 GB | [✅](https://files.old-faithful.net/1023/epoch-1023-slot-ranges.raw) | [1023.slots.txt](https://files.old-faithful.net/1023/1023.slots.txt) |
+| 1022 | [epoch-1022.car](https://files.old-faithful.net/1022/epoch-1022.car) | [c8dda8d](https://files.old-faithful.net/1022/epoch-1022.sha256) | [4896ab7](https://files.old-faithful.net/1022/epoch-1022.b3sum) | 1015 GB | [✅](https://files.old-faithful.net/1022/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1022/poh-check.log) | ❌ | 14 GB | [✅](https://files.old-faithful.net/1022/epoch-1022-slot-ranges.raw) | [1022.slots.txt](https://files.old-faithful.net/1022/1022.slots.txt) |
+| 1021 | [epoch-1021.car](https://files.old-faithful.net/1021/epoch-1021.car) | [e0ba4b4](https://files.old-faithful.net/1021/epoch-1021.sha256) | [d165f6e](https://files.old-faithful.net/1021/epoch-1021.b3sum) | 960 GB | [✅](https://files.old-faithful.net/1021/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1021/poh-check.log) | ✅ | 43 GB | [✅](https://files.old-faithful.net/1021/epoch-1021-slot-ranges.raw) | [1021.slots.txt](https://files.old-faithful.net/1021/1021.slots.txt) |
+| 1020 | [epoch-1020.car](https://files.old-faithful.net/1020/epoch-1020.car) | [375082b](https://files.old-faithful.net/1020/epoch-1020.sha256) | [000cdf3](https://files.old-faithful.net/1020/epoch-1020.b3sum) | 1009 GB | [✅](https://files.old-faithful.net/1020/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1020/poh-check.log) | ❌ | ❌ | [✅](https://files.old-faithful.net/1020/epoch-1020-slot-ranges.raw) | [1020.slots.txt](https://files.old-faithful.net/1020/1020.slots.txt) |
+| 1019 | [epoch-1019.car](https://files.old-faithful.net/1019/epoch-1019.car) | [eb6eb17](https://files.old-faithful.net/1019/epoch-1019.sha256) | [3b08c97](https://files.old-faithful.net/1019/epoch-1019.b3sum) | 1215 GB | [✅](https://files.old-faithful.net/1019/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1019/poh-check.log) | ❌ | 50 GB | [✅](https://files.old-faithful.net/1019/epoch-1019-slot-ranges.raw) | [1019.slots.txt](https://files.old-faithful.net/1019/1019.slots.txt) |
+| 1018 | [epoch-1018.car](https://files.old-faithful.net/1018/epoch-1018.car) | [adb83a1](https://files.old-faithful.net/1018/epoch-1018.sha256) | [68319ec](https://files.old-faithful.net/1018/epoch-1018.b3sum) | 1092 GB | [✅](https://files.old-faithful.net/1018/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1018/poh-check.log) | ❌ | ❌ | [✅](https://files.old-faithful.net/1018/epoch-1018-slot-ranges.raw) | [1018.slots.txt](https://files.old-faithful.net/1018/1018.slots.txt) |
+| 1017 | [epoch-1017.car](https://files.old-faithful.net/1017/epoch-1017.car) | [9e08114](https://files.old-faithful.net/1017/epoch-1017.sha256) | [764ed68](https://files.old-faithful.net/1017/epoch-1017.b3sum) | 902 GB | [✅](https://files.old-faithful.net/1017/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1017/poh-check.log) | ❌ | ❌ | [✅](https://files.old-faithful.net/1017/epoch-1017-slot-ranges.raw) | [1017.slots.txt](https://files.old-faithful.net/1017/1017.slots.txt) |
+| 1016 | [epoch-1016.car](https://files.old-faithful.net/1016/epoch-1016.car) | [e3179d1](https://files.old-faithful.net/1016/epoch-1016.sha256) | [7336628](https://files.old-faithful.net/1016/epoch-1016.b3sum) | 1072 GB | [✅](https://files.old-faithful.net/1016/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1016/poh-check.log) | ❌ | ❌ | [✅](https://files.old-faithful.net/1016/epoch-1016-slot-ranges.raw) | [1016.slots.txt](https://files.old-faithful.net/1016/1016.slots.txt) |
+| 1015 | [epoch-1015.car](https://files.old-faithful.net/1015/epoch-1015.car) | [55b34bf](https://files.old-faithful.net/1015/epoch-1015.sha256) | [fb37cb7](https://files.old-faithful.net/1015/epoch-1015.b3sum) | 1103 GB | [✅](https://files.old-faithful.net/1015/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1015/poh-check.log) | ❌ | 45 GB | [✅](https://files.old-faithful.net/1015/epoch-1015-slot-ranges.raw) | [1015.slots.txt](https://files.old-faithful.net/1015/1015.slots.txt) |
+| 1014 | [epoch-1014.car](https://files.old-faithful.net/1014/epoch-1014.car) | [5b79372](https://files.old-faithful.net/1014/epoch-1014.sha256) | [0021bff](https://files.old-faithful.net/1014/epoch-1014.b3sum) | 1098 GB | [✅](https://files.old-faithful.net/1014/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1014/poh-check.log) | ❌ | ❌ | [✅](https://files.old-faithful.net/1014/epoch-1014-slot-ranges.raw) | [1014.slots.txt](https://files.old-faithful.net/1014/1014.slots.txt) |
+| 1013 | [epoch-1013.car](https://files.old-faithful.net/1013/epoch-1013.car) | [fc52c08](https://files.old-faithful.net/1013/epoch-1013.sha256) | [da3dede](https://files.old-faithful.net/1013/epoch-1013.b3sum) | 1003 GB | [✅](https://files.old-faithful.net/1013/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1013/poh-check.log) | ❌ | ❌ | [✅](https://files.old-faithful.net/1013/epoch-1013-slot-ranges.raw) | [1013.slots.txt](https://files.old-faithful.net/1013/1013.slots.txt) |
+| 1012 | [epoch-1012.car](https://files.old-faithful.net/1012/epoch-1012.car) | [5b06d49](https://files.old-faithful.net/1012/epoch-1012.sha256) | [4e3e712](https://files.old-faithful.net/1012/epoch-1012.b3sum) | 984 GB | [✅](https://files.old-faithful.net/1012/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1012/poh-check.log) | ❌ | ❌ | [✅](https://files.old-faithful.net/1012/epoch-1012-slot-ranges.raw) | [1012.slots.txt](https://files.old-faithful.net/1012/1012.slots.txt) |
+| 1011 | [epoch-1011.car](https://files.old-faithful.net/1011/epoch-1011.car) | [3d3ca58](https://files.old-faithful.net/1011/epoch-1011.sha256) | [b52eaa2](https://files.old-faithful.net/1011/epoch-1011.b3sum) | 951 GB | [✅](https://files.old-faithful.net/1011/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1011/poh-check.log) | ❌ | ❌ | [✅](https://files.old-faithful.net/1011/epoch-1011-slot-ranges.raw) | [1011.slots.txt](https://files.old-faithful.net/1011/1011.slots.txt) |
+| 1010 | [epoch-1010.car](https://files.old-faithful.net/1010/epoch-1010.car) | [26378fb](https://files.old-faithful.net/1010/epoch-1010.sha256) | [29e6727](https://files.old-faithful.net/1010/epoch-1010.b3sum) | 786 GB | [✅](https://files.old-faithful.net/1010/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1010/poh-check.log) | ❌ | ❌ | [✅](https://files.old-faithful.net/1010/epoch-1010-slot-ranges.raw) | [1010.slots.txt](https://files.old-faithful.net/1010/1010.slots.txt) |
+| 1009 | [epoch-1009.car](https://files.old-faithful.net/1009/epoch-1009.car) | [af58f9f](https://files.old-faithful.net/1009/epoch-1009.sha256) | [28f444a](https://files.old-faithful.net/1009/epoch-1009.b3sum) | 933 GB | [✅](https://files.old-faithful.net/1009/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1009/poh-check.log) | ❌ | ❌ | [✅](https://files.old-faithful.net/1009/epoch-1009-slot-ranges.raw) | [1009.slots.txt](https://files.old-faithful.net/1009/1009.slots.txt) |
+| 1008 | [epoch-1008.car](https://files.old-faithful.net/1008/epoch-1008.car) | [a09aad3](https://files.old-faithful.net/1008/epoch-1008.sha256) | [c899112](https://files.old-faithful.net/1008/epoch-1008.b3sum) | 941 GB | [✅](https://files.old-faithful.net/1008/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1008/poh-check.log) | ❌ | 43 GB | [✅](https://files.old-faithful.net/1008/epoch-1008-slot-ranges.raw) | [1008.slots.txt](https://files.old-faithful.net/1008/1008.slots.txt) |
+| 1007 | [epoch-1007.car](https://files.old-faithful.net/1007/epoch-1007.car) | [0e235fa](https://files.old-faithful.net/1007/epoch-1007.sha256) | [a52b7fc](https://files.old-faithful.net/1007/epoch-1007.b3sum) | 777 GB | [✅](https://files.old-faithful.net/1007/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1007/poh-check.log) | ❌ | ❌ | [✅](https://files.old-faithful.net/1007/epoch-1007-slot-ranges.raw) | [1007.slots.txt](https://files.old-faithful.net/1007/1007.slots.txt) |
+| 1006 | [epoch-1006.car](https://files.old-faithful.net/1006/epoch-1006.car) | [2696bc2](https://files.old-faithful.net/1006/epoch-1006.sha256) | [f7ebdba](https://files.old-faithful.net/1006/epoch-1006.b3sum) | 820 GB | [✅](https://files.old-faithful.net/1006/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1006/poh-check.log) | ❌ | 39 GB | [✅](https://files.old-faithful.net/1006/epoch-1006-slot-ranges.raw) | [1006.slots.txt](https://files.old-faithful.net/1006/1006.slots.txt) |
+| 1005 | [epoch-1005.car](https://files.old-faithful.net/1005/epoch-1005.car) | [66f1a23](https://files.old-faithful.net/1005/epoch-1005.sha256) | [a9a3efe](https://files.old-faithful.net/1005/epoch-1005.b3sum) | 765 GB | [✅](https://files.old-faithful.net/1005/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1005/poh-check.log) | ❌ | 37 GB | [✅](https://files.old-faithful.net/1005/epoch-1005-slot-ranges.raw) | [1005.slots.txt](https://files.old-faithful.net/1005/1005.slots.txt) |
+| 1004 | [epoch-1004.car](https://files.old-faithful.net/1004/epoch-1004.car) | [2a1ebdd](https://files.old-faithful.net/1004/epoch-1004.sha256) | [52eea24](https://files.old-faithful.net/1004/epoch-1004.b3sum) | 772 GB | [✅](https://files.old-faithful.net/1004/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1004/poh-check.log) | ❌ | ❌ | [✅](https://files.old-faithful.net/1004/epoch-1004-slot-ranges.raw) | [1004.slots.txt](https://files.old-faithful.net/1004/1004.slots.txt) |
+| 1003 | [epoch-1003.car](https://files.old-faithful.net/1003/epoch-1003.car) | [e3bbd4e](https://files.old-faithful.net/1003/epoch-1003.sha256) | [ead6c71](https://files.old-faithful.net/1003/epoch-1003.b3sum) | 796 GB | [✅](https://files.old-faithful.net/1003/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1003/poh-check.log) | ❌ | ❌ | [✅](https://files.old-faithful.net/1003/epoch-1003-slot-ranges.raw) | [1003.slots.txt](https://files.old-faithful.net/1003/1003.slots.txt) |
 | 1002 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | 1001 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | 1000 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
@@ -1054,7 +1054,7 @@
 | 2 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | 1 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | 0 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| **Total** | 0 | (1053 behind) | - | 0 TB | - | - | - | 0 TB | - | - |
+| **Total** | 49 | (1004 behind) | - | 40 TB | - | - | - | 1 TB | - | - |
 
 ★ = tx meta validation skipped (epochs 0-10 where tx meta wasn't enabled yet)
 
@@ -2066,53 +2066,85 @@ GSFA indexes exist up to epoch 1020 only. The report does not check for them aft
 - Epoch 1000: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size, missing slot range index
 - Epoch 1001: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size, missing slot range index
 - Epoch 1002: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size, missing slot range index
-- Epoch 1003: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size, missing slot range index
-- Epoch 1004: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size, missing slot range index
-- Epoch 1005: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size, missing slot range index
-- Epoch 1006: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size, missing slot range index
-- Epoch 1007: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size, missing slot range index
-- Epoch 1008: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size, missing slot range index
-- Epoch 1009: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size, missing slot range index
-- Epoch 1010: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size, missing slot range index
-- Epoch 1011: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size, missing slot range index
-- Epoch 1012: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size, missing slot range index
-- Epoch 1013: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size, missing slot range index
-- Epoch 1014: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size, missing slot range index
-- Epoch 1015: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size, missing slot range index
-- Epoch 1016: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size, missing slot range index
-- Epoch 1017: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size, missing slot range index
-- Epoch 1018: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size, missing slot range index
-- Epoch 1019: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size, missing slot range index
-- Epoch 1020: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size, missing slot range index
-- Epoch 1021: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size, missing slot range index
-- Epoch 1022: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size, missing slot range index
-- Epoch 1023: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size, missing slot range index
-- Epoch 1024: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size, missing slot range index
-- Epoch 1025: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size, missing slot range index
-- Epoch 1026: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size, missing slot range index
-- Epoch 1027: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size, missing slot range index
-- Epoch 1028: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size, missing slot range index
-- Epoch 1029: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size, missing slot range index
-- Epoch 1030: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size, missing slot range index
-- Epoch 1031: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size, missing slot range index
-- Epoch 1032: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size, missing slot range index
-- Epoch 1033: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size, missing slot range index
-- Epoch 1034: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size, missing slot range index
-- Epoch 1035: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size, missing slot range index
-- Epoch 1036: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size, missing slot range index
-- Epoch 1037: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size, missing slot range index
-- Epoch 1038: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size, missing slot range index
-- Epoch 1039: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size, missing slot range index
-- Epoch 1040: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size, missing slot range index
-- Epoch 1041: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size, missing slot range index
-- Epoch 1042: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size, missing slot range index
-- Epoch 1043: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size, missing slot range index
-- Epoch 1044: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size, missing slot range index
-- Epoch 1045: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size, missing slot range index
-- Epoch 1046: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size, missing slot range index
-- Epoch 1047: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size, missing slot range index
-- Epoch 1048: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size, missing slot range index
-- Epoch 1049: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size, missing slot range index
-- Epoch 1050: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size, missing slot range index
-- Epoch 1051: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size, missing slot range index
+- Epoch 1003: missing index file: mainnet-cid-to-offset-and-size.index, missing index file: mainnet-sig-to-cid.index, missing index file: mainnet-sig-exists.index, missing index file: mainnet-slot-to-cid.index, missing index file: mainnet-slot-to-blocktime.index, missing GSFA index file
+- Epoch 1003: missing indices, missing indices size
+- Epoch 1004: missing index file: mainnet-cid-to-offset-and-size.index, missing index file: mainnet-sig-to-cid.index, missing index file: mainnet-sig-exists.index, missing index file: mainnet-slot-to-cid.index, missing index file: mainnet-slot-to-blocktime.index, missing GSFA index file
+- Epoch 1004: missing indices, missing indices size
+- Epoch 1005: missing GSFA index file
+- Epoch 1005: missing indices
+- Epoch 1006: missing GSFA index file
+- Epoch 1006: missing indices
+- Epoch 1007: missing index file: mainnet-cid-to-offset-and-size.index, missing index file: mainnet-sig-to-cid.index, missing index file: mainnet-sig-exists.index, missing index file: mainnet-slot-to-cid.index, missing index file: mainnet-slot-to-blocktime.index, missing GSFA index file
+- Epoch 1007: missing indices, missing indices size
+- Epoch 1008: missing GSFA index file
+- Epoch 1008: missing indices
+- Epoch 1009: missing index file: mainnet-cid-to-offset-and-size.index, missing index file: mainnet-sig-to-cid.index, missing index file: mainnet-sig-exists.index, missing index file: mainnet-slot-to-cid.index, missing index file: mainnet-slot-to-blocktime.index, missing GSFA index file
+- Epoch 1009: missing indices, missing indices size
+- Epoch 1010: missing index file: mainnet-cid-to-offset-and-size.index, missing index file: mainnet-sig-to-cid.index, missing index file: mainnet-sig-exists.index, missing index file: mainnet-slot-to-cid.index, missing index file: mainnet-slot-to-blocktime.index, missing GSFA index file
+- Epoch 1010: missing indices, missing indices size
+- Epoch 1011: missing index file: mainnet-cid-to-offset-and-size.index, missing index file: mainnet-sig-to-cid.index, missing index file: mainnet-sig-exists.index, missing index file: mainnet-slot-to-cid.index, missing index file: mainnet-slot-to-blocktime.index, missing GSFA index file
+- Epoch 1011: missing indices, missing indices size
+- Epoch 1012: missing index file: mainnet-cid-to-offset-and-size.index, missing index file: mainnet-sig-to-cid.index, missing index file: mainnet-sig-exists.index, missing index file: mainnet-slot-to-cid.index, missing index file: mainnet-slot-to-blocktime.index, missing GSFA index file
+- Epoch 1012: missing indices, missing indices size
+- Epoch 1013: missing index file: mainnet-cid-to-offset-and-size.index, missing index file: mainnet-sig-to-cid.index, missing index file: mainnet-sig-exists.index, missing index file: mainnet-slot-to-cid.index, missing index file: mainnet-slot-to-blocktime.index, missing GSFA index file
+- Epoch 1013: missing indices, missing indices size
+- Epoch 1014: missing index file: mainnet-cid-to-offset-and-size.index, missing index file: mainnet-sig-to-cid.index, missing index file: mainnet-sig-exists.index, missing index file: mainnet-slot-to-cid.index, missing index file: mainnet-slot-to-blocktime.index, missing GSFA index file
+- Epoch 1014: missing indices, missing indices size
+- Epoch 1015: missing GSFA index file
+- Epoch 1015: missing indices
+- Epoch 1016: missing index file: mainnet-cid-to-offset-and-size.index, missing index file: mainnet-sig-to-cid.index, missing index file: mainnet-sig-exists.index, missing index file: mainnet-slot-to-cid.index, missing index file: mainnet-slot-to-blocktime.index, missing GSFA index file
+- Epoch 1016: missing indices, missing indices size
+- Epoch 1017: missing index file: mainnet-cid-to-offset-and-size.index, missing index file: mainnet-sig-to-cid.index, missing index file: mainnet-sig-exists.index, missing index file: mainnet-slot-to-cid.index, missing index file: mainnet-slot-to-blocktime.index, missing GSFA index file
+- Epoch 1017: missing indices, missing indices size
+- Epoch 1018: missing index file: mainnet-cid-to-offset-and-size.index, missing index file: mainnet-sig-to-cid.index, missing index file: mainnet-sig-exists.index, missing index file: mainnet-slot-to-cid.index, missing index file: mainnet-slot-to-blocktime.index, missing GSFA index file
+- Epoch 1018: missing indices, missing indices size
+- Epoch 1019: missing GSFA index file
+- Epoch 1019: missing indices
+- Epoch 1020: missing index file: mainnet-cid-to-offset-and-size.index, missing index file: mainnet-sig-to-cid.index, missing index file: mainnet-sig-exists.index, missing index file: mainnet-slot-to-cid.index, missing index file: mainnet-slot-to-blocktime.index, missing GSFA index file
+- Epoch 1020: missing indices, missing indices size
+- Epoch 1022: missing index file: mainnet-cid-to-offset-and-size.index, missing index file: mainnet-sig-to-cid.index, missing index file: mainnet-sig-exists.index, missing index file: mainnet-slot-to-cid.index, missing index file: mainnet-slot-to-blocktime.index
+- Epoch 1022: missing indices
+- Epoch 1024: missing index file: mainnet-cid-to-offset-and-size.index, missing index file: mainnet-sig-to-cid.index, missing index file: mainnet-sig-exists.index, missing index file: mainnet-slot-to-cid.index, missing index file: mainnet-slot-to-blocktime.index
+- Epoch 1024: missing indices, missing indices size
+- Epoch 1025: missing index file: mainnet-cid-to-offset-and-size.index, missing index file: mainnet-sig-to-cid.index, missing index file: mainnet-sig-exists.index, missing index file: mainnet-slot-to-cid.index, missing index file: mainnet-slot-to-blocktime.index
+- Epoch 1025: missing indices, missing indices size
+- Epoch 1026: missing index file: mainnet-cid-to-offset-and-size.index, missing index file: mainnet-sig-to-cid.index, missing index file: mainnet-sig-exists.index, missing index file: mainnet-slot-to-cid.index, missing index file: mainnet-slot-to-blocktime.index
+- Epoch 1026: missing indices, missing indices size
+- Epoch 1028: missing index file: mainnet-slot-to-blocktime.index
+- Epoch 1028: missing indices
+- Epoch 1029: missing index file: mainnet-cid-to-offset-and-size.index, missing index file: mainnet-sig-to-cid.index, missing index file: mainnet-sig-exists.index, missing index file: mainnet-slot-to-cid.index, missing index file: mainnet-slot-to-blocktime.index
+- Epoch 1029: missing indices, missing indices size
+- Epoch 1031: missing index file: mainnet-cid-to-offset-and-size.index, missing index file: mainnet-sig-to-cid.index, missing index file: mainnet-sig-exists.index, missing index file: mainnet-slot-to-cid.index, missing index file: mainnet-slot-to-blocktime.index
+- Epoch 1031: missing indices, missing indices size
+- Epoch 1032: missing index file: mainnet-cid-to-offset-and-size.index, missing index file: mainnet-sig-to-cid.index, missing index file: mainnet-sig-exists.index, missing index file: mainnet-slot-to-cid.index, missing index file: mainnet-slot-to-blocktime.index
+- Epoch 1032: missing indices, missing indices size
+- Epoch 1033: missing index file: mainnet-cid-to-offset-and-size.index, missing index file: mainnet-sig-to-cid.index, missing index file: mainnet-sig-exists.index, missing index file: mainnet-slot-to-cid.index, missing index file: mainnet-slot-to-blocktime.index
+- Epoch 1033: missing indices, missing indices size
+- Epoch 1036: missing index file: mainnet-cid-to-offset-and-size.index, missing index file: mainnet-sig-to-cid.index, missing index file: mainnet-sig-exists.index, missing index file: mainnet-slot-to-cid.index, missing index file: mainnet-slot-to-blocktime.index
+- Epoch 1036: missing indices, missing indices size
+- Epoch 1037: missing index file: mainnet-cid-to-offset-and-size.index, missing index file: mainnet-sig-to-cid.index, missing index file: mainnet-sig-exists.index, missing index file: mainnet-slot-to-cid.index, missing index file: mainnet-slot-to-blocktime.index
+- Epoch 1037: missing indices, missing indices size
+- Epoch 1038: missing index file: mainnet-cid-to-offset-and-size.index, missing index file: mainnet-sig-to-cid.index, missing index file: mainnet-sig-exists.index, missing index file: mainnet-slot-to-cid.index, missing index file: mainnet-slot-to-blocktime.index
+- Epoch 1038: missing indices, missing indices size
+- Epoch 1039: missing index file: mainnet-cid-to-offset-and-size.index, missing index file: mainnet-sig-to-cid.index, missing index file: mainnet-sig-exists.index, missing index file: mainnet-slot-to-cid.index, missing index file: mainnet-slot-to-blocktime.index
+- Epoch 1039: missing indices, missing indices size
+- Epoch 1040: missing index file: mainnet-cid-to-offset-and-size.index, missing index file: mainnet-sig-to-cid.index, missing index file: mainnet-sig-exists.index, missing index file: mainnet-slot-to-cid.index, missing index file: mainnet-slot-to-blocktime.index
+- Epoch 1040: missing indices, missing indices size
+- Epoch 1041: missing index file: mainnet-cid-to-offset-and-size.index, missing index file: mainnet-sig-to-cid.index, missing index file: mainnet-sig-exists.index, missing index file: mainnet-slot-to-cid.index, missing index file: mainnet-slot-to-blocktime.index
+- Epoch 1041: missing indices, missing indices size
+- Epoch 1042: missing index file: mainnet-cid-to-offset-and-size.index, missing index file: mainnet-sig-to-cid.index, missing index file: mainnet-sig-exists.index, missing index file: mainnet-slot-to-cid.index, missing index file: mainnet-slot-to-blocktime.index
+- Epoch 1042: missing indices, missing indices size
+- Epoch 1044: missing index file: mainnet-cid-to-offset-and-size.index, missing index file: mainnet-sig-to-cid.index, missing index file: mainnet-sig-exists.index, missing index file: mainnet-slot-to-cid.index, missing index file: mainnet-slot-to-blocktime.index
+- Epoch 1044: missing indices, missing indices size
+- Epoch 1045: missing index file: mainnet-cid-to-offset-and-size.index, missing index file: mainnet-sig-to-cid.index, missing index file: mainnet-sig-exists.index, missing index file: mainnet-slot-to-cid.index, missing index file: mainnet-slot-to-blocktime.index
+- Epoch 1045: missing indices, missing indices size
+- Epoch 1046: missing index file: mainnet-cid-to-offset-and-size.index, missing index file: mainnet-sig-to-cid.index, missing index file: mainnet-sig-exists.index, missing index file: mainnet-slot-to-cid.index, missing index file: mainnet-slot-to-blocktime.index
+- Epoch 1046: missing indices, missing indices size
+- Epoch 1047: missing index file: mainnet-cid-to-offset-and-size.index, missing index file: mainnet-sig-to-cid.index, missing index file: mainnet-sig-exists.index, missing index file: mainnet-slot-to-cid.index, missing index file: mainnet-slot-to-blocktime.index
+- Epoch 1047: missing indices, missing indices size
+- Epoch 1049: missing index file: mainnet-cid-to-offset-and-size.index, missing index file: mainnet-sig-to-cid.index, missing index file: mainnet-sig-exists.index, missing index file: mainnet-slot-to-cid.index, missing index file: mainnet-slot-to-blocktime.index
+- Epoch 1049: missing indices, missing indices size
+- Epoch 1050: missing index file: mainnet-cid-to-offset-and-size.index, missing index file: mainnet-sig-to-cid.index, missing index file: mainnet-sig-exists.index, missing index file: mainnet-slot-to-cid.index, missing index file: mainnet-slot-to-blocktime.index
+- Epoch 1050: missing indices, missing indices size
+- Epoch 1051: missing indices size
 - Epoch 1052: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size, missing slot range index
