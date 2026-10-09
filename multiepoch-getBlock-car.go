@@ -11,6 +11,7 @@ import (
 	"github.com/gagliardetto/solana-go/rpc"
 	"github.com/ipfs/go-cid"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	"github.com/rpcpool/yellowstone-faithful/blockmarker"
 	"github.com/rpcpool/yellowstone-faithful/carreader"
 	"github.com/rpcpool/yellowstone-faithful/compactindexsized"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
@@ -371,6 +372,20 @@ func (multi *MultiEpoch) handleGetBlock_car(ctx context.Context, conn *requestCo
 	if numRewardPartitions != nil {
 		response.Uint("numRewardPartitions", *numRewardPartitions)
 	}
+	if *params.Options.Footer {
+		footer, err := blockFooterUi(block)
+		if err != nil {
+			return &jsonrpc2.Error{
+				Code:    jsonrpc2.CodeInternalError,
+				Message: "Internal error",
+			}, fmt.Errorf("failed to decode block footer for slot %d: %w", slot, err)
+		}
+		if footer != nil {
+			response.Object("footer", footer)
+		} else {
+			response.Null("footer")
+		}
+	}
 	{
 		parentSpanCtx, parentSpan := telemetry.StartSpan(rpcSpanCtx, "GetBlock_GetParentBlockForHash")
 		parentSpan.SetAttributes(attribute.Int64("parent_slot", int64(parentSlot)))
@@ -450,4 +465,21 @@ func (multi *MultiEpoch) handleGetBlock_car(ctx context.Context, conn *requestCo
 	)
 	tim.time("reply")
 	return nil, nil
+}
+
+// blockFooterUi renders the block's Alpenglow footer as superbank-rpc's getBlock does
+// (SIMD-0307), or nil for a block without one (before Alpenglow).
+func blockFooterUi(block *ipldbindcode.Block) (*jsonbuilder.OrderedJSONObject, error) {
+	markers, _ := block.GetBlockMarkers()
+	marker, err := blockmarker.FindFooter(markers)
+	if err != nil || marker == nil {
+		return nil, err
+	}
+	footer, err := marker.Footer()
+	if err != nil {
+		return nil, err
+	}
+	return jsonbuilder.NewObject().
+		Uint("blockProducerTimeNanos", footer.BlockProducerTimeNanos).
+		String("blockUserAgent", string(footer.BlockUserAgent)), nil
 }
