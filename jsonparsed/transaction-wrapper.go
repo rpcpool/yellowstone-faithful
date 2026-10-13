@@ -16,6 +16,8 @@ type Message struct {
 	AccountKeys     []AccountKey      `json:"accountKeys"`
 	Instructions    []json.RawMessage `json:"instructions"`
 	RecentBlockhash string            `json:"recentBlockhash"`
+	// Set only for v1 (SIMD-0385) messages.
+	TransactionConfig *solana.TransactionConfig `json:"transactionConfig,omitempty"`
 }
 
 type AccountKey struct {
@@ -49,6 +51,10 @@ func FromTransaction(solTx *solana.Transaction) (Transaction, error) {
 		tx.Message.Instructions[i] = json.RawMessage(inst.Data)
 	}
 	tx.Message.RecentBlockhash = solTx.Message.RecentBlockhash.String()
+	if solTx.Message.GetVersion() == solana.MessageVersionV1 {
+		cfg := solTx.Message.TransactionConfig
+		tx.Message.TransactionConfig = &cfg
+	}
 	return tx, nil
 }
 

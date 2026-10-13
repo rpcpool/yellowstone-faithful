@@ -18,8 +18,8 @@ func RewardsToUi(
 			rewardJson.String("pubkey", reward.Pubkey)
 			rewardJson.Int("lamports", reward.Lamports)
 			rewardJson.Uint("postBalance", reward.PostBalance)
-			if reward.RewardType != 0 {
-				rewardJson.String("rewardType", reward.RewardType.String())
+			if rewardType, ok := RewardTypeToUi(reward.RewardType); ok {
+				rewardJson.String("rewardType", rewardType)
 			} else {
 				rewardJson.Null("rewardType")
 			}
@@ -36,6 +36,16 @@ func RewardsToUi(
 		return rewardsArray, &numPart, nil
 	}
 	return rewardsArray, nil, nil
+}
+
+// RewardTypeToUi returns the JSON name of a reward type (Agave's serde variant
+// name). Unspecified and unknown values have none and serialize as null, as in Agave.
+func RewardTypeToUi(t confirmed_block.RewardType) (string, bool) {
+	if t == confirmed_block.RewardType_Unspecified {
+		return "", false
+	}
+	name, ok := confirmed_block.RewardType_name[int32(t)]
+	return name, ok
 }
 
 func asFloat(s string) float64 {

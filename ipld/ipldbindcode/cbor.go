@@ -289,10 +289,13 @@ func (x *Block) MarshalCBOR() ([]byte, error) {
 	if x.Meta.Block_height != nil && *x.Meta.Block_height != nil {
 		meta.Set(2, uint64(**x.Meta.Block_height))
 	}
-	if x.Meta.Block_footer != nil && *x.Meta.Block_footer != nil {
-		// block_footer is only written when present, so that pre-Alpenglow
-		// blocks keep their 3-element SlotMeta encoding.
-		meta.Set(3, **x.Meta.Block_footer)
+	// Optional trailing fields are only written when present (Set pads any gap
+	// with null), so pre-Alpenglow blocks keep their 3-element SlotMeta encoding.
+	if x.Meta.Block_markers != nil && *x.Meta.Block_markers != nil {
+		meta.Set(3, [][]byte(**x.Meta.Block_markers))
+	}
+	if x.Meta.Block_id != nil && *x.Meta.Block_id != nil {
+		meta.Set(4, **x.Meta.Block_id)
 	}
 	arr.Set(4, meta)
 	arr.Set(5, cbor.Tag{Number: 42, Content: append([]byte{0}, x.Rewards.(cidlink.Link).Cid.Bytes()...)})
@@ -410,14 +413,35 @@ func (x *Block) UnmarshalCBOR(data []byte) error {
 				m.Block_height = &_blockHeight_ptr
 			}
 		}
-		if blockFooter, ok := metaArr.Get(3); ok {
-			if blockFooter != nil {
-				blockFooter, ok := blockFooter.([]byte)
+		if blockMarkers, ok := metaArr.Get(3); ok {
+			if blockMarkers != nil {
+				rawMarkers, ok := blockMarkers.([]interface{})
 				if !ok {
-					return fmt.Errorf("expected block_footer to be []byte, got %T", metaArr[3])
+					return fmt.Errorf("expected block_markers to be []interface{}, got %T", blockMarkers)
 				}
-				_blockFooter_ptr := &blockFooter
-				m.Block_footer = &_blockFooter_ptr
+				markers := make(List__Bytes, len(rawMarkers))
+				for i, rawMarker := range rawMarkers {
+					marker, ok := rawMarker.([]byte)
+					if !ok {
+						return fmt.Errorf("expected block_markers[%d] to be []byte, got %T", i, rawMarker)
+					}
+					markers[i] = marker
+				}
+				_blockMarkers_ptr := &markers
+				m.Block_markers = &_blockMarkers_ptr
+			}
+		}
+		if blockID, ok := metaArr.Get(4); ok {
+			if blockID != nil {
+				blockID, ok := blockID.([]byte)
+				if !ok {
+					return fmt.Errorf("expected block_id to be []byte, got %T", metaArr[4])
+				}
+				if len(blockID) != 32 {
+					return fmt.Errorf("expected block_id to be 32 bytes, got %d", len(blockID))
+				}
+				_blockID_ptr := &blockID
+				m.Block_id = &_blockID_ptr
 			}
 		}
 		x.Meta = m

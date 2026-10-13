@@ -54,6 +54,7 @@ func main() {
 			newCmd_Index(),
 			newCmd_VerifyIndex(),
 			newCmd_XTraverse(),
+			newCmd_XDumpBlockMarkers(),
 			newCmd_Version(),
 			newCmd_rpc(),
 			newCmd_check_deals(),

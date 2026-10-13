@@ -11,6 +11,7 @@ import (
 	"github.com/gagliardetto/solana-go/rpc"
 	"github.com/ipfs/go-cid"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	"github.com/rpcpool/yellowstone-faithful/blockmarker"
 	"github.com/rpcpool/yellowstone-faithful/carreader"
 	"github.com/rpcpool/yellowstone-faithful/compactindexsized"
 	"github.com/rpcpool/yellowstone-faithful/ipld/ipldbindcode"
@@ -216,9 +217,12 @@ func (multi *MultiEpoch) handleGetBlock_car(ctx context.Context, conn *requestCo
 
 	var rewardsUi *jsonbuilder.ArrayBuilder
 	defer rewardsUi.Put() // recycle the rewards UI array
+	var numRewardPartitions *uint64
 	hasRewards := block.HasRewards()
 	rewardsCid := block.Rewards.(cidlink.Link).Cid
-	if *params.Options.Rewards && hasRewards {
+	wantRewards := *params.Options.Rewards
+	// Like Agave, numRewardPartitions is reported even when rewards aren't requested.
+	if hasRewards {
 		actualRewards, err := nodetools.GetParsedRewards(parsedNodes, rewardsCid)
 		if err != nil {
 			slog.Error(
@@ -227,13 +231,15 @@ func (multi *MultiEpoch) handleGetBlock_car(ctx context.Context, conn *requestCo
 				"rewards_cid", rewardsCid.String(),
 				"error", err,
 			)
-			return &jsonrpc2.Error{
-				Code:    jsonrpc2.CodeInternalError,
-				Message: "Internal error",
-			}, fmt.Errorf("failed to get parsed rewards by CID %s: %v", rewardsCid, err)
-		} else {
+			if wantRewards {
+				return &jsonrpc2.Error{
+					Code:    jsonrpc2.CodeInternalError,
+					Message: "Internal error",
+				}, fmt.Errorf("failed to get parsed rewards by CID %s: %v", rewardsCid, err)
+			}
+		} else if wantRewards {
 			// encode rewards as JSON, then decode it as a map
-			rewards, _, err := solanablockrewards.RewardsToUi(actualRewards)
+			rewards, numPartitions, err := solanablockrewards.RewardsToUi(actualRewards)
 			if err != nil {
 				return &jsonrpc2.Error{
 					Code:    jsonrpc2.CodeInternalError,
@@ -241,9 +247,12 @@ func (multi *MultiEpoch) handleGetBlock_car(ctx context.Context, conn *requestCo
 				}, fmt.Errorf("failed to encode rewards: %v", err)
 			}
 			rewardsUi = rewards
+			numRewardPartitions = numPartitions
+		} else if actualRewards.NumPartitions != nil {
+			numRewardPartitions = &actualRewards.NumPartitions.NumPartitions
 		}
 	} else {
-		klog.V(4).Infof("rewards not requested or not available")
+		klog.V(4).Infof("rewards not available")
 	}
 	tim.time("get rewards")
 
@@ -360,6 +369,23 @@ func (multi *MultiEpoch) handleGetBlock_car(ctx context.Context, conn *requestCo
 	} else {
 		response.EmptyArray("rewards")
 	}
+	if numRewardPartitions != nil {
+		response.Uint("numRewardPartitions", *numRewardPartitions)
+	}
+	if *params.Options.Footer {
+		footer, err := blockFooterUi(block)
+		if err != nil {
+			return &jsonrpc2.Error{
+				Code:    jsonrpc2.CodeInternalError,
+				Message: "Internal error",
+			}, fmt.Errorf("failed to decode block footer for slot %d: %w", slot, err)
+		}
+		if footer != nil {
+			response.Object("footer", footer)
+		} else {
+			response.Null("footer")
+		}
+	}
 	{
 		parentSpanCtx, parentSpan := telemetry.StartSpan(rpcSpanCtx, "GetBlock_GetParentBlockForHash")
 		parentSpan.SetAttributes(attribute.Int64("parent_slot", int64(parentSlot)))
@@ -439,4 +465,21 @@ func (multi *MultiEpoch) handleGetBlock_car(ctx context.Context, conn *requestCo
 	)
 	tim.time("reply")
 	return nil, nil
+}
+
+// blockFooterUi renders the block's Alpenglow footer as superbank-rpc's getBlock does
+// (SIMD-0307), or nil for a block without one (before Alpenglow).
+func blockFooterUi(block *ipldbindcode.Block) (*jsonbuilder.OrderedJSONObject, error) {
+	markers, _ := block.GetBlockMarkers()
+	marker, err := blockmarker.FindFooter(markers)
+	if err != nil || marker == nil {
+		return nil, err
+	}
+	footer, err := marker.Footer()
+	if err != nil {
+		return nil, err
+	}
+	return jsonbuilder.NewObject().
+		Uint("blockProducerTimeNanos", footer.BlockProducerTimeNanos).
+		String("blockUserAgent", string(footer.BlockUserAgent)), nil
 }

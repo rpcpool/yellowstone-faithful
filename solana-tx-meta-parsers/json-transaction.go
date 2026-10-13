@@ -21,8 +21,8 @@ func TransactionToUi(
 					arr.AddString(key.String())
 				}
 			})
-			// .addressTableLookups
-			if tx.Message.IsVersioned() {
+			// .addressTableLookups (v0 only; v1 carries a transactionConfig instead)
+			if tx.Message.GetVersion() == solana.MessageVersionV0 {
 				objMessage.ArrayFunc("addressTableLookups", func(arr *jsonbuilder.ArrayBuilder) {
 					for _, lookup := range tx.Message.AddressTableLookups {
 						objLookup := jsonbuilder.NewObject()
@@ -61,13 +61,21 @@ func TransactionToUi(
 							}
 						})
 						ins.Base58("data", (instruction.Data))
-						ins.Null("stackHeight")
+						if stackHeight := topLevelStackHeight(tx); stackHeight != nil {
+							ins.Uint("stackHeight", uint64(*stackHeight))
+						} else {
+							ins.Null("stackHeight")
+						}
 					}
 					arr.AddObject(ins)
 				}
 			})
 			// .recentBlockhash
 			objMessage.String("recentBlockhash", tx.Message.RecentBlockhash.String())
+			// .transactionConfig (v1 only)
+			if tx.Message.GetVersion() == solana.MessageVersionV1 {
+				objMessage.Object("transactionConfig", transactionConfigToUi(tx.Message.TransactionConfig))
+			}
 		})
 		// .signatures
 		obj.ArrayFunc("signatures", func(arr *jsonbuilder.ArrayBuilder) {
@@ -78,4 +86,49 @@ func TransactionToUi(
 	}
 
 	return obj, nil
+}
+
+// transactionVersionToUi returns the RPC `version` value: "legacy" or the
+// numeric message version (0, 1).
+func transactionVersionToUi(tx *solana.Transaction) any {
+	switch tx.Message.GetVersion() {
+	case solana.MessageVersionLegacy:
+		return "legacy"
+	case solana.MessageVersionV1:
+		return 1
+	default:
+		return 0
+	}
+}
+
+// topLevelStackHeight is the stackHeight reported on top-level instructions:
+// Agave 4.3 sets 1 for every transaction version.
+func topLevelStackHeight(tx *solana.Transaction) *uint32 {
+	one := uint32(1)
+	return &one
+}
+
+// transactionConfigToUi mirrors Agave's UiTransactionConfig: all four keys are
+// always present, unset fields are null.
+func transactionConfigToUi(cfg solana.TransactionConfig) *jsonbuilder.OrderedJSONObject {
+	obj := jsonbuilder.NewObject()
+	optUint := func(key string, v *uint64) {
+		if v == nil {
+			obj.Null(key)
+		} else {
+			obj.Uint(key, *v)
+		}
+	}
+	optUint32 := func(key string, v *uint32) {
+		if v == nil {
+			obj.Null(key)
+		} else {
+			obj.Uint(key, uint64(*v))
+		}
+	}
+	optUint("priorityFee", cfg.PriorityFee)
+	optUint32("computeUnitLimit", cfg.ComputeUnitLimit)
+	optUint32("loadedAccountsDataSizeLimit", cfg.LoadedAccountsDataSizeLimit)
+	optUint32("heapSize", cfg.HeapSize)
+	return obj
 }

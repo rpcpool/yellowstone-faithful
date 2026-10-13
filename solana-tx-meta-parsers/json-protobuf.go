@@ -80,7 +80,10 @@ func ProtobufTransactionStatusMetaToUi(meta *confirmed_block.TransactionStatusMe
 		// pub post_balances: Vec<u64>,
 		resp.UintSlice("postBalances", meta.PostBalances)
 	}
-	{
+	// Agave stores None for transactions that failed before execution, and renders it as null.
+	if meta.InnerInstructionsNone {
+		resp.Null("innerInstructions")
+	} else {
 		// .innerInstructions
 		// #[serde(
 		//     default = "OptionSerializer::none",
@@ -184,6 +187,9 @@ func ProtobufTransactionStatusMetaToUi(meta *confirmed_block.TransactionStatusMe
 		// )]
 		// pub log_messages: OptionSerializer<Vec<String>>,
 		resp.Apply("logMessages", func() any {
+			if meta.LogMessagesNone {
+				return nil
+			}
 			if meta.LogMessages == nil {
 				return make([]string, 0)
 			}
@@ -287,7 +293,8 @@ func ProtobufTransactionStatusMetaToUi(meta *confirmed_block.TransactionStatusMe
 							case confirmed_block.RewardType_Voting:
 								uiReward.String("rewardType", "voting")
 							default:
-								panic(fmt.Errorf("unknown reward type: %T", reward.RewardType))
+								// Unspecified or newer types (e.g. DeactivatedStake, VATDebit).
+								uiReward.Null("rewardType")
 							}
 						}
 						if reward.Commission != "" {
