@@ -12,6 +12,7 @@ on:
 jobs:
   generate-report:
     runs-on: ubuntu-latest
+    timeout-minutes: 180
     
     permissions:
       # Give the default GITHUB_TOKEN write permission to commit and push the
@@ -24,11 +25,24 @@ jobs:
           ref: gha-report  # Checkout the gha-report branch
           fetch-depth: 0   # Fetch all history to ensure we have the latest changes
         
+      # The script exits non-zero when rate limits stop it from reading the data.
+      # Wait and rerun so only a complete report is committed.
       - name: Generate Report
         run: |
           mkdir -p docs
           python3 -m pip install aiohttp
-          python3 .github/faithful-data-report.py > docs/CAR-REPORT.md
+          for attempt in 1 2 3 4 5; do
+            if python3 .github/faithful-data-report.py > /tmp/CAR-REPORT.md; then
+              mv /tmp/CAR-REPORT.md docs/CAR-REPORT.md
+              exit 0
+            fi
+            if [ "$attempt" -lt 5 ]; then
+              echo "::warning::Attempt $attempt failed, retrying in 20 minutes"
+              sleep 1200
+            fi
+          done
+          echo "::error::Report generation failed after 5 attempts"
+          exit 1
           
       # Commit changed files back to the repository
       - uses: EndBug/add-and-commit@v9
