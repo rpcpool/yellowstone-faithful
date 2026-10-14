@@ -1,8 +1,28 @@
 #!/usr/bin/env python3
 import asyncio
+import json
+import random
+import sys
 import aiohttp
 from typing import Dict, Optional
 from dataclasses import dataclass
+
+# Statuses that answer the question. Anything else (429, 5xx, 403 challenge) is retried.
+DEFINITIVE_STATUSES = {200, 206, 404, 410, 416}
+MAX_ATTEMPTS = 6
+MAX_BACKOFF_SECONDS = 120
+
+
+class UnreliableResponse(Exception):
+    """A request never returned a definitive status, so the report would be wrong."""
+
+
+@dataclass
+class Response:
+    status: int
+    headers: Dict[str, str]
+    body: Optional[bytes]
+
 
 @dataclass
 class EpochData:
@@ -45,53 +65,69 @@ class FaithfulDataReport:
         self.total_car_size = 0
         self.total_indices_size = 0
         
+    async def request(
+        self, session: aiohttp.ClientSession, method: str, url: str, **kwargs
+    ) -> Response:
+        last_error = ""
+        for attempt in range(MAX_ATTEMPTS):
+            retry_after = None
+            try:
+                async with session.request(method, url, allow_redirects=True, **kwargs) as response:
+                    if response.status in DEFINITIVE_STATUSES:
+                        body = await response.read() if method != "HEAD" else None
+                        return Response(response.status, dict(response.headers), body)
+                    last_error = f"HTTP {response.status}"
+                    retry_after = response.headers.get("Retry-After")
+            except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                last_error = f"{type(e).__name__}: {e}"
+
+            if attempt + 1 == MAX_ATTEMPTS:
+                break
+            delay = min(MAX_BACKOFF_SECONDS, 2 ** (attempt + 1)) + random.uniform(0, 1)
+            if retry_after and retry_after.isdigit():
+                delay = max(delay, min(MAX_BACKOFF_SECONDS, int(retry_after)))
+            await asyncio.sleep(delay)
+
+        raise UnreliableResponse(f"{method} {url}: {last_error} after {MAX_ATTEMPTS} attempts")
+
     async def check_url(self, session: aiohttp.ClientSession, url: str) -> bool:
-        try:
-            async with session.head(url, allow_redirects=True) as response:
-                return response.status == 200
-        except:
-            return False
+        response = await self.request(session, "HEAD", url)
+        return response.status == 200
 
     async def fetch_text(self, session: aiohttp.ClientSession, url: str) -> Optional[str]:
-        try:
-            async with session.get(url) as response:
-                if response.status == 200:
-                    return await response.text()
-        except:
-            pass
+        response = await self.request(session, "GET", url)
+        if response.status == 200 and response.body is not None:
+            return response.body.decode("utf-8", errors="replace")
         return None
 
     async def get_size(self, session: aiohttp.ClientSession, url: str) -> str:
-        try:
-            async with session.head(url) as response:
-                if response.status == 200:
-                    size_bytes = int(response.headers.get('content-length', 0))
-                    if size_bytes > 0:
-                        size_gb = max(1, round(size_bytes / (1024 * 1024 * 1024)))
-                        return str(size_gb)
-        except:
-            pass
+        response = await self.request(session, "HEAD", url)
+        if response.status == 200:
+            size_bytes = int(response.headers.get('Content-Length', 0))
+            if size_bytes > 0:
+                size_gb = max(1, round(size_bytes / (1024 * 1024 * 1024)))
+                return str(size_gb)
         return "n/a"
 
     async def get_slot_range_index(
         self, session: aiohttp.ClientSession, epoch: int
     ) -> tuple[str, Optional[str]]:
         url = f"{self.host}/{epoch}/epoch-{epoch}-slot-ranges.raw"
+        response = await self.request(session, "HEAD", url)
+        if response.status != 200:
+            return "n/a", "missing slot range index"
+
         try:
-            async with session.head(url, allow_redirects=True) as response:
-                if response.status != 200:
-                    return "n/a", "missing slot range index"
-
-                size = int(response.headers.get("content-length", 0))
-                if size != self.SLOT_RANGE_INDEX_SIZE:
-                    return "n/a", (
-                        f"invalid slot range index size ({size} bytes, "
-                        f"expected {self.SLOT_RANGE_INDEX_SIZE})"
-                    )
-
-                return url, None
-        except (aiohttp.ClientError, TypeError, ValueError):
+            size = int(response.headers.get("Content-Length", 0))
+        except ValueError:
             return "n/a", "failed to validate slot range index"
+        if size != self.SLOT_RANGE_INDEX_SIZE:
+            return "n/a", (
+                f"invalid slot range index size ({size} bytes, "
+                f"expected {self.SLOT_RANGE_INDEX_SIZE})"
+            )
+
+        return url, None
 
     async def check_gsfa_magic(self, session: aiohttp.ClientSession, epoch: int) -> bool:
         """
@@ -99,16 +135,12 @@ class FaithfulDataReport:
         Returns True if valid, False otherwise
         """
         manifest_url = f"{self.host}/{epoch}/gsfa.manifest"
-        try:
-            headers = {'Range': 'bytes=8-15'}
-            async with session.get(manifest_url, headers=headers) as response:
-                if response.status == 206:  # Partial Content
-                    content = await response.read()
-                    # Convert bytes to hex string
-                    hex_content = ''.join([f'{b:02X}' for b in content])
-                    return hex_content == '0500000000000000'
-        except:
-            pass
+        headers = {'Range': 'bytes=8-15'}
+        response = await self.request(session, "GET", manifest_url, headers=headers)
+        if response.status == 206 and response.body is not None:  # Partial Content
+            # Convert bytes to hex string
+            hex_content = ''.join([f'{b:02X}' for b in response.body])
+            return hex_content == '0500000000000000'
         return False
 
     async def get_indices(self, session: aiohttp.ClientSession, epoch: int) -> str:
@@ -294,17 +326,27 @@ class FaithfulDataReport:
 
         return f"| {data.epoch} | {car_cell} | {sha_cell} | {b3_cell} | {size_cell} | {txmeta_cell} | {poh_cell} | {indices_cell} | {indices_size_cell} | {slot_range_index_cell} | {slots_cell} |"
 
-    async def get_current_epoch(self) -> int:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                'https://api.mainnet-beta.solana.com',
-                json={"jsonrpc":"2.0","id":1, "method":"getEpochInfo"}
-            ) as response:
-                data = await response.json()
-                return int(data['result']['epoch'])
+    async def get_current_epoch(self, session: aiohttp.ClientSession) -> int:
+        url = 'https://api.mainnet-beta.solana.com'
+        response = await self.request(
+            session, "POST", url, json={"jsonrpc":"2.0","id":1, "method":"getEpochInfo"}
+        )
+        if response.status != 200 or response.body is None:
+            raise UnreliableResponse(f"POST {url}: HTTP {response.status}")
+        data = json.loads(response.body)
+        if 'result' not in data:
+            raise UnreliableResponse(f"POST {url}: {data.get('error')}")
+        return int(data['result']['epoch'])
 
     async def run(self):
-        current_epoch = await self.get_current_epoch()
+        # Fewer parallel connections keep the run under the host's rate limit.
+        connector = aiohttp.TCPConnector(limit=20)
+        timeout = aiohttp.ClientTimeout(total=60)
+        async with aiohttp.ClientSession(connector=connector, timeout=timeout) as session:
+            await self.report(session)
+
+    async def report(self, session: aiohttp.ClientSession):
+        current_epoch = await self.get_current_epoch(session)
         epochs = range((current_epoch-1), -1, -1)  # descending order
 
         print("| Epoch #  | CAR  | CAR SHA256 | CAR B3 | CAR filesize | tx meta check | poh check | Indices | Indices Size | Slot Range Index | Slots |")
@@ -314,16 +356,15 @@ class FaithfulDataReport:
         # concurrency levels
         chunk_size = 50  
         
-        async with aiohttp.ClientSession() as session:
-            for i in range(0, len(epochs), chunk_size):
-                chunk = epochs[i:i + chunk_size]
-                results = await asyncio.gather(
-                    *[self.get_epoch_data(session, epoch) for epoch in chunk]
-                )
-                
-                # Print results in order
-                for result in results:
-                    print(self.format_row(result))
+        for i in range(0, len(epochs), chunk_size):
+            chunk = epochs[i:i + chunk_size]
+            results = await asyncio.gather(
+                *[self.get_epoch_data(session, epoch) for epoch in chunk]
+            )
+
+            # Print results in order
+            for result in results:
+                print(self.format_row(result))
 
         # Print totals row
         car_size_tb = int(round(self.total_car_size / 1024, 0))
@@ -374,7 +415,11 @@ def validate_poh_output(poh_text: str) -> bool:
 
 def main():
     report = FaithfulDataReport()
-    asyncio.run(report.run())
+    try:
+        asyncio.run(report.run())
+    except UnreliableResponse as e:
+        print(f"report aborted, data source did not answer reliably: {e}", file=sys.stderr)
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()
