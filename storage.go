@@ -85,9 +85,10 @@ func openCarStorage(
 			return nil, nil, fmt.Errorf("failed to open remote CAR file %q: %w", where, err)
 		}
 		return nil, &readCloserWrapper{
-			rac:  rem,
-			name: where,
-			size: size,
+			rac:      rem,
+			name:     where,
+			size:     size,
+			isRemote: true,
 		}, nil
 	}
 
