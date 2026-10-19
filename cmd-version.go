@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	splitcarfetcher "github.com/rpcpool/yellowstone-faithful/split-car-fetcher"
 	"github.com/urfave/cli/v2"
 )
 
@@ -94,6 +95,19 @@ var (
 
 func init() {
 	SessionID = uuid.New().String() + ":" + time.Now().Format("20060102T150405")
+	splitcarfetcher.UserAgent = userAgent()
+}
+
+// userAgent returns faithful-cli/<tag>, with the commit as the version when the build has no tag.
+func userAgent() string {
+	version := GitTag
+	if version == "" {
+		version = GitCommit
+	}
+	if version == "" {
+		version = "unknown"
+	}
+	return "faithful-cli/" + version
 }
 
 func GetSessionID() string {

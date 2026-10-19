@@ -66,7 +66,7 @@ func (fscr *FileSplitCarReader) Size() int64 {
 
 func GetContentSizeWithHeadOrZeroRange(url string) (int64, error) {
 	// try sending a HEAD request to the server to get the file size:
-	resp, err := http.Head(url)
+	resp, err := globalHTTPClient.Head(url)
 	if err != nil {
 		return 0, err
 	}
@@ -78,7 +78,7 @@ func GetContentSizeWithHeadOrZeroRange(url string) (int64, error) {
 			Header: make(http.Header),
 		}
 		req.Header.Set("Range", "bytes=0-0")
-		resp, err = http.DefaultClient.Do(req)
+		resp, err = globalHTTPClient.Do(req)
 		if err != nil {
 			return 0, err
 		}
