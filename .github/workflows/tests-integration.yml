@@ -15,7 +15,7 @@ env:
 jobs:
   integration-tests:
     name: Integration Tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 45
     
     steps:
@@ -356,7 +356,7 @@ jobs:
   # Additional job for testing with sample data (when available)
   integration-tests-with-data:
     name: Integration Tests with Sample Data
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 30
     needs: integration-tests
     if: false # Disabled by default - enable when sample data is available
@@ -388,7 +388,7 @@ jobs:
   # Security and performance validation
   security-scan:
     name: Security Scan
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 15
     needs: integration-tests
     
