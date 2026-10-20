@@ -15,7 +15,7 @@ env:
 jobs:
   integration-tests:
     name: Integration Tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 45
     
     steps:
@@ -39,6 +39,7 @@ jobs:
       with:
         toolchain: ${{ env.RUST_VERSION }}
         target: x86_64-unknown-linux-gnu
+        cache-key: ubuntu-22.04
 
     - name: Install cbindgen
       run: |
@@ -83,9 +84,9 @@ jobs:
           ~/.cargo/git
           ~/.cargo/bin
           jsonparsed/target
-        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        key: ${{ runner.os }}-ubuntu-22.04-cargo-${{ hashFiles('**/Cargo.lock') }}
         restore-keys: |
-          ${{ runner.os }}-cargo-
+          ${{ runner.os }}-ubuntu-22.04-cargo-
 
     - name: Download Go dependencies
       run: go mod download
@@ -356,7 +357,7 @@ jobs:
   # Additional job for testing with sample data (when available)
   integration-tests-with-data:
     name: Integration Tests with Sample Data
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 30
     needs: integration-tests
     if: false # Disabled by default - enable when sample data is available
@@ -388,7 +389,7 @@ jobs:
   # Security and performance validation
   security-scan:
     name: Security Scan
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 15
     needs: integration-tests
     

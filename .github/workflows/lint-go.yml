@@ -26,7 +26,7 @@ permissions:
 jobs:
   lint:
     name: Go Linting
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 15
 
     steps:
@@ -96,7 +96,7 @@ jobs:
 
   formatting-check:
     name: Code Formatting Check
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 5
 
     steps:
@@ -137,7 +137,7 @@ jobs:
 
   dependency-check:
     name: Dependency Analysis
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 10
 
     steps:
