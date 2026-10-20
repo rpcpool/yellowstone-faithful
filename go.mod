@@ -35,7 +35,7 @@ require (
 	github.com/ipld/go-ipld-prime v0.21.0
 	github.com/ipni/go-libipni v0.5.3 // indirect
 	github.com/json-iterator/go v1.1.12
-	github.com/klauspost/compress v1.18.0
+	github.com/klauspost/compress v1.18.7
 	github.com/libp2p/go-libp2p v0.32.1
 	github.com/libp2p/go-libp2p-routing-helpers v0.7.1 // indirect
 	github.com/multiformats/go-multiaddr v0.12.0
