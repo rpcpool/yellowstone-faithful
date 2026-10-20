@@ -39,6 +39,7 @@ jobs:
       with:
         toolchain: ${{ env.RUST_VERSION }}
         target: x86_64-unknown-linux-gnu
+        cache-key: ubuntu-22.04
 
     - name: Install cbindgen
       run: |
