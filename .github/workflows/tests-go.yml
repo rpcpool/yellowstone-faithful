@@ -17,7 +17,7 @@ jobs:
   test:
     strategy:
       matrix:
-        go-version: [1.23.x]
+        go-version: [1.25.x]
         os: [ubuntu-22.04]
       fail-fast: false
     runs-on: ${{ matrix.os }}
@@ -73,7 +73,7 @@ jobs:
           echo "Coverage check passed!"
 
       - name: Upload coverage to Codecov
-        if: matrix.go-version == '1.23.x'
+        if: matrix.go-version == '1.25.x'
         uses: codecov/codecov-action@v4
         # Codecov outages must not fail the job; fail_ci_if_error misses CLI download errors.
         continue-on-error: true
