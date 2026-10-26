@@ -86,7 +86,7 @@ jobs:
         continue-on-error: true  # Allow failure due to Go version compatibility issues
 
       - name: Install golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v8
         with:
           version: latest
           args: --timeout=10m --issues-exit-code=0  # Don't fail on issues for now
