@@ -200,7 +200,7 @@ func TestBuilder_Random(t *testing.T) {
 	key := make([]byte, keySize)
 	for i := uint(0); i < numKeys; i++ {
 		binary.LittleEndian.PutUint64(key, uint64(i))
-		err := builder.Insert(key, uint64(rand.Int63n(int64(maxOffset))))
+		err := builder.Insert(key, 1+uint64(rand.Int63n(int64(maxOffset-1))))
 		require.NoError(t, err)
 	}
 	t.Logf("Inserted %d keys in %s", numKeys, time.Since(preInsert))
