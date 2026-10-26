@@ -395,6 +395,7 @@ func NewEpochFromConfig(
 								rac:        rfspc,
 								name:       formattedURL,
 								size:       rfspc.Size(),
+								isRemote:   true,
 								isSplitCar: true,
 							}, nil
 						}
@@ -427,6 +428,7 @@ func NewEpochFromConfig(
 								rac:        rfspc,
 								name:       formattedURL,
 								size:       rfspc.Size(),
+								isRemote:   true,
 								isSplitCar: true,
 							}, nil
 						}
