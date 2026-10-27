@@ -31,6 +31,13 @@ var StatusCode = promauto.NewCounterVec(
 	[]string{"code"},
 )
 
+var RpcHandlerPanics = promauto.NewCounter(
+	prometheus.CounterOpts{
+		Name: "rpc_handler_panics_total",
+		Help: "RPC HTTP requests that panicked and were recovered",
+	},
+)
+
 var MethodToCode = promauto.NewCounterVec(
 	prometheus.CounterOpts{
 		Name: "method_to_code",
