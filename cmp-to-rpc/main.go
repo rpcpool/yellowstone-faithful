@@ -107,7 +107,14 @@ func main() {
 	flag.Var((*uri.List)(&uris), "uri", "URI to a CAR file or directory (can be specified multiple times)")
 	var urlTemplate string
 	flag.StringVar(&urlTemplate, "url-template", defaultURLTemplate, "URL template for remote CAR files (e.g. https://files.old-faithful.net/{{.epoch}}/epoch-{{.epoch}}.car)")
+	var network string
+	flag.StringVar(&network, "network", "mainnet", "Cluster; selects the epoch schedule (mainnet|testnet|devnet)")
 	flag.Parse()
+	epochSchedule, errSchedule := slottools.EpochScheduleForNetwork(network)
+	if errSchedule != nil {
+		panic(errSchedule)
+	}
+	slottools.SetEpochSchedule(epochSchedule)
 
 	client := NewHTTP(
 		rpcURL,

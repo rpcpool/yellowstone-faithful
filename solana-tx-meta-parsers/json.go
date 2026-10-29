@@ -107,12 +107,7 @@ func (final *EncodedTransactionWithStatusMeta) ToUi(
 	defer func() {
 		if addVersion {
 			{
-				version := final.Transaction.Message.GetVersion()
-				if version == solana.MessageVersionLegacy {
-					resp.String("version", "legacy")
-				} else {
-					resp.Uint8("version", 0)
-				}
+				resp.Value("version", transactionVersionToUi(final.Transaction))
 			}
 		}
 	}()
@@ -280,7 +275,7 @@ func (final *EncodedTransactionWithStatusMeta) ToUi(
 				parsedInstructions := make([]json.RawMessage, 0)
 
 				for _, inst := range final.Transaction.Message.Instructions {
-					parsedInstructionJSON, err := compiledInstructionsToJsonParsed(final.Transaction, inst, final.Meta)
+					parsedInstructionJSON, err := compiledInstructionsToJsonParsed(final.Transaction, inst, final.Meta, topLevelStackHeight(final.Transaction))
 					if err != nil {
 						return nil, fmt.Errorf("failed to compile instruction: %w", err)
 					}
@@ -484,7 +479,7 @@ func (final *EncodedTransactionWithStatusMeta) parseInnerInstruction(instruction
 	}
 
 	// Parse the instruction
-	parsedInstructionJSON, err := compiledInstructionsToJsonParsed(final.Transaction, compiledInst, final.Meta)
+	parsedInstructionJSON, err := compiledInstructionsToJsonParsed(final.Transaction, compiledInst, final.Meta, nil)
 	if err != nil {
 		// If parsing fails, return the original instruction
 		return instruction, nil
@@ -506,13 +501,6 @@ func (final *EncodedTransactionWithStatusMeta) parseInnerInstruction(instruction
 	return parsedInstruction, nil
 }
 
-// #[repr(u8)]
-// pub enum TransactionVersion {
-//     #[default]
-//     Legacy = u8::MAX,
-//     V0 = 0,
-// }
-
 func byeSliceToUint16Slice(in []byte) []uint16 {
 	out := make([]uint16, len(in))
 	for i, v := range in {
@@ -531,6 +519,7 @@ func compiledInstructionsToJsonParsed(
 	tx *solana.Transaction,
 	inst solana.CompiledInstruction,
 	meta *TransactionStatusMetaContainer,
+	stackHeight *uint32,
 ) (json.RawMessage, error) {
 	programId, err := tx.ResolveProgramIDIndex(inst.ProgramIDIndex)
 	if err != nil {
@@ -575,10 +564,7 @@ func compiledInstructionsToJsonParsed(
 				}
 			}(),
 		},
-		StackHeight: func() *uint32 {
-			// TODO: get the stack height from somewhere
-			return nil
-		}(),
+		StackHeight: stackHeight,
 	}
 
 	parsedInstructionJSON, err := instrParams.ParseInstruction()
@@ -601,7 +587,7 @@ func compiledInstructionsToJsonParsed(
 			}(),
 			"data":        base58.Encode(inst.Data),
 			"programId":   programId.String(),
-			"stackHeight": nil,
+			"stackHeight": stackHeight,
 		}
 		asRaw, err := jsoniter.ConfigCompatibleWithStandardLibrary.Marshal(nonParseadInstructionJSON)
 		return asRaw, err

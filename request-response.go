@@ -109,6 +109,7 @@ type GetBlockRequest struct {
 		MaxSupportedTransactionVersion *uint64                     `json:"maxSupportedTransactionVersion,omitempty"`
 		TransactionDetails             *rpc.TransactionDetailsType `json:"transactionDetails,omitempty"` // default: "full"
 		Rewards                        *bool                       `json:"rewards,omitempty"`
+		Footer                         *bool                       `json:"footer,omitempty"` // default: true
 	} `json:"options,omitempty"`
 }
 
@@ -211,6 +212,16 @@ func parseGetBlockRequest(raw *json.RawMessage) (*GetBlockRequest, error) {
 			rewards := true
 			out.Options.Rewards = &rewards
 		}
+		if footerRaw, ok := optionsRaw["footer"]; ok && footerRaw != nil {
+			footer, ok := footerRaw.(bool)
+			if !ok {
+				return nil, fmt.Errorf("footer must be a boolean, got %T", footerRaw)
+			}
+			out.Options.Footer = &footer
+		} else {
+			footer := true
+			out.Options.Footer = &footer
+		}
 	} else {
 		// set defaults:
 		commitmentType := defaultCommitment()
@@ -221,6 +232,8 @@ func parseGetBlockRequest(raw *json.RawMessage) (*GetBlockRequest, error) {
 		out.Options.TransactionDetails = &transactionDetails
 		rewards := true
 		out.Options.Rewards = &rewards
+		footer := true
+		out.Options.Footer = &footer
 	}
 
 	return out, nil

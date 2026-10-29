@@ -5,26 +5,15 @@ import (
 	"fmt"
 )
 
-// CalcEpochForSlot returns the epoch for the given slot.
+// CalcEpochForSlot returns the epoch for the given slot, using the current epoch schedule.
 func CalcEpochForSlot(slot uint64) uint64 {
-	return CalcEpochForSlotWithEpochLen(slot, DEFAULT_EPOCH_LEN)
+	return CurrentEpochSchedule().EpochForSlot(slot)
 }
 
-func CalcEpochForSlotWithEpochLen(slot uint64, epochLen uint64) uint64 {
-	return slot / epochLen
-}
-
-const DEFAULT_EPOCH_LEN = 432000
-
-// CalcEpochLimits returns the start and stop slots for the given epoch (inclusive).
+// CalcEpochLimits returns the start and stop slots for the given epoch (inclusive),
+// using the current epoch schedule.
 func CalcEpochLimits(epoch uint64) (uint64, uint64) {
-	return CalcEpochLimitsWithEpochLen(epoch, DEFAULT_EPOCH_LEN)
-}
-
-func CalcEpochLimitsWithEpochLen(epoch uint64, epochLen uint64) (uint64, uint64) {
-	epochStart := epoch * epochLen
-	epochStop := epochStart + epochLen - 1
-	return epochStart, epochStop
+	return CurrentEpochSchedule().EpochLimits(epoch)
 }
 
 // Uint64RangesHavePartialOverlapIncludingEdges returns true if the two ranges have any overlap.
@@ -59,7 +48,8 @@ func Uint64FromLEBytes(buf []byte) uint64 {
 func ParentIsInPreviousEpoch(parentSlot uint64, childSlot uint64) bool {
 	// If the parent slot is less than the start of the current epoch,
 	// then it must be in the previous epoch.
-	epochStart := CalcEpochForSlot(childSlot) * DEFAULT_EPOCH_LEN
+	s := CurrentEpochSchedule()
+	epochStart := s.FirstSlotInEpoch(s.EpochForSlot(childSlot))
 	return parentSlot < epochStart
 }
 
@@ -84,8 +74,8 @@ func calcRangeInclusive(start, end uint64) []uint64 {
 }
 
 // ValidateSlotInEpoch checks if a slot belongs to the expected epoch.
-func ValidateSlotInEpoch(slot, epoch, epochLen uint64) error {
-	if slotEpoch := CalcEpochForSlotWithEpochLen(slot, epochLen); epoch != slotEpoch {
+func ValidateSlotInEpoch(slot, epoch uint64) error {
+	if slotEpoch := CalcEpochForSlot(slot); epoch != slotEpoch {
 		return fmt.Errorf("provided slot %v belongs to epoch %d (expected epoch %d)", slot, slotEpoch, epoch)
 	}
 	return nil

@@ -14,10 +14,10 @@ serde = "1.0.188"
 solana-clock = "3.1.1"
 solana-hash = "4.3.0"
 solana-message = { version = "4.4.1", features = ["serde", "wincode"] }
-solana-storage-proto = { version = "4.2.1", features = ["agave-unstable-api"] }
+solana-storage-proto = { version = "~4.2.1", features = ["agave-unstable-api"] }
 solana-transaction = { version = "4.1.6", features = ["serde", "wincode"] }
 solana-transaction-error = { version = "3.3.1", features = ["serde", "wincode"] }
-solana-transaction-status = { version = "4.2.1", features = ["agave-unstable-api"] }
+solana-transaction-status = { version = "~4.2.1", features = ["agave-unstable-api"] }
 tonic = "0.14.6"
 tonic-prost = "0.14.6"
 wincode = "0.5.5"

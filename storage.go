@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -17,7 +18,6 @@ import (
 	splitcarfetcher "github.com/rpcpool/yellowstone-faithful/split-car-fetcher"
 	"github.com/rpcpool/yellowstone-faithful/tooling"
 	"golang.org/x/exp/mmap"
-	"golang.org/x/net/context/ctxhttp"
 	"k8s.io/klog/v2"
 )
 
@@ -85,9 +85,10 @@ func openCarStorage(
 			return nil, nil, fmt.Errorf("failed to open remote CAR file %q: %w", where, err)
 		}
 		return nil, &readCloserWrapper{
-			rac:  rem,
-			name: where,
-			size: size,
+			rac:      rem,
+			name:     where,
+			size:     size,
+			isRemote: true,
 		}, nil
 	}
 
@@ -152,7 +153,12 @@ func openBlocksFile(
 
 	if isHTTP(where) {
 		klog.Infof("opening blocks file from %q as HTTP remote file", where)
-		resp, err := ctxhttp.Get(ctx, nil, where)
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, where, nil)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create request for remote blocks file %q: %w", where, err)
+		}
+		req.Header.Set("User-Agent", splitcarfetcher.UserAgent)
+		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
 			return nil, fmt.Errorf("failed to open remote blocks file %q: %w", where, err)
 		}

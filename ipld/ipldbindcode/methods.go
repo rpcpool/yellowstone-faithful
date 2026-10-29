@@ -1,6 +1,7 @@
 package ipldbindcode
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -223,38 +224,11 @@ func (decodedTxObj *Transaction) GetMetadataWithFrameLoader(dataFrameGetter func
 }
 
 func (decoded *Transaction) Signatures() ([]solana.Signature, error) {
-	return readAllSignatures(decoded.Data.Bytes())
+	return tooling.ReadAllSignatures(decoded.Data.Bytes())
 }
 
 func (decoded *Transaction) Signature() (solana.Signature, error) {
 	return tooling.ReadFirstSignature(decoded.Data.Bytes())
-}
-
-func readAllSignatures(buf []byte) ([]solana.Signature, error) {
-	decoder := bin.NewCompactU16Decoder(buf)
-	numSigs, err := decoder.ReadCompactU16()
-	if err != nil {
-		return nil, err
-	}
-	if numSigs == 0 {
-		return nil, fmt.Errorf("no signatures")
-	}
-	// check that there is at least 64 bytes * numSigs left:
-	if decoder.Remaining() < (64 * numSigs) {
-		return nil, fmt.Errorf("not enough bytes left to read %d signatures", numSigs)
-	}
-
-	sigs := make([]solana.Signature, numSigs)
-	for i := 0; i < numSigs; i++ {
-		numRead, err := decoder.Read(sigs[i][:])
-		if err != nil {
-			return nil, err
-		}
-		if numRead != 64 {
-			return nil, fmt.Errorf("unexpected signature length %d", numRead)
-		}
-	}
-	return sigs, nil
 }
 
 // GetBlockHeight returns the 'block_height' field, which indicates
@@ -265,6 +239,24 @@ func (n Block) GetBlockHeight() (uint64, bool) {
 		return 0, false
 	}
 	return uint64(**n.Meta.Block_height), true
+}
+
+// GetBlockFooter returns the raw Alpenglow block footer marker bytes
+// (see SlotMeta.GetBlockFooter), and a flag indicating whether there is one.
+func (n Block) GetBlockFooter() ([]byte, bool) {
+	return n.Meta.GetBlockFooter()
+}
+
+// GetBlockMarkers returns the raw Alpenglow block markers, in block order,
+// and a flag indicating whether the field has a value.
+func (n Block) GetBlockMarkers() ([][]byte, bool) {
+	return n.Meta.GetBlockMarkers()
+}
+
+// GetBlockID returns the Alpenglow block id, and a flag indicating whether
+// the field has a value.
+func (n Block) GetBlockID() ([]byte, bool) {
+	return n.Meta.GetBlockID()
 }
 
 func (n Block) GetRewards() (cid.Cid, bool) {
@@ -375,6 +367,54 @@ func (n SlotMeta) GetBlockHeight() (uint64, bool) {
 	return uint64(**n.Block_height), true
 }
 
+// blockMarkerVariantFooter is the VersionedBlockMarker variant byte (offset 2) of a block footer.
+const blockMarkerVariantFooter = 0
+
+// SlotMeta.HasBlockFooter returns whether GetBlockFooter would find a footer.
+func (n SlotMeta) HasBlockFooter() bool {
+	_, ok := n.GetBlockFooter()
+	return ok
+}
+
+// GetBlockFooter returns the raw Alpenglow block footer marker bytes (the
+// BlockFooter entry of 'Block_markers') and a flag indicating whether there is one.
+func (n SlotMeta) GetBlockFooter() ([]byte, bool) {
+	markers, _ := n.GetBlockMarkers()
+	for _, marker := range markers {
+		if len(marker) > 2 && marker[2] == blockMarkerVariantFooter {
+			return marker, true
+		}
+	}
+	return nil, false
+}
+
+// GetBlockMarkers returns the value of the 'Block_markers' field (raw Alpenglow
+// block markers, in block order) and a flag indicating whether the field has a value.
+func (n SlotMeta) GetBlockMarkers() ([][]byte, bool) {
+	if n.Block_markers == nil || *n.Block_markers == nil {
+		return nil, false
+	}
+	return **n.Block_markers, true
+}
+
+// GetBlockID returns the value of the 'Block_id' field (Alpenglow block id)
+// and a flag indicating whether the field has a value.
+func (n SlotMeta) GetBlockID() ([]byte, bool) {
+	if n.Block_id == nil || *n.Block_id == nil {
+		return nil, false
+	}
+	return **n.Block_id, true
+}
+
+func optionalBytesEqual(a, b **[]byte) bool {
+	aOk := a != nil && *a != nil
+	bOk := b != nil && *b != nil
+	if aOk != bOk {
+		return false
+	}
+	return !aOk || bytes.Equal(**a, **b)
+}
+
 // SlotMeta.Equivalent returns whether the two SlotMeta objects are equivalent.
 func (n SlotMeta) Equivalent(other SlotMeta) bool {
 	if n.Parent_slot != other.Parent_slot {
@@ -391,7 +431,17 @@ func (n SlotMeta) Equivalent(other SlotMeta) bool {
 	if ok1 && bh1 != bh2 {
 		return false
 	}
-	return true
+	bm1, ok1 := n.GetBlockMarkers()
+	bm2, ok2 := other.GetBlockMarkers()
+	if ok1 != ok2 || len(bm1) != len(bm2) {
+		return false
+	}
+	for i := range bm1 {
+		if !bytes.Equal(bm1[i], bm2[i]) {
+			return false
+		}
+	}
+	return optionalBytesEqual(n.Block_id, other.Block_id)
 }
 
 // Block.HasRewards
@@ -469,6 +519,8 @@ func (s *SlotMeta) Reset() {
 	s.Blocktime = 0
 	clearIntptrPtr(s.Block_height) // Reset the Block_height pointer to nil.
 	s.Block_height = nil           // Reset the pointer to nil.
+	s.Block_markers = nil          // Reset the pointer to nil (don't touch the bytes, they may be shared).
+	s.Block_id = nil               // Same as above.
 }
 
 // Reset resets the Shredding to an empty state.

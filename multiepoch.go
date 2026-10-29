@@ -261,8 +261,7 @@ func LoadProxyConfig(configFilepath string) (*ProxyConfig, error) {
 
 // ListeAndServe starts listening on the configured address and serves the RPC API.
 func (m *MultiEpoch) ListenAndServe(ctx context.Context, listenOn string, lsConf *ListenerConfig) error {
-	handler := newMultiEpochHandler(m, lsConf)
-	handler = fasthttp.CompressHandler(handler)
+	handler := newRPCServerHandler(m, lsConf)
 
 	klog.Infof("RPC server listening on %s", listenOn)
 	// to see prometheus metrics visit listenOn/metrics
@@ -287,6 +286,11 @@ func (m *MultiEpoch) ListenAndServe(ctx context.Context, listenOn string, lsConf
 		return err
 	}
 	return s.Serve(ln)
+}
+
+// newRPCServerHandler builds the full handler chain that ListenAndServe serves.
+func newRPCServerHandler(m *MultiEpoch, lsConf *ListenerConfig) fasthttp.RequestHandler {
+	return recoverHandler(fasthttp.CompressHandler(newMultiEpochHandler(m, lsConf)))
 }
 
 func randomRequestID() string {
@@ -346,7 +350,7 @@ func newMultiEpochHandler(handler *MultiEpoch, lsConf *ListenerConfig) func(ctx 
 			}
 			{
 				// Handle the /health endpoint
-				if string(reqCtx.Path()) == "/health" && reqCtx.IsGet() {
+				if string(reqCtx.Path()) == "/health" && (reqCtx.IsGet() || reqCtx.IsHead()) {
 					method = "/health"
 					reqCtx.SetStatusCode(http.StatusOK)
 					return

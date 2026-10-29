@@ -58,6 +58,9 @@ func newCmd_Index_slot2blocktime() *cli.Command {
 		},
 		Subcommands: []*cli.Command{},
 		Action: func(c *cli.Context) error {
+			if err := network.ApplyEpochSchedule(); err != nil {
+				return err
+			}
 			carPaths := c.StringSlice("car")
 			indexDir := c.String("index-dir")
 

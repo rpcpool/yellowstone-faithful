@@ -42,6 +42,22 @@ func NewHTTPTransport() *http.Transport {
 	}
 }
 
+// UserAgent is the User-Agent header that clients from NewHTTPClient send.
+var UserAgent = "faithful-cli"
+
+// userAgentTransport sets UserAgent on each request that has no User-Agent.
+type userAgentTransport struct {
+	next http.RoundTripper
+}
+
+func (t *userAgentTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if req.Header.Get("User-Agent") == "" {
+		req = req.Clone(req.Context())
+		req.Header.Set("User-Agent", UserAgent)
+	}
+	return t.next.RoundTrip(req)
+}
+
 // NewHTTPClient returns a new Client from the provided config.
 // Client is safe for concurrent use by multiple goroutines.
 func NewHTTPClient() *http.Client {
@@ -49,6 +65,6 @@ func NewHTTPClient() *http.Client {
 
 	return &http.Client{
 		Timeout:   DefaultTimeout,
-		Transport: gzhttp.Transport(tr),
+		Transport: &userAgentTransport{next: gzhttp.Transport(tr)},
 	}
 }

@@ -87,6 +87,9 @@ func newCmd_Index_sigExists() *cli.Command {
 			},
 		},
 		Action: func(c *cli.Context) error {
+			if err := network.ApplyEpochSchedule(); err != nil {
+				return err
+			}
 			carPaths := c.StringSlice("car")
 			if len(carPaths) == 0 {
 				klog.Exit("Please provide a CAR file")

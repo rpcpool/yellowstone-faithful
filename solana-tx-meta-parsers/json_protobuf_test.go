@@ -126,3 +126,33 @@ func TestProtobufTransactionStatusMetaToUi_FallsBackForMalformedErrorPayload(t *
 		t.Fatalf("unexpected status.Err field: %#v", status["Err"])
 	}
 }
+
+func TestProtobufTransactionStatusMetaToUi_NoneFieldsRenderAsNull(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		none bool
+		want string
+	}{
+		{"none", true, "null"},
+		{"empty", false, "[]"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			raw, err := ProtobufTransactionStatusMetaToUi(&confirmed_block.TransactionStatusMeta{
+				InnerInstructionsNone: tc.none,
+				LogMessagesNone:       tc.none,
+			})
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			var got map[string]json.RawMessage
+			if err := json.Unmarshal(raw, &got); err != nil {
+				t.Fatalf("unmarshal json: %v", err)
+			}
+			for _, key := range []string{"innerInstructions", "logMessages"} {
+				if string(got[key]) != tc.want {
+					t.Fatalf("%s = %s, want %s", key, got[key], tc.want)
+				}
+			}
+		})
+	}
+}

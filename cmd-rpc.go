@@ -20,6 +20,7 @@ import (
 	"github.com/fsnotify/fsnotify"
 	"github.com/grafana/pyroscope-go"
 	hugecache "github.com/rpcpool/yellowstone-faithful/huge-cache"
+	"github.com/rpcpool/yellowstone-faithful/indexes"
 	"github.com/rpcpool/yellowstone-faithful/metrics"
 	splitcarfetcher "github.com/rpcpool/yellowstone-faithful/split-car-fetcher"
 	"github.com/ryanuber/go-glob"
@@ -50,6 +51,7 @@ func newCmd_rpc() *cli.Command {
 	var useMmapForSigExistsIndex bool
 	var configRetryMax int
 	var configRetryDelay time.Duration
+	var network indexes.Network
 	return &cli.Command{
 		Name:        "rpc",
 		Usage:       "Start a Solana JSON RPC server.",
@@ -59,6 +61,7 @@ func newCmd_rpc() *cli.Command {
 			return nil
 		},
 		Flags: append(lassieFetchFlags,
+			newFlag_network(&network),
 			&cli.StringFlag{
 				Name:        "listen",
 				Usage:       "Listen address",
@@ -214,6 +217,9 @@ func newCmd_rpc() *cli.Command {
 			},
 		),
 		Action: func(c *cli.Context) error {
+			if err := network.ApplyEpochSchedule(); err != nil {
+				return err
+			}
 			if listenOn == "" && grpcListenOn == "" {
 				return cli.Exit("either --listen or --grpc-listen must be provided (or both)", 1)
 			}
