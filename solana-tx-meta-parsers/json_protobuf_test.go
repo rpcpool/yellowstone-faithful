@@ -140,7 +140,7 @@ func TestProtobufTransactionStatusMetaToUi_NoneFieldsRenderAsNull(t *testing.T) 
 			raw, err := ProtobufTransactionStatusMetaToUi(&confirmed_block.TransactionStatusMeta{
 				InnerInstructionsNone: tc.none,
 				LogMessagesNone:       tc.none,
-			})
+			}, false)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
