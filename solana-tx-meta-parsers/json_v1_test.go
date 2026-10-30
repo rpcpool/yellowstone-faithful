@@ -122,7 +122,7 @@ func TestToUi_Base64_V1(t *testing.T) {
 func TestJsonParsed_V1MessageShape(t *testing.T) {
 	tx, _ := v1Tx(t)
 
-	parsedTx, err := jsonparsed.FromTransaction(tx)
+	parsedTx, err := jsonparsed.FromTransaction(tx, len(tx.Message.AccountKeys))
 	require.NoError(t, err)
 	parsedTx.Message.Instructions = nil // ToUi replaces these with parsed instructions
 	raw, err := json.Marshal(parsedTx)
@@ -145,7 +145,7 @@ func TestJsonParsed_V1MessageShape(t *testing.T) {
 	require.Equal(t, float64(1), ix["stackHeight"])
 
 	legacy, _ := wireTx(t, solana.TransactionMessageVersion(solana.MessageVersionLegacy))
-	parsedLegacy, err := jsonparsed.FromTransaction(legacy)
+	parsedLegacy, err := jsonparsed.FromTransaction(legacy, len(legacy.Message.AccountKeys))
 	require.NoError(t, err)
 	parsedLegacy.Message.Instructions = nil
 	raw, err = json.Marshal(parsedLegacy)
