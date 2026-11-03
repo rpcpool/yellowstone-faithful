@@ -106,7 +106,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                                 Default::default()
                             };
 
-                            let metadata: solana_storage_proto::convert::generated::TransactionStatusMeta =
+                            let mut metadata: solana_storage_proto::convert::generated::TransactionStatusMeta =
                                 prost_011::Message::decode(decompressed.as_slice()).map_err(|err| {
                                     Box::new(std::io::Error::new(
                                         std::io::ErrorKind::Other,
@@ -114,6 +114,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                                     ))
                                 })?;
 
+                            patch_unit_borsh_io_error(&mut metadata);
 
                             let as_native_metadata: solana_transaction_status::TransactionStatusMeta =
                                 metadata.try_into().map_err(|err| {
@@ -291,6 +292,18 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 }
 
+/// Agave 3.0 and later store `InstructionError(_, BorshIoError)` without its `String`.
+/// The pinned 2.0 crates expect a string length, so append an empty one (#374).
+fn patch_unit_borsh_io_error(
+    meta: &mut solana_storage_proto::convert::generated::TransactionStatusMeta,
+) {
+    if let Some(tx_err) = meta.err.as_mut() {
+        if let [8, 0, 0, 0, _, 44, 0, 0, 0] = tx_err.err.as_slice() {
+            tx_err.err.extend_from_slice(&[0; 8]);
+        }
+    }
+}
+
 pub struct MessageAddressLoaderFromTxMeta {
     pub tx_meta: solana_transaction_status::TransactionStatusMeta,
 }
@@ -377,5 +390,55 @@ pub fn open_reader(path: &str) -> Result<Box<dyn Read + Send>, Box<dyn Error>> {
         println!("Opening file: {}", path);
         let file = std::fs::File::open(path)?;
         Ok(Box::new(file))
+    }
+}
+
+#[cfg(test)]
+mod main_tests {
+    use {
+        super::*,
+        solana_sdk::{instruction::InstructionError, transaction::TransactionError},
+        solana_storage_proto::convert::generated,
+    };
+
+    fn meta_with_err(err: Vec<u8>) -> generated::TransactionStatusMeta {
+        generated::TransactionStatusMeta {
+            err: Some(generated::TransactionError { err }),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn test_patch_unit_borsh_io_error() {
+        let mut meta = meta_with_err(vec![8, 0, 0, 0, 2, 44, 0, 0, 0]);
+        patch_unit_borsh_io_error(&mut meta);
+
+        let native: solana_transaction_status::TransactionStatusMeta = meta.try_into().unwrap();
+        assert_eq!(
+            native.status,
+            Err(TransactionError::InstructionError(
+                2,
+                InstructionError::BorshIoError(String::new())
+            ))
+        );
+    }
+
+    #[test]
+    fn test_patch_leaves_other_shapes() {
+        let well_formed = bincode::serialize(&TransactionError::InstructionError(
+            2,
+            InstructionError::BorshIoError("x".to_string()),
+        ))
+        .unwrap();
+        for err in [
+            vec![7, 0, 0, 0, 2, 44, 0, 0, 0],
+            vec![8, 0, 0, 0, 2, 43, 0, 0, 0],
+            vec![8, 0, 0, 0],
+            well_formed,
+        ] {
+            let mut meta = meta_with_err(err.clone());
+            patch_unit_borsh_io_error(&mut meta);
+            assert_eq!(meta.err.unwrap().err, err);
+        }
     }
 }
