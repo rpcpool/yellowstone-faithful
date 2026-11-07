@@ -1,7 +1,7 @@
 | Epoch #  | CAR  | CAR SHA256 | CAR B3 | CAR filesize | tx meta check | poh check | Indices | Indices Size | Slot Range Index | Slots |
 |---|---|---|---|---|---|---|---|---|---|---|
 |1080|ongoing|-|-|-|-|-|-|-|-|-|
-| 1079 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| 1079 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | [✅](https://files.old-faithful.net/1079/epoch-1079-slot-ranges.raw) | ❌ |
 | 1078 | [epoch-1078.car](https://files.old-faithful.net/1078/epoch-1078.car) | [cefc6f5](https://files.old-faithful.net/1078/epoch-1078.sha256) | [cc47c44](https://files.old-faithful.net/1078/epoch-1078.b3sum) | 368 GB | [✅](https://files.old-faithful.net/1078/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1078/poh-check.log) | ✅ | 14 GB | [✅](https://files.old-faithful.net/1078/epoch-1078-slot-ranges.raw) | [1078.slots.txt](https://files.old-faithful.net/1078/1078.slots.txt) |
 | 1077 | [epoch-1077.car](https://files.old-faithful.net/1077/epoch-1077.car) | [fec908b](https://files.old-faithful.net/1077/epoch-1077.sha256) | [9e52240](https://files.old-faithful.net/1077/epoch-1077.b3sum) | 365 GB | [✅](https://files.old-faithful.net/1077/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1077/poh-check.log) | ✅ | 13 GB | [✅](https://files.old-faithful.net/1077/epoch-1077-slot-ranges.raw) | [1077.slots.txt](https://files.old-faithful.net/1077/1077.slots.txt) |
 | 1076 | [epoch-1076.car](https://files.old-faithful.net/1076/epoch-1076.car) | [751f143](https://files.old-faithful.net/1076/epoch-1076.sha256) | [f064d89](https://files.old-faithful.net/1076/epoch-1076.b3sum) | 380 GB | [✅](https://files.old-faithful.net/1076/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1076/poh-check.log) | ✅ | 13 GB | [✅](https://files.old-faithful.net/1076/epoch-1076-slot-ranges.raw) | [1076.slots.txt](https://files.old-faithful.net/1076/1076.slots.txt) |
@@ -1096,4 +1096,4 @@ GSFA indexes exist up to epoch 1020 only. The report does not check for them aft
 - Epoch 49: failed tx meta check
 - Epoch 50: failed tx meta check
 - Epoch 208: failed tx meta check
-- Epoch 1079: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size, missing slot range index
+- Epoch 1079: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size
