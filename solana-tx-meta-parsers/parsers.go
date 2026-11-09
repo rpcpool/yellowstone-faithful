@@ -181,6 +181,11 @@ func (c *TransactionStatusMetaContainer) GetTxError() (transaction_status_meta_s
 }
 
 func (c *TransactionStatusMetaContainer) GetLoadedAccountsRaw() ([][]byte, [][]byte) {
+	// Transactions that predate transaction status meta carry no meta at all,
+	// and the jsonParsed path asks for their loaded addresses unconditionally.
+	if c == nil {
+		return nil, nil
+	}
 	if c.vProtobuf != nil {
 		return c.vProtobuf.LoadedWritableAddresses, c.vProtobuf.LoadedReadonlyAddresses
 	}
