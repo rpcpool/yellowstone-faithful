@@ -1,7 +1,7 @@
 | Epoch #  | CAR  | CAR SHA256 | CAR B3 | CAR filesize | tx meta check | poh check | Indices | Indices Size | Slot Range Index | Slots |
 |---|---|---|---|---|---|---|---|---|---|---|
 |1081|ongoing|-|-|-|-|-|-|-|-|-|
-| 1080 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | [✅](https://files.old-faithful.net/1080/epoch-1080-slot-ranges.raw) | ❌ |
+| 1080 | [epoch-1080.car](https://files.old-faithful.net/1080/epoch-1080.car) | [43f829b](https://files.old-faithful.net/1080/epoch-1080.sha256) | [3f4b486](https://files.old-faithful.net/1080/epoch-1080.b3sum) | 293 GB | [✅](https://files.old-faithful.net/1080/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1080/poh-check.log) | ✅ | 11 GB | [✅](https://files.old-faithful.net/1080/epoch-1080-slot-ranges.raw) | [1080.slots.txt](https://files.old-faithful.net/1080/1080.slots.txt) |
 | 1079 | [epoch-1079.car](https://files.old-faithful.net/1079/epoch-1079.car) | [80a7fa8](https://files.old-faithful.net/1079/epoch-1079.sha256) | [6f86426](https://files.old-faithful.net/1079/epoch-1079.b3sum) | 320 GB | [✅](https://files.old-faithful.net/1079/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1079/poh-check.log) | ✅ | 11 GB | [✅](https://files.old-faithful.net/1079/epoch-1079-slot-ranges.raw) | [1079.slots.txt](https://files.old-faithful.net/1079/1079.slots.txt) |
 | 1078 | [epoch-1078.car](https://files.old-faithful.net/1078/epoch-1078.car) | [cefc6f5](https://files.old-faithful.net/1078/epoch-1078.sha256) | [cc47c44](https://files.old-faithful.net/1078/epoch-1078.b3sum) | 368 GB | [✅](https://files.old-faithful.net/1078/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1078/poh-check.log) | ✅ | 14 GB | [✅](https://files.old-faithful.net/1078/epoch-1078-slot-ranges.raw) | [1078.slots.txt](https://files.old-faithful.net/1078/1078.slots.txt) |
 | 1077 | [epoch-1077.car](https://files.old-faithful.net/1077/epoch-1077.car) | [fec908b](https://files.old-faithful.net/1077/epoch-1077.sha256) | [9e52240](https://files.old-faithful.net/1077/epoch-1077.b3sum) | 365 GB | [✅](https://files.old-faithful.net/1077/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1077/poh-check.log) | ✅ | 13 GB | [✅](https://files.old-faithful.net/1077/epoch-1077-slot-ranges.raw) | [1077.slots.txt](https://files.old-faithful.net/1077/1077.slots.txt) |
@@ -1082,7 +1082,7 @@
 | 2 | [epoch-2.car](https://files.old-faithful.net/2/epoch-2.car) | [54bba04](https://files.old-faithful.net/2/epoch-2.sha256) | [3e5de39](https://files.old-faithful.net/2/epoch-2.b3sum) | 14 GB | [★](https://files.old-faithful.net/2/tx-metadata-check.log) | [✅](https://files.old-faithful.net/2/poh-check.log) | ✅ | 6 GB | [✅](https://files.old-faithful.net/2/epoch-2-slot-ranges.raw) | [2.slots.txt](https://files.old-faithful.net/2/2.slots.txt) |
 | 1 | [epoch-1.car](https://files.old-faithful.net/1/epoch-1.car) | [611ca99](https://files.old-faithful.net/1/epoch-1.sha256) | [2955f7d](https://files.old-faithful.net/1/epoch-1.b3sum) | 8 GB | [★](https://files.old-faithful.net/1/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1/poh-check.log) | ✅ | 6 GB | [✅](https://files.old-faithful.net/1/epoch-1-slot-ranges.raw) | [1.slots.txt](https://files.old-faithful.net/1/1.slots.txt) |
 | 0 | [epoch-0.car](https://files.old-faithful.net/0/epoch-0.car) | [3c6347f](https://files.old-faithful.net/0/epoch-0.sha256) | [c1393eb](https://files.old-faithful.net/0/epoch-0.b3sum) | 4 GB | [★](https://files.old-faithful.net/0/tx-metadata-check.log) | [✅](https://files.old-faithful.net/0/poh-check.log) | ✅ | 6 GB | [✅](https://files.old-faithful.net/0/epoch-0-slot-ranges.raw) | [0.slots.txt](https://files.old-faithful.net/0/0.slots.txt) |
-| **Total** | 1080 | (1 behind) | - | 506 TB | - | - | - | 57 TB | - | - |
+| **Total** | 1081 | (0 behind) | - | 506 TB | - | - | - | 57 TB | - | - |
 
 ★ = tx meta validation skipped (epochs 0-10 where tx meta wasn't enabled yet)
 
@@ -1097,4 +1097,3 @@ GSFA indexes exist up to epoch 1020 only. The report does not check for them aft
 - Epoch 49: failed tx meta check
 - Epoch 50: failed tx meta check
 - Epoch 208: failed tx meta check
-- Epoch 1080: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size
