@@ -1,7 +1,7 @@
 | Epoch #  | CAR  | CAR SHA256 | CAR B3 | CAR filesize | tx meta check | poh check | Indices | Indices Size | Slot Range Index | Slots |
 |---|---|---|---|---|---|---|---|---|---|---|
 |1090|ongoing|-|-|-|-|-|-|-|-|-|
-| 1089 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| 1089 | [epoch-1089.car](https://files.old-faithful.net/1089/epoch-1089.car) | [5833c58](https://files.old-faithful.net/1089/epoch-1089.sha256) | [a71077e](https://files.old-faithful.net/1089/epoch-1089.b3sum) | 341 GB | [✅](https://files.old-faithful.net/1089/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1089/poh-check.log) | ✅ | 12 GB | [✅](https://files.old-faithful.net/1089/epoch-1089-slot-ranges.raw) | [1089.slots.txt](https://files.old-faithful.net/1089/1089.slots.txt) |
 | 1088 | [epoch-1088.car](https://files.old-faithful.net/1088/epoch-1088.car) | [7e4ad90](https://files.old-faithful.net/1088/epoch-1088.sha256) | [e356259](https://files.old-faithful.net/1088/epoch-1088.b3sum) | 361 GB | [✅](https://files.old-faithful.net/1088/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1088/poh-check.log) | ✅ | 13 GB | [✅](https://files.old-faithful.net/1088/epoch-1088-slot-ranges.raw) | [1088.slots.txt](https://files.old-faithful.net/1088/1088.slots.txt) |
 | 1087 | [epoch-1087.car](https://files.old-faithful.net/1087/epoch-1087.car) | [34034b2](https://files.old-faithful.net/1087/epoch-1087.sha256) | [2c05f13](https://files.old-faithful.net/1087/epoch-1087.b3sum) | 310 GB | [✅](https://files.old-faithful.net/1087/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1087/poh-check.log) | ✅ | 11 GB | [✅](https://files.old-faithful.net/1087/epoch-1087-slot-ranges.raw) | [1087.slots.txt](https://files.old-faithful.net/1087/1087.slots.txt) |
 | 1086 | [epoch-1086.car](https://files.old-faithful.net/1086/epoch-1086.car) | [4f83ee1](https://files.old-faithful.net/1086/epoch-1086.sha256) | [8aeb9df](https://files.old-faithful.net/1086/epoch-1086.b3sum) | 341 GB | [✅](https://files.old-faithful.net/1086/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1086/poh-check.log) | ✅ | 13 GB | [✅](https://files.old-faithful.net/1086/epoch-1086-slot-ranges.raw) | [1086.slots.txt](https://files.old-faithful.net/1086/1086.slots.txt) |
@@ -1091,7 +1091,7 @@
 | 2 | [epoch-2.car](https://files.old-faithful.net/2/epoch-2.car) | [54bba04](https://files.old-faithful.net/2/epoch-2.sha256) | [3e5de39](https://files.old-faithful.net/2/epoch-2.b3sum) | 14 GB | [★](https://files.old-faithful.net/2/tx-metadata-check.log) | [✅](https://files.old-faithful.net/2/poh-check.log) | ✅ | 6 GB | [✅](https://files.old-faithful.net/2/epoch-2-slot-ranges.raw) | [2.slots.txt](https://files.old-faithful.net/2/2.slots.txt) |
 | 1 | [epoch-1.car](https://files.old-faithful.net/1/epoch-1.car) | [611ca99](https://files.old-faithful.net/1/epoch-1.sha256) | [2955f7d](https://files.old-faithful.net/1/epoch-1.b3sum) | 8 GB | [★](https://files.old-faithful.net/1/tx-metadata-check.log) | [✅](https://files.old-faithful.net/1/poh-check.log) | ✅ | 6 GB | [✅](https://files.old-faithful.net/1/epoch-1-slot-ranges.raw) | [1.slots.txt](https://files.old-faithful.net/1/1.slots.txt) |
 | 0 | [epoch-0.car](https://files.old-faithful.net/0/epoch-0.car) | [3c6347f](https://files.old-faithful.net/0/epoch-0.sha256) | [c1393eb](https://files.old-faithful.net/0/epoch-0.b3sum) | 4 GB | [★](https://files.old-faithful.net/0/tx-metadata-check.log) | [✅](https://files.old-faithful.net/0/poh-check.log) | ✅ | 6 GB | [✅](https://files.old-faithful.net/0/epoch-0-slot-ranges.raw) | [0.slots.txt](https://files.old-faithful.net/0/0.slots.txt) |
-| **Total** | 1089 | (1 behind) | - | 509 TB | - | - | - | 57 TB | - | - |
+| **Total** | 1090 | (0 behind) | - | 509 TB | - | - | - | 57 TB | - | - |
 
 ★ = tx meta validation skipped (epochs 0-10 where tx meta wasn't enabled yet)
 
@@ -1106,4 +1106,3 @@ GSFA indexes exist up to epoch 1020 only. The report does not check for them aft
 - Epoch 49: failed tx meta check
 - Epoch 50: failed tx meta check
 - Epoch 208: failed tx meta check
-- Epoch 1089: missing CAR, missing SHA, missing size, missing POH check, missing tx meta check, missing indices, missing indices size, missing slot range index
