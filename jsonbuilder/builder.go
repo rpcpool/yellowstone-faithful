@@ -34,15 +34,13 @@ type Recyclable interface {
 func NewObject() *OrderedJSONObject {
 	// Start with a reasonable initial capacity to reduce reallocations.
 	o := getOrderedJSONObject()
-	o.buf = append(o.buf, '{')
-	o.isFirst = true
+	o.Reset()
 	return o
 }
 
-// Put resets the builder's buffer, allowing it to be reused.
-// Note: This no longer uses an external pool.
+// Reset resets the builder to an empty object, allowing it to be reused.
 func (o *OrderedJSONObject) Reset() {
-	o.buf = o.buf[:0]
+	o.buf = append(o.buf[:0], '{')
 	o.isFirst = true
 	o.err = nil
 }
@@ -103,8 +101,7 @@ func putArrayBuilder(a *ArrayBuilder) {
 // NewArray creates a new ArrayBuilder, initializing its buffer.
 func NewArray() *ArrayBuilder {
 	ab := getArrayBuilder()
-	ab.buf = append(ab.buf, '[')
-	ab.isFirst = true
+	ab.Reset()
 	// override the runtime finalizer to put the ArrayBuilder back to the pool
 	// runtime.SetFinalizer(ab, func(a *ArrayBuilder) {
 	// 	putArrayBuilder(a) // Reset the ArrayBuilder and return it to the pool.
@@ -112,9 +109,9 @@ func NewArray() *ArrayBuilder {
 	return ab
 }
 
-// Reset resets the builder's buffer.
+// Reset resets the builder to an empty array, allowing it to be reused.
 func (a *ArrayBuilder) Reset() {
-	a.buf = a.buf[:0]
+	a.buf = append(a.buf[:0], '[')
 	a.isFirst = true
 	a.err = nil
 }
